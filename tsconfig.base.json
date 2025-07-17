@@ -1,0 +1,34 @@
+{
+  "compilerOptions": {
+    /* Output control */
+    "noEmit": true,
+
+    /* Language and module settings */
+    "target": "ESNEXT",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+
+    /* Path mapping for shared resolution (optional tweak per package) */
+    "baseUrl": ".",
+
+    /* Compatibility & helpers */
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "importHelpers": true,
+    "allowImportingTsExtensions": true,
+    "useDefineForClassFields": true,
+
+    /* Strictness & safety */
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedSideEffectImports": true,
+
+    /* Performance / tooling */
+    "skipLibCheck": true,
+    "moduleDetection": "force"
+  },
+
+  "exclude": ["node_modules", "dist"]
+}

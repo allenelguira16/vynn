@@ -1,0 +1,75 @@
+{
+  "name": "vynn",
+  "type": "module",
+  "version": "0.0.0",
+  "main": "dist/cjs/index.js",
+  "module": "dist/esm/index.js",
+  "types": "dist/types/index.d.ts",
+  "sideEffects": false,
+  "scripts": {
+    "dev": "NODE_ENV=development rollup -c -w",
+    "build": "NODE_ENV=production rollup -c",
+    "prepare": "NODE_ENV=development rollup -c",
+    "clean": "rimraf dist"
+  },
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.js",
+      "types": "./dist/types/index.d.ts"
+    },
+    "./jsx-runtime": {
+      "import": "./dist/esm/jsx-runtime.js",
+      "require": "./dist/cjs/jsx-runtime.js",
+      "types": "./dist/types/jsx-runtime.d.ts"
+    },
+    "./server": {
+      "import": "./dist/esm/server.js",
+      "require": "./dist/cjs/server.js",
+      "types": "./dist/types/server.d.ts"
+    },
+    "./server/jsx-runtime": {
+      "import": "./dist/esm/server/jsx-runtime.js",
+      "require": "./dist/cjs/server/jsx-runtime.js",
+      "types": "./dist/types/server/jsx-runtime.d.ts"
+    },
+    "./client": {
+      "import": "./dist/esm/client.js",
+      "require": "./dist/cjs/client.js",
+      "types": "./dist/types/client.d.ts"
+    },
+    "./package.json": "./package.json"
+  },
+  "typesVersions": {
+    "*": {
+      "jsx-runtime": [
+        "dist/types/jsx-runtime.d.ts"
+      ]
+    }
+  },
+  "devDependencies": {
+    "@atomico/rollup-plugin-sizes": "^1.1.4",
+    "@rollup/plugin-babel": "^6.0.4",
+    "@rollup/plugin-commonjs": "^28.0.3",
+    "@rollup/plugin-json": "^6.1.0",
+    "@rollup/plugin-node-resolve": "^16.0.1",
+    "@rollup/plugin-replace": "^6.0.2",
+    "@rollup/plugin-typescript": "^12.1.2",
+    "@types/babel__core": "^7.20.5",
+    "@types/babel__helper-plugin-utils": "^7.10.3",
+    "@types/lodash-es": "^4.17.12",
+    "@types/node": "^24.3.0",
+    "esbuild": "^0.25.5",
+    "rollup": "^4.41.1",
+    "rollup-plugin-delete": "^3.0.1",
+    "rollup-plugin-dts": "^6.2.1",
+    "rollup-plugin-esbuild": "^6.2.1",
+    "rollup-plugin-filesize": "^10.0.0",
+    "rollup-plugin-summary": "^3.0.1",
+    "rollup-plugin-tsconfig-paths": "^1.5.2",
+    "rollup-plugin-typescript2": "^0.36.0"
+  }
+}

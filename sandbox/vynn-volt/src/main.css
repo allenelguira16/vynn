@@ -1,0 +1,13 @@
+@import "tailwindcss";
+
+button {
+  @apply bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 px-4 rounded cursor-pointer;
+}
+
+button:disabled {
+  @apply bg-gray-400 cursor-default;
+}
+
+input {
+  @apply border border-gray-400 p-2;
+}

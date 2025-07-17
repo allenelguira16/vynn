@@ -1,0 +1,15 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+@plugin "daisyui";
+
+.multiline-mockup-code {
+  @apply mockup-code;
+}
+
+.multiline-mockup-code > pre::before {
+  content: none;
+}
+
+.multiline-mockup-code > pre {
+  padding-left: calc(0.25rem * 5);
+}

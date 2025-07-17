@@ -1,0 +1,28 @@
+{
+  "name": "sandbox-vynn-volt",
+  "private": true,
+  "type": "module",
+  "version": "0.0.0",
+  "scripts": {
+    "dev": "vinxi dev",
+    "build": "vinxi build",
+    "start": "vinxi start",
+    "preview": "yarn build && yarn start"
+  },
+  "dependencies": {
+    "@tailwindcss/vite": "^4.1.8",
+    "@types/node": "^22.15.29",
+    "@types/pretty": "^2.0.3",
+    "@vynn/volt": "workspace:^",
+    "pretty": "^2.0.0",
+    "tailwindcss": "^4.1.8",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3",
+    "vinxi": "^0.5.8",
+    "vynn": "workspace:^",
+    "vynn-router": "workspace:^"
+  },
+  "devDependencies": {
+    "vite-css-modules": "^1.10.0"
+  }
+}
