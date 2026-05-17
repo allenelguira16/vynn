@@ -1,5 +1,5 @@
-import { getRuntimeContext } from "~/context";
-import { isServer } from "~/util";
+import { getRuntimeContext } from "~/context/runtime-context";
+import { isServer } from "~/util/server-util";
 
 import { DestroyFn } from "./on-destroy";
 

@@ -20,6 +20,7 @@
   "dependencies": {
     "@babel/preset-vynn": "workspace:^",
     "@tailwindcss/vite": "^4.1.8",
+    "@vynn/common": "workspace:^",
     "cross-env": "^7.0.3",
     "lodash": "^4.17.21",
     "tailwindcss": "^4.1.8",

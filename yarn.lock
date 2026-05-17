@@ -275,6 +275,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@babel/helper-validator-identifier@npm:^7.28.5":
+  version: 7.28.5
+  resolution: "@babel/helper-validator-identifier@npm:7.28.5"
+  checksum: 10c0/42aaebed91f739a41f3d80b72752d1f95fd7c72394e8e4bd7cdd88817e0774d80a432451bcba17c2c642c257c483bf1d409dd4548883429ea9493a3bc4ab0847
+  languageName: node
+  linkType: hard
+
 "@babel/helper-validator-option@npm:^7.27.1":
   version: 7.27.1
   resolution: "@babel/helper-validator-option@npm:7.27.1"
@@ -311,6 +318,17 @@ __metadata:
   bin:
     parser: ./bin/babel-parser.js
   checksum: 10c0/1f41eb82623b0ca0f94521b57f4790c6c457cd922b8e2597985b36bdec24114a9ccf54640286a760ceb60f11fe9102d192bf60477aee77f5d45f1029b9b72729
+  languageName: node
+  linkType: hard
+
+"@babel/parser@npm:^7.27.5":
+  version: 7.29.3
+  resolution: "@babel/parser@npm:7.29.3"
+  dependencies:
+    "@babel/types": "npm:^7.29.0"
+  bin:
+    parser: ./bin/babel-parser.js
+  checksum: 10c0/f06920c819550c0db689e4c5b626bf55ba3cebf80ebe9ccfa434e134036cf3de50951fe759f74abb2dae381989239860bde46d4600328578ad1f7114c3711a6d
   languageName: node
   linkType: hard
 
@@ -1288,6 +1306,16 @@ __metadata:
     "@babel/helper-string-parser": "npm:^7.27.1"
     "@babel/helper-validator-identifier": "npm:^7.27.1"
   checksum: 10c0/24b11c9368e7e2c291fe3c1bcd1ed66f6593a3975f479cbb9dd7b8c8d8eab8a962b0d2fca616c043396ce82500ac7d23d594fbbbd013828182c01596370a0b10
+  languageName: node
+  linkType: hard
+
+"@babel/types@npm:^7.27.6, @babel/types@npm:^7.29.0":
+  version: 7.29.0
+  resolution: "@babel/types@npm:7.29.0"
+  dependencies:
+    "@babel/helper-string-parser": "npm:^7.27.1"
+    "@babel/helper-validator-identifier": "npm:^7.28.5"
+  checksum: 10c0/23cc3466e83bcbfab8b9bd0edaafdb5d4efdb88b82b3be6728bbade5ba2f0996f84f63b1c5f7a8c0d67efded28300898a5f930b171bb40b311bca2029c4e9b4f
   languageName: node
   linkType: hard
 
@@ -2672,6 +2700,22 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@rollup/plugin-terser@npm:^1.0.0":
+  version: 1.0.0
+  resolution: "@rollup/plugin-terser@npm:1.0.0"
+  dependencies:
+    serialize-javascript: "npm:^7.0.3"
+    smob: "npm:^1.0.0"
+    terser: "npm:^5.17.4"
+  peerDependencies:
+    rollup: ^2.0.0||^3.0.0||^4.0.0
+  peerDependenciesMeta:
+    rollup:
+      optional: true
+  checksum: 10c0/08be445cc2e0677132ee06cdebbcd1b6cd3ab22e220fcd89d8a22eaf9ee501a940f425931ac65c65ab113803ad31a895f2575716248609c882c8e562fd6cc2d4
+  languageName: node
+  linkType: hard
+
 "@rollup/plugin-typescript@npm:^12.1.2":
   version: 12.1.4
   resolution: "@rollup/plugin-typescript@npm:12.1.4"
@@ -3923,6 +3967,27 @@ __metadata:
   checksum: 10c0/9764e31bfcd13a2f5369554d0abbfd06e391d72b0065b4cbd36be94ffdd4d845b2d38a37d56b35714c7a2100c512c9b74de2fa1a19ee2e920ecf098d9035518d
   languageName: node
   linkType: hard
+
+"@vynn/common@workspace:^, @vynn/common@workspace:sandbox/@components":
+  version: 0.0.0-use.local
+  resolution: "@vynn/common@workspace:sandbox/@components"
+  dependencies:
+    "@tailwindcss/vite": "npm:^4.1.8"
+    "@types/lodash": "npm:^4.17.17"
+    "@types/node": "npm:^22.15.21"
+    cross-env: "npm:^7.0.3"
+    lodash: "npm:^4.17.21"
+    tailwindcss: "npm:^4.1.8"
+    typescript: "npm:^5.8.3"
+    vite: "npm:^6.3.5"
+    vite-bundle-visualizer: "npm:^1.2.1"
+    vite-plugin-sitemap: "npm:^0.8.2"
+    vite-plugin-vynn: "workspace:^"
+    vite-tsconfig-paths: "npm:^5.1.4"
+    vynn: "workspace:^"
+    vynn-router: "workspace:^"
+  languageName: unknown
+  linkType: soft
 
 "@vynn/volt@workspace:^, @vynn/volt@workspace:packages/vynn-volt":
   version: 0.0.0-use.local
@@ -5378,6 +5443,28 @@ __metadata:
   checksum: 10c0/9e873546f0806606c4f775219f6811768fc3b3b0765ca8230722e849058ad098318af006e1faa39a8008c03009c37c519f6bccad41b0d78586237585c75fb38b
   languageName: node
   linkType: hard
+
+"csr@workspace:sandbox/csr":
+  version: 0.0.0-use.local
+  resolution: "csr@workspace:sandbox/csr"
+  dependencies:
+    "@tailwindcss/vite": "npm:^4.1.8"
+    "@types/lodash": "npm:^4.17.17"
+    "@types/node": "npm:^22.15.21"
+    "@vynn/common": "workspace:^"
+    cross-env: "npm:^7.0.3"
+    lodash: "npm:^4.17.21"
+    tailwindcss: "npm:^4.1.8"
+    typescript: "npm:^5.8.3"
+    vite: "npm:^6.3.5"
+    vite-bundle-visualizer: "npm:^1.2.1"
+    vite-plugin-sitemap: "npm:^0.8.2"
+    vite-plugin-vynn: "workspace:^"
+    vite-tsconfig-paths: "npm:^5.1.4"
+    vynn: "workspace:^"
+    vynn-router: "workspace:^"
+  languageName: unknown
+  linkType: soft
 
 "cssesc@npm:^3.0.0":
   version: 3.0.0
@@ -10839,6 +10926,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"react-lazy-with-preload@npm:^2.2.1":
+  version: 2.2.1
+  resolution: "react-lazy-with-preload@npm:2.2.1"
+  checksum: 10c0/57c36baedc24a2c8fa148681dc7c5123ac183542964063b4a0433856a06d4edead27deb893012a43f75905af51a479b4409e688b97be3ef70cffff926954f6d2
+  languageName: node
+  linkType: hard
+
 "read-package-json-fast@npm:^3.0.0":
   version: 3.0.2
   resolution: "read-package-json-fast@npm:3.0.2"
@@ -11660,25 +11754,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"sandbox-vynn-volt@workspace:sandbox/vynn-volt":
-  version: 0.0.0-use.local
-  resolution: "sandbox-vynn-volt@workspace:sandbox/vynn-volt"
-  dependencies:
-    "@tailwindcss/vite": "npm:^4.1.8"
-    "@types/node": "npm:^22.15.29"
-    "@types/pretty": "npm:^2.0.3"
-    "@vynn/volt": "workspace:^"
-    pretty: "npm:^2.0.0"
-    tailwindcss: "npm:^4.1.8"
-    tsx: "npm:^4.19.4"
-    typescript: "npm:^5.8.3"
-    vinxi: "npm:^0.5.8"
-    vite-css-modules: "npm:^1.10.0"
-    vynn: "workspace:^"
-    vynn-router: "workspace:^"
-  languageName: unknown
-  linkType: soft
-
 "saxes@npm:^6.0.0":
   version: 6.0.0
   resolution: "saxes@npm:6.0.0"
@@ -11759,6 +11834,13 @@ __metadata:
   dependencies:
     randombytes: "npm:^2.1.0"
   checksum: 10c0/2dd09ef4b65a1289ba24a788b1423a035581bef60817bea1f01eda8e3bda623f86357665fe7ac1b50f6d4f583f97db9615b3f07b2a2e8cbcb75033965f771dd2
+  languageName: node
+  linkType: hard
+
+"serialize-javascript@npm:^7.0.3":
+  version: 7.0.5
+  resolution: "serialize-javascript@npm:7.0.5"
+  checksum: 10c0/7b7818e5267f6d474ec7a56d36ba69dd712726a13eab37706ec94615fb7ca8945471f2b7fb0dc9dbe8c79c1930c1079d97f66f91315c8c8c2ca6c38898cec96f
   languageName: node
   linkType: hard
 
@@ -12107,6 +12189,32 @@ __metadata:
   languageName: node
   linkType: hard
 
+"ssr@workspace:sandbox/ssr":
+  version: 0.0.0-use.local
+  resolution: "ssr@workspace:sandbox/ssr"
+  dependencies:
+    "@tailwindcss/vite": "npm:^4.1.8"
+    "@types/compression": "npm:^1"
+    "@types/express": "npm:^5.0.2"
+    "@types/node": "npm:^22.15.29"
+    "@types/pretty": "npm:^2.0.3"
+    "@vynn/common": "workspace:^"
+    compression: "npm:^1.8.1"
+    express: "npm:^5.1.0"
+    pretty: "npm:^2.0.0"
+    sirv: "npm:^3.0.1"
+    tailwindcss: "npm:^4.1.8"
+    tsx: "npm:^4.19.4"
+    typescript: "npm:^5.8.3"
+    vite: "npm:^6.3.5"
+    vite-css-modules: "npm:^1.10.0"
+    vite-plugin-vynn: "workspace:^"
+    vite-tsconfig-paths: "npm:^5.1.4"
+    vynn: "workspace:^"
+    vynn-router: "workspace:^"
+  languageName: unknown
+  linkType: soft
+
 "ssri@npm:^10.0.0":
   version: 10.0.6
   resolution: "ssri@npm:10.0.6"
@@ -12178,6 +12286,34 @@ __metadata:
   checksum: 10c0/de4e45706bb4c0354a4b1122a2b8cc45a639e86206807ce0baf390ee9218d3ef181923fa4d2b67443367c491aa255c5fbaa64bb74648e3c5b48299928af86c09
   languageName: node
   linkType: hard
+
+"stream@workspace:sandbox/stream":
+  version: 0.0.0-use.local
+  resolution: "stream@workspace:sandbox/stream"
+  dependencies:
+    "@tailwindcss/vite": "npm:^4.1.8"
+    "@types/compression": "npm:^1"
+    "@types/express": "npm:^5.0.2"
+    "@types/node": "npm:^22.15.29"
+    "@types/pretty": "npm:^2.0.3"
+    "@vynn/common": "workspace:^"
+    compression: "npm:^1.8.1"
+    express: "npm:^5.1.0"
+    pretty: "npm:^2.0.0"
+    sirv: "npm:^3.0.1"
+    tailwindcss: "npm:^4.1.8"
+    tsx: "npm:^4.19.4"
+    typescript: "npm:^5.8.3"
+    vite: "npm:^6.3.5"
+    vite-css-modules: "npm:^1.10.0"
+    vite-plugin-preload: "npm:^0.4.4"
+    vite-plugin-vynn: "workspace:^"
+    vite-preload: "npm:^1.0.5"
+    vite-tsconfig-paths: "npm:^5.1.4"
+    vynn: "workspace:^"
+    vynn-router: "workspace:^"
+  languageName: unknown
+  linkType: soft
 
 "streamx@npm:^2.15.0":
   version: 2.22.1
@@ -12386,13 +12522,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"synchronous-promise@npm:^2.0.17":
-  version: 2.0.17
-  resolution: "synchronous-promise@npm:2.0.17"
-  checksum: 10c0/1babe643d8417789ef6e5a2f3d4b8abcda2de236acd09bbe2c98f6be82c0a2c92ed21a6e4f934845fa8de18b1435a9cba1e8c3d945032e8a532f076224c024b1
-  languageName: node
-  linkType: hard
-
 "system-architecture@npm:^0.1.0":
   version: 0.1.0
   resolution: "system-architecture@npm:0.1.0"
@@ -12475,6 +12604,7 @@ __metadata:
     "@tailwindcss/vite": "npm:^4.1.8"
     "@types/lodash": "npm:^4.17.17"
     "@types/node": "npm:^22.15.21"
+    "@vynn/common": "workspace:^"
     cross-env: "npm:^7.0.3"
     lodash: "npm:^4.17.21"
     tailwindcss: "npm:^4.1.8"
@@ -13501,77 +13631,21 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"vite-sandbox-ssr@workspace:sandbox/vite-sandbox-ssr":
-  version: 0.0.0-use.local
-  resolution: "vite-sandbox-ssr@workspace:sandbox/vite-sandbox-ssr"
+"vite-preload@npm:^1.0.5":
+  version: 1.0.5
+  resolution: "vite-preload@npm:1.0.5"
   dependencies:
-    "@tailwindcss/vite": "npm:^4.1.8"
-    "@types/compression": "npm:^1"
-    "@types/express": "npm:^5.0.2"
-    "@types/node": "npm:^22.15.29"
-    "@types/pretty": "npm:^2.0.3"
-    compression: "npm:^1.8.1"
-    express: "npm:^5.1.0"
-    pretty: "npm:^2.0.0"
-    sirv: "npm:^3.0.1"
-    tailwindcss: "npm:^4.1.8"
-    tsx: "npm:^4.19.4"
-    typescript: "npm:^5.8.3"
-    vite: "npm:^6.3.5"
-    vite-css-modules: "npm:^1.10.0"
-    vite-plugin-vynn: "workspace:^"
-    vite-tsconfig-paths: "npm:^5.1.4"
-    vynn: "workspace:^"
-    vynn-router: "workspace:^"
-  languageName: unknown
-  linkType: soft
-
-"vite-sandbox-streaming@workspace:sandbox/vite-sandbox-stream":
-  version: 0.0.0-use.local
-  resolution: "vite-sandbox-streaming@workspace:sandbox/vite-sandbox-stream"
-  dependencies:
-    "@tailwindcss/vite": "npm:^4.1.8"
-    "@types/compression": "npm:^1"
-    "@types/express": "npm:^5.0.2"
-    "@types/node": "npm:^22.15.29"
-    "@types/pretty": "npm:^2.0.3"
-    compression: "npm:^1.8.1"
-    express: "npm:^5.1.0"
-    pretty: "npm:^2.0.0"
-    sirv: "npm:^3.0.1"
-    tailwindcss: "npm:^4.1.8"
-    tsx: "npm:^4.19.4"
-    typescript: "npm:^5.8.3"
-    vite: "npm:^6.3.5"
-    vite-css-modules: "npm:^1.10.0"
-    vite-plugin-preload: "npm:^0.4.4"
-    vite-plugin-vynn: "workspace:^"
-    vite-tsconfig-paths: "npm:^5.1.4"
-    vynn: "workspace:^"
-    vynn-router: "workspace:^"
-  languageName: unknown
-  linkType: soft
-
-"vite-sandbox@workspace:sandbox/vite-sandbox":
-  version: 0.0.0-use.local
-  resolution: "vite-sandbox@workspace:sandbox/vite-sandbox"
-  dependencies:
-    "@tailwindcss/vite": "npm:^4.1.8"
-    "@types/lodash": "npm:^4.17.17"
-    "@types/node": "npm:^22.15.21"
-    cross-env: "npm:^7.0.3"
-    lodash: "npm:^4.17.21"
-    tailwindcss: "npm:^4.1.8"
-    typescript: "npm:^5.8.3"
-    vite: "npm:^6.3.5"
-    vite-bundle-visualizer: "npm:^1.2.1"
-    vite-plugin-sitemap: "npm:^0.8.2"
-    vite-plugin-vynn: "workspace:^"
-    vite-tsconfig-paths: "npm:^5.1.4"
-    vynn: "workspace:^"
-    vynn-router: "workspace:^"
-  languageName: unknown
-  linkType: soft
+    "@babel/generator": "npm:^7.27.5"
+    "@babel/parser": "npm:^7.27.5"
+    "@babel/traverse": "npm:^7.27.4"
+    "@babel/types": "npm:^7.27.6"
+    react-lazy-with-preload: "npm:^2.2.1"
+  peerDependencies:
+    react: ^18 || ^19.0.0-rc || ^19
+    vite: ^5 || ^6.0.0-beta || ^6 || ^7
+  checksum: 10c0/c93cf484eb22c045950d237e5f520012f4f8fb0436ed9b74b8b15fe89c97ac112f4350d934bd77b9e80f4dc1520d9394038908bc1ce7fbf431b9b9560a0115fd
+  languageName: node
+  linkType: hard
 
 "vite-tsconfig-paths@npm:^5.1.4":
   version: 5.1.4
@@ -13705,6 +13779,26 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"vynn-volt@workspace:sandbox/vynn-volt":
+  version: 0.0.0-use.local
+  resolution: "vynn-volt@workspace:sandbox/vynn-volt"
+  dependencies:
+    "@tailwindcss/vite": "npm:^4.1.8"
+    "@types/node": "npm:^22.15.29"
+    "@types/pretty": "npm:^2.0.3"
+    "@vynn/common": "workspace:^"
+    "@vynn/volt": "workspace:^"
+    pretty: "npm:^2.0.0"
+    tailwindcss: "npm:^4.1.8"
+    tsx: "npm:^4.19.4"
+    typescript: "npm:^5.8.3"
+    vinxi: "npm:^0.5.8"
+    vite-css-modules: "npm:^1.10.0"
+    vynn: "workspace:^"
+    vynn-router: "workspace:^"
+  languageName: unknown
+  linkType: soft
+
 "vynn@workspace:^, vynn@workspace:packages/vynn":
   version: 0.0.0-use.local
   resolution: "vynn@workspace:packages/vynn"
@@ -13715,6 +13809,7 @@ __metadata:
     "@rollup/plugin-json": "npm:^6.1.0"
     "@rollup/plugin-node-resolve": "npm:^16.0.1"
     "@rollup/plugin-replace": "npm:^6.0.2"
+    "@rollup/plugin-terser": "npm:^1.0.0"
     "@rollup/plugin-typescript": "npm:^12.1.2"
     "@types/babel__core": "npm:^7.20.5"
     "@types/babel__helper-plugin-utils": "npm:^7.10.3"
@@ -13729,7 +13824,6 @@ __metadata:
     rollup-plugin-summary: "npm:^3.0.1"
     rollup-plugin-tsconfig-paths: "npm:^1.5.2"
     rollup-plugin-typescript2: "npm:^0.36.0"
-    synchronous-promise: "npm:^2.0.17"
   languageName: unknown
   linkType: soft
 

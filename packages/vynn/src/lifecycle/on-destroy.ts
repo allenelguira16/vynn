@@ -1,4 +1,4 @@
-import { getRuntimeContext } from "~/context";
+import { getRuntimeContext } from "~/context/runtime-context";
 
 export type DestroyFn = () => Promise<void> | void;
 

@@ -1,4 +1,4 @@
-import { JSX } from "~/types";
+import { JSX } from "~/types/jsx";
 
 const map = new WeakMap<symbol, any>();
 

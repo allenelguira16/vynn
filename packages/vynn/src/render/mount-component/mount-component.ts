@@ -1,9 +1,12 @@
-import { setRuntimeContext } from "~/context";
-import { createLifeCycleContext, runComponentCleanup, runLifecycle } from "~/lifecycle";
-import { untrack } from "~/reactivity";
-import { FC, JSX, PropsWithChildren } from "~/types";
-import { isServer } from "~/util";
-import { toArray } from "~/util";
+import { setRuntimeContext } from "~/context/runtime-context";
+import { runComponentCleanup } from "~/lifecycle/component-cleanup";
+import { createLifeCycleContext } from "~/lifecycle/create-lifecycle";
+import { runLifecycle } from "~/lifecycle/run-lifecycle";
+import { untrack } from "~/reactivity/untrack";
+import { JSX } from "~/types/jsx";
+import { FC, PropsWithChildren } from "~/types/props";
+import { isServer } from "~/util/server-util";
+import { toArray } from "~/util/to-array";
 
 import { resolveComponentProps } from "./resolve-component-props";
 

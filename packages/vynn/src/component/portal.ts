@@ -1,6 +1,7 @@
-import { onDestroy, onMount } from "~/lifecycle";
-import { renderChildren } from "~/render";
-import { PropsWithChildren } from "~/types";
+import { onDestroy } from "~/lifecycle/on-destroy";
+import { onMount } from "~/lifecycle/on-mount";
+import { renderChildren } from "~/render/dom/render-children";
+import { PropsWithChildren } from "~/types/props";
 
 /**
  * A portal component for rendering into different part of the dom

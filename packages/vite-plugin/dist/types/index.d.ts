@@ -1,5 +1,4 @@
 import * as rollup from 'rollup';
-import { Plugin } from 'vite';
 
 type VitePluginVynnOptions = {
     ssr: boolean;
@@ -9,7 +8,7 @@ type VitePluginVynnOptions = {
  *
  * @returns The vite plugin.
  */
-declare const _default: (options?: VitePluginVynnOptions) => (Plugin<any> | {
+declare const _default: (options?: VitePluginVynnOptions) => {
     name: string;
     enforce: "pre";
     transform(this: rollup.TransformPluginContext, code: string, id: string): {
@@ -24,6 +23,6 @@ declare const _default: (options?: VitePluginVynnOptions) => (Plugin<any> | {
             file: string;
         } | null | undefined;
     } | undefined;
-})[];
+}[];
 
 export { _default as default };

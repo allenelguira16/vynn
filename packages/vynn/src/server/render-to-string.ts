@@ -1,4 +1,5 @@
-import { JSX } from "~/jsx-runtime";
+import { clientStreamContext } from "~/context/stream-context";
+import { JSX } from "~/types/jsx";
 
 /**
  * render an application into a string.
@@ -7,5 +8,8 @@ import { JSX } from "~/jsx-runtime";
  * @returns stream
  */
 export function renderToString(App: () => JSX.Element) {
+  const memoStore = clientStreamContext().memo;
+  memoStore.clear();
+
   return App() as string;
 }

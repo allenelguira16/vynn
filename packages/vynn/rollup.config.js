@@ -1,5 +1,4 @@
 import size from "@atomico/rollup-plugin-sizes";
-import resolve from "@rollup/plugin-node-resolve";
 import { defineConfig } from "rollup";
 import del from "rollup-plugin-delete";
 import dts from "rollup-plugin-dts";
@@ -34,23 +33,21 @@ export default defineConfig([
         dir: "dist",
         format: "esm",
         sourcemap: IS_DEV,
-        sourcemapExcludeSources: true,
         entryFileNames: "esm/[name].js",
-        chunkFileNames: "esm/chunks/[name]-[hash].js",
+        chunkFileNames: "esm/chunks/[hash].js",
       },
       {
         dir: "dist",
         format: "cjs",
         sourcemap: IS_DEV,
-        sourcemapExcludeSources: true,
         entryFileNames: "cjs/[name].js",
-        chunkFileNames: "cjs/chunks/[name]-[hash].js",
+        chunkFileNames: "cjs/chunks/[hash].js",
       },
     ],
     plugins: [
       del({ targets: "dist/*", runOnce: IS_DEV }),
       tsConfigPaths(),
-      resolve(),
+      // resolve(),
       esbuild({
         tsconfig: "tsconfig.json",
         minify: !IS_DEV,
@@ -58,7 +55,7 @@ export default defineConfig([
         jsx: "preserve",
         target: "esnext",
       }),
-      syncViteDynamicImport(),
+      // syncViteDynamicImport(),
       size(),
     ],
   },
@@ -74,19 +71,19 @@ export default defineConfig([
   },
 ]);
 
-function syncViteDynamicImport() {
-  return {
-    name: "sync-vite-dynamic-import",
-    renderChunk(code, chunk) {
-      const transformed = code.replace(/\bimport\s*\(([^)]+)\)/g, "import(/* @vite-ignore */ $1)");
+// function syncViteDynamicImport() {
+//   return {
+//     name: "sync-vite-dynamic-import",
+//     renderChunk(code, chunk) {
+//       const transformed = code.replace(/\bimport\s*\(([^)]+)\)/g, "import(/* @vite-ignore */ $1)");
 
-      // If no change, return null so Rollup keeps original map
-      if (transformed === code) return null;
+//       // If no change, return null so Rollup keeps original map
+//       if (transformed === code) return null;
 
-      return {
-        code: transformed,
-        map: chunk.map ?? null, // re-use Rollup’s generated source map
-      };
-    },
-  };
-}
+//       return {
+//         code: transformed,
+//         map: chunk.map ?? null, // re-use Rollup’s generated source map
+//       };
+//     },
+//   };
+// }

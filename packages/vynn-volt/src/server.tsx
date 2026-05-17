@@ -2,9 +2,9 @@
 
 import { eventHandler } from "vinxi/http";
 import { getManifest } from "vinxi/manifest";
-import { JSX, NoHydration } from "vynn";
+import { JSX } from "vynn";
 import { HydrateStreamScript } from "vynn/server";
-import { renderToStream, renderToString } from "vynn/server";
+import { renderToString } from "vynn/server";
 import { Router } from "vynn-router";
 
 import { routes } from "./parse-route";
@@ -31,28 +31,24 @@ export const renderServer = (
         {(rawAssets as Assets).map(({ tag: Tag, attrs, children }) => (
           <Tag {...attrs}>{children}</Tag>
         ))}
-        <NoHydration>
-          <HydrateStreamScript />
-        </NoHydration>
+        <HydrateStreamScript />
       </>
     );
 
     const manifest = await (clientManifest.json() as Promise<object>);
 
     const scripts = (
-      <NoHydration>
+      <>
         <script html={`window.manifest = ${JSON.stringify(manifest)}`} />
         <script type="module" src={clientManifest.inputs[clientManifest.handler].output.path} />
-      </NoHydration>
+      </>
     );
 
     const Component = () => (
       <>
         {`<!DOCTYPE html>`}
         <App assets={assets} scripts={scripts}>
-          <div id="app">
-            <Router url={event.path} routes={routes} />
-          </div>
+          <Router url={event.path} routes={routes} />
         </App>
       </>
     );
@@ -60,7 +56,7 @@ export const renderServer = (
     event.node.res.setHeader("Content-Type", "text/html");
 
     if (mode === "stream") {
-      const stream = renderToStream(Component);
+      const stream = renderToString(Component);
 
       return stream;
     } else {

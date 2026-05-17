@@ -1,4 +1,4 @@
-import { clientStreamContext } from "~/context";
+import { clientStreamContext } from "~/context/stream-context";
 
 export type MemoState<P, T> = { lastProps?: P; hasLast: boolean; lastResult?: T };
 

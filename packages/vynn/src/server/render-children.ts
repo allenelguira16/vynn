@@ -1,6 +1,8 @@
-import { getNodeString } from "~/render";
-import { JSX } from "~/types";
-import { isNil, toArray } from "~/util";
+import { getNodeString } from "~/render/server/get-node-string";
+import { isNil } from "~/util/is-node-nil";
+import { toArray } from "~/util/to-array";
+
+import { JSX } from "./jsx-runtime";
 
 const skipWrappingTags = new Set(["title", "meta", "script", "style"]);
 

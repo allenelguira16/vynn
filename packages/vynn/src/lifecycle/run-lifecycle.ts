@@ -1,6 +1,6 @@
-import { RuntimeContext } from "~/context";
-import { removeEffect } from "~/reactivity";
-import { ssrDomWalker } from "~/util";
+import { RuntimeContext } from "~/context/runtime-context";
+import { removeEffect } from "~/reactivity/effect";
+import { ssrDomWalker } from "~/util/ssr-dom-walker";
 
 import { setComponentCleanup } from "./component-cleanup";
 

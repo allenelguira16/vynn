@@ -1,4 +1,5 @@
-import { JSX } from "~/types";
+import { JSX } from "~/types/jsx";
+
 /**
  * Create a fragment
  *

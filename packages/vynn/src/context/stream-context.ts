@@ -1,4 +1,5 @@
-import { isServer, MemoState } from "~/util";
+import { MemoState } from "~/util/memo";
+import { isServer } from "~/util/server-util";
 
 export type StreamContext = {
   encoder: TextEncoder;

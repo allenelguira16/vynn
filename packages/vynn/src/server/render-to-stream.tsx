@@ -1,8 +1,8 @@
-import { AsyncLocalStorage } from "async_hooks";
+// import { AsyncLocalStorage } from "async_hooks";
 
-import { StreamContext } from "~/context";
-import { JSX } from "~/jsx-runtime";
-import { setIsServerStreaming } from "~/util";
+import { StreamContext } from "~/context/stream-context";
+import { JSX } from "~/types/jsx";
+import { setIsServerStreaming } from "~/util/server-util";
 
 import { h } from "./h";
 
@@ -18,7 +18,8 @@ export function renderToStream(
   setIsServerStreaming(true);
 
   const stream = new ReadableStream<Uint8Array>({
-    start(controller) {
+    async start(controller) {
+      const { AsyncLocalStorage } = await import("async_hooks");
       const als = new AsyncLocalStorage<StreamContext>();
 
       const encoder = new TextEncoder();

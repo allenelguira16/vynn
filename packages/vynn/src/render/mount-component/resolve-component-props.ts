@@ -1,4 +1,6 @@
-import { Loop, Portal, Suspense } from "~/component";
+import { Loop } from "~/component/loop";
+import { Portal } from "~/component/portal";
+import { Suspense } from "~/component/suspense";
 
 const IGNORE_COMPONENT = [Suspense, Loop, Portal] as Array<(...args: any[]) => any>;
 

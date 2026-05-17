@@ -13,7 +13,7 @@ export default function App({ assets, scripts, children }: AppProps) {
         {assets}
       </head>
       <body>
-        {children()}
+        <div id="app">{children()}</div>
         {scripts}
       </body>
     </html>

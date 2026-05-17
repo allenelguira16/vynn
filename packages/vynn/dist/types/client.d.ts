@@ -1,4 +1,4 @@
-import { J as JSX } from './dom-attributes-CCUg0DNA.js';
+import { J as JSX } from './jsx-CQ66VjTW.js';
 
 /**
  * create root app

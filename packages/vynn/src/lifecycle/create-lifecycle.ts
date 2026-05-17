@@ -1,4 +1,5 @@
-import { createStateContext, RuntimeContext } from "~/context";
+import { createStateContext } from "~/context/create-state-context";
+import { RuntimeContext } from "~/context/runtime-context";
 
 /**
  * Creates a lifecycle context for managing component lifecycle events.
@@ -8,7 +9,6 @@ import { createStateContext, RuntimeContext } from "~/context";
  */
 export function createLifeCycleContext(key?: string) {
   const context: RuntimeContext = {
-    // id: window.crypto.randomUUID(),
     mount: [],
     state: createStateContext(key),
     effect: [],

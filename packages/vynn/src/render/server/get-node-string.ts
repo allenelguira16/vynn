@@ -1,5 +1,5 @@
-import { JSX } from "~/types";
-import { isNil } from "~/util";
+import { JSX } from "~/types/jsx";
+import { isNil } from "~/util/is-node-nil";
 
 function hasNoHTMLTags(str: string) {
   // Matches anything inside <...>

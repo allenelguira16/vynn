@@ -1,5 +1,7 @@
-import { mountComponent, renderChildren } from "~/render";
-import { JSX } from "~/types";
+import { renderChildren } from "~/render/dom/render-children";
+import { mountComponent } from "~/render/mount-component/mount-component";
+import { JSX } from "~/types/jsx";
+
 /**
  * create root app
  *

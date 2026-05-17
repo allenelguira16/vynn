@@ -1,5 +1,7 @@
-import { JSX } from "~/types";
-import { IS_LOG_JSX, ssrDomWalker, toArray } from "~/util";
+import { JSX } from "~/types/jsx";
+import { IS_LOG_JSX } from "~/util/log-jsx";
+import { ssrDomWalker } from "~/util/ssr-dom-walker";
+import { toArray } from "~/util/to-array";
 
 /**
  * get the node for a JSX element

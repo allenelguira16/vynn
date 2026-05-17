@@ -1,12 +1,9 @@
-import { mountComponent, renderChildren } from "~/render";
-import { JSX } from "~/types";
-import {
-  flattenArray,
-  flattenDOMContents,
-  flattenLazyDOMContents,
-  setLazyDom,
-  setSsrDomWalker,
-} from "~/util";
+import { flattenDOMContents, flattenLazyDOMContents } from "~/client/flat-dom-contents";
+import { renderChildren } from "~/render/dom/render-children";
+import { mountComponent } from "~/render/mount-component/mount-component";
+import { JSX } from "~/types/jsx";
+import { setLazyDom, setSsrDomWalker } from "~/util/ssr-dom-walker";
+import { flattenArray } from "~/util/to-array";
 
 /**
  * hydrate root app

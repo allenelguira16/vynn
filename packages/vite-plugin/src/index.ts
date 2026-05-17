@@ -2,7 +2,6 @@ import { transform } from "@babel/core";
 // @ts-expect-error - not typed
 import babelPluginTS from "@babel/preset-typescript";
 import babelPluginVynn from "@babel/preset-vynn";
-import type { Plugin, ViteDevServer } from "vite";
 import { PluginOption } from "vite";
 
 type VitePluginVynnOptions = {
@@ -43,68 +42,68 @@ export default (options: VitePluginVynnOptions = { ssr: false }) => {
         }
       },
     },
-    pluginSsrDevFoucFix(),
+    // pluginSsrDevFoucFix(),
   ] satisfies PluginOption;
 };
 
-function pluginSsrDevFoucFix(): Plugin {
-  const virtualCssPath = "/@virtual:ssr-css.css";
-  // keep styles map scoped to the plugin instance
-  const collectedStyles = new Map<string, string>();
+// function pluginSsrDevFoucFix(): Plugin {
+//   const virtualCssPath = "/@virtual:ssr-css.css";
+//   // keep styles map scoped to the plugin instance
+//   const collectedStyles = new Map<string, string>();
 
-  return {
-    name: "ssr-dev-FOUC-fix",
-    // ✅ tell Vite this plugin is only for the dev server ('vite serve')
-    apply: "serve",
+//   return {
+//     name: "ssr-dev-FOUC-fix",
+//     // ✅ tell Vite this plugin is only for the dev server ('vite serve')
+//     apply: "serve",
 
-    // gather CSS module contents as they are transformed
-    transform(code: string, id: string) {
-      if (id.includes("node_modules")) return null;
-      if (/\.css(\?|$)/.test(id)) {
-        collectedStyles.set(id, code);
-      }
-      return null;
-    },
+//     // gather CSS module contents as they are transformed
+//     transform(code: string, id: string) {
+//       if (id.includes("node_modules")) return null;
+//       if (/\.css(\?|$)/.test(id)) {
+//         collectedStyles.set(id, code);
+//       }
+//       return null;
+//     },
 
-    // update collected CSS on HMR (optional but handy)
-    handleHotUpdate(ctx) {
-      const { file, read } = ctx;
-      if (/\.css(\?|$)/.test(file)) {
-        Promise.resolve(read()).then((code) => {
-          // ✅ always a Promise
-          collectedStyles.set(file, code);
-        });
-      }
-    },
+//     // update collected CSS on HMR (optional but handy)
+//     handleHotUpdate(ctx) {
+//       const { file, read } = ctx;
+//       if (/\.css(\?|$)/.test(file)) {
+//         Promise.resolve(read()).then((code) => {
+//           // ✅ always a Promise
+//           collectedStyles.set(file, code);
+//         });
+//       }
+//     },
 
-    // serve a virtual stylesheet that concatenates everything we've collected
-    configureServer(server: ViteDevServer) {
-      server.middlewares.use((req, res, next) => {
-        if (req.url === virtualCssPath) {
-          res.setHeader("Content-Type", "text/css");
-          res.statusCode = 200;
-          res.end(Array.from(collectedStyles.values()).join("\n"));
-          return;
-        }
-        next();
-      });
+//     // serve a virtual stylesheet that concatenates everything we've collected
+//     configureServer(server: ViteDevServer) {
+//       server.middlewares.use((req, res, next) => {
+//         if (req.url === virtualCssPath) {
+//           res.setHeader("Content-Type", "text/css");
+//           res.statusCode = 200;
+//           res.end(Array.from(collectedStyles.values()).join("\n"));
+//           return;
+//         }
+//         next();
+//       });
 
-      // small debug so you can confirm the plugin is active
-      // remove or wrap in env guard if you don't want logspam
+//       // small debug so you can confirm the plugin is active
+//       // remove or wrap in env guard if you don't want logspam
 
-      console.log("[ssr-dev-FOUC-fix] plugin active (dev server)");
-    },
+//       console.log("[ssr-dev-FOUC-fix] plugin active (dev server)");
+//     },
 
-    // inject a single <link> pointing at the virtual stylesheet into the head
-    transformIndexHtml: {
-      enforce: "pre",
-      handler: () => [
-        {
-          tag: "link",
-          injectTo: "head",
-          attrs: { rel: "stylesheet", href: virtualCssPath },
-        },
-      ],
-    },
-  };
-}
+//     // inject a single <link> pointing at the virtual stylesheet into the head
+//     transformIndexHtml: {
+//       enforce: "pre",
+//       handler: () => [
+//         {
+//           tag: "link",
+//           injectTo: "head",
+//           attrs: { rel: "stylesheet", href: virtualCssPath },
+//         },
+//       ],
+//     },
+//   };
+// }

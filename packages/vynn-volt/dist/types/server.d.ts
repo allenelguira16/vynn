@@ -8,6 +8,6 @@ import { A as AppProps } from './types-Bb-7_Lpp.js';
  * @param App root application
  * @returns string or stream depending of mode
  */
-declare const renderServer: (App: (props: AppProps) => JSX.Element, mode?: "ssr" | "stream") => vinxi_http.EventHandler<vinxi_http.EventHandlerRequest, Promise<string | ReadableStream<Uint8Array<ArrayBufferLike>>>>;
+declare const renderServer: (App: (props: AppProps) => JSX.Element, mode?: "ssr" | "stream") => vinxi_http.EventHandler<vinxi_http.EventHandlerRequest, Promise<string>>;
 
 export { renderServer };

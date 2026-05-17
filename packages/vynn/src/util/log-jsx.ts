@@ -1,7 +1,8 @@
 import { createApp } from "~/client";
 import { JSX } from "~/jsx-runtime";
-import { rootNodes } from "~/render";
-import { isServer } from "~/util";
+import { rootNodes } from "~/render/mount-component/mount-component";
+
+import { isServer } from "./server-util";
 
 export let IS_LOG_JSX = false;
 

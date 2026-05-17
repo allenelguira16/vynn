@@ -3,7 +3,6 @@
     "*.css": "tailwindcss",
     ".env.*": "properties"
   },
-  "typescript.tsdk": "node_modules/typescript/lib",
   "typescript.enablePromptUseWorkspaceTsdk": true,
   "cSpell.words": ["daisyui", "effectify", "jsxs", "onwarn", "pokedex", "shiki", "shikijs", "vynn"],
   "search.exclude": {
@@ -11,5 +10,7 @@
     "**/.pnp.*": true
   },
   "eslint.nodePath": ".yarn/sdks",
-  "prettier.prettierPath": ".yarn/sdks/prettier/index.cjs"
+  "prettier.prettierPath": ".yarn/sdks/prettier/index.cjs",
+  "js/ts.tsdk.path": "node_modules/typescript/lib",
+  "js/ts.tsdk.promptToUseWorkspaceVersion": true
 }

@@ -1,5 +1,5 @@
 import { JSX } from "~/jsx-runtime";
-import { isNil } from "~/util";
+import { isNil } from "~/util/is-node-nil";
 
 import { getNodeString } from "./get-node-string";
 

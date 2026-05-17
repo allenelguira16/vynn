@@ -10,14 +10,14 @@
     "clean": "tsx ./scripts/clean.ts",
     "docs-dev": "yarn workspace vynn-docs dev",
     "docs-preview": "yarn workspace vynn-docs preview",
-    "sandbox-dev": "yarn workspace vite-sandbox dev",
-    "sandbox-preview": "yarn workspace vite-sandbox preview",
-    "sandbox-ssr-dev": "yarn workspace vite-sandbox-ssr dev",
-    "sandbox-ssr-preview": "yarn workspace vite-sandbox-ssr preview",
-    "sandbox-stream-dev": "yarn workspace vite-sandbox-streaming dev",
-    "sandbox-stream-preview": "yarn workspace vite-sandbox-streaming preview",
-    "sandbox-volt-dev": "yarn workspace sandbox-vynn-volt dev",
-    "sandbox-volt-preview": "yarn workspace sandbox-vynn-volt preview"
+    "csr-dev": "yarn workspace csr dev",
+    "csr-preview": "yarn workspace csr preview",
+    "ssr-dev": "yarn workspace ssr dev",
+    "ssr-preview": "yarn workspace ssr preview",
+    "stream-dev": "yarn workspace stream dev",
+    "stream-preview": "yarn workspace stream preview",
+    "volt-dev": "yarn workspace vynn-volt dev",
+    "volt-preview": "yarn workspace vynn-volt preview"
   },
   "devDependencies": {
     "@babel/preset-env": "^7.28.3",

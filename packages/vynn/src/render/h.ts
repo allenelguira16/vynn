@@ -1,8 +1,11 @@
-import { FC, PropsWithChildren } from "~/types";
-import { IS_LOG_JSX, ssrDomWalker } from "~/util";
+import { FC, PropsWithChildren } from "~/types/props";
+import { createTargetNode } from "~/util/create-target-node";
+import { IS_LOG_JSX } from "~/util/log-jsx";
+import { ssrDomWalker } from "~/util/ssr-dom-walker";
 
-import { applyProps, renderChildren } from "./dom";
-import { mountComponent } from "./mount-component";
+import { applyProps } from "./dom/apply-props";
+import { renderChildren } from "./dom/render-children";
+import { mountComponent } from "./mount-component/mount-component";
 
 /**
  * create a JSX element
@@ -30,8 +33,28 @@ export function h<T extends PropsWithChildren<Record<string, any>>>(
 
   const element = createElement(type);
 
-  renderChildren(element, children);
+  const anchor = createTargetNode("base-anchor", true);
+  element.appendChild(anchor);
+  const cleanup = renderChildren(element, children, anchor);
   applyProps(element, props);
+
+  queueMicrotask(() => {
+    if (!element.parentNode) return;
+
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        for (const removedNodes of mutation.removedNodes) {
+          if (element.isSameNode(removedNodes)) {
+            cleanup();
+            anchor.remove();
+            observer.disconnect();
+          }
+        }
+      }
+    });
+
+    observer.observe(element.parentNode, { childList: true });
+  });
 
   xmlnsStack.pop();
   return element;
@@ -43,7 +66,6 @@ function createElement(tag: string) {
   const { currentNode, next } = ssrDomWalker();
 
   if (currentNode instanceof Element && !IS_LOG_JSX) {
-    console.log(currentNode, tag);
     if (currentNode.tagName.toLowerCase() !== tag) {
       console.error(
         "Hydration mismatch because the initial UI does not match what was rendered on the server",

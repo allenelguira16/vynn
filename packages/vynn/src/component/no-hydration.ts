@@ -1,6 +1,7 @@
-import { JSX } from "~/types";
-import { isServer } from "~/util";
-import { flattenDOMContents, ssrDomWalker } from "~/util";
+import { flattenDOMContents } from "~/client/flat-dom-contents";
+import { JSX } from "~/jsx-runtime";
+import { isServer } from "~/util/server-util";
+import { ssrDomWalker } from "~/util/ssr-dom-walker";
 
 /**
  * No Hydration component to tell renderer it should not be hydrated

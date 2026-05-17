@@ -1,4 +1,4 @@
-import { getRuntimeContext } from "~/context";
+import { getRuntimeContext } from "~/context/runtime-context";
 
 /**
  * Effect function type with dependency tracking and cleanup

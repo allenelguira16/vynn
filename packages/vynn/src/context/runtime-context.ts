@@ -1,8 +1,9 @@
-import { DestroyFn, MountFn } from "~/lifecycle";
-import { EffectFn, State } from "~/reactivity";
+import { DestroyFn } from "~/lifecycle/on-destroy";
+import { MountFn } from "~/lifecycle/on-mount";
+import { EffectFn } from "~/reactivity/effect";
+import { State } from "~/reactivity/state";
 
 export interface RuntimeContext {
-  id: string;
   mount: MountFn[];
   effect: EffectFn[];
   state: {

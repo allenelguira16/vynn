@@ -1,5 +1,5 @@
-import { $effect } from "~/reactivity";
-import { ssrDomWalker } from "~/util";
+import { $effect } from "~/reactivity/effect";
+import { ssrDomWalker } from "~/util/ssr-dom-walker";
 
 import { addEventListener, removeEventListener } from "./event-registry";
 

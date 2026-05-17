@@ -1,12 +1,1 @@
-'use strict';
-
-var jsxRuntime = require('../chunks/portal-DC3Jr9KV.js');
-var server_jsxRuntime = require('../chunks/jsx-runtime-C-6-WR-s.js');
-
-
-
-exports.Fragment = jsxRuntime.Fragment;
-exports.logJsx = jsxRuntime.logJsx;
-exports.jsx = server_jsxRuntime.jsx;
-exports.jsxs = server_jsxRuntime.jsx;
-//# sourceMappingURL=jsx-runtime.js.map
+"use strict";var n=require("../chunks/CkIjWYIf.js"),r=require("../chunks/NQ84v4ly.js"),t=require("../chunks/-2zG0K3g.js");const i=(e,{children:s,...a}={},g)=>r.isServer?t.h(e,a,s,g):r.h(e,a,s,g);exports.Fragment=n.Fragment,exports.logJsx=r.logJsx,exports.jsx=i,exports.jsxs=i;

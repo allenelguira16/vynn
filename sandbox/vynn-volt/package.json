@@ -1,5 +1,5 @@
 {
-  "name": "sandbox-vynn-volt",
+  "name": "vynn-volt",
   "private": true,
   "type": "module",
   "version": "0.0.0",
@@ -13,6 +13,7 @@
     "@tailwindcss/vite": "^4.1.8",
     "@types/node": "^22.15.29",
     "@types/pretty": "^2.0.3",
+    "@vynn/common": "workspace:^",
     "@vynn/volt": "workspace:^",
     "pretty": "^2.0.0",
     "tailwindcss": "^4.1.8",
