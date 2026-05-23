@@ -1,4 +1,3 @@
-import size from "@atomico/rollup-plugin-sizes";
 import commonjs from "@rollup/plugin-commonjs";
 import json from "@rollup/plugin-json";
 import resolve from "@rollup/plugin-node-resolve";
@@ -44,7 +43,6 @@ export default defineConfig([
         tsconfig: "./tsconfig.json",
         minify: !IS_DEV,
       }),
-      size(),
     ],
   },
   {

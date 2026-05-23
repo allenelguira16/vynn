@@ -19,6 +19,7 @@
     "@vynn/common": "workspace:^",
     "compression": "^1.8.1",
     "express": "^5.1.0",
+    "postcss": "^8.5.14",
     "pretty": "^2.0.0",
     "sirv": "^3.0.1",
     "tailwindcss": "^4.1.8",

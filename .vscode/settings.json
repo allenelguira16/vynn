@@ -3,7 +3,6 @@
     "*.css": "tailwindcss",
     ".env.*": "properties"
   },
-  "typescript.enablePromptUseWorkspaceTsdk": true,
   "cSpell.words": ["daisyui", "effectify", "jsxs", "onwarn", "pokedex", "shiki", "shikijs", "vynn"],
   "search.exclude": {
     "**/.yarn": true,

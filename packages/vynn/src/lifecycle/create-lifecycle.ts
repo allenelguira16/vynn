@@ -4,13 +4,14 @@ import { RuntimeContext } from "~/context/runtime-context";
 /**
  * Creates a lifecycle context for managing component lifecycle events.
  *
- * @param key - The key for the lifecycle context, used to associate state with a specific component instance.
+ * @param id - The key for the lifecycle context, used to associate state with a specific component instance.
  * @returns LifecycleContext - The created lifecycle context.
  */
-export function createLifeCycleContext(key?: string) {
+export function createLifeCycleContext(id: string) {
   const context: RuntimeContext = {
+    id,
     mount: [],
-    state: createStateContext(key),
+    state: createStateContext(id),
     effect: [],
     destroy: [],
   };

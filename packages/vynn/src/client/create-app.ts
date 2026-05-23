@@ -1,6 +1,7 @@
-import { renderChildren } from "~/render/dom/render-children";
-import { mountComponent } from "~/render/mount-component/mount-component";
 import { JSX } from "~/types/jsx";
+
+import { renderChildren } from "./render-children";
+import { renderComponent } from "./render-component";
 
 /**
  * create root app
@@ -12,21 +13,37 @@ export function createApp(App: () => JSX.Element) {
 
   return {
     mount: (id: Document | HTMLElement | DocumentFragment | string) => {
-      let node: DocumentFragment | HTMLElement | null;
+      const start = performance.now();
+      try {
+        let node: DocumentFragment | HTMLElement | null;
 
-      if (id instanceof HTMLElement || id instanceof DocumentFragment) {
-        node = id;
-      } else if (id instanceof Document) {
-        node = id.documentElement;
-      } else {
-        node = document.querySelector(id) as typeof node;
-      }
+        if (id instanceof HTMLElement || id instanceof DocumentFragment) {
+          node = id;
+        } else if (id instanceof Document) {
+          node = id.documentElement;
+        } else {
+          node = document.querySelector(id) as typeof node;
+        }
 
-      if (node instanceof HTMLElement || node instanceof DocumentFragment) {
-        const app = mountComponent(App);
-        cleanup = renderChildren(node, app);
-      } else {
-        throw new Error("Node must be of type Element");
+        if (node instanceof HTMLElement || node instanceof DocumentFragment) {
+          // console.log(jsx(App));
+          // const Component = App();
+          // if (typeof Component === "function") node.append(Component() as Node);
+          // cleanup = renderNodes(node, App);
+          const app = renderComponent(App);
+          cleanup = renderChildren(node, app);
+        } else {
+          throw new Error("Node must be of type Element");
+        }
+      } finally {
+        requestAnimationFrame(() => {
+          const duration = (performance.now() - start) / 1000;
+          console.log("after paint:", duration);
+        });
+        requestIdleCallback(() => {
+          const duration = (performance.now() - start) / 1000;
+          console.log("idle after hydration:", duration);
+        });
       }
     },
     unmount: () => {

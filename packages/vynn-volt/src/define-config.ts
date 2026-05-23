@@ -1,3 +1,4 @@
+/// <reference types="vinxi/types/client" />
 // @ts-expect-error no type
 import { serverFunctions } from "@vinxi/server-functions/plugin";
 import path from "path";

@@ -3,7 +3,7 @@
 import { eventHandler } from "vinxi/http";
 import { getManifest } from "vinxi/manifest";
 import { JSX } from "vynn";
-import { HydrateStreamScript } from "vynn/server";
+import { HydrateStreamScript, renderToStream } from "vynn/server";
 import { renderToString } from "vynn/server";
 import { Router } from "vynn-router";
 
@@ -56,7 +56,7 @@ export const renderServer = (
     event.node.res.setHeader("Content-Type", "text/html");
 
     if (mode === "stream") {
-      const stream = renderToString(Component);
+      const stream = renderToStream(Component);
 
       return stream;
     } else {

@@ -1,4 +1,8 @@
-import { getNodeString } from "~/render/server/get-node-string";
+// import { getNodeString } from "~/render/server/get-node-string";
+// import { isNil } from "~/util/is-node-nil";
+// import { toArray } from "~/util/to-array";
+
+import { getNodeString } from "~/server/get-node-string";
 import { isNil } from "~/util/is-node-nil";
 import { toArray } from "~/util/to-array";
 
@@ -12,27 +16,47 @@ const skipWrappingTags = new Set(["title", "meta", "script", "style"]);
  * @param children - The children of the element.
  * @returns The transformed children.
  */
-export function renderChildren(parent: string, children: JSX.Element) {
-  function renderRecursive(value: JSX.Element) {
-    const transformedChildren: string[] = [];
+export function renderChildren(parent: string, children: JSX.Element): string | null {
+  const strings = [];
 
-    const resolvedChildren = value instanceof Function ? value() : value;
-    const children = toArray(resolvedChildren);
+  for (const child of toArray(children)) {
+    const resolved = typeof child === "function" ? child() : child;
 
-    for (const child of children) {
-      if (isNil(child)) continue;
-
-      if (typeof child === "function") {
-        const resolved = renderRecursive(child);
-        if (!isNil(resolved)) transformedChildren.push(resolved);
-      } else {
-        const resolved = getNodeString(child, skipWrappingTags.has(parent));
-        if (!isNil(resolved)) transformedChildren.push(resolved);
-      }
+    if (isNil(resolved)) {
+      continue;
     }
 
-    return transformedChildren.join("") || null;
+    if (typeof resolved === "function" || Array.isArray(resolved)) {
+      const node = renderChildren(parent, resolved);
+      if (!isNil(node)) strings.push(node);
+      continue;
+    }
+
+    const node = getNodeString(resolved, skipWrappingTags.has(parent));
+    if (!isNil(node)) strings.push(node);
   }
 
-  return renderRecursive(children);
+  return strings.join("") || null;
+  // function renderRecursive(value: JSX.Element) {
+  //   const transformedChildren: string[] = [];
+
+  //   const resolvedChildren = value instanceof Function ? value() : value;
+  //   const children = toArray(resolvedChildren);
+
+  //   for (const child of children) {
+  //     if (isNil(child)) continue;
+
+  //     if (typeof child === "function") {
+  //       const resolved = renderRecursive(child);
+  //       if (!isNil(resolved)) transformedChildren.push(resolved);
+  //     } else {
+  //       const resolved = getNodeString(child, skipWrappingTags.has(parent));
+  //       if (!isNil(resolved)) transformedChildren.push(resolved);
+  //     }
+  //   }
+
+  //   return transformedChildren.join("") || null;
+  // }
+
+  // return renderRecursive(children);
 }

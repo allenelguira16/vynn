@@ -1,4 +1,3 @@
-import * as vinxi from 'vinxi';
 import { AppOptions } from 'vinxi';
 import { PluginOption } from 'vite';
 export { A as AppProps } from './types-Bb-7_Lpp.js';
@@ -14,6 +13,6 @@ type DefineConfig = {
  * @param config
  * @returns vinxi createApp
  */
-declare function defineConfig({ plugins, server }: DefineConfig): vinxi.App;
+declare function defineConfig({ plugins, server }: DefineConfig): any;
 
 export { defineConfig };

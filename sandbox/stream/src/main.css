@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+@source "./src";
+@source "../../@components/src/";
+
 button {
   @apply bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 px-4 rounded cursor-pointer;
 }

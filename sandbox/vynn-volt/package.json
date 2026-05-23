@@ -15,11 +15,13 @@
     "@types/pretty": "^2.0.3",
     "@vynn/common": "workspace:^",
     "@vynn/volt": "workspace:^",
+    "postcss": "^8.5.14",
     "pretty": "^2.0.0",
     "tailwindcss": "^4.1.8",
     "tsx": "^4.19.4",
     "typescript": "^5.8.3",
     "vinxi": "^0.5.8",
+    "vite": "^6.3.5",
     "vynn": "workspace:^",
     "vynn-router": "workspace:^"
   },

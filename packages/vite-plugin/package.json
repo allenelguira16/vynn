@@ -42,7 +42,8 @@
     "rollup-plugin-filesize": "^10.0.0",
     "rollup-plugin-summary": "^3.0.1",
     "rollup-plugin-tsconfig-paths": "^1.5.2",
-    "rollup-plugin-typescript2": "^0.36.0"
+    "rollup-plugin-typescript2": "^0.36.0",
+    "typescript": "^5.8.3"
   },
   "peerDependencies": {
     "vite": "^6.3.5"

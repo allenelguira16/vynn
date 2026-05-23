@@ -1,8 +1,8 @@
 import { setRuntimeContext } from "~/context/runtime-context";
 import { createLifeCycleContext } from "~/lifecycle/create-lifecycle";
-import { resolveComponentProps } from "~/render/mount-component/resolve-component-props";
-import { normalizeToString } from "~/render/server/normalize-to-string";
-import { stringifyProps } from "~/render/server/stringify-props";
+import { resolveComponentProps } from "~/client/resolve-component-props";
+import { normalizeToString } from "~/server/normalize-to-string";
+import { stringifyProps } from "~/server/stringify-props";
 import { FC, PropsWithChildren } from "~/types/props";
 
 import { renderChildren } from "./render-children";

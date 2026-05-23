@@ -21,6 +21,50 @@ export const lazy = <M extends Record<string, any>, K extends keyof M = "default
   _loader: () => Promise<M>,
   namedExport = "default" as K,
 ): (() => JSX.Element) => {
+  // const id = clientStreamContext().lazyID++;
+
+  // const componentResource = resource(
+  //   async () => {
+  //     const module = await _loader();
+
+  //     queueMicrotask(() => {
+  //       onDoneHydration(() => {});
+  //     });
+
+  //     // console.log(lazyNodes, module[namedExport]);
+
+  //     return module[namedExport];
+  //   },
+  //   [],
+  //   false,
+  // );
+
+  // return memo(() => {
+  //   if (
+  //     !isServerStreaming() &&
+  //     ssrDomWalker().isHydrating &&
+  //     (window as any).__SSR_STREAMING_APP__ &&
+  //     !IS_LOG_JSX
+  //   ) {
+  //     const ssrDom = lazyNodes[id];
+  //     setSsrDomWalker([
+  //       ...ssrDomWalker().renderedNodes.filter(
+  //         (node) => !flattenArray(ssrDom).flat().includes(node),
+  //       ),
+  //     ]);
+  //   }
+
+  //   if (!isServerStreaming()) {
+  //     return () => h(componentResource.data);
+  //   }
+
+  //   return () => [
+  //     `<!--${MARKER_START}:${id}-->`,
+  //     componentResource.data(),
+  //     `<!--${MARKER_END}:${id}-->`,
+  //   ];
+  // });
+  console.log("lazy called");
   if (!isWarned) {
     console.warn(`[vynn]: lazy() is still experimental so expect flickers`);
     isWarned = true;
@@ -38,14 +82,27 @@ export const lazy = <M extends Record<string, any>, K extends keyof M = "default
     if (error) throw error;
 
     if (
-      !isServerStreaming &&
+      !isServerStreaming() &&
       ssrDomWalker().isHydrating &&
       (window as any).__SSR_STREAMING_APP__ &&
       !IS_LOG_JSX
     ) {
-      const ssrDom = lazyNodes[id];
+      onDoneHydration(() => {
+        console.log("hi");
+      });
 
-      setSsrDomWalker([...ssrDomWalker().renderedNodes, ...ssrDom]);
+      const lazyNode = lazyNodes[id];
+
+      // console.log(ssrDomWalker().renderedNodes, lazyNode);
+
+      setSsrDomWalker([...new Set([...ssrDomWalker().renderedNodes, ...lazyNode])]);
+      // setSsrDomWalker([
+      //   ...ssrDomWalker().renderedNodes.filter(
+      //     (node) => !flattenArray(lazyNode).flat().includes(node),
+      //   ),
+      // ]);
+
+      // const view = $state<() => M[K]>((() => {}) as M[K]);
 
       promise = loader.then((modules) => {
         if (!(namedExport in modules)) {
@@ -53,9 +110,49 @@ export const lazy = <M extends Record<string, any>, K extends keyof M = "default
         }
 
         component = modules[namedExport] as M[K];
+        // const template = document.createElement("div");
+
+        // const app = mountComponent(component as FC);
+        // renderChildren(template, app);
+
+        // console.log([...template.childNodes]);
+        // setTimeout(() => {
+        // const flatten = flattenDOMContents(template);
+        // console.log(flatten);
+        // const matches = [];
+
+        // function normalize(el: Node) {
+        //   return el.outerHTML?.replace(/\s+/g, " ")?.trim();
+        // }
+
+        // for (let i = 0; i < lazyNode.length; i++) {
+        //   for (let j = 0; j < flatten.length; j++) {
+        //     const a = lazyNode[i];
+        //     const b = flatten[j];
+
+        //     if (a && b && normalize(a) === normalize(removeComments(b))) {
+        //       // matches.push(a);
+        //       a.replaceWith(b);
+        //     }
+        //   }
+        // }
+
+        // console.log(matches);
+
+        // lazyNode.forEach((node) => {
+        //   console.log(node);
+        // });
+        // console.log(normalize(lazyNode[0]) === normalize(removeComments(flatten[0])), template);
+        // }, 5000);
+        // queueMicrotask(() => {});
+        // document.body.appendChild(template);
+
+        // console.log(s);
+        // console.log();
       });
 
-      throw promise;
+      throw Object.assign(promise, { __fromLazy: true });
+      // return (() => {}) as M[K];
     }
 
     if (!promise) {
@@ -79,7 +176,7 @@ export const lazy = <M extends Record<string, any>, K extends keyof M = "default
     const Component = getComponent()!;
     const resolved = Component();
 
-    if (isServerStreaming) {
+    if (isServerStreaming()) {
       return () => [
         `<!--${MARKER_START}:${id}-->`,
         resolved instanceof Function ? resolved() : resolved,
@@ -91,3 +188,31 @@ export const lazy = <M extends Record<string, any>, K extends keyof M = "default
     return resolved;
   });
 };
+
+function onDoneHydration(fn: () => void) {
+  if (!ssrDomWalker().isHydrating) {
+    fn();
+    return;
+  }
+
+  requestAnimationFrame(() => onDoneHydration(fn));
+}
+
+function removeComments(node: Node) {
+  const clone = node.cloneNode(true);
+
+  const walker = document.createTreeWalker(clone, NodeFilter.SHOW_COMMENT, null);
+
+  const toRemove = [];
+
+  let current;
+  while ((current = walker.nextNode())) {
+    toRemove.push(current);
+  }
+
+  for (const n of toRemove) {
+    (n as Element).remove();
+  }
+
+  return clone;
+}

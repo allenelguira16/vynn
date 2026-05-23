@@ -1,6 +1,6 @@
 import { createApp } from "~/client";
 import { JSX } from "~/jsx-runtime";
-import { rootNodes } from "~/render/mount-component/mount-component";
+import { rootNodes } from "~/client/render-component";
 
 import { isServer } from "./server-util";
 

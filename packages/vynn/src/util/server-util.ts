@@ -1,4 +1,6 @@
 export const isServer = typeof window === "undefined";
 
-export let isServerStreaming = false;
-export const setIsServerStreaming = (newValue: boolean) => (isServerStreaming = newValue);
+(globalThis as any).isServerStreaming = false;
+export const isServerStreaming = () => (globalThis as any).isServerStreaming;
+export const setIsServerStreaming = (newValue: boolean) =>
+  ((globalThis as any).isServerStreaming = newValue);

@@ -18,7 +18,7 @@ if (isDev) {
     appType: "custom",
   });
 
-  (globalThis as any).__SSR_CTX__ = { ssrLoadModule: vite.ssrLoadModule };
+  // (globalThis as any).__SSR_CTX__ = { ssrLoadModule: vite.ssrLoadModule };
 
   app.use(vite.middlewares);
 } else {

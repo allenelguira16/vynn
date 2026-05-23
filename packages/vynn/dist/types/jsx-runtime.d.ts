@@ -1,5 +1,5 @@
-import { P as PropsWithChildren, a as FC } from './props-Bx-TEx3T.js';
-export { F as Fragment } from './props-Bx-TEx3T.js';
+import { P as PropsWithChildren, F as FC } from './props-uz5uYVoY.js';
+export { a as Fragment } from './props-uz5uYVoY.js';
 import { J as JSX } from './jsx-CQ66VjTW.js';
 export { l as logJsx } from './log-jsx-DwiN_lFy.js';
 

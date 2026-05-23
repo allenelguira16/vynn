@@ -1,4 +1,4 @@
-import { $store, resource, Suspense } from "vynn";
+import { $store, memo, resource, Suspense } from "vynn";
 
 import { Template } from "~/components/Template";
 import { name } from "~/utils";
@@ -16,7 +16,7 @@ type PokeDexData = {
 type SortKey = keyof PokeDexData["results"][number];
 type SortDirection = "asc" | "desc";
 
-export const PokeDexSuspense = () => {
+export const PokeDexSuspense = memo(() => {
   const pokeDex = $store({
     url: "https://pokeapi.co/api/v2/pokemon/?offset=1100&limit=20",
     sortDirection: "asc" as SortDirection,
@@ -134,4 +134,4 @@ export const PokeDexSuspense = () => {
       </div>
     </Template>
   );
-};
+});

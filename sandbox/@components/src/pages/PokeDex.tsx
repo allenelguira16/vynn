@@ -1,4 +1,4 @@
-import { $store, loop, onMount } from "vynn";
+import { $store, onMount } from "vynn";
 
 import { Template } from "~/components/Template";
 import { name, sleep } from "~/utils";
@@ -79,14 +79,14 @@ export const PokeDex = () => {
         <tbody>
           {pokeDex.isLoading && (
             <>
-              {loop(Array.from({ length: 20 }).map((_, i) => i + 1)).each((number) => (
+              {/* {loop(Array.from({ length: 20 }).map((_, i) => i + 1)).each((number) => (
                 <tr>
                   <td colSpan={3} class="h-[24px] text-center">
                     {number === 10 && "loading..."}
                   </td>
                 </tr>
-              ))}
-              {/* {Array.from({ length: 20 })
+              ))} */}
+              {Array.from({ length: 20 })
                 .map((_, i) => i + 1)
                 .map((number) => (
                   <tr>
@@ -94,12 +94,12 @@ export const PokeDex = () => {
                       {number === 10 && "loading..."}
                     </td>
                   </tr>
-                ))} */}
+                ))}
             </>
           )}
           {!pokeDex.isLoading && (
             <>
-              {loop(pokeDex.pokeDexList).each(({ name, url }, index) => (
+              {/* {loop(pokeDex.pokeDexList).each(({ name, url }, index) => (
                 <tr>
                   <td class="w-1/3 text-center">{index.value + 1}</td>
                   <td class="w-1/3 text-center truncate">{name}</td>
@@ -107,8 +107,8 @@ export const PokeDex = () => {
                     {url}
                   </td>
                 </tr>
-              ))}
-              {/* {pokeDex.pokeDexList.map(({ name, url }, index) => (
+              ))} */}
+              {pokeDex.pokeDexList.map(({ name, url }, index) => (
                 <tr>
                   <td class="w-1/3 text-center">{index + 1}</td>
                   <td class="w-1/3 text-center truncate">{name}</td>
@@ -116,7 +116,7 @@ export const PokeDex = () => {
                     {url}
                   </td>
                 </tr>
-              ))} */}
+              ))}
             </>
           )}
         </tbody>

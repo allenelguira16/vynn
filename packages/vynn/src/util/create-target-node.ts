@@ -1,4 +1,4 @@
-import { rootNodes } from "~/render/mount-component/mount-component";
+import { rootNodes } from "~/client/render-component";
 
 export function createTargetNode(name: string, forceTextNode = false) {
   let targetNode: ChildNode;

@@ -1,6 +1,8 @@
-// import { AsyncLocalStorage } from "async_hooks";
+import { AsyncLocalStorage } from "async_hooks";
 
 import { StreamContext } from "~/context/stream-context";
+import { $effect } from "~/reactivity/effect";
+import { $state } from "~/reactivity/state";
 import { JSX } from "~/types/jsx";
 import { setIsServerStreaming } from "~/util/server-util";
 
@@ -19,34 +21,42 @@ export function renderToStream(
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
-      const { AsyncLocalStorage } = await import("async_hooks");
       const als = new AsyncLocalStorage<StreamContext>();
-
       const encoder = new TextEncoder();
-      let pending = 0;
-      (globalThis as any).__stream_context = {
+      const pending = $state(0);
+      // let pending = 0;
+      globalThis.__stream_context = {
         encoder,
         controller,
-        start: () => pending++,
-        end: () => pending--,
-        tryClose: () => {
-          if (!pending) controller.close();
+        start: () => pending.value++,
+        end: () => {
+          pending.value--;
         },
       } satisfies StreamContext;
 
-      als.run((globalThis as any).__stream_context, () => {
-        const store = als.getStore();
-
-        (globalThis as any).__stream_context = store;
+      als.run(globalThis.__stream_context, () => {
+        const store = als.getStore()!;
+        globalThis.__stream_context = store;
 
         try {
-          const html = h(App, {}) as string;
+          const html = h(App, {});
+          // console.log(html);
           controller.enqueue(encoder.encode(html));
-          (globalThis as any).__stream_context.tryClose();
+
+          // queueMicrotask(() => );
+
+          // console.log();
+          // globalThis.__stream_context.endIfDone();
         } catch (err) {
           // If App throws a Promise (suspense), that promise will be created inside this ALS context
           // so later .then handlers can read getCurrentStream() safely.
           console.error("renderToStream error:", err);
+        }
+      });
+
+      $effect(() => {
+        if (pending.value <= 0) {
+          controller.close();
         }
       });
     },

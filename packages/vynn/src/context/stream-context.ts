@@ -1,10 +1,14 @@
 import { MemoState } from "~/util/memo";
 import { isServer } from "~/util/server-util";
 
+declare global {
+  var __stream_context: StreamContext;
+  var __resource: any[] | undefined;
+}
+
 export type StreamContext = {
   encoder: TextEncoder;
   controller: ReadableStreamDefaultController<Uint8Array>;
-  tryClose: () => void;
   start: () => void;
   end: () => void;
 };
@@ -18,10 +22,10 @@ export type StreamContext = {
  */
 export const getCurrentStream = () => {
   // if (!isServer)
-  (globalThis as any).__stream_context ??= {};
+  // globalThis.__stream_context ??= {};
 
   // if (!(globalThis as any).__stream_context) throw new Error("No active stream");
-  return (globalThis as any).__stream_context as StreamContext;
+  return globalThis.__stream_context as StreamContext;
 };
 
 /**

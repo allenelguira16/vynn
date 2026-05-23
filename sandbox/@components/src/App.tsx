@@ -9,10 +9,13 @@ import { routes } from "./routes";
 export const App = ({ url }: { url: string }) => {
   return (
     <>
+      {/* <Contexts /> */}
+      {/* <Dropdowns /> */}
       {/* <Lazy />
       <Forms /> */}
       <Router url={url} routes={routes} />
-
+      {/* <StackedSuspense /> */}
+      {/* <Dropdowns /> */}
       {/* <div>
         <div>Hi</div>
         <Suspense>

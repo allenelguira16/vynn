@@ -1,5 +1,5 @@
-import { P as PropsWithChildren } from './props-Bx-TEx3T.js';
-export { a as FC, F as Fragment, b as PropsWithRef } from './props-Bx-TEx3T.js';
+import { P as PropsWithChildren } from './props-uz5uYVoY.js';
+export { F as FC, a as Fragment, b as PropsWithRef } from './props-uz5uYVoY.js';
 import { J as JSX } from './jsx-CQ66VjTW.js';
 
 /**
@@ -67,7 +67,7 @@ type ResourceReturn<T> = {
  * @param fetcher - The function to fetch the data.
  * @returns The resource.
  */
-declare function resource<T, const P extends any[]>(fetcher: (...params: P) => Promise<T>, _params: P): ResourceReturn<T>;
+declare function resource<T, const P extends any[]>(fetcher: (...params: P) => Promise<T>, _params: P, isPreload?: boolean): ResourceReturn<T>;
 
 /**
  * Suspense component for suspending async operations
@@ -121,7 +121,7 @@ declare function $computed<T>(getter: () => T): Computed<T>;
 /**
  * Create an effect with an attached render frame
  */
-declare function $effect(fn: (() => void | (() => void)) | (() => Promise<void | (() => void)>)): () => void;
+declare function $effect(fn: () => void | (() => void)): () => void;
 
 type Store<T extends object> = T;
 declare function $store<T extends object>(initialObject: T): Store<T>;

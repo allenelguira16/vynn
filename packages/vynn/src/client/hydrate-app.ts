@@ -1,6 +1,6 @@
 import { flattenDOMContents, flattenLazyDOMContents } from "~/client/flat-dom-contents";
-import { renderChildren } from "~/render/dom/render-children";
-import { mountComponent } from "~/render/mount-component/mount-component";
+import { renderChildren } from "~/client/render-children";
+import { renderComponent } from "~/client/render-component";
 import { JSX } from "~/types/jsx";
 import { setLazyDom, setSsrDomWalker } from "~/util/ssr-dom-walker";
 import { flattenArray } from "~/util/to-array";
@@ -15,24 +15,37 @@ export function hydrateApp(App: () => JSX.Element) {
 
   return {
     mount: (id: Document | HTMLElement | string) => {
-      let node: HTMLElement | null;
+      const start = performance.now();
+      try {
+        let node: HTMLElement | null;
 
-      if (id instanceof HTMLElement) {
-        node = id;
-      } else if (id instanceof Document) {
-        node = id.documentElement;
-      } else {
-        node = document.querySelector(id);
+        if (id instanceof HTMLElement) {
+          node = id;
+        } else if (id instanceof Document) {
+          node = id.documentElement;
+        } else {
+          node = document.querySelector(id);
+        }
+
+        if (!(node instanceof HTMLElement)) throw new Error("Node must be of type Element");
+        const flatDom = flattenDOMContents(node);
+        const lazyDom = flattenLazyDOMContents(node);
+        setLazyDom(lazyDom);
+        setSsrDomWalker(flatDom.filter((node) => !flattenArray(lazyDom).flat().includes(node)));
+        // setSsrDomWalker(flatDom);
+
+        const app = renderComponent(App);
+        cleanup = renderChildren(node, app);
+      } finally {
+        requestAnimationFrame(() => {
+          const duration = (performance.now() - start) / 1000;
+          console.log("after paint:", duration);
+        });
+        requestIdleCallback(() => {
+          const duration = (performance.now() - start) / 1000;
+          console.log("idle after hydration:", duration);
+        });
       }
-
-      if (!(node instanceof HTMLElement)) throw new Error("Node must be of type Element");
-      const flatDom = flattenDOMContents(node);
-      const lazyDom = flattenLazyDOMContents(node);
-      setLazyDom(lazyDom);
-      setSsrDomWalker(flatDom.filter((node) => !flattenArray(lazyDom).flat().includes(node)));
-
-      const app = mountComponent(App);
-      cleanup = renderChildren(node, app);
     },
     unmount: () => {
       if (!cleanup) throw new Error("Can only unmount if the app is mounted");

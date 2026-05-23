@@ -1,5 +1,5 @@
+import { h } from "./client/h";
 import { Fragment } from "./component/fragment";
-import { h } from "./render/h";
 import { JSX } from "./types/jsx";
 import { FC, PropsWithChildren } from "./types/props";
 import { logJsx } from "./util/log-jsx";

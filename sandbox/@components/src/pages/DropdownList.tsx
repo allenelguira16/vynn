@@ -1,11 +1,11 @@
-import { $state, $store, loop, onDestroy, onMount } from "vynn";
+import { $effect, $state, $store, memo } from "vynn";
 
 import { Template } from "~/components/Template";
 import { name } from "~/utils";
 
 type SortDirection = "asc" | "desc";
 
-export const Dropdowns = () => {
+export const Dropdowns = memo(() => {
   const dropdownStore = $store({
     showDropdown: true,
     sortDirection: "asc" as SortDirection,
@@ -45,13 +45,17 @@ export const Dropdowns = () => {
     },
   });
 
-  onMount(async () => {
-    console.log("Dropdowns onMount");
+  $effect(() => {
+    console.log(dropdownStore.numbers);
   });
 
-  onDestroy(async () => {
-    console.log("Dropdowns onDestroy");
-  });
+  // onMount(async () => {
+  //   console.log("Dropdowns onMount");
+  // });
+
+  // onDestroy(async () => {
+  //   console.log("Dropdowns onDestroy");
+  // });
 
   return (
     <Template title="Dropdown List">
@@ -86,7 +90,7 @@ export const Dropdowns = () => {
       </div>
     </Template>
   );
-};
+});
 
 type TDropdownListProps = {
   dropdowns: {
@@ -94,29 +98,29 @@ type TDropdownListProps = {
   };
 };
 
-const DropdownList = ({ dropdowns }: TDropdownListProps) => {
+const DropdownList = memo(({ dropdowns }: TDropdownListProps) => {
   console.log("rerender");
-  onMount(async () => {
-    console.log("DropdownList onMount");
-  });
+  // onMount(async () => {
+  //   console.log("DropdownList onMount");
+  // });
 
-  onDestroy(async () => {
-    console.log("DropdownList onDestroy");
-  });
+  // onDestroy(async () => {
+  //   console.log("DropdownList onDestroy");
+  // });
 
   return (
     <div class="flex gap-2 flex-col lg:flex-row">
-      {loop(dropdowns.numbers).each((number) => (
+      {/* {loop(dropdowns.numbers).each((number) => (
         <Dropdown number={number} />
-      ))}
-      {/* {dropdowns.numbers.map((number) => (
-        <Dropdown number={number} key={number} />
       ))} */}
+      {dropdowns.numbers.map((number) => (
+        <Dropdown number={number} key={number} />
+      ))}
     </div>
   );
-};
+});
 
-const Dropdown = ({ number }: { number: number }) => {
+const Dropdown = memo(({ number }: { number: number }) => {
   console.log("rerender");
   const isOpen = $state(false);
 
@@ -147,4 +151,4 @@ const Dropdown = ({ number }: { number: number }) => {
       </div>
     </>
   );
-};
+});

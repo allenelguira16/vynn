@@ -1,6 +1,6 @@
 import { onDestroy } from "~/lifecycle/on-destroy";
 import { onMount } from "~/lifecycle/on-mount";
-import { renderChildren } from "~/render/dom/render-children";
+import { renderChildren } from "~/client/render-children";
 import { PropsWithChildren } from "~/types/props";
 
 /**

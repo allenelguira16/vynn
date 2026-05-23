@@ -1,11 +1,10 @@
+import { h } from "~/client/h";
 import { $effect } from "~/reactivity/effect";
 import { $state, State } from "~/reactivity/state";
-import { h } from "~/render/h";
 import { type JSX } from "~/types/jsx";
 import { isServer } from "~/util/server-util";
 
 import { mapArray } from "./loop.util";
-import { getSuspenseHandler } from "./suspense";
 
 export type Entry<T> = {
   item: T;
@@ -53,20 +52,20 @@ export function Loop<T>({
 }) {
   const result = $state<Node[]>([]); // holds rendered elements
 
-  const handler = getSuspenseHandler();
+  // const handler = getSuspenseHandler();
   const listFn = mapArray(each, children);
 
   // Reactively update the list whenever props.each() changes
   $effect(() => {
-    try {
-      result.value = listFn();
-    } catch (err) {
-      if (err instanceof Promise && handler) {
-        handler(err); // register promise with Suspense
-      } else {
-        throw err; // real error
-      }
-    }
+    // try {
+    result.value = listFn();
+    // } catch (err) {
+    //   if (err instanceof Promise && handler) {
+    //     handler(err); // register promise with Suspense
+    //   } else {
+    //     throw err; // real error
+    //   }
+    // }
   });
 
   // Return a getter so that the view updates when result changes

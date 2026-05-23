@@ -4,6 +4,7 @@ import { EffectFn } from "~/reactivity/effect";
 import { State } from "~/reactivity/state";
 
 export interface RuntimeContext {
+  id: string;
   mount: MountFn[];
   effect: EffectFn[];
   state: {

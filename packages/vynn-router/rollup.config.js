@@ -1,5 +1,4 @@
 // import size from "rollup-plugin-size";
-import size from "@atomico/rollup-plugin-sizes";
 import { defineConfig } from "rollup";
 import del from "rollup-plugin-delete";
 import dts from "rollup-plugin-dts";
@@ -60,7 +59,6 @@ export default defineConfig([
         jsx: "preserve",
         // minify: !IS_DEV,
       }),
-      size(),
     ],
   },
 

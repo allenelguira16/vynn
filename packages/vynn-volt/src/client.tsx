@@ -2,7 +2,10 @@
 import "vinxi/client";
 
 import { JSX } from "vynn";
+import { hydrateApp } from "vynn/client";
+import { Router } from "vynn-router";
 
+import { routes } from "./parse-route";
 import { AppProps } from "./types";
 
 /**
@@ -29,5 +32,5 @@ export const hydrateClient = async (App: (props: AppProps) => JSX.Element) => {
   //     <script></script>
   //   </NoHydration>
   // );
-  // hydrateApp(() => <Router url={location.pathname} routes={routes} />).mount("#app");
+  hydrateApp(() => <Router url={location.pathname} routes={routes} />).mount("#app");
 };

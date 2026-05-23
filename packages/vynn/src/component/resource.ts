@@ -21,7 +21,9 @@ export type ResourceReturn<T> = {
 export function resource<T, const P extends any[]>(
   fetcher: (...params: P) => Promise<T>,
   _params: P,
+  isPreload = true,
 ): ResourceReturn<T> {
+  const stream = getCurrentStream();
   const context = clientStreamContext();
   const id = context.resourceID++;
 
@@ -33,9 +35,6 @@ export function resource<T, const P extends any[]>(
   });
 
   let promise: Promise<T> | null = null;
-  // if (!isServer) {
-  //   console.log("fuck", window.__resource);
-  // }
 
   const refetch = () => {
     const params = _params.map((p) => p()) as P;
@@ -47,20 +46,21 @@ export function resource<T, const P extends any[]>(
     });
 
     if (
-      !isServerStreaming &&
+      !isServerStreaming() &&
       !isServer &&
-      (window as any).__resource &&
-      (window as any).__resource[id]
+      window.__resource &&
+      window.__resource?.[id] &&
+      isPreload
     ) {
       untrack(() => {
-        state.data = (window as any).__resource[id];
+        state.data = window.__resource?.[id];
         state.error = null;
         state.promiseStatus = "fulfilled";
         state.loading = false;
       });
-      delete (window as any).__resource[id];
-      if (!(window as any).__resource.length) {
-        delete (window as any).__resource;
+      delete window.__resource[id];
+      if (!window.__resource.length) {
+        delete window.__resource;
       }
     } else {
       promise = untrack(() => fetcher(...params));
@@ -74,13 +74,10 @@ export function resource<T, const P extends any[]>(
             state.loading = false;
           });
 
-          if (isServerStreaming) {
-            const { controller, encoder } = getCurrentStream();
-
-            console.log(controller);
-            controller.enqueue(
-              encoder.encode(
-                `<script>window.__resource ??= []; window.__resource[${id}] = ${JSON.stringify(result)};</script>`,
+          if (isServerStreaming() && isPreload) {
+            stream.controller.enqueue(
+              stream.encoder.encode(
+                `<script>window.__resource ??= []; window.__resource[${id}] = ${JSON.stringify(result)};document.currentScript.remove();</script>`,
               ),
             );
           }

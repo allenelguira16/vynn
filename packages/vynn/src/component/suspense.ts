@@ -1,6 +1,6 @@
 import { clientStreamContext, getCurrentStream } from "~/context/stream-context";
 import { $state } from "~/reactivity/state";
-import { normalizeToString } from "~/render/server/normalize-to-string";
+import { normalizeToString } from "~/server/normalize-to-string";
 import { JSX } from "~/types/jsx";
 import { isServer, isServerStreaming } from "~/util/server-util";
 import { ssrDomWalker } from "~/util/ssr-dom-walker";
@@ -25,16 +25,19 @@ export function Suspense(props: { fallback?: JSX.Element; children: JSX.Element 
     children: () => JSX.Element;
   };
 
-  if (isServer && !isServerStreaming) return fallback?.();
-  if (isServerStreaming) return streamingSuspense(fallback, children);
+  // console.log("fallback", props.fallback);
+  // console.log("children", props.children);
+  if (isServerStreaming()) return streamingSuspense(fallback, children);
+  if (isServer) return fallback?.();
 
-  const view = $state<JSX.Element>(fallback);
+  const view = $state<() => JSX.Element>(fallback);
 
   const handler = (promise: Promise<void>) => {
     suspenseHandlerStack.pop();
 
     queueMicrotask(() => {
-      view.value = fallback;
+      // if (fallback) view.value = fallback;
+      view.value = !("__fromLazy" in promise) ? fallback : () => null;
     });
 
     promise.then(() => {
@@ -69,32 +72,32 @@ function streamingSuspense(fallback: () => JSX.Element, children: () => JSX.Elem
   const context = clientStreamContext();
   const id = context.suspenseID++;
 
-  const stream = getCurrentStream();
+  const { controller, encoder, end: endIfDone, start } = getCurrentStream();
 
   const handler = (promise: Promise<any>) => {
     promise
       .then(() => {
-        const html = normalizeToString(children as any);
+        const html = normalizeToString(children);
 
+        console.log("natawag");
         const template = `<template async-id="${id}">${html}</template>`;
         const script = `<script>__hydrateAsync("${id}");document.currentScript.remove();</script>`;
 
-        stream.controller.enqueue(stream.encoder.encode(template));
-        stream.controller.enqueue(stream.encoder.encode(script));
+        controller.enqueue(encoder.encode(template));
+        controller.enqueue(encoder.encode(script));
 
-        stream.end();
-        stream.tryClose();
+        endIfDone();
       })
       .catch((err) => {
         if (err instanceof Promise) {
+          start();
           handler(err);
           return;
         }
 
         console.error("[vynn]: Suspense promise rejected:", err);
 
-        stream.end();
-        stream.tryClose();
+        endIfDone();
       });
   };
 
@@ -102,7 +105,7 @@ function streamingSuspense(fallback: () => JSX.Element, children: () => JSX.Elem
     return normalizeToString(children);
   } catch (error) {
     if (error instanceof Promise) {
-      stream.start();
+      start();
       handler(error);
     }
 

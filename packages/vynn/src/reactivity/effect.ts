@@ -3,7 +3,7 @@ import { getRuntimeContext } from "~/context/runtime-context";
 /**
  * Effect function type with dependency tracking and cleanup
  */
-export type EffectFn = (() => Promise<void>) & {
+export type EffectFn = (() => void) & {
   deps?: Set<EffectFn>[];
   cleanup?: () => void;
 };
@@ -39,9 +39,9 @@ export function scheduleEffect(effect: EffectFn) {
 /**
  * Create an effect with an attached render frame
  */
-export function $effect(fn: (() => void | (() => void)) | (() => Promise<void | (() => void)>)) {
+export function $effect(fn: () => void | (() => void)) {
   const context = getRuntimeContext();
-  const wrappedEffect: EffectFn = async () => {
+  const wrappedEffect: EffectFn = () => {
     removeEffect(wrappedEffect);
 
     // Cleanup previous effect if any
@@ -60,12 +60,13 @@ export function $effect(fn: (() => void | (() => void)) | (() => Promise<void | 
       const result = fn();
       if (typeof result === "function") {
         wrappedEffect.cleanup = result;
-      } else if (result instanceof Promise) {
-        const cleanup = await result;
-        if (typeof cleanup === "function") {
-          wrappedEffect.cleanup = cleanup;
-        }
       }
+      //  else if (result instanceof Promise) {
+      //   const cleanup = await result;
+      //   if (typeof cleanup === "function") {
+      //     wrappedEffect.cleanup = cleanup;
+      //   }
+      // }
     } finally {
       activeEffect = previousEffect;
     }
