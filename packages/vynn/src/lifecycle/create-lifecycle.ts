@@ -14,6 +14,7 @@ export function createLifeCycleContext(id: string) {
     state: createStateContext(id),
     effect: [],
     destroy: [],
+    memo: [],
   };
 
   return context;

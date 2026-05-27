@@ -10,6 +10,7 @@ import { addEventListener, removeEventListener } from "./event-registry";
  * @param props - The properties to apply.
  */
 export function applyProps(element: Element, props: Record<string, any>) {
+  const disposers: (() => void)[] = [];
   for (const key in props) {
     // Wait until hydration is done before starting the reactive effect
     const startEffect = () => {
@@ -20,7 +21,7 @@ export function applyProps(element: Element, props: Record<string, any>) {
       }
 
       // ✅ Hydration finished – now set up the reactive effect
-      $effect(() => {
+      const dispose = $effect(() => {
         const raw = props[key];
         const value = typeof raw === "function" && key !== "ref" ? raw() : raw;
 
@@ -82,11 +83,17 @@ export function applyProps(element: Element, props: Record<string, any>) {
         // Default attribute handling
         element.setAttribute(key, value);
       });
+
+      disposers.push(dispose);
     };
 
     // Kick off the polling
     startEffect();
   }
+
+  return () => {
+    for (const dispose of disposers) dispose();
+  };
 }
 
 function isUnitlessProp(prop: string): boolean {

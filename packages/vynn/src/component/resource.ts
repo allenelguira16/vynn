@@ -1,8 +1,9 @@
 import { clientStreamContext, getCurrentStream } from "~/context/stream-context";
-import { $effect } from "~/reactivity/effect";
 import { $store } from "~/reactivity/store";
 import { untrack } from "~/reactivity/untrack";
 import { isServer, isServerStreaming } from "~/util/server-util";
+
+import { $effect } from "..";
 
 export type ResourceReturn<T> = {
   readonly loading: boolean;

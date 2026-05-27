@@ -1,4 +1,4 @@
-import { $store, memo, resource, Suspense } from "vynn";
+import { $store, onDestroy, resource, Suspense } from "vynn";
 
 import { Template } from "~/components/Template";
 import { name } from "~/utils";
@@ -16,7 +16,7 @@ type PokeDexData = {
 type SortKey = keyof PokeDexData["results"][number];
 type SortDirection = "asc" | "desc";
 
-export const PokeDexSuspense = memo(() => {
+export const PokeDexSuspense = () => {
   const pokeDex = $store({
     url: "https://pokeapi.co/api/v2/pokemon/?offset=1100&limit=20",
     sortDirection: "asc" as SortDirection,
@@ -52,6 +52,10 @@ export const PokeDexSuspense = memo(() => {
 
   const showUrlOnClick = (url: string) => () => alert(url);
   const sortOnClick = (key: SortKey) => () => pokeDex.sort(key);
+
+  onDestroy(() => {
+    console.log("pokedex-suspense destroyed");
+  });
 
   return (
     <Template title="PokeDex List (via Suspense)">
@@ -134,4 +138,4 @@ export const PokeDexSuspense = memo(() => {
       </div>
     </Template>
   );
-});
+};

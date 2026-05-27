@@ -10,7 +10,7 @@ const { default: pkg } = await import("./package.json", {
 
 const input = {
   index: "src/index.ts",
-  "jsx-runtime": "src/jsx-runtime.ts",
+  "jsx-runtime": "src/client/jsx-runtime.ts",
   server: "src/server/index.ts",
   "server/jsx-runtime": "src/server/jsx-runtime.ts",
   client: "src/client/index.ts",

@@ -1,6 +1,6 @@
 import { rootNodes } from "~/client/render-component";
 
-export function createTargetNode(name: string, forceTextNode = false) {
+export function createAnchor(name: string, forceTextNode = false) {
   let targetNode: ChildNode;
 
   if (process.env.NODE_ENV === "development" && !forceTextNode) {

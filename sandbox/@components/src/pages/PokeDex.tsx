@@ -1,4 +1,4 @@
-import { $store, onMount } from "vynn";
+import { $store, memo, onMount } from "vynn";
 
 import { Template } from "~/components/Template";
 import { name, sleep } from "~/utils";
@@ -16,7 +16,7 @@ type PokeDexData = {
 type SortKey = keyof PokeDexData["results"][number];
 type SortDirection = "asc" | "desc";
 
-export const PokeDex = () => {
+export const PokeDex = memo(() => {
   const pokeDex = $store({
     isLoading: true,
     pokeDexList: [] as PokeDexData["results"],
@@ -49,6 +49,7 @@ export const PokeDex = () => {
   });
 
   onMount(async () => {
+    console.log("hi");
     const controller = new AbortController();
 
     await pokeDex.fetchData("https://pokeapi.co/api/v2/pokemon/?offset=1100&limit=20", controller);
@@ -139,4 +140,4 @@ export const PokeDex = () => {
       </div>
     </Template>
   );
-};
+});

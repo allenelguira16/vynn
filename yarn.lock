@@ -2710,6 +2710,7 @@ __metadata:
     vynn: "workspace:^"
     vynn-router: "workspace:^"
   peerDependencies:
+    vinxi: ^0.5.11
     vynn: ^0.0.0
   languageName: unknown
   linkType: soft
@@ -7142,6 +7143,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"lodash-es@npm:^4.18.1":
+  version: 4.18.1
+  resolution: "lodash-es@npm:4.18.1"
+  checksum: 10c0/35d4dcf87ef07f8d090f409447575800108057e360b445f590d0d25d09e3d1e33a163d2fc100d4d072b0f901d5e2fc533cd7c4bfd8eeb38a06abec693823c8b8
+  languageName: node
+  linkType: hard
+
 "lodash.defaults@npm:^4.2.0":
   version: 4.2.0
   resolution: "lodash.defaults@npm:4.2.0"
@@ -11507,6 +11515,7 @@ __metadata:
     "@types/lodash-es": "npm:^4.17.12"
     "@types/node": "npm:^24.3.0"
     esbuild: "npm:^0.25.5"
+    lodash-es: "npm:^4.18.1"
     rollup: "npm:^4.41.1"
     rollup-plugin-delete: "npm:^3.0.1"
     rollup-plugin-dts: "npm:^6.2.1"

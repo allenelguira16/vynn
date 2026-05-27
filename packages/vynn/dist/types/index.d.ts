@@ -1,6 +1,7 @@
 import { P as PropsWithChildren } from './props-uz5uYVoY.js';
 export { F as FC, a as Fragment, b as PropsWithRef } from './props-uz5uYVoY.js';
 import { J as JSX } from './jsx-CQ66VjTW.js';
+import { JSX as JSX$1 } from '~/jsx-runtime';
 
 /**
  * Lazily load components
@@ -40,8 +41,8 @@ declare function loop<T>(items: T[]): {
  * @returns The fragment.
  */
 declare function NoHydration({ children }: {
-    children?: () => JSX.Element;
-}): () => JSX.Element;
+    children?: () => JSX$1.Element;
+}): () => JSX$1.Element;
 
 /**
  * A portal component for rendering into different part of the dom
@@ -88,7 +89,7 @@ declare function Suspense(props: {
 declare function createContext<T>(): readonly [(props: {
     value: T;
     children: () => JSX.Element;
-}) => JSX.Element, () => T];
+}) => () => JSX.Element, () => T];
 
 type DestroyFn = () => Promise<void> | void;
 /**

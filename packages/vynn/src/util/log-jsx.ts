@@ -1,5 +1,5 @@
 import { createApp } from "~/client";
-import { JSX } from "~/jsx-runtime";
+import { JSX } from "~/client/jsx-runtime";
 import { rootNodes } from "~/client/render-component";
 
 import { isServer } from "./server-util";

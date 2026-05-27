@@ -14,7 +14,7 @@ export const routes: Route[] = [
   {
     path: "/",
     component: () => {
-      console.log("layout rerender");
+      // console.log("layout rerender");
 
       return (
         <div class="p-2 flex flex-col container m-auto">

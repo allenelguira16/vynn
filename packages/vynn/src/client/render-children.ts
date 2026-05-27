@@ -2,9 +2,9 @@ import { getSuspenseHandler } from "~/component/suspense";
 import { runComponentCleanup } from "~/lifecycle/component-cleanup";
 import { $effect } from "~/reactivity/effect";
 import { JSX } from "~/types/jsx";
-import { createTargetNode } from "~/util/create-target-node";
+import { createAnchor } from "~/util/create-target-node";
 import { isNil } from "~/util/is-node-nil";
-import { toArray } from "~/util/to-array";
+import { flattenArray, toArray } from "~/util/to-array";
 
 import { getNode } from "./get-node";
 
@@ -13,68 +13,89 @@ import { getNode } from "./get-node";
  *
  * @returns cleanup
  */
-export function renderChildren(
-  parentNode: Node,
-  children: JSX.Element,
-  baseAnchor: Node | null = null,
-) {
+export function renderChildren(parentNode: Node, children: JSX.Element, baseAnchor: Node) {
   if (!isNil(baseAnchor) && !baseAnchor?.parentNode) return () => {};
 
   let renderDisposers: (() => void)[] = [];
 
-  for (const child of toArray(children)) {
-    // let isFirstRender = true;
+  for (const child of flattenArray(toArray(children))) {
     let subRenderDisposers: (() => void)[] = [];
     let nodeDisposers: (() => void)[] = [];
 
-    const anchor = createTargetNode("anchor");
+    // let anchor: ChildNode;
+    const anchor = createAnchor(`anchor-${child}`);
     parentNode.insertBefore(anchor, baseAnchor);
 
-    const cleanup = () => {
-      for (const dispose of subRenderDisposers) dispose?.();
-      for (const dispose of nodeDisposers) dispose();
+    // anchorHelper.set(anchor);
 
-      subRenderDisposers = [];
-      nodeDisposers = [];
-    };
+    let node: Element | null = null;
 
     const handler = getSuspenseHandler();
     const effectDisposer = $effect(() => {
       try {
-        cleanup();
+        subRenderDisposers.map((dispose) => dispose());
+        subRenderDisposers = [];
 
         const resolved = typeof child === "function" ? child() : child;
 
-        if (isNil(resolved)) {
-          return;
-        }
+        // if (!anchor) {
+        //   anchor = createAnchor("");
+        //   parentNode.insertBefore(anchor, baseAnchor);
+        //   renderDisposers.push(() => anchor && anchor.remove());
+        // }
+        // anchor.textContent = `anchor-${child}`;
 
-        if (typeof resolved === "function" || Array.isArray(resolved)) {
+        nodeDisposers.push(() => node && runComponentCleanup(node));
+        nodeDisposers.push(() => node && node.remove());
+
+        if (isNil(resolved)) {
+          if (node) {
+            parentNode.removeChild(node);
+            node = null;
+          }
+          // const dispose = renderChildren(parentNode, anchor, anchor);
+          // subRenderDisposers.push(dispose);
+        } else if (typeof resolved === "function") {
           const dispose = renderChildren(parentNode, resolved, anchor);
           subRenderDisposers.push(dispose);
-          renderDisposers.push(dispose);
-          return;
+        } else if (Array.isArray(resolved)) {
+          const dispose = renderChildren(parentNode, resolved, anchor);
+          subRenderDisposers.push(dispose);
+        } else {
+          const newNode = getNode<Element>(resolved);
+          // console.log(rootNodes.has(newNode));
+          if (!node) {
+            if (!newNode.isConnected) {
+              parentNode.insertBefore(newNode, anchor);
+            } else {
+              parentNode.insertBefore(baseAnchor, newNode.nextSibling);
+              parentNode.insertBefore(anchor, newNode.nextSibling);
+            }
+          } else {
+            parentNode.replaceChild(newNode, node);
+          }
+          node = newNode;
         }
-
-        const node = getNode<Element>(resolved);
-        parentNode.insertBefore(node, anchor);
-
-        nodeDisposers.push(() => runComponentCleanup(node));
-        nodeDisposers.push(() => node.remove());
       } catch (error) {
         if (error instanceof Promise && handler) {
           handler(error);
         } else {
           throw error;
         }
-      } finally {
-        // isFirstRender = false;
       }
     });
 
-    renderDisposers.push(() => cleanup());
-    renderDisposers.push(() => anchor.remove());
-    renderDisposers.push(effectDisposer);
+    const cleanup = () => {
+      for (const dispose of subRenderDisposers) dispose();
+      for (const dispose of nodeDisposers) dispose();
+
+      subRenderDisposers = [];
+      nodeDisposers = [];
+      effectDisposer();
+      anchor.remove();
+    };
+
+    renderDisposers.push(cleanup);
   }
 
   return () => {

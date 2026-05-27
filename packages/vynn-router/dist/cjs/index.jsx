@@ -85,7 +85,6 @@ const params = vynn.$store({});
 function Router({ url, routes }) {
   if (url) $location.pathname = url;
   return () => {
-    console.log("changed");
     const matched = matchRoute($location.pathname, routes);
     if (matched) {
       const { chain, params: extractedParams } = matched;

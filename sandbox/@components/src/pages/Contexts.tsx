@@ -1,4 +1,4 @@
-import { $effect, $state, $store, createContext, JSX, memo, onDestroy } from "vynn";
+import { $state, $store, createContext, JSX } from "vynn";
 
 import { Template } from "~/components/Template";
 
@@ -33,25 +33,27 @@ function Wrapper({ children }: { children: () => JSX.Element }) {
   );
 }
 
-const Input = memo(() => {
+const Input = () => {
   const forms = formContext();
 
   const i = $state(0);
 
-  const cleanup = setInterval(() => {
-    i.value++;
-  }, 1000);
+  // const cleanup = setInterval(() => {
+  //   i.value++;
+  // }, 1000);
 
-  onDestroy(() => {
-    console.log("cleared tanga");
-    clearInterval(cleanup);
-  });
+  // onDestroy(() => {
+  //   console.log("cleared tanga");
+  //   clearInterval(cleanup);
+  // });
 
   const nameEl = <div>Name: {forms.name} Hi</div>;
 
-  $effect(() => {
-    console.log(i.value);
-  });
+  console.log("hi");
+
+  // $effect(() => {
+  //   console.log(i.value);
+  // });
 
   return (
     <>
@@ -68,4 +70,4 @@ const Input = memo(() => {
       {i.value}
     </>
   );
-});
+};

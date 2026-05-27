@@ -1,8 +1,8 @@
-import { Loop } from "~/component/loop";
-import { Portal } from "~/component/portal";
-import { Suspense } from "~/new/suspense";
+// import { Loop } from "~/component/loop";
+// import { Portal } from "~/component/portal";
+import { Suspense } from "@/component/suspense";
 
-const IGNORE_COMPONENT = [Suspense, Loop, Portal] as Array<(...args: any[]) => any>;
+const IGNORE_COMPONENT = [Suspense] as Array<(...args: any[]) => any>;
 
 /**
  * resolve the component props

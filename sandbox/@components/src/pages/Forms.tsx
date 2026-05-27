@@ -1,9 +1,9 @@
-import { $computed, $effect, $state, memo } from "vynn";
+import { $computed, $effect, $state } from "vynn";
 
 import { Template } from "~/components/Template";
 import { name } from "~/utils";
 
-export const Forms = memo(() => {
+export const Forms = () => {
   return (
     <Template title="Forms">
       <div>
@@ -22,9 +22,9 @@ export const Forms = memo(() => {
       </div>
     </Template>
   );
-});
+};
 
-export const Counter = memo(() => {
+export const Counter = () => {
   const count = $state(0);
   const double = $computed(() => count.value * 2);
 
@@ -40,11 +40,7 @@ export const Counter = memo(() => {
     // console.log(double.value);
   });
 
-  // onDestroy(() => {
-  //   console.log("bye");
-  // });
-
-  // console.log("rerender?");
+  console.log("rerender?");
 
   return (
     <>
@@ -57,9 +53,9 @@ export const Counter = memo(() => {
       <div>{count.value <= 3 ? <div>Hi</div> : "string"}</div>
     </>
   );
-});
+};
 
-export const Input = memo(() => {
+export const Input = () => {
   return (
     <div>
       <label class="break-all" for="name-input">
@@ -77,4 +73,4 @@ export const Input = memo(() => {
       </div>
     </div>
   );
-});
+};

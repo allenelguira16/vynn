@@ -1,13 +1,14 @@
-import { $effect, $state, $store, memo } from "vynn";
+import { $effect, $state, $store } from "vynn";
 
 import { Template } from "~/components/Template";
 import { name } from "~/utils";
 
 type SortDirection = "asc" | "desc";
 
-export const Dropdowns = memo(() => {
+export const Dropdowns = () => {
+  console.log("Dropdown rerender");
   const dropdownStore = $store({
-    showDropdown: true,
+    showDropdown: false,
     sortDirection: "asc" as SortDirection,
     numbers: [1, 2, 3, 4, 5, 6, 7, 8],
 
@@ -90,7 +91,7 @@ export const Dropdowns = memo(() => {
       </div>
     </Template>
   );
-});
+};
 
 type TDropdownListProps = {
   dropdowns: {
@@ -98,8 +99,8 @@ type TDropdownListProps = {
   };
 };
 
-const DropdownList = memo(({ dropdowns }: TDropdownListProps) => {
-  console.log("rerender");
+const DropdownList = ({ dropdowns }: TDropdownListProps) => {
+  console.log("weh");
   // onMount(async () => {
   //   console.log("DropdownList onMount");
   // });
@@ -118,9 +119,9 @@ const DropdownList = memo(({ dropdowns }: TDropdownListProps) => {
       ))}
     </div>
   );
-});
+};
 
-const Dropdown = memo(({ number }: { number: number }) => {
+const Dropdown = ({ number }: { number: number }) => {
   console.log("rerender");
   const isOpen = $state(false);
 
@@ -151,4 +152,4 @@ const Dropdown = memo(({ number }: { number: number }) => {
       </div>
     </>
   );
-});
+};

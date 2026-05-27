@@ -6,15 +6,19 @@ import { routes } from "./routes";
 
 // const Comp = lazy(async () => ({ default: () => <>Test</> }));
 
-export const App = ({ url }: { url: string }) => {
+export function App({ url }: { url: string }) {
+  // setInterval(() => {
+  //   counter.value++;
+  // }, 1000);
+
   return (
     <>
       {/* <Contexts /> */}
       {/* <Dropdowns /> */}
-      {/* <Lazy />
-      <Forms /> */}
-      <Router url={url} routes={routes} />
+      {/* <Lazy /> */}
+      {/* <Forms /> */}
       {/* <StackedSuspense /> */}
+      <Router url={url} routes={routes} />
       {/* <Dropdowns /> */}
       {/* <div>
         <div>Hi</div>
@@ -24,4 +28,4 @@ export const App = ({ url }: { url: string }) => {
       </div> */}
     </>
   );
-};
+}

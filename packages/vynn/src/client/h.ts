@@ -1,4 +1,5 @@
 import { FC, PropsWithChildren } from "~/types/props";
+import { createAnchor } from "~/util/create-target-node";
 import { IS_LOG_JSX } from "~/util/log-jsx";
 import { ssrDomWalker } from "~/util/ssr-dom-walker";
 
@@ -18,10 +19,9 @@ export function h<T extends PropsWithChildren<Record<string, any>>>(
   type: string | FC<T>,
   props = {} as Omit<T, "children">,
   children?: T["children"],
-  key?: () => string,
 ) {
   if (typeof type === "function") {
-    return renderComponent(type, props, children, key);
+    return renderComponent(type, props, children);
   }
 
   if (type === "html") {
@@ -32,24 +32,32 @@ export function h<T extends PropsWithChildren<Record<string, any>>>(
 
   const element = createElement(type);
 
-  const cleanup = renderChildren(element, children);
-  applyProps(element, props);
+  const anchor = createAnchor("h-anchor", true);
+  element.appendChild(anchor);
+  // anchorHelper.set(anchor);
+
+  const renderCleanup = renderChildren(element, children, anchor);
+  const propsCleanup = applyProps(element, props);
 
   queueMicrotask(() => {
     if (!element.parentNode) return;
 
     const observer = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
+        // if (mutation.addedNodes.length) {
+        //   // console.log();
+        // }
         for (const removedNodes of mutation.removedNodes) {
           if (element.isSameNode(removedNodes)) {
-            cleanup();
+            renderCleanup();
+            propsCleanup();
             observer.disconnect();
           }
         }
       }
     });
 
-    observer.observe(element.parentNode, { childList: true });
+    observer.observe(element.parentNode, { childList: true, subtree: true });
   });
 
   xmlnsStack.pop();

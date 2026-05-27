@@ -125,8 +125,6 @@ export function Router({ url, routes }: { url?: string; routes: Route[] }) {
   if (url) $location.pathname = url;
 
   return () => {
-    console.log("changed");
-
     const matched = matchRoute($location.pathname, routes);
 
     if (matched) {
@@ -147,7 +145,6 @@ const [OutletProvider, outletContext] = createContext<() => JSX.Element>();
 export function Outlet() {
   const Child = outletContext();
 
-  // console.log(Child());
   return <Child />;
 }
 

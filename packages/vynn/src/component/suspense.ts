@@ -32,18 +32,20 @@ export function Suspense(props: { fallback?: JSX.Element; children: JSX.Element 
 
   const view = $state<() => JSX.Element>(fallback);
 
-  const handler = (promise: Promise<void>) => {
+  function handler(promise: Promise<void>) {
+    // queueMicrotask(() => {
     suspenseHandlerStack.pop();
+    // });
 
-    queueMicrotask(() => {
-      // if (fallback) view.value = fallback;
-      view.value = !("__fromLazy" in promise) ? fallback : () => null;
-    });
+    // queueMicrotask(() => {
+    //   // if (fallback) view.value = fallback;
+    // });
+    view.value = !("__fromLazy" in promise) ? fallback : () => null;
 
     promise.then(() => {
       view.value = children;
     });
-  };
+  }
 
   if (!isServer && (window as any).__SSR_STREAMING_APP__) {
     view.value = children;
@@ -55,7 +57,9 @@ export function Suspense(props: { fallback?: JSX.Element; children: JSX.Element 
 
   return () => {
     suspenseHandlerStack.push(handler);
+    // return () => {
     return view.value;
+    // };
   };
 }
 
