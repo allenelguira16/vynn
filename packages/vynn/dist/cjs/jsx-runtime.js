@@ -1,1 +1,14 @@
-"use strict";var a=require("./chunks/CkIjWYIf.js"),r=require("./chunks/BHvB3LiG.js");const e=(s,{children:g,...t}={})=>r.h(s,t,g);exports.Fragment=a.Fragment,exports.logJsx=r.logJsx,exports.jsx=e,exports.jsxs=e;
+'use strict';
+
+var fragment = require('./chunks/Bp5SZ2VF.js');
+var logJsx = require('./chunks/BMPDAHvm.js');
+
+const jsx = (type, { children, ...props } = {}) => {
+  return logJsx.h(type, props, children);
+};
+
+exports.Fragment = fragment.Fragment;
+exports.logJsx = logJsx.logJsx;
+exports.jsx = jsx;
+exports.jsxs = jsx;
+//# sourceMappingURL=jsx-runtime.js.map

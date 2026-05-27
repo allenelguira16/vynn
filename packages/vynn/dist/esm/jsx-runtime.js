@@ -1,1 +1,10 @@
-import{F as p}from"./chunks/z2cHyrOy.js";import{h as t}from"./chunks/DgkCn8Be.js";import{m as n}from"./chunks/DgkCn8Be.js";const r=(o,{children:s,...m}={})=>t(o,m,s);export{p as Fragment,r as jsx,r as jsxs,n as logJsx};
+export { F as Fragment } from './chunks/C-2wWVT5.js';
+import { h } from './chunks/CkvSgCt_.js';
+export { m as logJsx } from './chunks/CkvSgCt_.js';
+
+const jsx = (type, { children, ...props } = {}) => {
+  return h(type, props, children);
+};
+
+export { jsx, jsx as jsxs };
+//# sourceMappingURL=jsx-runtime.js.map

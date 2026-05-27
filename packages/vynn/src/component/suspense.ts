@@ -78,19 +78,20 @@ function streamingSuspense(fallback: () => JSX.Element, children: () => JSX.Elem
 
   const { controller, encoder, end: endIfDone, start } = getCurrentStream();
 
+  start();
+
   const handler = (promise: Promise<any>) => {
     promise
       .then(() => {
         const html = normalizeToString(children);
 
-        console.log("natawag");
         const template = `<template async-id="${id}">${html}</template>`;
         const script = `<script>__hydrateAsync("${id}");document.currentScript.remove();</script>`;
 
         controller.enqueue(encoder.encode(template));
         controller.enqueue(encoder.encode(script));
 
-        endIfDone();
+        // endIfDone();
       })
       .catch((err) => {
         if (err instanceof Promise) {
@@ -101,7 +102,7 @@ function streamingSuspense(fallback: () => JSX.Element, children: () => JSX.Elem
 
         console.error("[vynn]: Suspense promise rejected:", err);
 
-        endIfDone();
+        // endIfDone();
       });
   };
 
@@ -109,7 +110,6 @@ function streamingSuspense(fallback: () => JSX.Element, children: () => JSX.Elem
     return normalizeToString(children);
   } catch (error) {
     if (error instanceof Promise) {
-      start();
       handler(error);
     }
 

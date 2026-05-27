@@ -1,7 +1,7 @@
 import { $store, resource, Suspense } from "vynn";
 
 import { Template } from "~/components/Template";
-import { name, sleep } from "~/utils";
+import { name } from "~/utils";
 
 type PokeDexData = {
   count: number;
@@ -44,7 +44,6 @@ export default function PokeDexSuspense() {
     async (url) => {
       "use server";
 
-      await sleep(1000);
       const response = await fetch(url);
       const json = (await response.json()) as PokeDexData;
 
@@ -56,7 +55,6 @@ export default function PokeDexSuspense() {
   const showUrlOnClick = (url: string) => () => alert(url);
   const sortOnClick = (key: SortKey) => () => pokeDex.sort(key);
 
-  // console.log(pokeDexResource.data.results);
   return (
     <Template title="PokeDex List (via Suspense)">
       <div>

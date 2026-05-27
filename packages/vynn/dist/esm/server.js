@@ -1,1 +1,76 @@
-import{h as l}from"./chunks/B3Sv16J4.js";import{AsyncLocalStorage as u}from"async_hooks";import{u as m,a as d,$ as i,c as S}from"./chunks/DgkCn8Be.js";function _(){function a(r){const n=document.querySelector(`[async-id="${r}"]`);if(!n)return;const s=n.content.cloneNode(!0),o=document.createTreeWalker(document,NodeFilter.SHOW_COMMENT);let c=null,t=null;for(;o.nextNode();){const e=o.currentNode;e.nodeValue===`~$:${r}`&&(c=e),e.nodeValue===`/$:${r}`&&(t=e)}if(c&&t){const e=document.createRange();e.setStartAfter(c),e.setEndBefore(t),e.deleteContents(),e.insertNode(s),c.remove(),t.remove()}n.remove()}return l("script",{html:`window.__hydrateAsync = ${a.toString()};window.__SSR_STREAMING_APP__ = true;`})}function f(a){return m(!0),new ReadableStream({async start(r){const n=new u,s=new TextEncoder,o=d(0);globalThis.__stream_context={encoder:s,controller:r,start:()=>o.value++,end:()=>{o.value--}},n.run(globalThis.__stream_context,()=>{const c=n.getStore();globalThis.__stream_context=c;try{const t=l(a,{});r.enqueue(s.encode(t))}catch(t){console.error("renderToStream error:",t)}}),i(()=>{o.value<=0&&r.close()})}})}function T(a){return S().memo.clear(),a()}export{_ as HydrateStreamScript,f as renderToStream,T as renderToString};
+import { h } from './chunks/BJBPOMhh.js';
+import { AsyncLocalStorage } from 'async_hooks';
+import { u as setIsServerStreaming, a as $state, $ as $effect, c as clientStreamContext } from './chunks/CkvSgCt_.js';
+
+function HydrateStreamScript() {
+  function hydrateAsync(id) {
+    const tpl = document.querySelector(`[async-id="${id}"]`);
+    if (!tpl) return;
+    const html = tpl.content.cloneNode(true);
+    const walker = document.createTreeWalker(document, NodeFilter.SHOW_COMMENT);
+    let start = null;
+    let end = null;
+    while (walker.nextNode()) {
+      const node = walker.currentNode;
+      if (node.nodeValue === `~$:${id}`) start = node;
+      if (node.nodeValue === `/$:${id}`) end = node;
+    }
+    if (start && end) {
+      const range = document.createRange();
+      range.setStartAfter(start);
+      range.setEndBefore(end);
+      range.deleteContents();
+      range.insertNode(html);
+      start.remove();
+      end.remove();
+    }
+    tpl.remove();
+  }
+  return h("script", {
+    html: `window.__hydrateAsync = ${hydrateAsync.toString()};window.__SSR_STREAMING_APP__ = true;`
+  });
+}
+
+function renderToStream(App) {
+  setIsServerStreaming(true);
+  const stream = new ReadableStream({
+    async start(controller) {
+      const als = new AsyncLocalStorage();
+      const encoder = new TextEncoder();
+      const pending = $state(0);
+      globalThis.__stream_context = {
+        encoder,
+        controller,
+        start: () => pending.value++,
+        end: () => {
+          pending.value--;
+        }
+      };
+      als.run(globalThis.__stream_context, () => {
+        const store = als.getStore();
+        globalThis.__stream_context = store;
+        try {
+          const html = h(App, {});
+          controller.enqueue(encoder.encode(html));
+        } catch (err) {
+          console.error("renderToStream error:", err);
+        }
+      });
+      $effect(() => {
+        if (pending.value <= 0) {
+          controller.close();
+        }
+      });
+    }
+  });
+  return stream;
+}
+
+function renderToString(App) {
+  const memoStore = clientStreamContext().memo;
+  memoStore.clear();
+  return App();
+}
+
+export { HydrateStreamScript, renderToStream, renderToString };
+//# sourceMappingURL=server.js.map

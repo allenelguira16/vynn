@@ -1,1 +1,47 @@
-"use strict";var n=require("./chunks/BHvB3LiG.js"),l=require("./chunks/BdBupNZ5.js");function i(s){let o;return{mount:t=>{const r=performance.now();try{let e;if(t instanceof HTMLElement?e=t:t instanceof Document?e=t.documentElement:e=document.querySelector(t),!(e instanceof HTMLElement))throw new Error("Node must be of type Element");const c=l.flattenDOMContents(e),a=l.flattenLazyDOMContents(e);n.setLazyDom(a),n.setSsrDomWalker(c.filter(f=>!n.flattenArray(a).flat().includes(f)));const m=n.renderComponent(s);o=n.renderChildren(e,m)}finally{requestAnimationFrame(()=>{const e=(performance.now()-r)/1e3;console.log("after paint:",e)}),requestIdleCallback(()=>{const e=(performance.now()-r)/1e3;console.log("idle after hydration:",e)})}},unmount:()=>{if(!o)throw new Error("Can only unmount if the app is mounted");o()}}}exports.createApp=n.createApp,exports.hydrateApp=i;
+'use strict';
+
+var logJsx = require('./chunks/BMPDAHvm.js');
+var flatDomContents = require('./chunks/ChMd1pbg.js');
+
+function hydrateApp(App) {
+  let cleanup;
+  return {
+    mount: (id) => {
+      const start = performance.now();
+      try {
+        let node;
+        if (id instanceof HTMLElement) {
+          node = id;
+        } else if (id instanceof Document) {
+          node = id.documentElement;
+        } else {
+          node = document.querySelector(id);
+        }
+        if (!(node instanceof HTMLElement)) throw new Error("Node must be of type Element");
+        const flatDom = flatDomContents.flattenDOMContents(node);
+        const lazyDom = flatDomContents.flattenLazyDOMContents(node);
+        logJsx.setLazyDom(lazyDom);
+        logJsx.setSsrDomWalker(flatDom.filter((node2) => !logJsx.flattenArray(lazyDom).flat().includes(node2)));
+        const app = logJsx.renderComponent(App);
+        cleanup = logJsx.renderChildren(node, app);
+      } finally {
+        requestAnimationFrame(() => {
+          const duration = (performance.now() - start) / 1e3;
+          console.log("after paint:", duration);
+        });
+        requestIdleCallback(() => {
+          const duration = (performance.now() - start) / 1e3;
+          console.log("idle after hydration:", duration);
+        });
+      }
+    },
+    unmount: () => {
+      if (!cleanup) throw new Error("Can only unmount if the app is mounted");
+      cleanup();
+    }
+  };
+}
+
+exports.createApp = logJsx.createApp;
+exports.hydrateApp = hydrateApp;
+//# sourceMappingURL=client.js.map

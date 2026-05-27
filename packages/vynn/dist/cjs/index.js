@@ -1,1 +1,326 @@
-"use strict";var S=require("./chunks/CkIjWYIf.js"),i=require("./chunks/BHvB3LiG.js"),y=require("./chunks/BdBupNZ5.js");function p(t){const e=(r=>{const u=i.clientStreamContext().memo;let o=u.get(e);return o||(o={lastProps:void 0,hasLast:!1,lastResult:void 0},u.set(e,o)),o.hasLast&&d(o.lastProps,r)||(o.lastProps=r,o.lastResult=t(r),o.hasLast=!0),o.lastResult});return e}function d(t,e){if(t===e||t!==t&&e!==e)return!0;if(t==null||e==null)return!1;if(t instanceof Date&&e instanceof Date)return t.getTime()===e.getTime();if(t instanceof RegExp&&e instanceof RegExp)return t.toString()===e.toString();if(Array.isArray(t)&&Array.isArray(e)){if(t.length!==e.length)return!1;for(let r=0;r<t.length;r++)if(!d(t[r],e[r]))return!1;return!0}if(typeof t=="object"&&typeof e=="object"&&t.constructor===Object&&e.constructor===Object){const r=Object.keys(t),u=Object.keys(e);if(r.length!==u.length)return!1;for(const o of r)if(!Object.prototype.hasOwnProperty.call(e,o)||!d(t[o],e[o]))return!1;return!0}return!1}const w="lazy",h="/lazy",_=(t,e="default")=>{const r=t(),u=i.clientStreamContext().lazyID++;let o,s,n=null;const c=()=>{if(o)return o;if(s)throw s;if(!i.isServerStreaming()&&i.ssrDomWalker().isHydrating&&window.__SSR_STREAMING_APP__&&!i.IS_LOG_JSX){const a=i.lazyNodes[u];throw i.setSsrDomWalker([...new Set([...i.ssrDomWalker().renderedNodes,...a])]),n=r.then(l=>{if(!(e in l))throw new Error(`lazy(): Export "${String(e)}" not found in module`);o=l[e]}),Object.assign(n,{__fromLazy:!0})}throw n||(n=r.then(a=>{if(!(e in a))throw new Error(`lazy(): Export "${String(e)}" not found in module`);o=a[e]}).catch(a=>{s=a instanceof Error?a:new Error(String(a))})),n};return p(()=>{const a=c()();return i.isServerStreaming()?()=>[`<!--${w}:${u}-->`,a instanceof Function?a():a,`<!--${h}:${u}-->`]:(globalThis.__lazy++,a)})};function v({children:t}){if(i.isServer&&t)return()=>["<!--no-hydration-->",t(),"<!--end-no-hydration-->"];const{currentNode:e,next:r}=i.ssrDomWalker();if(!e)return()=>null;const u=N(e),o=E(u),s=document.createDocumentFragment();o.forEach(c=>s.append(c)),y.flattenDOMContents(s).forEach(()=>r());const n=$(u);return u.remove(),n?.remove(),()=>o}function E(t){const e=[];let r=t.nextSibling;for(;r&&!(r.nodeType===Node.COMMENT_NODE&&r.nodeValue?.trim()==="end-no-hydration");)r.nodeType===Node.ELEMENT_NODE&&e.push(r),r=r.nextSibling;return e}function N(t){let e=t.previousSibling;for(;e;){if(e.nodeType===Node.COMMENT_NODE&&e.nodeValue?.trim()==="no-hydration")return e;e=e.previousSibling}return null}function $(t){let e=t.nextSibling;for(;e;){if(e.nodeType===Node.COMMENT_NODE&&e.nodeValue?.trim()==="end-no-hydration")return e;e=e.nextSibling}return null}const g=new WeakMap;function m(t){function e(r){if(g.has(r))return g.get(r);const u=new Proxy(r,{get(o,s,n){i.track(o,s);const c=Reflect.get(o,s,n);if(typeof c=="function")return c.bind(n);const a=Reflect.getOwnPropertyDescriptor(o,s);return a?.get?a.get.call(n):typeof c=="object"&&c!==null?e(c):c},set(o,s,n,c){const a=o[s],l=Reflect.set(o,s,n,c);return a!==n&&i.trigger(o,s),l}});return g.set(r,u),u}return e(t)}function b(t,e,r=!0){const u=i.getCurrentStream(),o=i.clientStreamContext(),s=o.resourceID++,n=m({loading:!0,error:null,data:void 0,promiseStatus:"pending"});let c=null;const a=()=>{const l=e.map(f=>f());i.untrack(()=>{n.loading=!0,n.error=null,n.data=void 0,n.promiseStatus="pending"}),!i.isServerStreaming()&&!i.isServer&&window.__resource&&window.__resource?.[s]&&r?(i.untrack(()=>{n.data=window.__resource?.[s],n.error=null,n.promiseStatus="fulfilled",n.loading=!1}),delete window.__resource[s],window.__resource.length||delete window.__resource):(c=i.untrack(()=>t(...l)),c.then(f=>{i.untrack(()=>{n.data=f,n.error=null,n.promiseStatus="fulfilled",n.loading=!1}),i.isServerStreaming()&&r&&u.controller.enqueue(u.encoder.encode(`<script>window.__resource ??= []; window.__resource[${s}] = ${JSON.stringify(f)};document.currentScript.remove();<\/script>`))}).catch(f=>{i.untrack(()=>{n.data=void 0,n.error=f,n.promiseStatus="rejected",n.loading=!1})}))};return i.$effect(()=>{a()}),{get loading(){return n.loading},get error(){return n.error},get data(){if(n.promiseStatus==="pending")throw c;if(n.promiseStatus==="rejected")throw n.error;return n.data},refetch:a,mutate(l){n.data=l}}}function D(){let t;function e(u){return t=u.value,u.children}function r(){if(!t)throw new Error("No provider found for context.");return t}return[e,r]}function O(t){const e=i.$state();return i.$effect(()=>{e.value=t()}),{get value(){return e.value}}}function x(t){function e(r){if(r===null||typeof r!="object"||typeof r=="function")return r;const u={};for(const o of Reflect.ownKeys(r)){const s=r[o];u[o]=e(s)}return u}return e(t)}exports.Fragment=S.Fragment,exports.$effect=i.$effect,exports.$state=i.$state,exports.Portal=i.Portal,exports.Suspense=i.Suspense,exports.loop=i.loop,exports.onDestroy=i.onDestroy,exports.onMount=i.onMount,exports.$computed=O,exports.$store=m,exports.NoHydration=v,exports.createContext=D,exports.lazy=_,exports.memo=p,exports.resource=b,exports.unwrap=x;
+'use strict';
+
+var fragment = require('./chunks/Bp5SZ2VF.js');
+var logJsx = require('./chunks/BMPDAHvm.js');
+var flatDomContents = require('./chunks/ChMd1pbg.js');
+
+function memo(fn) {
+  const wrapper = ((props) => {
+    const memoStore = logJsx.clientStreamContext().memo;
+    let state = memoStore.get(wrapper);
+    if (!state) {
+      state = { lastProps: void 0, hasLast: false, lastResult: void 0 };
+      memoStore.set(wrapper, state);
+    }
+    if (state.hasLast && isEqual(state.lastProps, props)) {
+      return state.lastResult;
+    }
+    state.lastProps = props;
+    state.lastResult = fn(props);
+    state.hasLast = true;
+    return state.lastResult;
+  });
+  return wrapper;
+}
+function isEqual(a, b) {
+  if (a === b) return true;
+  if (a !== a && b !== b) return true;
+  if (a == null || b == null) return false;
+  if (a instanceof Date && b instanceof Date) {
+    return a.getTime() === b.getTime();
+  }
+  if (a instanceof RegExp && b instanceof RegExp) {
+    return a.toString() === b.toString();
+  }
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+      if (!isEqual(a[i], b[i])) return false;
+    }
+    return true;
+  }
+  if (typeof a === "object" && typeof b === "object" && a.constructor === Object && b.constructor === Object) {
+    const keysA = Object.keys(a);
+    const keysB = Object.keys(b);
+    if (keysA.length !== keysB.length) return false;
+    for (const key of keysA) {
+      if (!Object.prototype.hasOwnProperty.call(b, key)) return false;
+      if (!isEqual(a[key], b[key])) return false;
+    }
+    return true;
+  }
+  return false;
+}
+
+const MARKER_START = "lazy";
+const MARKER_END = "/lazy";
+const lazy = (_loader, namedExport = "default") => {
+  const loader = _loader();
+  const id = logJsx.clientStreamContext().lazyID++;
+  let component;
+  let error;
+  let promise = null;
+  const getComponent = () => {
+    if (component) return component;
+    if (error) throw error;
+    if (!logJsx.isServerStreaming() && logJsx.ssrDomWalker().isHydrating && window.__SSR_STREAMING_APP__ && !logJsx.IS_LOG_JSX) {
+      const lazyNode = logJsx.lazyNodes[id];
+      logJsx.setSsrDomWalker([.../* @__PURE__ */ new Set([...logJsx.ssrDomWalker().renderedNodes, ...lazyNode])]);
+      promise = loader.then((modules) => {
+        if (!(namedExport in modules)) {
+          throw new Error(`lazy(): Export "${String(namedExport)}" not found in module`);
+        }
+        component = modules[namedExport];
+      });
+      throw Object.assign(promise, { __fromLazy: true });
+    }
+    if (!promise) {
+      promise = loader.then((modules) => {
+        if (!(namedExport in modules)) {
+          throw new Error(`lazy(): Export "${String(namedExport)}" not found in module`);
+        }
+        component = modules[namedExport];
+      }).catch((err) => {
+        error = err instanceof Error ? err : new Error(String(err));
+      });
+    }
+    throw promise;
+  };
+  return memo(() => {
+    const Component = getComponent();
+    const resolved = Component();
+    if (logJsx.isServerStreaming()) {
+      return () => [
+        `<!--${MARKER_START}:${id}-->`,
+        resolved instanceof Function ? resolved() : resolved,
+        `<!--${MARKER_END}:${id}-->`
+      ];
+    }
+    globalThis.__lazy++;
+    return resolved;
+  });
+};
+
+function NoHydration({ children }) {
+  if (logJsx.isServer && children)
+    return () => ["<!--no-hydration-->", children(), "<!--end-no-hydration-->"];
+  const { currentNode, next } = logJsx.ssrDomWalker();
+  if (!currentNode) {
+    return () => null;
+  }
+  const start = previousCommentSibling(currentNode);
+  const nodes = getNextSiblingsUntilEndNoHydration(start);
+  const frag = document.createDocumentFragment();
+  nodes.forEach((node) => frag.append(node));
+  flatDomContents.flattenDOMContents(frag).forEach(() => next());
+  const end = findEndNoHydration(start);
+  start.remove();
+  end?.remove();
+  return () => nodes;
+}
+function getNextSiblingsUntilEndNoHydration(node) {
+  const result = [];
+  let next = node.nextSibling;
+  while (next) {
+    if (next.nodeType === Node.COMMENT_NODE && next.nodeValue?.trim() === "end-no-hydration") {
+      break;
+    }
+    if (next.nodeType === Node.ELEMENT_NODE) {
+      result.push(next);
+    }
+    next = next.nextSibling;
+  }
+  return result;
+}
+function previousCommentSibling(node) {
+  let prev = node.previousSibling;
+  while (prev) {
+    if (prev.nodeType === Node.COMMENT_NODE && prev.nodeValue?.trim() === "no-hydration") {
+      return prev;
+    }
+    prev = prev.previousSibling;
+  }
+  return null;
+}
+function findEndNoHydration(start) {
+  let next = start.nextSibling;
+  while (next) {
+    if (next.nodeType === Node.COMMENT_NODE && next.nodeValue?.trim() === "end-no-hydration") {
+      return next;
+    }
+    next = next.nextSibling;
+  }
+  return null;
+}
+
+const proxyMap = /* @__PURE__ */ new WeakMap();
+function $store(initialObject) {
+  function createReactiveObject(obj) {
+    if (proxyMap.has(obj)) return proxyMap.get(obj);
+    const proxy = new Proxy(obj, {
+      get(target, key, receiver) {
+        logJsx.track(target, key);
+        const result = Reflect.get(target, key, receiver);
+        if (typeof result === "function") {
+          return result.bind(receiver);
+        }
+        const descriptor = Reflect.getOwnPropertyDescriptor(target, key);
+        if (descriptor?.get) {
+          return descriptor.get.call(receiver);
+        }
+        if (typeof result === "object" && result !== null) {
+          return createReactiveObject(result);
+        }
+        return result;
+      },
+      set(target, key, value, receiver) {
+        const oldValue = target[key];
+        const result = Reflect.set(target, key, value, receiver);
+        if (oldValue !== value) {
+          logJsx.trigger(target, key);
+        }
+        return result;
+      }
+    });
+    proxyMap.set(obj, proxy);
+    return proxy;
+  }
+  return createReactiveObject(initialObject);
+}
+
+function resource(fetcher, _params, isPreload = true) {
+  const stream = logJsx.getCurrentStream();
+  const context = logJsx.clientStreamContext();
+  const id = context.resourceID++;
+  const state = $store({
+    loading: true,
+    error: null,
+    data: void 0,
+    promiseStatus: "pending"
+  });
+  let promise = null;
+  const refetch = () => {
+    const params = _params.map((p) => p());
+    logJsx.untrack(() => {
+      state.loading = true;
+      state.error = null;
+      state.data = void 0;
+      state.promiseStatus = "pending";
+    });
+    if (!logJsx.isServerStreaming() && !logJsx.isServer && window.__resource && window.__resource?.[id] && isPreload) {
+      logJsx.untrack(() => {
+        state.data = window.__resource?.[id];
+        state.error = null;
+        state.promiseStatus = "fulfilled";
+        state.loading = false;
+      });
+      delete window.__resource[id];
+      if (!window.__resource.length) {
+        delete window.__resource;
+      }
+    } else {
+      promise = logJsx.untrack(() => fetcher(...params));
+      promise.then((result) => {
+        logJsx.untrack(() => {
+          state.data = result;
+          state.error = null;
+          state.promiseStatus = "fulfilled";
+          state.loading = false;
+        });
+        if (logJsx.isServerStreaming() && isPreload) {
+          stream.controller.enqueue(
+            stream.encoder.encode(
+              `<script>window.__resource ??= []; window.__resource[${id}] = ${JSON.stringify(result)};document.currentScript.remove();<\/script>`
+            )
+          );
+        }
+      }).catch((err) => {
+        logJsx.untrack(() => {
+          state.data = void 0;
+          state.error = err;
+          state.promiseStatus = "rejected";
+          state.loading = false;
+        });
+      });
+    }
+  };
+  logJsx.$effect(() => {
+    refetch();
+  });
+  return {
+    get loading() {
+      return state.loading;
+    },
+    get error() {
+      return state.error;
+    },
+    get data() {
+      if (state.promiseStatus === "pending") throw promise;
+      if (state.promiseStatus === "rejected") throw state.error;
+      return state.data;
+    },
+    refetch,
+    mutate(newValue) {
+      state.data = newValue;
+    }
+  };
+}
+
+function createContext() {
+  let value;
+  function Provider(props) {
+    value = props.value;
+    return props.children;
+  }
+  function getContext() {
+    if (!value) {
+      throw new Error("No provider found for context.");
+    }
+    return value;
+  }
+  return [Provider, getContext];
+}
+
+function $computed(getter) {
+  const result = logJsx.$state();
+  logJsx.$effect(() => {
+    result.value = getter();
+  });
+  return {
+    get value() {
+      return result.value;
+    }
+  };
+}
+
+function unwrap(value) {
+  function deepUnwrap(obj) {
+    if (obj === null || typeof obj !== "object") return obj;
+    if (typeof obj === "function") return obj;
+    const result = {};
+    for (const key of Reflect.ownKeys(obj)) {
+      const value2 = obj[key];
+      result[key] = deepUnwrap(value2);
+    }
+    return result;
+  }
+  return deepUnwrap(value);
+}
+
+exports.Fragment = fragment.Fragment;
+exports.$effect = logJsx.$effect;
+exports.$state = logJsx.$state;
+exports.Portal = logJsx.Portal;
+exports.Suspense = logJsx.Suspense;
+exports.loop = logJsx.loop;
+exports.onDestroy = logJsx.onDestroy;
+exports.onMount = logJsx.onMount;
+exports.$computed = $computed;
+exports.$store = $store;
+exports.NoHydration = NoHydration;
+exports.createContext = createContext;
+exports.lazy = lazy;
+exports.memo = memo;
+exports.resource = resource;
+exports.unwrap = unwrap;
+//# sourceMappingURL=index.js.map
