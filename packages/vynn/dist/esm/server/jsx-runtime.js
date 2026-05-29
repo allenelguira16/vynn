@@ -1,14 +1,1 @@
-export { F as Fragment } from '../chunks/C-2wWVT5.js';
-import { j as isServer, h as h$1 } from '../chunks/CkvSgCt_.js';
-export { m as logJsx } from '../chunks/CkvSgCt_.js';
-import { h } from '../chunks/BJBPOMhh.js';
-
-const jsx = (type, { children, ...props } = {}, key) => {
-  if (isServer) {
-    return h(type, props, children, key);
-  }
-  return h$1(type, props, children);
-};
-
-export { jsx, jsx as jsxs };
-//# sourceMappingURL=jsx-runtime.js.map
+import{k as a,h as e}from"../chunks/CrHmfIae.js";import{n as i}from"../chunks/CrHmfIae.js";import{F as c}from"../chunks/z2cHyrOy.js";import{h as t}from"../chunks/CfK_HnDQ.js";const m=(r,{children:s,...o}={})=>a?t(r,o,s):e(r,o,s);export{c as Fragment,m as jsx,m as jsxs,i as logJsx};

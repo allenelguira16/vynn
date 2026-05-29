@@ -7,32 +7,60 @@ const skipWrappingTags = new Set(["title", "meta", "script", "style"]);
  * @returns flatten dom elements
  */
 export function flattenDOMContents(root: Node) {
+  // const doms: Node[] = [];
+  // let capture = false;
+  // let bufferEmpty = false;
+
+  // function flattenNode(node: Node) {
+  //   if (node instanceof Comment) {
+  //     const comment = node.data.trim();
+
+  //     if (comment === "!") {
+  //       capture = true;
+  //       bufferEmpty = true;
+  //       node.remove();
+  //     } else if (comment === "/") {
+  //       capture = false;
+  //       if (bufferEmpty) {
+  //         const text = document.createTextNode("");
+  //         node.parentNode?.insertBefore(text, node.nextSibling);
+  //         doms.push(text);
+  //         bufferEmpty = false;
+  //       }
+  //       node.remove();
+  //     }
+
+  //     return;
+  //   }
+
+  //   if (node instanceof HTMLElement) {
+  //     doms.push(node);
+
+  //     if (skipWrappingTags.has(node.tagName.toLowerCase())) {
+  //       for (const child of [...node.childNodes]) {
+  //         if (child instanceof Text) doms.push(child);
+  //         else flattenNode(child);
+  //       }
+  //       return;
+  //     }
+  //   } else if (capture && node instanceof Text) {
+  //     doms.push(node);
+  //     bufferEmpty = false;
+  //   }
+
+  //   for (const child of [...node.childNodes]) {
+  //     flattenNode(child);
+  //   }
+  // }
+
+  // for (const child of [...root.childNodes]) {
+  //   flattenNode(child);
+  // }
+
+  // return doms;
   const doms: Node[] = [];
-  let capture = false;
-  let bufferEmpty = false;
 
   function flattenNode(node: Node) {
-    if (node instanceof Comment) {
-      const comment = node.data.trim();
-
-      if (comment === "!") {
-        capture = true;
-        bufferEmpty = true;
-        node.remove();
-      } else if (comment === "/") {
-        capture = false;
-        if (bufferEmpty) {
-          const text = document.createTextNode("");
-          node.parentNode?.insertBefore(text, node.nextSibling);
-          doms.push(text);
-          bufferEmpty = false;
-        }
-        node.remove();
-      }
-
-      return;
-    }
-
     if (node instanceof HTMLElement) {
       doms.push(node);
 
@@ -43,9 +71,14 @@ export function flattenDOMContents(root: Node) {
         }
         return;
       }
-    } else if (capture && node instanceof Text) {
+    } else if (node instanceof Text) {
       doms.push(node);
-      bufferEmpty = false;
+    } else if (node instanceof Comment && node.textContent === "empty") {
+      const empty = document.createTextNode("");
+      node.replaceWith(empty);
+      doms.push(empty);
+    } else {
+      // console.log(node);
     }
 
     for (const child of [...node.childNodes]) {
@@ -94,7 +127,9 @@ export function flattenLazyDOMContents(root: ParentNode = document): Node[][] {
 
     // collect nodes only for the current open block
     if (stack.length) {
-      stack[stack.length - 1].nodes.push(node);
+      if (!(node instanceof Comment && node.textContent === "split")) {
+        stack[stack.length - 1].nodes.push(node);
+      }
     }
 
     // recurse through children

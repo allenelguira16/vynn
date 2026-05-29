@@ -1,1076 +1,647 @@
 import { AsyncLocalStorage } from "async_hooks";
-function Fragment({ children }) {
-  return children;
+function r({ children: n }) {
+  return n;
 }
-const isServer$1 = typeof window === "undefined";
-let isServerStreaming = false;
-const setIsServerStreaming = (newValue) => isServerStreaming = newValue;
-const getCurrentStream = () => {
-  return globalThis.__stream_context;
+const D = () => globalThis.__stream_context, T$1 = /* @__PURE__ */ new Map(), pe = { suspenseID: 0, resourceID: 0, lazyID: 0, stateID: 0, memo: /* @__PURE__ */ new Map() }, h$1 = () => {
+  const e = D();
+  T$1.has(e) || T$1.set(e, pe);
+  const n = T$1.get(e);
+  if (!n) throw new Error("[vynn]: context does not exists");
+  return n;
+}, de = () => {
+  h$1().memo.clear(), h$1().lazyID = 0, h$1().resourceID = 0, h$1().stateID = 0, h$1().suspenseID = 0;
+}, y = typeof window > "u";
+globalThis.isServerStreaming = false;
+const W = () => globalThis.isServerStreaming, he = (e) => globalThis.isServerStreaming = e;
+let S = [], g$1 = 0;
+function v() {
+  return { renderedNodes: S, get currentNode() {
+    if (!y) return S[g$1];
+  }, get isHydrating() {
+    return !!S[g$1];
+  }, next: () => {
+    S[g$1] && (S[g$1] = void 0, g$1++);
+  }, prev: () => {
+    g$1 > 0 && S[g$1 - 1] && g$1--;
+  } };
+}
+function ge(e, n) {
+  S = e;
+}
+let O = [];
+let j$1 = null;
+function $$2(e) {
+  j$1 = e;
+}
+function A$1() {
+  return j$1;
+}
+const k$1 = /* @__PURE__ */ new Map(), Se = (e) => {
+  let n;
+  return e !== void 0 ? (k$1.has(e) || k$1.set(e, { states: [] }), n = k$1.get(e)) : n = { states: [] }, { ...n, index: 0 };
 };
-const clienStreamMap = /* @__PURE__ */ new Map();
-const clientStreamContext = () => {
-  let value;
-  if (!isServer$1) {
-    if (!clienStreamMap.has(window))
-      clienStreamMap.set(window, {
-        suspenseID: 0,
-        resourceID: 0,
-        lazyID: 0,
-        stateID: 0,
-        memo: /* @__PURE__ */ new Map()
-      });
-    value = clienStreamMap.get(window);
-  } else {
-    const context = getCurrentStream();
-    if (!clienStreamMap.has(context))
-      clienStreamMap.set(context, {
-        suspenseID: 0,
-        resourceID: 0,
-        lazyID: 0,
-        stateID: 0,
-        memo: /* @__PURE__ */ new Map()
-      });
-    value = clienStreamMap.get(context);
-  }
-  if (!value) throw new Error("[vynn]: context does not exists");
-  return value;
-};
-let runtimeContext = null;
-function setRuntimeContext(ctx) {
-  runtimeContext = ctx;
+function K(e) {
+  return { id: e, mount: [], state: Se(e), effect: [], destroy: [], memo: [] };
 }
-function getRuntimeContext() {
-  return runtimeContext;
+let d = null;
+function G(e) {
+  d = e;
 }
-let activeEffect = null;
-function setActiveEffect(newActiveEffect) {
-  activeEffect = newActiveEffect;
+const I = /* @__PURE__ */ new Set();
+let H = false;
+function we(e) {
+  I.add(e), H || (H = true, queueMicrotask(() => {
+    for (const n of I) n();
+    I.clear(), H = false;
+  }));
 }
-const effectQueue = /* @__PURE__ */ new Set();
-let isFlushing = false;
-function scheduleEffect(effect) {
-  effectQueue.add(effect);
-  if (!isFlushing) {
-    isFlushing = true;
-    queueMicrotask(() => {
-      for (const effect2 of effectQueue) {
-        effect2();
-      }
-      effectQueue.clear();
-      isFlushing = false;
-    });
-  }
-}
-function $effect(fn) {
-  const context = getRuntimeContext();
-  const wrappedEffect = async () => {
-    removeEffect(wrappedEffect);
-    if (wrappedEffect.cleanup) {
-      wrappedEffect.cleanup();
-      wrappedEffect.cleanup = void 0;
-    }
-    const previousEffect = activeEffect;
-    activeEffect = wrappedEffect;
-    if (context) context.effect.push(wrappedEffect);
+function C$1(e) {
+  const n = A$1(), t = () => {
+    P(t), t.cleanup && (t.cleanup(), t.cleanup = void 0);
+    const r2 = d;
+    d = t, n && n.effect.push(t);
     try {
-      const result = fn();
-      if (typeof result === "function") {
-        wrappedEffect.cleanup = result;
-      } else if (result instanceof Promise) {
-        const cleanup = await result;
-        if (typeof cleanup === "function") {
-          wrappedEffect.cleanup = cleanup;
-        }
-      }
+      const s = e();
+      typeof s == "function" && (t.cleanup = s);
     } finally {
-      activeEffect = previousEffect;
+      d = r2;
     }
+  }, o = () => P(t);
+  return t.deps = [], t(), o;
+}
+function P(e) {
+  if (e.deps) {
+    for (const n of e.deps) n.delete(e);
+    e.deps.length = 0;
+  }
+  e.cleanup && (e.cleanup(), e.cleanup = void 0);
+}
+const F = /* @__PURE__ */ new Map();
+function ve(e, n) {
+  F.set(e, n);
+}
+function J(e) {
+  const n = F.get(e);
+  if (n) {
+    for (const t of n) t();
+    F.delete(e);
+  }
+  if (e instanceof HTMLElement) for (const t of e.childNodes) J(t);
+}
+function Ee(e, n) {
+  if (!n) return;
+  const t = [];
+  ve(e, t);
+  const o = async () => {
+    for (const r2 of n.mount) {
+      const s = await r2();
+      s && t.push(s);
+    }
+    for (const r2 of n.destroy) t.push(r2);
+    for (const r2 of n.effect) t.push(() => Promise.resolve(P(r2)));
   };
-  const disposer = () => removeEffect(wrappedEffect);
-  wrappedEffect.deps = [];
-  wrappedEffect();
-  return disposer;
-}
-function removeEffect(effect) {
-  if (effect.deps) {
-    for (const depSet of effect.deps) {
-      depSet.delete(effect);
-    }
-    effect.deps.length = 0;
-  }
-  if (effect.cleanup) {
-    effect.cleanup();
-    effect.cleanup = void 0;
-  }
-}
-const targetToPropertyEffectsMap = /* @__PURE__ */ new WeakMap();
-function track(target, key) {
-  if (!activeEffect) return;
-  let propertyEffectsMap = targetToPropertyEffectsMap.get(target);
-  if (!propertyEffectsMap) {
-    propertyEffectsMap = /* @__PURE__ */ new Map();
-    targetToPropertyEffectsMap.set(target, propertyEffectsMap);
-  }
-  let effects = propertyEffectsMap.get(key);
-  if (!effects) {
-    effects = /* @__PURE__ */ new Set();
-    propertyEffectsMap.set(key, effects);
-  }
-  if (!effects.has(activeEffect)) {
-    effects.add(activeEffect);
-    if (activeEffect.deps) {
-      activeEffect.deps.push(effects);
-    } else {
-      activeEffect.deps = [effects];
-    }
-  }
-}
-function trigger(target, key) {
-  const propertyEffectsMap = targetToPropertyEffectsMap.get(target);
-  if (!propertyEffectsMap) return;
-  const effects = propertyEffectsMap.get(key);
-  if (!effects) return;
-  for (const effect of effects) {
-    scheduleEffect(effect);
-  }
-}
-function $state(initialValue) {
-  const context = getRuntimeContext();
-  if (context && context.state) {
-    const { states, index } = context.state;
-    if (states.length <= index) {
-      const s = createState(initialValue);
-      states.push(s);
-    }
-    return states[context.state.index++];
-  }
-  return createState(initialValue);
-}
-function createState(initialValue) {
-  const state = { value: initialValue };
-  return new Proxy(state, {
-    get(target, key, receiver) {
-      track(target, key);
-      return Reflect.get(target, key, receiver);
-    },
-    set(target, key, newValue, receiver) {
-      const oldValue = target[key];
-      const result = Reflect.set(target, key, newValue, receiver);
-      if (oldValue !== newValue) {
-        trigger(target, key);
-      }
-      return result;
-    }
+  V(() => {
+    queueMicrotask(() => Promise.resolve().then(o));
   });
 }
-const isNil = (value) => {
-  return value === void 0 || value === null || value === false;
-};
-function hasNoHTMLTags(str) {
-  const htmlTagRegex = /<[^>]+>/g;
-  return !htmlTagRegex.test(str);
+function V(e) {
+  if (!v().isHydrating) {
+    e();
+    return;
+  }
+  requestAnimationFrame(() => V(e));
 }
-function getNodeString(jsxElement, skipWrappingTags2 = false) {
-  if (isNil(jsxElement)) return null;
-  if (typeof jsxElement === "string" || typeof jsxElement === "number") {
-    let str = String(jsxElement);
-    if (hasNoHTMLTags(str) && !skipWrappingTags2) {
-      str = `<!--!-->${str}<!--/-->`;
+function X(e) {
+  const n = d;
+  G(null);
+  try {
+    return e();
+  } finally {
+    G(n);
+  }
+}
+const U = (e) => (Array.isArray(e) ? e : [e]).flat(1 / 0), Q = (e) => e.flat(1 / 0);
+function Y(e) {
+  const n = A$1();
+  if (!n) throw new Error("onDestroy called outside of component");
+  n.destroy.push(e);
+}
+function Z(e) {
+  if (y) return;
+  const n = A$1();
+  if (!n) throw new Error("onMount called outside of component");
+  n.mount.push(e);
+}
+const q = /* @__PURE__ */ new WeakMap();
+function ee(e, n) {
+  if (!d) return;
+  let t = q.get(e);
+  t || (t = /* @__PURE__ */ new Map(), q.set(e, t));
+  let o = t.get(n);
+  o || (o = /* @__PURE__ */ new Set(), t.set(n, o)), o.has(d) || (o.add(d), d.deps ? d.deps.push(o) : d.deps = [o]);
+}
+function te(e, n) {
+  const t = q.get(e);
+  if (!t) return;
+  const o = t.get(n);
+  if (o) for (const r2 of o) we(r2);
+}
+function x(e) {
+  const n = A$1();
+  if (n && n.state) {
+    const { states: t, index: o } = n.state;
+    if (t.length <= o) {
+      const r2 = ne(e);
+      t.push(r2);
     }
-    return str;
+    return t[n.state.index++];
   }
-  throw new Error(`Unknown value: ${jsxElement}`);
+  return ne(e);
 }
-function normalizeToString(value) {
-  if (isNil(value)) return null;
-  if (typeof value === "function") {
-    return normalizeToString(value());
-  }
-  if (Array.isArray(value)) {
-    return value.map(normalizeToString).join("") || null;
-  }
-  return getNodeString(value);
+function ne(e) {
+  const n = { value: e };
+  return new Proxy(n, { get(t, o, r2) {
+    return ee(t, o), Reflect.get(t, o, r2);
+  }, set(t, o, r2, s) {
+    const u2 = t[o], c = Reflect.set(t, o, r2, s);
+    return u2 !== r2 && te(t, o), c;
+  } });
 }
-let renderedNodes = [];
-let currentIndex = 0;
-function ssrDomWalker() {
-  return {
-    renderedNodes,
-    get currentNode() {
-      if (isServer$1) return void 0;
-      return renderedNodes[currentIndex];
-    },
-    get isHydrating() {
-      return !!renderedNodes[currentIndex];
-    },
-    next: () => {
-      if (renderedNodes[currentIndex]) currentIndex++;
-    },
-    prev: () => {
-      if (renderedNodes[currentIndex]) currentIndex--;
+const L = (e) => e == null || e === false;
+function oe(e) {
+  return !/<[^>]+>/g.test(e);
+}
+function re(e, n = false) {
+  if (L(e)) return null;
+  if (typeof e == "string" || typeof e == "number") {
+    let t = String(e);
+    return oe(t) && !n && !t.length && (t = `<!--empty-->${t}`), t;
+  }
+  throw new Error(`Unknown value: ${e}`);
+}
+function w$1(e) {
+  return L(e) ? null : typeof e == "function" ? w$1(e()) : Array.isArray(e) ? e.map(w$1).join("") || null : re(e);
+}
+function _e({ children: e, fallback: n = () => null }) {
+  const t = h$1(), o = t.suspenseID++;
+  try {
+    return w$1(e);
+  } catch (r2) {
+    if (r2 instanceof Promise) return [w$1(n), `<script>window.__SUSPENSE_DEFAULT_FALLBACK__ ??= [];window.__SUSPENSE_DEFAULT_FALLBACK__[${o}]=true;document.currentScript.remove();<\/script>`, "<!--split-->"];
+    throw r2;
+  }
+}
+function Le({ children: e, fallback: n = () => null }) {
+  const t = h$1(), o = t.suspenseID++, { controller: r2, encoder: s, end: u2, start: c } = D(), a = (f) => {
+    c(), f.then(() => {
+      const i = w$1(e), p = `<template async-id="${o}">${i}</template>`, l2 = `<script>__hydrateAsync("${o}");document.currentScript.remove();<\/script>`;
+      r2.enqueue(s.encode(p)), r2.enqueue(s.encode(l2));
+    }).catch((i) => {
+      if (i instanceof Promise) c(), a(i);
+      else throw i;
+    }).finally(() => u2());
+  };
+  try {
+    return w$1(e);
+  } catch (f) {
+    return f instanceof Promise && a(f), [`<!--~$:${o}-->`, (n == null ? void 0 : n()) ?? "", `<!--/$:${o}-->`];
+  }
+}
+const N$1 = [];
+function Ae() {
+  return N$1[N$1.length - 1];
+}
+function se(e) {
+  const { fallback: n = () => null, children: t } = e;
+  if (W()) return Le({ fallback: n, children: t });
+  if (y) return _e({ fallback: n, children: t });
+  window.__SUSPENSE_DEFAULT_FALLBACK__ ?? (window.__SUSPENSE_DEFAULT_FALLBACK__ = []);
+  const o = h$1(), r2 = o.suspenseID++, s = !!window.__SUSPENSE_DEFAULT_FALLBACK__[r2], u2 = x(s ? n : t);
+  function c(a) {
+    N$1.pop(), queueMicrotask(() => {
+      u2.value = "__fromLazy" in a ? () => null : n;
+    }), a.then(() => {
+      u2.value = t;
+    });
+  }
+  return !y && window.__SSR_STREAMING_APP__ ? u2.value = t : ce(() => {
+    u2.value = t;
+  }), () => (N$1.push(c), u2.value);
+}
+function ce(e) {
+  if (!v().isHydrating) {
+    e();
+    return;
+  }
+  requestAnimationFrame(() => ce(e));
+}
+function xe(e) {
+  if (e instanceof Node) return e;
+  if (typeof e == "string" || typeof e == "number") {
+    const { currentNode: n, next: t } = v();
+    if (n instanceof Text && true) {
+      if (n.textContent !== String(e)) throw new Error("Hydration mismatch because the initial UI does not match what was rendered on the server");
+      return t(), n;
     }
+    return document.createTextNode(String(e));
+  }
+  throw new Error(`Unknown value: ${e}`);
+}
+function E$1(e, n, t = null) {
+  if (!L(t) && !(t == null ? void 0 : t.parentNode)) return () => {
   };
-}
-function setSsrDomWalker(node, index) {
-  renderedNodes = node;
-}
-let lazyNodes = [];
-const suspenseHandlerStack = [];
-function getSuspenseHandler() {
-  return suspenseHandlerStack[suspenseHandlerStack.length - 1];
-}
-function Suspense(props) {
-  const { fallback = () => null, children } = props;
-  if (isServerStreaming) return streamingSuspense(fallback, children);
-  if (isServer$1) return fallback == null ? void 0 : fallback();
-  const view = $state(children);
-  const handler = (promise) => {
-    suspenseHandlerStack.pop();
-    queueMicrotask(() => {
-      if (fallback) view.value = fallback;
-    });
-    promise.then(() => {
-      view.value = children;
-    });
-  };
-  if (!isServer$1 && window.__SSR_STREAMING_APP__) {
-    view.value = children;
-  } else {
-    onDoneHydration$1(() => {
-      view.value = children;
-    });
+  let o = [];
+  for (const r2 of Q(U(n))) {
+    let s = [], u2 = [];
+    const c = R(`anchor-${r2}`, true);
+    e.insertBefore(c, t);
+    let a = null;
+    const f = Ae(), i = C$1(() => {
+      try {
+        s.map((m2) => m2()), s = [];
+        const l2 = typeof r2 == "function" ? r2() : r2;
+        if (u2.push(() => a && J(a)), u2.push(() => a && a.remove()), L(l2)) a && (e.removeChild(a), a = null);
+        else if (typeof l2 == "function") {
+          const m2 = E$1(e, l2, c);
+          s.push(m2);
+        } else if (Array.isArray(l2)) {
+          const m2 = E$1(e, l2, c);
+          s.push(m2);
+        } else {
+          const m2 = xe(l2);
+          a ? e.replaceChild(m2, a) : m2.isConnected ? (t && e.insertBefore(t, m2.nextElementSibling), e.insertBefore(c, m2.nextElementSibling)) : e.insertBefore(m2, c), a = m2;
+        }
+      } catch (l2) {
+        if (l2 instanceof Promise && f) f(l2);
+        else throw l2;
+      }
+    }), p = () => {
+      for (const l2 of s) l2();
+      for (const l2 of u2) l2();
+      s = [], u2 = [], i(), c.remove();
+    };
+    o.push(p);
   }
   return () => {
-    suspenseHandlerStack.push(handler);
-    return view.value;
+    for (const r2 of o) r2();
+    o = [];
   };
 }
-function onDoneHydration$1(fn) {
-  if (!ssrDomWalker().isHydrating) {
-    fn();
-    return;
-  }
-  requestAnimationFrame(() => onDoneHydration$1(fn));
+function ue({ children: e, target: n }) {
+  let t;
+  return Z(() => {
+    const o = (n instanceof Function ? n() : n) ?? document.body;
+    t = E$1(o, e);
+  }), Y(() => {
+    t();
+  }), () => null;
 }
-function streamingSuspense(fallback, children) {
-  const context = clientStreamContext();
-  const id = context.suspenseID++;
-  const stream = getCurrentStream();
-  const handler = (promise) => {
-    promise.then(() => {
-      const html = normalizeToString(children);
-      const template = `<template async-id="${id}">${html}</template>`;
-      const script = `<script>__hydrateAsync("${id}");document.currentScript.remove();<\/script>`;
-      stream.controller.enqueue(stream.encoder.encode(template));
-      stream.controller.enqueue(stream.encoder.encode(script));
-      stream.endIfDone();
-    }).catch((err) => {
-      if (err instanceof Promise) {
-        stream.start();
-        handler(err);
+const Ne = [se, fe, ue];
+function ae(e, n = {}) {
+  if (!Ne.includes(e)) for (const t in n) n[t] = n[t] instanceof Function ? n[t]() : n[t];
+}
+const B = /* @__PURE__ */ new WeakSet();
+function z(e, n, t) {
+  ae(e, n);
+  const o = K(window.crypto.randomUUID());
+  $$2(o);
+  const r2 = R(`root-${e.name}`, true), s = X(() => e(t ? { ...n, children: t } : n)), u2 = U([r2, s]).flat();
+  return $$2(null), Ee(r2, o), B.add(r2), u2;
+}
+function R(e, n = false) {
+  let t;
+  return process.env.NODE_ENV === "development" && !n ? t = document.createComment(e) : t = document.createTextNode(""), B.add(t), t;
+}
+const b$1 = /* @__PURE__ */ new WeakMap();
+function Me(e, n, t) {
+  let o = b$1.get(e);
+  o || (o = /* @__PURE__ */ new Map(), b$1.set(e, o)), o.has(n) && e.removeEventListener(n, o.get(n)), e.addEventListener(n, t), o.set(n, t);
+}
+function be(e, n) {
+  const t = b$1.get(e);
+  if (!t) return;
+  const o = t.get(n);
+  o && (e.removeEventListener(n, o), t.delete(n)), t.size === 0 && b$1.delete(e);
+}
+function De(e, n) {
+  const t = [];
+  for (const o in n) {
+    const r2 = () => {
+      if (v().isHydrating) {
+        requestAnimationFrame(r2);
         return;
       }
-      console.error("[vynn]: Suspense promise rejected:", err);
-      stream.endIfDone();
-    });
-  };
-  try {
-    return normalizeToString(children);
-  } catch (error) {
-    if (error instanceof Promise) {
-      stream.start();
-      handler(error);
-    }
-    return [`<!--~$:${id}-->`, (fallback == null ? void 0 : fallback()) ?? "", `<!--/$:${id}-->`];
-  }
-}
-const cleanupMap = /* @__PURE__ */ new Map();
-function setComponentCleanup(node, cleanups) {
-  cleanupMap.set(node, cleanups);
-}
-function runComponentCleanup(node) {
-  const cleanups = cleanupMap.get(node);
-  if (cleanups) {
-    for (const cleanup of cleanups) {
-      cleanup();
-    }
-    cleanupMap.delete(node);
-  }
-  if (node instanceof HTMLElement) {
-    for (const child of node.childNodes) {
-      runComponentCleanup(child);
-    }
-  }
-}
-const createStateContext = (key) => {
-  let instance;
-  {
-    instance = { states: [] };
-  }
-  return { ...instance, index: 0 };
-};
-function createLifeCycleContext(key) {
-  const context = {
-    mount: [],
-    state: createStateContext(),
-    effect: [],
-    destroy: []
-  };
-  return context;
-}
-function runLifecycle(rootNode, context) {
-  if (!context) return;
-  const cleanups = [];
-  setComponentCleanup(rootNode, cleanups);
-  const runMounts = async () => {
-    for (const mountFn of context.mount) {
-      const cleanup = await mountFn();
-      if (cleanup) cleanups.push(cleanup);
-    }
-    for (const destroyFn of context.destroy) {
-      cleanups.push(destroyFn);
-    }
-    for (const effectFn of context.effect) {
-      cleanups.push(() => Promise.resolve(removeEffect(effectFn)));
-    }
-  };
-  onDoneHydration(() => {
-    queueMicrotask(() => Promise.resolve().then(runMounts));
-  });
-}
-function onDoneHydration(fn) {
-  if (!ssrDomWalker().isHydrating) {
-    fn();
-    return;
-  }
-  requestAnimationFrame(() => onDoneHydration(fn));
-}
-function untrack(fn) {
-  const prevEffect = activeEffect;
-  setActiveEffect(null);
-  try {
-    return fn();
-  } finally {
-    setActiveEffect(prevEffect);
-  }
-}
-const toArray = (item) => {
-  return (Array.isArray(item) ? item : [item]).flat(Infinity);
-};
-const eventRegistry = /* @__PURE__ */ new WeakMap();
-function addEventListener(element, type, listener) {
-  let handlers = eventRegistry.get(element);
-  if (!handlers) {
-    handlers = /* @__PURE__ */ new Map();
-    eventRegistry.set(element, handlers);
-  }
-  if (handlers.has(type)) {
-    element.removeEventListener(type, handlers.get(type));
-  }
-  element.addEventListener(type, listener);
-  handlers.set(type, listener);
-}
-function removeEventListener(element, type) {
-  const handlers = eventRegistry.get(element);
-  if (!handlers) return;
-  const listener = handlers.get(type);
-  if (listener) {
-    element.removeEventListener(type, listener);
-    handlers.delete(type);
-  }
-  if (handlers.size === 0) {
-    eventRegistry.delete(element);
-  }
-}
-function applyProps(element, props) {
-  for (const key in props) {
-    const startEffect = () => {
-      if (ssrDomWalker().isHydrating) {
-        requestAnimationFrame(startEffect);
-        return;
-      }
-      $effect(() => {
-        const raw = props[key];
-        const value = typeof raw === "function" && key !== "ref" ? raw() : raw;
-        if (key.startsWith("on") && element instanceof HTMLElement) {
-          const type = key.slice(2).toLowerCase();
-          addEventListener(element, type, value);
-          return () => removeEventListener(element, type);
+      const s = C$1(() => {
+        const u2 = n[o], c = typeof u2 == "function" && o !== "ref" ? u2() : u2;
+        if (o.startsWith("on") && e instanceof HTMLElement) {
+          const f = o.slice(2).toLowerCase();
+          return Me(e, f, c), () => be(e, f);
         }
-        const isFormControl = element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement || element instanceof HTMLSelectElement;
-        if (key === "value" && isFormControl && typeof props["onInput"] !== "function" && typeof props["onChange"] !== "function") {
-          element.value = value;
-          const revert = () => {
-            if (element.value !== value) {
-              element.value = value;
-            }
+        const a = e instanceof HTMLInputElement || e instanceof HTMLTextAreaElement || e instanceof HTMLSelectElement;
+        if (o === "value" && a && typeof n.onInput != "function" && typeof n.onChange != "function") {
+          e.value = c;
+          const f = () => {
+            e.value !== c && (e.value = c);
           };
-          element.setAttribute(key, value);
-          element.addEventListener("input", revert);
-          return () => element.removeEventListener("input", revert);
+          return e.setAttribute(o, c), e.addEventListener("input", f), () => e.removeEventListener("input", f);
         }
-        if (key === "ref" && typeof value === "function") {
-          value(element);
+        if (o === "ref" && typeof c == "function") {
+          c(e);
           return;
         }
-        if (key === "style" && typeof value === "object" && element instanceof HTMLElement) {
-          applyStyle(element, value);
+        if (o === "style" && typeof c == "object" && e instanceof HTMLElement) {
+          $e(e, c);
           return;
         }
-        if (typeof value === "boolean") {
-          element.toggleAttribute(key, value);
+        if (typeof c == "boolean") {
+          e.toggleAttribute(o, c);
           return;
         }
-        if (key === "html" && typeof value === "string") {
-          element.innerHTML = value;
+        if (o === "html" && typeof c == "string") {
+          e.innerHTML = c;
           return;
         }
-        element.setAttribute(key, value);
+        e.setAttribute(o, c);
       });
+      t.push(s);
     };
-    startEffect();
+    r2();
+  }
+  return () => {
+    for (const o of t) o();
+  };
+}
+function Te(e) {
+  return CSS.supports(e, "0") && !CSS.supports(e, "0px");
+}
+function $e(e, n) {
+  if (e instanceof HTMLElement) for (const t in n) {
+    if (!Object.hasOwn(n, t)) continue;
+    const o = n[t];
+    if (o == null || t === "length" || t === "parentRule") continue;
+    const r2 = typeof o == "number", s = r2 && !Te(t);
+    e.style[t] = r2 ? s ? `${o}px` : `${o}` : String(o);
   }
 }
-function isUnitlessProp(prop) {
-  return CSS.supports(prop, "0") && !CSS.supports(prop, "0px");
-}
-function applyStyle(element, style) {
-  if (!(element instanceof HTMLElement)) return;
-  for (const key in style) {
-    if (!Object.hasOwn(style, key)) continue;
-    const value = style[key];
-    if (value == null) continue;
-    if (key === "length" || key === "parentRule") continue;
-    const isNumeric = typeof value === "number";
-    const needsUnit = isNumeric && !isUnitlessProp(key);
-    element.style[key] = isNumeric ? needsUnit ? `${value}px` : `${value}` : String(value);
-  }
-}
-function h$1(type, props = {}, children, key) {
+function le(e, n = {}, t) {
   var _a;
-  if (typeof type === "function") {
-    return mountComponent(type, props, children);
-  }
-  if (type === "html") {
-    return children;
-  }
-  xmlnsStack.push(((_a = props.xmlns) == null ? void 0 : _a.call(props)) ?? xmlnsStack[xmlnsStack.length - 1]);
-  const element = createElement(type);
-  const anchor = createTargetNode("base-anchor", true);
-  element.appendChild(anchor);
-  const cleanup = renderChildren$1(element, children, anchor);
-  applyProps(element, props);
-  queueMicrotask(() => {
-    if (!element.parentNode) return;
-    const observer = new MutationObserver((mutations) => {
-      for (const mutation of mutations) {
-        for (const removedNodes of mutation.removedNodes) {
-          if (element.isSameNode(removedNodes)) {
-            cleanup();
-            anchor.remove();
-            observer.disconnect();
-          }
-        }
-      }
+  if (typeof e == "function") return z(e, n, t);
+  if (e === "html") return t;
+  _.push(((_a = n.xmlns) == null ? void 0 : _a.call(n)) ?? _[_.length - 1]);
+  const o = ke(e), r2 = R("h-anchor", true);
+  o.appendChild(r2);
+  const s = E$1(o, t, r2), u2 = De(o, n);
+  return queueMicrotask(() => {
+    if (!o.parentNode) return;
+    const c = new MutationObserver((a) => {
+      for (const f of a) for (const i of f.removedNodes) o.isSameNode(i) && (s(), u2(), c.disconnect());
     });
-    observer.observe(element.parentNode, { childList: true });
-  });
-  xmlnsStack.pop();
-  return element;
+    c.observe(o.parentNode, { childList: true, subtree: true });
+  }), _.pop(), o;
 }
-const xmlnsStack = [];
-function createElement(tag) {
-  const { currentNode, next } = ssrDomWalker();
-  if (currentNode instanceof Element && true) {
-    if (currentNode.tagName.toLowerCase() !== tag) {
-      console.error(
-        "Hydration mismatch because the initial UI does not match what was rendered on the server"
-      );
-    }
-    next();
-    return currentNode;
+const _ = [];
+function ke(e) {
+  const { currentNode: n, next: t } = v();
+  if (n instanceof Element && true) {
+    if (n.tagName.toLowerCase() !== e) throw new Error("Hydration mismatch because the initial UI does not match what was rendered on the server");
+    return t(), n;
   }
-  const currentXmlns = xmlnsStack[xmlnsStack.length - 1];
-  return currentXmlns ? document.createElementNS(currentXmlns, tag) : document.createElement(tag);
+  const o = _[_.length - 1];
+  return o ? document.createElementNS(o, e) : document.createElement(e);
 }
-function mapArray(list, mapFn) {
-  let items = [];
+function Ie(e, n) {
+  let t = [];
   return () => {
     var _a;
-    const arr = list() || [];
-    const len = arr.length;
-    const newItems = new Array(len);
-    const oldIndexMap = /* @__PURE__ */ new Map();
-    for (let i = 0; i < items.length; i++) {
-      const key = items[i].value;
-      if (!oldIndexMap.has(key)) oldIndexMap.set(key, []);
-      oldIndexMap.get(key).push(i);
+    const o = e() || [], r2 = o.length, s = new Array(r2), u2 = /* @__PURE__ */ new Map();
+    for (let i = 0; i < t.length; i++) {
+      const p = t[i].value;
+      u2.has(p) || u2.set(p, []), u2.get(p).push(i);
     }
-    const newToOld = new Array(len).fill(-1);
-    for (let i = 0; i < len; i++) {
-      const value = arr[i];
-      const oldIndices = oldIndexMap.get(value);
-      if (oldIndices && oldIndices.length) {
-        const oldIndex = oldIndices.shift();
-        newToOld[i] = oldIndex;
-        newItems[i] = items[oldIndex];
+    const c = new Array(r2).fill(-1);
+    for (let i = 0; i < r2; i++) {
+      const p = o[i], l2 = u2.get(p);
+      if (l2 && l2.length) {
+        const m2 = l2.shift();
+        c[i] = m2, s[i] = t[m2];
       } else {
-        const idxState = $state(i);
-        const element = mapFn(value, idxState);
-        newItems[i] = { value, index: idxState, element };
+        const m2 = x(i), me = n(p, m2);
+        s[i] = { value: p, index: m2, element: me };
       }
     }
-    const seq = longestIncreasingSubsequence(newToOld);
-    let seqIdx = seq.length - 1;
-    for (let i = len - 1; i >= 0; i--) {
-      const item = newItems[i];
-      if (newToOld[i] === -1 || i !== seq[seqIdx]) {
-        const anchor = i + 1 < len ? newItems[i + 1].element : null;
-        (_a = item.element.parentNode) == null ? void 0 : _a.insertBefore(item.element, anchor);
-      } else {
-        seqIdx--;
-      }
-      item.index.value = i;
+    const a = He(c);
+    let f = a.length - 1;
+    for (let i = r2 - 1; i >= 0; i--) {
+      const p = s[i];
+      if (c[i] === -1 || i !== a[f]) {
+        const l2 = i + 1 < r2 ? s[i + 1].element : null;
+        (_a = p.element.parentNode) == null ? void 0 : _a.insertBefore(p.element, l2);
+      } else f--;
+      p.index.value = i;
     }
-    items = newItems;
-    return items.map((it) => it.element);
+    return t = s, t.map((i) => i.element);
   };
 }
-function longestIncreasingSubsequence(arr) {
-  const p = arr.slice();
-  const result = [];
-  let u, v;
-  for (let i = 0; i < arr.length; i++) {
-    const n = arr[i];
-    if (n < 0) continue;
-    if (result.length === 0 || arr[result[result.length - 1]] < n) {
-      p[i] = result.length > 0 ? result[result.length - 1] : -1;
-      result.push(i);
-      continue;
-    }
-    u = 0;
-    v = result.length - 1;
-    while (u < v) {
-      const c = (u + v) / 2 | 0;
-      if (arr[result[c]] < n) u = c + 1;
-      else v = c;
-    }
-    if (n < arr[result[u]]) {
-      if (u > 0) p[i] = result[u - 1];
-      result[u] = i;
+function He(e) {
+  const n = e.slice(), t = [];
+  let o, r2;
+  for (let s = 0; s < e.length; s++) {
+    const u2 = e[s];
+    if (!(u2 < 0)) {
+      if (t.length === 0 || e[t[t.length - 1]] < u2) {
+        n[s] = t.length > 0 ? t[t.length - 1] : -1, t.push(s);
+        continue;
+      }
+      for (o = 0, r2 = t.length - 1; o < r2; ) {
+        const c = (o + r2) / 2 | 0;
+        e[t[c]] < u2 ? o = c + 1 : r2 = c;
+      }
+      u2 < e[t[o]] && (o > 0 && (n[s] = t[o - 1]), t[o] = s);
     }
   }
-  u = result.length;
-  v = result[u - 1];
-  while (u-- > 0) {
-    result[u] = v;
-    v = p[v];
-  }
-  return result;
+  for (o = t.length, r2 = t[o - 1]; o-- > 0; ) t[o] = r2, r2 = n[r2];
+  return t;
 }
-function loop(items) {
-  return {
-    each(children) {
-      const each = items;
-      children = children;
-      if (isServer$1) {
-        const renderedItems = each().map((item, i) => children(item, { value: i }));
-        return renderedItems;
-      }
-      return h$1(Loop, { each, children });
-    }
-  };
+function fe({ each: e, children: n }) {
+  const t = x([]), o = Ie(e, n);
+  return C$1(() => {
+    t.value = o();
+  }), () => t.value;
 }
-function Loop({
-  each,
-  children
-}) {
-  const result = $state([]);
-  const handler = getSuspenseHandler();
-  const listFn = mapArray(each, children);
-  $effect(() => {
-    try {
-      result.value = listFn();
-    } catch (err) {
-      if (err instanceof Promise && handler) {
-        handler(err);
-      } else {
-        throw err;
-      }
-    }
+function E(t) {
+  const e = ((r2) => {
+    const i = h$1().memo;
+    let o = i.get(e);
+    return o || (o = { lastProps: void 0, hasLast: false, lastResult: void 0 }, i.set(e, o)), o.hasLast && h(o.lastProps, r2) || (o.lastProps = r2, o.lastResult = t(r2), o.hasLast = true), o.lastResult;
   });
-  return () => result.value;
+  return e;
 }
-function onDestroy(fn) {
-  const context = getRuntimeContext();
-  if (!context) {
-    throw new Error("onDestroy called outside of component");
-  }
-  context.destroy.push(fn);
-}
-function onMount(fn) {
-  if (isServer$1) return;
-  const context = getRuntimeContext();
-  if (!context) {
-    throw new Error("onMount called outside of component");
-  }
-  context.mount.push(fn);
-}
-function Portal({ children, target }) {
-  let cleanup;
-  onMount(() => {
-    const mount = (target instanceof Function ? target() : target) ?? document.body;
-    cleanup = renderChildren$1(mount, children);
-  });
-  onDestroy(() => {
-    cleanup();
-  });
-  return () => null;
-}
-const IGNORE_COMPONENT = [Suspense, Loop, Portal];
-function resolveComponentProps(type, props = {}) {
-  if (IGNORE_COMPONENT.includes(type)) return;
-  for (const key in props) {
-    props[key] = props[key] instanceof Function ? props[key]() : props[key];
-  }
-}
-const rootNodes = /* @__PURE__ */ new WeakSet();
-function mountComponent(type, props, children, _key) {
-  resolveComponentProps(type, props);
-  const context = createLifeCycleContext();
-  setRuntimeContext(context);
-  const rootNode = createTargetNode("root");
-  const value = untrack(
-    () => children ? type({ ...props, children }) : type(props)
-  );
-  const jsxElements = toArray([rootNode, value]).flat();
-  setRuntimeContext(null);
-  runLifecycle(rootNode, context);
-  rootNodes.add(rootNode);
-  return jsxElements;
-}
-queueMicrotask(() => {
-  if (!isServer$1) {
-    const observer = new MutationObserver((mutations) => {
-      for (const mutation of mutations) {
-        for (const removedNodes of mutation.removedNodes) {
-          runComponentCleanup(removedNodes);
-        }
-      }
-    });
-    observer.observe(document.body, { childList: true, subtree: true });
-  }
-});
-function createTargetNode(name2, forceTextNode = false) {
-  let targetNode;
-  if (process.env.NODE_ENV === "development" && !forceTextNode) {
-    targetNode = document.createComment(name2);
-  } else {
-    targetNode = document.createTextNode("");
-  }
-  rootNodes.add(targetNode);
-  return targetNode;
-}
-function getNode(jsxElement) {
-  if (jsxElement instanceof Node) {
-    return jsxElement;
-  }
-  if (typeof jsxElement === "string" || typeof jsxElement === "number") {
-    const { currentNode, next } = ssrDomWalker();
-    if (currentNode instanceof Text && true) {
-      if (currentNode.textContent !== String(jsxElement)) {
-        throw new Error(
-          "Hydration mismatch because the initial UI does not match what was rendered on the server"
-        );
-      }
-      next();
-      return currentNode;
-    }
-    return document.createTextNode(String(jsxElement));
-  }
-  throw new Error(`Unknown value: ${jsxElement}`);
-}
-function renderChildren$1(parentNode, children, baseAnchor = null) {
-  if (!isNil(baseAnchor) && !(baseAnchor == null ? void 0 : baseAnchor.parentNode)) return () => {
-  };
-  let renderDisposers = [];
-  for (const _child of toArray(children)) {
-    let subRenderDisposers = [];
-    let nodeDisposers = [];
-    const anchor = createTargetNode("anchor");
-    parentNode.insertBefore(anchor, baseAnchor);
-    const cleanup = () => {
-      for (const dispose of subRenderDisposers) dispose == null ? void 0 : dispose();
-      subRenderDisposers = [];
-      for (const dispose of nodeDisposers) dispose();
-      nodeDisposers = [];
-    };
-    const handler = getSuspenseHandler();
-    const effectDisposer = $effect(() => {
-      try {
-        cleanup();
-        const child = typeof _child === "function" ? _child() : _child;
-        if (isNil(child)) {
-          return;
-        }
-        if (typeof child === "function" || Array.isArray(child)) {
-          const dispose = renderChildren$1(parentNode, child, anchor);
-          subRenderDisposers.push(dispose);
-          renderDisposers.push(dispose);
-          return;
-        }
-        const node = getNode(child);
-        parentNode.insertBefore(node, anchor);
-        nodeDisposers.push(() => runComponentCleanup(node));
-        nodeDisposers.push(() => parentNode.removeChild(node));
-      } catch (error) {
-        if (error instanceof Promise && handler) {
-          handler(error);
-        } else {
-          throw error;
-        }
-      }
-    });
-    renderDisposers.push(() => cleanup());
-    renderDisposers.push(() => anchor.remove());
-    renderDisposers.push(effectDisposer);
-  }
-  return () => {
-    for (const dispose of renderDisposers) {
-      dispose();
-    }
-    renderDisposers = [];
-  };
-}
-function memo(fn) {
-  const wrapper = ((props) => {
-    const memoStore = clientStreamContext().memo;
-    let state = memoStore.get(wrapper);
-    if (!state) {
-      state = { lastProps: void 0, hasLast: false, lastResult: void 0 };
-      memoStore.set(wrapper, state);
-    }
-    if (state.hasLast && isEqual(state.lastProps, props)) {
-      return state.lastResult;
-    }
-    state.lastProps = props;
-    state.lastResult = fn(props);
-    state.hasLast = true;
-    return state.lastResult;
-  });
-  return wrapper;
-}
-function isEqual(a, b) {
-  if (a === b) return true;
-  if (a !== a && b !== b) return true;
-  if (a == null || b == null) return false;
-  if (a instanceof Date && b instanceof Date) {
-    return a.getTime() === b.getTime();
-  }
-  if (a instanceof RegExp && b instanceof RegExp) {
-    return a.toString() === b.toString();
-  }
-  if (Array.isArray(a) && Array.isArray(b)) {
-    if (a.length !== b.length) return false;
-    for (let i = 0; i < a.length; i++) {
-      if (!isEqual(a[i], b[i])) return false;
-    }
+function h(t, e) {
+  if (t === e || t !== t && e !== e) return true;
+  if (t == null || e == null) return false;
+  if (t instanceof Date && e instanceof Date) return t.getTime() === e.getTime();
+  if (t instanceof RegExp && e instanceof RegExp) return t.toString() === e.toString();
+  if (Array.isArray(t) && Array.isArray(e)) {
+    if (t.length !== e.length) return false;
+    for (let r2 = 0; r2 < t.length; r2++) if (!h(t[r2], e[r2])) return false;
     return true;
   }
-  if (typeof a === "object" && typeof b === "object" && a.constructor === Object && b.constructor === Object) {
-    const keysA = Object.keys(a);
-    const keysB = Object.keys(b);
-    if (keysA.length !== keysB.length) return false;
-    for (const key of keysA) {
-      if (!Object.prototype.hasOwnProperty.call(b, key)) return false;
-      if (!isEqual(a[key], b[key])) return false;
-    }
+  if (typeof t == "object" && typeof e == "object" && t.constructor === Object && e.constructor === Object) {
+    const r2 = Object.keys(t), i = Object.keys(e);
+    if (r2.length !== i.length) return false;
+    for (const o of r2) if (!Object.prototype.hasOwnProperty.call(e, o) || !h(t[o], e[o])) return false;
     return true;
   }
   return false;
 }
-const MARKER_START = "lazy";
-const MARKER_END = "/lazy";
-let isWarned = false;
-const lazy = (_loader, namedExport = "default") => {
-  if (!isWarned) {
-    console.warn(`[vynn]: lazy() is still experimental so expect flickers`);
-    isWarned = true;
-  }
-  const loader = _loader();
-  const id = clientStreamContext().lazyID++;
-  let component;
-  let error;
-  let promise = null;
-  const getComponent = () => {
-    if (component) return component;
-    if (error) throw error;
-    if (!isServerStreaming && ssrDomWalker().isHydrating && window.__SSR_STREAMING_APP__ && true) {
-      const ssrDom = lazyNodes[id];
-      setSsrDomWalker([...ssrDomWalker().renderedNodes, ...ssrDom]);
-      promise = loader.then((modules) => {
-        if (!(namedExport in modules)) {
-          throw new Error(`lazy(): Export "${String(namedExport)}" not found in module`);
-        }
-        component = modules[namedExport];
-      });
-      throw promise;
-    }
-    if (!promise) {
-      promise = loader.then((modules) => {
-        if (!(namedExport in modules)) {
-          throw new Error(`lazy(): Export "${String(namedExport)}" not found in module`);
-        }
-        component = modules[namedExport];
-      }).catch((err) => {
-        error = err instanceof Error ? err : new Error(String(err));
-      });
-    }
-    throw promise;
-  };
-  return memo(() => {
-    const Component2 = getComponent();
-    const resolved = Component2();
-    if (isServerStreaming) {
-      return () => [
-        `<!--${MARKER_START}:${id}-->`,
-        resolved instanceof Function ? resolved() : resolved,
-        `<!--${MARKER_END}:${id}-->`
-      ];
-    }
-    globalThis.__lazy++;
-    return resolved;
-  });
-};
-const proxyMap = /* @__PURE__ */ new WeakMap();
-function $store(initialObject) {
-  function createReactiveObject(obj) {
-    if (proxyMap.has(obj)) return proxyMap.get(obj);
-    const proxy = new Proxy(obj, {
-      get(target, key, receiver) {
-        track(target, key);
-        const result = Reflect.get(target, key, receiver);
-        if (typeof result === "function") {
-          return result.bind(receiver);
-        }
-        const descriptor = Reflect.getOwnPropertyDescriptor(target, key);
-        if (descriptor == null ? void 0 : descriptor.get) {
-          return descriptor.get.call(receiver);
-        }
-        if (typeof result === "object" && result !== null) {
-          return createReactiveObject(result);
-        }
-        return result;
-      },
-      set(target, key, value, receiver) {
-        const oldValue = target[key];
-        const result = Reflect.set(target, key, value, receiver);
-        if (oldValue !== value) {
-          trigger(target, key);
-        }
-        return result;
-      }
-    });
-    proxyMap.set(obj, proxy);
-    return proxy;
-  }
-  return createReactiveObject(initialObject);
-}
-function resource(fetcher, _params) {
-  const context = clientStreamContext();
-  const id = context.resourceID++;
-  const state = $store({
-    loading: true,
-    error: null,
-    data: void 0,
-    promiseStatus: "pending"
-  });
-  let promise = null;
-  const refetch = () => {
-    var _a;
-    const params2 = _params.map((p) => p());
-    untrack(() => {
-      state.loading = true;
-      state.error = null;
-      state.data = void 0;
-      state.promiseStatus = "pending";
-    });
-    if (!isServerStreaming && !isServer$1 && window.__resource && ((_a = window.__resource) == null ? void 0 : _a[id])) {
-      untrack(() => {
-        var _a2;
-        state.data = (_a2 = window.__resource) == null ? void 0 : _a2[id];
-        state.error = null;
-        state.promiseStatus = "fulfilled";
-        state.loading = false;
-      });
-      delete window.__resource[id];
-      if (!window.__resource.length) {
-        delete window.__resource;
-      }
-    } else {
-      promise = untrack(() => fetcher(...params2));
-      promise.then((result) => {
-        untrack(() => {
-          state.data = result;
-          state.error = null;
-          state.promiseStatus = "fulfilled";
-          state.loading = false;
-        });
-        if (isServerStreaming) {
-          const { controller, encoder } = getCurrentStream();
-          controller.enqueue(
-            encoder.encode(
-              `<script>window.__resource ??= []; window.__resource[${id}] = ${JSON.stringify(result)};document.currentScript.remove();<\/script>`
-            )
-          );
-        }
-      }).catch((err) => {
-        untrack(() => {
-          state.data = void 0;
-          state.error = err;
-          state.promiseStatus = "rejected";
-          state.loading = false;
-        });
-      });
-    }
-  };
-  $effect(() => {
-    refetch();
-  });
-  return {
-    get loading() {
-      return state.loading;
-    },
-    get error() {
-      return state.error;
-    },
-    get data() {
-      if (state.promiseStatus === "pending") throw promise;
-      if (state.promiseStatus === "rejected") throw state.error;
-      return state.data;
-    },
-    refetch,
-    mutate(newValue) {
-      state.data = newValue;
-    }
-  };
-}
-const map = /* @__PURE__ */ new WeakMap();
-function createContext() {
-  const id = Symbol("context");
-  function Provider(props) {
-    map.set(id, props.value);
-    return props.children();
-  }
-  function getContext() {
-    const value = map.get(id);
-    if (!value) {
-      throw new Error("No provider found for context.");
-    }
-    return value;
-  }
-  return [Provider, getContext];
-}
-function $computed(getter) {
-  const result = $state();
-  $effect(() => {
-    result.value = getter();
-  });
-  return {
-    get value() {
-      return result.value;
-    }
-  };
-}
-function stringifyProps(props) {
-  const transformedProps = [];
-  for (const key in props) {
-    if (key.startsWith("on") && typeof props[key] === "function") {
-      continue;
-    }
-    const value = typeof props[key] === "function" ? props[key]() : props[key];
-    if (key === "ref") {
-      continue;
-    }
-    if (key === "style") {
-      continue;
-    }
-    if (key === "html") {
-      continue;
-    }
-    if (typeof value === "boolean") {
-      if (value) transformedProps.push(key);
-      continue;
-    }
-    transformedProps.push(`${key}="${value}"`);
-  }
-  if (transformedProps.length > 0) transformedProps.unshift("");
-  return transformedProps.join(" ");
-}
-const skipWrappingTags = /* @__PURE__ */ new Set(["title", "meta", "script", "style"]);
-function renderChildren(parent, children) {
-  function renderRecursive(value) {
-    const transformedChildren = [];
-    const resolvedChildren = value instanceof Function ? value() : value;
-    const children2 = toArray(resolvedChildren);
-    for (const child of children2) {
-      if (isNil(child)) continue;
-      if (typeof child === "function") {
-        const resolved = renderRecursive(child);
-        if (!isNil(resolved)) transformedChildren.push(resolved);
-      } else {
-        const resolved = getNodeString(child, skipWrappingTags.has(parent));
-        if (!isNil(resolved)) transformedChildren.push(resolved);
-      }
-    }
-    return transformedChildren.join("") || null;
-  }
-  return renderRecursive(children);
-}
-const voidElements = /* @__PURE__ */ new Set([
-  "area",
-  "base",
-  "br",
-  "col",
-  "embed",
-  "hr",
-  "img",
-  "input",
-  "link",
-  "meta",
-  "param",
-  "source",
-  "track",
-  "wbr"
-]);
-function h(type, props = {}, children, _key) {
-  if (typeof type === "function") {
-    resolveComponentProps(type, props);
-    const context = createLifeCycleContext();
-    setRuntimeContext(context);
-    try {
-      const resolved2 = normalizeToString(type({ ...props, children }));
-      return resolved2 || void 0;
+const $$1 = "lazy", j = "/lazy", M = (t, e = "default") => {
+  let r2, i, o, a = null;
+  const n = () => {
+    if (i) try {
+      return i;
     } finally {
-      setRuntimeContext(null);
-      context.destroy.forEach((cleanup) => cleanup());
+      i = void 0;
+    }
+    throw o || (a = t().then(async (s) => {
+      if (!(e in s)) throw new Error(`lazy(): Export "${String(e)}" not found in module`);
+      i = (() => {
+        const u2 = O[r2] || [];
+        return ge([...v().renderedNodes, ...u2]), O[r2] = [], s[e]();
+      });
+    }).catch((s) => {
+      o = s instanceof Error ? s : new Error(String(s));
+    }), Object.assign(a, { __fromLazy: !v().isHydrating }));
+  };
+  return E(() => {
+    if (r2 ?? (r2 = h$1().lazyID++), y && !W()) throw new Promise(() => {
+    });
+    const s = n()();
+    return W() ? () => [`<!--${$$1}:${r2}-->`, s instanceof Function ? s() : s, `<!--${j}:${r2}-->`] : s;
+  });
+};
+const w = /* @__PURE__ */ new WeakMap();
+function N(t) {
+  function e(r2) {
+    if (w.has(r2)) return w.get(r2);
+    const i = new Proxy(r2, { get(o, a, n) {
+      ee(o, a);
+      const s = Reflect.get(o, a, n);
+      if (typeof s == "function") return s.bind(n);
+      const u2 = Reflect.getOwnPropertyDescriptor(o, a);
+      return (u2 == null ? void 0 : u2.get) ? u2.get.call(n) : typeof s == "object" && s !== null ? e(s) : s;
+    }, set(o, a, n, s) {
+      const u2 = o[a], l2 = Reflect.set(o, a, n, s);
+      return u2 !== n && te(o, a), l2;
+    } });
+    return w.set(r2, i), i;
+  }
+  return e(t);
+}
+function k(t, e, r2 = true) {
+  const i = D(), o = h$1(), a = o.resourceID++, n = N({ loading: true, error: null, data: void 0, promiseStatus: "pending" });
+  let s = null;
+  const u2 = () => {
+    var _a;
+    const l2 = e.map((c) => c());
+    X(() => {
+      n.loading = true, n.error = null, n.data = void 0, n.promiseStatus = "pending";
+    }), !W() && !y && window.__resource && ((_a = window.__resource) == null ? void 0 : _a[a]) && r2 ? (X(() => {
+      var _a2;
+      n.data = (_a2 = window.__resource) == null ? void 0 : _a2[a], n.error = null, n.promiseStatus = "fulfilled", n.loading = false;
+    }), delete window.__resource[a], window.__resource.length || delete window.__resource) : (s = X(() => t(...l2)), s.then((c) => {
+      X(() => {
+        n.data = c, n.error = null, n.promiseStatus = "fulfilled", n.loading = false;
+      }), W() && r2 && i.controller.enqueue(i.encoder.encode(`<script>window.__resource ??= []; window.__resource[${a}] = ${JSON.stringify(c)};document.currentScript.remove();<\/script>`));
+    }).catch((c) => {
+      X(() => {
+        n.data = void 0, n.error = c, n.promiseStatus = "rejected", n.loading = false;
+      });
+    }));
+  };
+  return C$1(() => {
+    u2();
+  }), { get loading() {
+    return n.loading;
+  }, get error() {
+    return n.error;
+  }, get data() {
+    if (n.promiseStatus === "pending") throw s;
+    if (n.promiseStatus === "rejected") throw n.error;
+    return n.data;
+  }, refetch: u2, mutate(l2) {
+    n.data = l2;
+  } };
+}
+function C() {
+  let t;
+  function e(i) {
+    return t = i.value, i.children;
+  }
+  function r2() {
+    if (!t) throw new Error("No provider found for context.");
+    return t;
+  }
+  return [e, r2];
+}
+function A(t) {
+  const e = x();
+  return C$1(() => {
+    e.value = t();
+  }), { get value() {
+    return e.value;
+  } };
+}
+function u(n) {
+  const e = [];
+  for (const t in n) {
+    if (t.startsWith("on") && typeof n[t] == "function") continue;
+    const o = typeof n[t] == "function" ? n[t]() : n[t];
+    if (t !== "ref" && t !== "style" && t !== "html") {
+      if (typeof o == "boolean") {
+        o && e.push(t);
+        continue;
+      }
+      e.push(`${t}="${o}"`);
     }
   }
-  if (voidElements.has(type)) {
-    return `<${type}${stringifyProps(props)}>`;
-  }
-  const resolved = renderChildren(type, "html" in props ? props["html"] : children) || "";
-  return `<${type}${stringifyProps(props)}>${resolved}</${type}>`;
+  return e.length > 0 && e.unshift(""), e.join(" ");
 }
-const jsx = (type, { children, ...props } = {}, key) => {
-  if (isServer$1) {
-    return h(type, props, children);
+const $ = /* @__PURE__ */ new Set(["title", "meta", "script", "style"]);
+function l(n, e) {
+  const t = [];
+  for (const o of Q(U(e))) {
+    const s = typeof o == "function" ? o() : o;
+    if (L(s)) continue;
+    if (typeof s == "function" || Array.isArray(s)) {
+      const f = l(n, s);
+      L(f) || t.push(f);
+      continue;
+    }
+    const i = re(s, $.has(n));
+    L(i) || t.push(i);
   }
-  return h$1(type, props, children);
-};
+  for (const [o] of t.entries()) t[o] && t[o + 1] && oe(t[o]) && oe(t[o + 1]) && t.splice(o + 1, 0, "<!--split-->");
+  return t.join("") || null;
+}
+const g = /* @__PURE__ */ new Set(["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"]);
+function b(n, e = {}, t) {
+  if (typeof n == "function") {
+    ae(n, e);
+    const s = K(crypto.randomUUID());
+    $$2(s);
+    try {
+      return n({ ...e, children: t }) || void 0;
+    } finally {
+      $$2(null), s.destroy.forEach((i) => i());
+    }
+  }
+  if (g.has(n)) return `<${n}${u(e)}>`;
+  const o = l(n, "html" in e ? e.html : t) || "";
+  return `<${n}${u(e)}>${o}</${n}>`;
+}
+const m = (r2, { children: s, ...o } = {}) => y ? b(r2, o, s) : le(r2, o, s);
 const isServer = typeof window === "undefined";
-const $location = $store({
+const $location = N({
   pathname: !isServer ? window.location.pathname : "/",
   search: !isServer ? window.location.search : ""
 });
@@ -1150,7 +721,7 @@ function matchRoute(path, routes2, basePath = "") {
       };
     }
   }
-  const star = routes2.find((r) => r.path.startsWith("*"));
+  const star = routes2.find((r2) => r2.path.startsWith("*"));
   if (star) {
     const key = star.path.slice(1) || "wildcard";
     return {
@@ -1162,14 +733,13 @@ function matchRoute(path, routes2, basePath = "") {
   }
   return void 0;
 }
-const params = $store({});
+const params = N({});
 function Router({
   url,
   routes: routes2
 }) {
   if (url) $location.pathname = url;
   return () => {
-    console.log("changed");
     const matched = matchRoute($location.pathname, routes2);
     if (matched) {
       const {
@@ -1181,13 +751,13 @@ function Router({
       return buildComponentTree(chain);
     }
     for (const key in params) delete params[key];
-    return () => /* @__PURE__ */ jsx(Fragment, {});
+    return () => /* @__PURE__ */ m(r, {});
   };
 }
-const [OutletProvider, outletContext] = createContext();
+const [OutletProvider, outletContext] = C();
 function Outlet() {
   const Child = outletContext();
-  return () => /* @__PURE__ */ jsx(Child, {});
+  return () => /* @__PURE__ */ m(Child, {});
 }
 function buildComponentTree(chain) {
   let Component2 = () => null;
@@ -1195,80 +765,80 @@ function buildComponentTree(chain) {
     const route = chain[i];
     const Comp = route.component;
     const child = Component2;
-    Component2 = () => /* @__PURE__ */ jsx(OutletProvider, {
+    Component2 = () => /* @__PURE__ */ m(OutletProvider, {
       value: () => child,
-      children: () => /* @__PURE__ */ jsx(Comp, {})
+      children: () => /* @__PURE__ */ m(Comp, {})
     });
   }
-  return () => /* @__PURE__ */ jsx(Component2, {});
+  return () => /* @__PURE__ */ m(Component2, {});
 }
 const Template = ({
   title,
   children
 }) => {
-  return () => /* @__PURE__ */ jsx("div", {
+  return () => /* @__PURE__ */ m("div", {
     class: () => "p-2 w-full",
-    children: () => [() => /* @__PURE__ */ jsx("h1", {
+    children: () => [() => /* @__PURE__ */ m("h1", {
       class: () => "font-bold text-2xl mb-2",
       children: () => title
     }), () => children()]
   });
 };
 const ButtonPageList = () => {
-  return () => /* @__PURE__ */ jsx(Template, {
+  return () => /* @__PURE__ */ m(Template, {
     title: () => "Pages",
-    children: () => /* @__PURE__ */ jsx("ul", {
+    children: () => /* @__PURE__ */ m("ul", {
       class: () => "flex flex-col gap-2",
-      children: () => [() => /* @__PURE__ */ jsx("li", {
-        children: () => /* @__PURE__ */ jsx("button", {
+      children: () => [() => /* @__PURE__ */ m("li", {
+        children: () => /* @__PURE__ */ m("button", {
           onClick: () => () => navigate("/"),
           disabled: () => isActiveRoute("/"),
           children: () => "All"
         })
-      }), () => /* @__PURE__ */ jsx("li", {
-        children: () => /* @__PURE__ */ jsx("button", {
+      }), () => /* @__PURE__ */ m("li", {
+        children: () => /* @__PURE__ */ m("button", {
           onClick: () => () => navigate("/lazy"),
           disabled: () => isActiveRoute("/lazy"),
           children: () => "Lazy"
         })
-      }), () => /* @__PURE__ */ jsx("li", {
-        children: () => /* @__PURE__ */ jsx("button", {
+      }), () => /* @__PURE__ */ m("li", {
+        children: () => /* @__PURE__ */ m("button", {
           onClick: () => () => navigate("/forms"),
           disabled: () => isActiveRoute("/forms"),
           children: () => "Forms"
         })
-      }), () => /* @__PURE__ */ jsx("li", {
-        children: () => /* @__PURE__ */ jsx("button", {
+      }), () => /* @__PURE__ */ m("li", {
+        children: () => /* @__PURE__ */ m("button", {
           onClick: () => () => navigate("/contexts"),
           disabled: () => isActiveRoute("/contexts"),
           children: () => "Contexts"
         })
-      }), () => /* @__PURE__ */ jsx("li", {
-        children: () => /* @__PURE__ */ jsx("button", {
+      }), () => /* @__PURE__ */ m("li", {
+        children: () => /* @__PURE__ */ m("button", {
           onClick: () => () => navigate("/dropdown-list"),
           disabled: () => isActiveRoute("/dropdown-list"),
           children: () => "Dropdown Lists"
         })
-      }), () => /* @__PURE__ */ jsx("li", {
-        children: () => /* @__PURE__ */ jsx("button", {
+      }), () => /* @__PURE__ */ m("li", {
+        children: () => /* @__PURE__ */ m("button", {
           onClick: () => () => navigate("/non-async-suspense"),
           disabled: () => isActiveRoute("/non-async-suspense"),
           children: () => "Non Async Suspense"
         })
-      }), () => /* @__PURE__ */ jsx("li", {
-        children: () => /* @__PURE__ */ jsx("button", {
+      }), () => /* @__PURE__ */ m("li", {
+        children: () => /* @__PURE__ */ m("button", {
           onClick: () => () => navigate("/stacked-suspense"),
           disabled: () => isActiveRoute("/stacked-suspense"),
           children: () => "Stacked Suspense"
         })
-      }), () => /* @__PURE__ */ jsx("li", {
-        children: () => /* @__PURE__ */ jsx("button", {
+      }), () => /* @__PURE__ */ m("li", {
+        children: () => /* @__PURE__ */ m("button", {
           onClick: () => () => navigate("/poke-dex"),
           disabled: () => isActiveRoute("/poke-dex"),
           children: () => "PokeDex List"
         })
-      }), () => /* @__PURE__ */ jsx("li", {
-        children: () => /* @__PURE__ */ jsx("button", {
+      }), () => /* @__PURE__ */ m("li", {
+        children: () => /* @__PURE__ */ m("button", {
           onClick: () => () => navigate("/poke-dex-suspense"),
           disabled: () => isActiveRoute("/poke-dex-suspense"),
           children: () => "PokeDex List with Suspense"
@@ -1278,25 +848,25 @@ const ButtonPageList = () => {
   });
 };
 function Contexts() {
-  return () => /* @__PURE__ */ jsx(Template, {
+  return () => /* @__PURE__ */ m(Template, {
     title: () => "Contexts",
-    children: () => [() => /* @__PURE__ */ jsx(Form, {
-      children: () => /* @__PURE__ */ jsx(Input$1, {})
-    }), () => /* @__PURE__ */ jsx(Form, {
-      children: () => /* @__PURE__ */ jsx(Wrapper, {
-        children: () => /* @__PURE__ */ jsx(Input$1, {})
+    children: () => [() => /* @__PURE__ */ m(Form, {
+      children: () => /* @__PURE__ */ m(Input$1, {})
+    }), () => /* @__PURE__ */ m(Form, {
+      children: () => /* @__PURE__ */ m(Wrapper, {
+        children: () => /* @__PURE__ */ m(Input$1, {})
       })
     })]
   });
 }
-const [FormProvider, formContext] = createContext();
+const [FormProvider, formContext] = C();
 function Form({
   children
 }) {
-  const state = $store({
+  const state = N({
     name: "asd"
   });
-  return () => /* @__PURE__ */ jsx(FormProvider, {
+  return () => /* @__PURE__ */ m(FormProvider, {
     value: () => state,
     children: () => children()
   });
@@ -1304,28 +874,23 @@ function Form({
 function Wrapper({
   children
 }) {
-  return () => /* @__PURE__ */ jsx(Fragment, {
-    children: () => [() => /* @__PURE__ */ jsx("div", {
+  return () => /* @__PURE__ */ m(r, {
+    children: () => [() => /* @__PURE__ */ m("div", {
       children: () => "Hi"
     }), () => " ", () => children()]
   });
 }
-function Input$1() {
+const Input$1 = () => {
   const forms = formContext();
-  const i = $state(0);
-  const cleanup = setInterval(() => {
-    i.value++;
-  }, 1e3);
-  onDestroy(() => {
-    clearInterval(cleanup);
-  });
-  const nameEl = () => /* @__PURE__ */ jsx("div", {
+  const i = x(0);
+  const nameEl = () => /* @__PURE__ */ m("div", {
     children: () => [() => "Name: ", () => forms.name, () => " Hi"]
   });
-  return () => /* @__PURE__ */ jsx(Fragment, {
-    children: () => [() => /* @__PURE__ */ jsx("div", {
+  console.log("hi");
+  return () => /* @__PURE__ */ m(r, {
+    children: () => [() => /* @__PURE__ */ m("div", {
       children: () => [() => "Name: ", () => forms.name]
-    }), () => nameEl, () => /* @__PURE__ */ jsx("input", {
+    }), () => nameEl, () => /* @__PURE__ */ m("input", {
       type: () => "text",
       name: () => "name",
       onInput: () => (event) => forms.name = event.currentTarget.value,
@@ -1334,8 +899,8 @@ function Input$1() {
       value: () => forms.name
     }), " ", () => i.value]
   });
-}
-const name = $store({
+};
+const name = N({
   firstName: "First name",
   lastName: "Last name"
 });
@@ -1343,28 +908,29 @@ const sleep = (ms) => new Promise((resolve) => {
   setTimeout(resolve, ms);
 });
 const Dropdowns = () => {
-  const dropdownStore = $store({
-    showDropdown: true,
+  console.log("Dropdown rerender");
+  const dropdownStore = N({
+    showDropdown: false,
     sortDirection: "asc",
     numbers: [1, 2, 3, 4, 5, 6, 7, 8],
     handleSort() {
-      this.numbers = [...this.numbers].sort((a, b) => {
-        return this.sortDirection === "desc" ? a - b : b - a;
+      this.numbers = [...this.numbers].sort((a, b2) => {
+        return this.sortDirection === "desc" ? a - b2 : b2 - a;
       });
       this.sortDirection = this.sortDirection === "asc" ? "desc" : "asc";
     },
     handleRandomize() {
       const result = [...this.numbers];
       for (let i = result.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [result[i], result[j]] = [result[j], result[i]];
+        const j2 = Math.floor(Math.random() * (i + 1));
+        [result[i], result[j2]] = [result[j2], result[i]];
       }
       this.numbers = result;
     },
     addDropdown() {
       let currentNumbers = [...this.numbers];
       if (currentNumbers.length >= 8) return;
-      currentNumbers = currentNumbers.sort((a, b) => a - b);
+      currentNumbers = currentNumbers.sort((a, b2) => a - b2);
       if (!currentNumbers.length) {
         this.numbers = [1];
       } else {
@@ -1377,52 +943,49 @@ const Dropdowns = () => {
       }
     }
   });
-  onMount(async () => {
-    console.log("Dropdowns onMount");
+  C$1(() => {
+    console.log(dropdownStore.numbers);
   });
-  onDestroy(async () => {
-    console.log("Dropdowns onDestroy");
-  });
-  return () => /* @__PURE__ */ jsx(Template, {
+  return () => /* @__PURE__ */ m(Template, {
     title: () => "Dropdown List",
-    children: () => /* @__PURE__ */ jsx("div", {
+    children: () => /* @__PURE__ */ m("div", {
       class: () => "flex flex-col gap-4",
-      children: () => [() => /* @__PURE__ */ jsx("div", {
-        children: () => /* @__PURE__ */ jsx("div", {
+      children: () => [() => /* @__PURE__ */ m("div", {
+        children: () => /* @__PURE__ */ m("div", {
           class: () => "flex gap-2 items-center",
-          children: () => [() => /* @__PURE__ */ jsx("span", {
+          children: () => [() => /* @__PURE__ */ m("span", {
             children: () => "Add Dropdown"
-          }), () => /* @__PURE__ */ jsx("button", {
+          }), () => /* @__PURE__ */ m("button", {
             class: () => "btn",
             onClick: () => dropdownStore.addDropdown,
             children: () => "+"
-          }), () => /* @__PURE__ */ jsx("button", {
+          }), () => /* @__PURE__ */ m("button", {
             class: () => "btn",
             onClick: () => dropdownStore.removeDropdown,
             children: () => "-"
           })]
         })
-      }), () => /* @__PURE__ */ jsx("div", {
+      }), () => /* @__PURE__ */ m("div", {
         class: () => "flex gap-2 items-center",
-        children: () => [() => /* @__PURE__ */ jsx("span", {
+        children: () => [() => /* @__PURE__ */ m("span", {
           children: () => "Sort"
-        }), () => /* @__PURE__ */ jsx("button", {
+        }), () => /* @__PURE__ */ m("button", {
           class: () => "btn",
           onClick: () => dropdownStore.handleSort,
           children: () => dropdownStore.sortDirection === "asc" ? "↑" : "↓"
-        }), () => /* @__PURE__ */ jsx("button", {
+        }), () => /* @__PURE__ */ m("button", {
           class: () => "btn",
           onClick: () => dropdownStore.handleRandomize,
           children: () => "Randomize"
         })]
-      }), () => /* @__PURE__ */ jsx("div", {
-        children: () => /* @__PURE__ */ jsx("button", {
+      }), () => /* @__PURE__ */ m("div", {
+        children: () => /* @__PURE__ */ m("button", {
           onClick: () => () => dropdownStore.showDropdown = !dropdownStore.showDropdown,
           children: () => "Unmount Dropdown List"
         })
-      }), () => dropdownStore.showDropdown && /* @__PURE__ */ jsx(DropdownList, {
+      }), () => dropdownStore.showDropdown && /* @__PURE__ */ m(DropdownList, {
         dropdowns: () => dropdownStore
-      }), () => /* @__PURE__ */ jsx("div", {
+      }), () => /* @__PURE__ */ m("div", {
         children: () => "Hi"
       })]
     })
@@ -1431,46 +994,40 @@ const Dropdowns = () => {
 const DropdownList = ({
   dropdowns
 }) => {
-  console.log("rerender");
-  onMount(async () => {
-    console.log("DropdownList onMount");
-  });
-  onDestroy(async () => {
-    console.log("DropdownList onDestroy");
-  });
-  return () => /* @__PURE__ */ jsx("div", {
+  console.log("weh");
+  return () => /* @__PURE__ */ m("div", {
     class: () => "flex gap-2 flex-col lg:flex-row",
-    children: () => loop(() => dropdowns.numbers).each((number) => /* @__PURE__ */ jsx(Dropdown, {
+    children: () => dropdowns.numbers.map((number) => /* @__PURE__ */ m(Dropdown, {
       number: () => number
-    }))
+    }, () => number))
   });
 };
 const Dropdown = ({
   number
 }) => {
   console.log("rerender");
-  const isOpen = $state(false);
+  const isOpen = x(false);
   const handleToggle = () => {
     isOpen.value = !isOpen.value;
   };
-  return () => /* @__PURE__ */ jsx(Fragment, {
-    children: () => /* @__PURE__ */ jsx("div", {
+  return () => /* @__PURE__ */ m(r, {
+    children: () => /* @__PURE__ */ m("div", {
       class: () => "relative lg:w-[calc(100%/8)]",
-      children: () => [() => /* @__PURE__ */ jsx("div", {
-        children: () => [() => /* @__PURE__ */ jsx("button", {
+      children: () => [() => /* @__PURE__ */ m("div", {
+        children: () => [() => /* @__PURE__ */ m("button", {
           class: () => "btn w-full",
           onClick: () => handleToggle,
           children: () => [() => "Open Dropdown ", () => number]
-        }), () => /* @__PURE__ */ jsx("div", {
+        }), () => /* @__PURE__ */ m("div", {
           class: () => "break-all",
           children: () => [() => "Hi ", () => name.firstName]
         })]
-      }), () => isOpen.value && /* @__PURE__ */ jsx("div", {
+      }), () => isOpen.value && /* @__PURE__ */ m("div", {
         class: () => "absolute bg-white border border-gray-200 rounded p-4 w-[200px] z-10",
-        children: () => /* @__PURE__ */ jsx("ul", {
+        children: () => /* @__PURE__ */ m("ul", {
           children: () => Array.from({
             length: 3
-          }).map((_, i) => i + 1).map((item) => /* @__PURE__ */ jsx("li", {
+          }).map((_2, i) => i + 1).map((item) => /* @__PURE__ */ m("li", {
             class: () => "cursor-pointer p-2 rounded hover:bg-gray-100",
             children: () => [() => "Dropdown ", () => item]
           }))
@@ -1480,66 +1037,64 @@ const Dropdown = ({
   });
 };
 const Forms = () => {
-  return () => /* @__PURE__ */ jsx(Template, {
+  return () => /* @__PURE__ */ m(Template, {
     title: () => "Forms",
-    children: () => /* @__PURE__ */ jsx("div", {
-      children: () => [() => /* @__PURE__ */ jsx("div", {
-        children: () => [() => /* @__PURE__ */ jsx("label", {
+    children: () => /* @__PURE__ */ m("div", {
+      children: () => [() => /* @__PURE__ */ m("div", {
+        children: () => [() => /* @__PURE__ */ m("label", {
           class: () => "break-all",
           for: () => "name-input2",
           children: () => [() => "Hi ", () => name.firstName]
-        }), () => /* @__PURE__ */ jsx("div", {
-          children: () => /* @__PURE__ */ jsx("input", {
+        }), () => /* @__PURE__ */ m("div", {
+          children: () => /* @__PURE__ */ m("input", {
             type: () => "text",
             value: () => name.firstName,
             id: () => "name-input2"
           })
         })]
-      }), () => /* @__PURE__ */ jsx("div", {
-        children: () => [() => /* @__PURE__ */ jsx(Counter, {}), () => /* @__PURE__ */ jsx(Input, {})]
+      }), () => /* @__PURE__ */ m("div", {
+        children: () => [() => /* @__PURE__ */ m(Counter, {}), () => /* @__PURE__ */ m(Input, {})]
       })]
     })
   });
 };
-function Counter() {
-  const count = $state(0);
-  const double = $computed(() => count.value * 2);
+const Counter = () => {
+  const count = x(0);
+  const double = A(() => count.value * 2);
   const handleCount = () => {
     count.value++;
   };
-  $effect(() => {
+  C$1(() => {
   });
-  $effect(() => {
+  C$1(() => {
   });
-  onDestroy(() => {
-    console.log("bye");
-  });
-  return () => /* @__PURE__ */ jsx(Fragment, {
-    children: () => [() => count.value, () => /* @__PURE__ */ jsx("div", {
+  console.log("rerender?");
+  return () => /* @__PURE__ */ m(r, {
+    children: () => [() => count.value, () => /* @__PURE__ */ m("div", {
       children: () => [() => "Count: ", () => count.value]
-    }), () => /* @__PURE__ */ jsx("div", {
+    }), () => /* @__PURE__ */ m("div", {
       children: () => [() => "Double Count: ", () => double.value]
-    }), () => /* @__PURE__ */ jsx("button", {
+    }), () => /* @__PURE__ */ m("button", {
       disabled: () => count.value >= 5,
       onClick: () => handleCount,
       children: () => "Add counter"
-    }), () => /* @__PURE__ */ jsx("div", {
-      children: () => count.value <= 3 ? /* @__PURE__ */ jsx("div", {
+    }), () => /* @__PURE__ */ m("div", {
+      children: () => count.value <= 3 ? /* @__PURE__ */ m("div", {
         children: () => "Hi"
       }) : "string"
     })]
   });
-}
-function Input() {
-  return () => /* @__PURE__ */ jsx("div", {
-    children: () => [() => /* @__PURE__ */ jsx("label", {
+};
+const Input = () => {
+  return () => /* @__PURE__ */ m("div", {
+    children: () => [() => /* @__PURE__ */ m("label", {
       class: () => "break-all",
       for: () => "name-input",
-      children: () => [() => "Name ", () => name.firstName, () => " ", () => /* @__PURE__ */ jsx("span", {
+      children: () => [() => "Name ", () => name.firstName, () => " ", () => /* @__PURE__ */ m("span", {
         children: () => "Hi"
       })]
-    }), () => /* @__PURE__ */ jsx("div", {
-      children: () => /* @__PURE__ */ jsx("input", {
+    }), () => /* @__PURE__ */ m("div", {
+      children: () => /* @__PURE__ */ m("input", {
         id: () => "name-input",
         type: () => "text",
         onInput: () => (event) => {
@@ -1549,41 +1104,42 @@ function Input() {
       })
     })]
   });
-}
-const LazyImport = lazy(() => import("./assets/LazyImport-emZMJJE9.js"), "LazyImport");
-const LazyTest = lazy(() => import("./assets/Test-z0RnTgN-.js"), "Test");
+};
+const LazyImport = M(() => import("./assets/LazyImport-eMnSqWjI.js"), "LazyImport");
+const LazyTest = M(() => import("./assets/Test-D6b9mNWF.js"), "Test");
 const Lazy = () => {
-  return () => /* @__PURE__ */ jsx(Template, {
+  return () => /* @__PURE__ */ m(Template, {
     title: () => "Lazy",
-    children: () => /* @__PURE__ */ jsx("div", {
-      children: () => [() => /* @__PURE__ */ jsx(Suspense, {
+    children: () => /* @__PURE__ */ m("div", {
+      children: () => [() => /* @__PURE__ */ m(se, {
         fallback: () => "Tester",
-        children: () => /* @__PURE__ */ jsx(LazyImport, {})
-      }), () => /* @__PURE__ */ jsx(Suspense, {
-        children: () => /* @__PURE__ */ jsx(LazyTest, {})
-      }), () => /* @__PURE__ */ jsx("h1", {
+        children: () => /* @__PURE__ */ m(LazyImport, {})
+      }), () => /* @__PURE__ */ m(se, {
+        fallback: () => "Tester2",
+        children: () => /* @__PURE__ */ m(LazyTest, {})
+      }), () => /* @__PURE__ */ m("h5", {
         children: () => "Test"
       })]
     })
   });
 };
 function NonAsyncSuspense() {
-  return () => /* @__PURE__ */ jsx(Template, {
+  return () => /* @__PURE__ */ m(Template, {
     title: () => "Non-Async Suspense",
-    children: () => /* @__PURE__ */ jsx("div", {
-      children: () => /* @__PURE__ */ jsx(Suspense, {
-        fallback: () => /* @__PURE__ */ jsx("div", {
+    children: () => /* @__PURE__ */ m("div", {
+      children: () => /* @__PURE__ */ m(se, {
+        fallback: () => /* @__PURE__ */ m("div", {
           children: () => "hi"
         }),
-        children: () => /* @__PURE__ */ jsx("div", {
+        children: () => /* @__PURE__ */ m("div", {
           children: () => "Children"
         })
       })
     })
   });
 }
-const PokeDex = () => {
-  const pokeDex = $store({
+const PokeDex = E(() => {
+  const pokeDex = N({
     isLoading: true,
     pokeDexList: [],
     prevLink: "",
@@ -1605,13 +1161,14 @@ const PokeDex = () => {
     },
     handleSort(key) {
       this.sortDirection = this.sortDirection === "asc" ? "desc" : "asc";
-      this.pokeDexList = [...this.pokeDexList].sort((a, b) => {
-        const cmp = a[key].localeCompare(b[key]);
+      this.pokeDexList = [...this.pokeDexList].sort((a, b2) => {
+        const cmp = a[key].localeCompare(b2[key]);
         return this.sortDirection === "asc" ? cmp : -cmp;
       });
     }
   });
-  onMount(async () => {
+  Z(async () => {
+    console.log("hi");
     const controller = new AbortController();
     await pokeDex.fetchData("https://pokeapi.co/api/v2/pokemon/?offset=1100&limit=20", controller);
     return () => {
@@ -1621,51 +1178,51 @@ const PokeDex = () => {
   });
   const showUrlOnClick = (url) => () => alert(url);
   const sortOnClick = (key) => () => pokeDex.handleSort(key);
-  return () => /* @__PURE__ */ jsx(Template, {
+  return () => /* @__PURE__ */ m(Template, {
     title: () => "PokeDex List",
-    children: () => [() => /* @__PURE__ */ jsx("div", {
+    children: () => [() => /* @__PURE__ */ m("div", {
       class: () => "break-all",
       children: () => [() => "Hi ", () => name.firstName]
-    }), () => /* @__PURE__ */ jsx("table", {
+    }), () => /* @__PURE__ */ m("table", {
       class: () => "w-full mx-auto my-2 table-fixed",
-      children: () => [() => /* @__PURE__ */ jsx("thead", {
-        children: () => /* @__PURE__ */ jsx("tr", {
-          children: () => [() => /* @__PURE__ */ jsx("th", {
+      children: () => [() => /* @__PURE__ */ m("thead", {
+        children: () => /* @__PURE__ */ m("tr", {
+          children: () => [() => /* @__PURE__ */ m("th", {
             class: () => "w-1/3",
             children: () => "ID"
-          }), () => /* @__PURE__ */ jsx("th", {
+          }), () => /* @__PURE__ */ m("th", {
             onClick: () => sortOnClick("name"),
             class: () => "select-none cursor-pointer w-1/3",
             children: () => "Name"
-          }), () => /* @__PURE__ */ jsx("th", {
+          }), () => /* @__PURE__ */ m("th", {
             onClick: () => sortOnClick("url"),
             class: () => "select-none cursor-pointer w-1/3",
             children: () => "URL"
           })]
         })
-      }), () => /* @__PURE__ */ jsx("tbody", {
-        children: () => [() => pokeDex.isLoading && /* @__PURE__ */ jsx(Fragment, {
-          children: () => loop(() => Array.from({
+      }), () => /* @__PURE__ */ m("tbody", {
+        children: () => [() => pokeDex.isLoading && /* @__PURE__ */ m(r, {
+          children: () => Array.from({
             length: 20
-          }).map((_, i) => i + 1)).each((number) => /* @__PURE__ */ jsx("tr", {
-            children: () => /* @__PURE__ */ jsx("td", {
+          }).map((_2, i) => i + 1).map((number) => /* @__PURE__ */ m("tr", {
+            children: () => /* @__PURE__ */ m("td", {
               colSpan: () => 3,
               class: () => "h-[24px] text-center",
               children: () => number === 10 && "loading..."
             })
           }))
-        }), () => !pokeDex.isLoading && /* @__PURE__ */ jsx(Fragment, {
-          children: () => loop(() => pokeDex.pokeDexList).each(({
+        }), () => !pokeDex.isLoading && /* @__PURE__ */ m(r, {
+          children: () => pokeDex.pokeDexList.map(({
             name: name2,
             url
-          }, index) => /* @__PURE__ */ jsx("tr", {
-            children: () => [() => /* @__PURE__ */ jsx("td", {
+          }, index) => /* @__PURE__ */ m("tr", {
+            children: () => [() => /* @__PURE__ */ m("td", {
               class: () => "w-1/3 text-center",
-              children: () => index.value + 1
-            }), () => /* @__PURE__ */ jsx("td", {
+              children: () => index + 1
+            }), () => /* @__PURE__ */ m("td", {
               class: () => "w-1/3 text-center truncate",
               children: () => name2
-            }), () => /* @__PURE__ */ jsx("td", {
+            }), () => /* @__PURE__ */ m("td", {
               class: () => "w-1/3 text-center truncate",
               onClick: () => showUrlOnClick(url),
               children: () => url
@@ -1673,14 +1230,14 @@ const PokeDex = () => {
           }))
         })]
       })]
-    }), () => /* @__PURE__ */ jsx("div", {
+    }), () => /* @__PURE__ */ m("div", {
       class: () => "flex gap-4 justify-center",
-      children: () => [() => /* @__PURE__ */ jsx("button", {
+      children: () => [() => /* @__PURE__ */ m("button", {
         class: () => "btn",
         onClick: () => () => pokeDex.fetchData(pokeDex.prevLink),
         disabled: () => pokeDex.isLoading || !pokeDex.prevLink,
         children: () => "Previous"
-      }), () => /* @__PURE__ */ jsx("button", {
+      }), () => /* @__PURE__ */ m("button", {
         class: () => "btn",
         onClick: () => () => pokeDex.fetchData(pokeDex.nextLink),
         disabled: () => pokeDex.isLoading || !pokeDex.nextLink,
@@ -1688,9 +1245,9 @@ const PokeDex = () => {
       })]
     })]
   });
-};
+});
 const PokeDexSuspense = () => {
-  const pokeDex = $store({
+  const pokeDex = N({
     url: "https://pokeapi.co/api/v2/pokemon/?offset=1100&limit=20",
     sortDirection: "asc",
     sort(key) {
@@ -1698,8 +1255,8 @@ const PokeDexSuspense = () => {
       this.sortDirection = this.sortDirection === "asc" ? "desc" : "asc";
       pokeDexResource.mutate({
         ...pokeDexResource.data,
-        results: [...pokeDexResource.data.results].sort((a, b) => {
-          const cmp = a[key].localeCompare(b[key]);
+        results: [...pokeDexResource.data.results].sort((a, b2) => {
+          const cmp = a[key].localeCompare(b2[key]);
           return this.sortDirection === "asc" ? cmp : -cmp;
         })
       });
@@ -1709,61 +1266,64 @@ const PokeDexSuspense = () => {
       this.url = newUrl.replace(/limit=\d+/, "limit=20");
     }
   });
-  const pokeDexResource = resource(async (url) => {
+  const pokeDexResource = k(async (url) => {
     const response = await fetch(url);
     const json = await response.json();
     return json;
   }, [() => pokeDex.url]);
   const showUrlOnClick = (url) => () => alert(url);
   const sortOnClick = (key) => () => pokeDex.sort(key);
-  return () => /* @__PURE__ */ jsx(Template, {
+  Y(() => {
+    console.log("pokedex-suspense destroyed");
+  });
+  return () => /* @__PURE__ */ m(Template, {
     title: () => "PokeDex List (via Suspense)",
-    children: () => /* @__PURE__ */ jsx("div", {
-      children: () => [() => /* @__PURE__ */ jsx("div", {
+    children: () => /* @__PURE__ */ m("div", {
+      children: () => [() => /* @__PURE__ */ m("div", {
         class: () => "break-all",
         children: () => [() => "Hi ", () => name.firstName]
-      }), () => /* @__PURE__ */ jsx("table", {
+      }), () => /* @__PURE__ */ m("table", {
         class: () => "w-full mx-auto my-2 table-fixed",
-        children: () => [() => /* @__PURE__ */ jsx("thead", {
-          children: () => /* @__PURE__ */ jsx("tr", {
-            children: () => [() => /* @__PURE__ */ jsx("th", {
+        children: () => [() => /* @__PURE__ */ m("thead", {
+          children: () => /* @__PURE__ */ m("tr", {
+            children: () => [() => /* @__PURE__ */ m("th", {
               class: () => "w-1/3",
               children: () => "ID"
-            }), () => /* @__PURE__ */ jsx("th", {
+            }), () => /* @__PURE__ */ m("th", {
               onClick: () => sortOnClick("name"),
               class: () => "select-none cursor-pointer w-1/3",
               children: () => "Name"
-            }), () => /* @__PURE__ */ jsx("th", {
+            }), () => /* @__PURE__ */ m("th", {
               onClick: () => sortOnClick("url"),
               class: () => "select-none cursor-pointer w-1/3",
               children: () => "URL"
             })]
           })
-        }), () => /* @__PURE__ */ jsx("tbody", {
-          children: () => /* @__PURE__ */ jsx(Suspense, {
-            fallback: () => /* @__PURE__ */ jsx(Fragment, {
+        }), () => /* @__PURE__ */ m("tbody", {
+          children: () => /* @__PURE__ */ m(se, {
+            fallback: () => /* @__PURE__ */ m(r, {
               children: () => Array.from({
                 length: 20
-              }).map((_, i) => i + 1).map((number) => /* @__PURE__ */ jsx("tr", {
-                children: () => /* @__PURE__ */ jsx("td", {
+              }).map((_2, i) => i + 1).map((number) => /* @__PURE__ */ m("tr", {
+                children: () => /* @__PURE__ */ m("td", {
                   colSpan: () => 3,
                   class: () => "h-[24px] text-center",
                   children: () => number === 10 && "loading..."
                 })
               }))
             }),
-            children: () => /* @__PURE__ */ jsx(Fragment, {
+            children: () => /* @__PURE__ */ m(r, {
               children: () => pokeDexResource.data.results.map(({
                 name: name2,
                 url
-              }, index) => /* @__PURE__ */ jsx("tr", {
-                children: () => [() => /* @__PURE__ */ jsx("td", {
+              }, index) => /* @__PURE__ */ m("tr", {
+                children: () => [() => /* @__PURE__ */ m("td", {
                   class: () => "w-1/3 text-center",
                   children: () => index + 1
-                }), () => /* @__PURE__ */ jsx("td", {
+                }), () => /* @__PURE__ */ m("td", {
                   class: () => "w-1/3 text-center truncate",
                   children: () => name2
-                }), () => /* @__PURE__ */ jsx("td", {
+                }), () => /* @__PURE__ */ m("td", {
                   class: () => "w-1/3 text-center truncate",
                   onClick: () => showUrlOnClick(url),
                   children: () => url
@@ -1772,9 +1332,9 @@ const PokeDexSuspense = () => {
             })
           })
         })]
-      }), () => /* @__PURE__ */ jsx("div", {
+      }), () => /* @__PURE__ */ m("div", {
         class: () => "flex gap-4 justify-center",
-        children: () => [() => /* @__PURE__ */ jsx("button", {
+        children: () => [() => /* @__PURE__ */ m("button", {
           class: () => "btn",
           onClick: () => () => {
             var _a;
@@ -1785,7 +1345,7 @@ const PokeDexSuspense = () => {
             return pokeDexResource.loading || !((_a = pokeDexResource.data) == null ? void 0 : _a.previous);
           },
           children: () => "Previous"
-        }), () => /* @__PURE__ */ jsx("button", {
+        }), () => /* @__PURE__ */ m("button", {
           class: () => "btn",
           onClick: () => () => {
             var _a;
@@ -1801,62 +1361,69 @@ const PokeDexSuspense = () => {
     })
   });
 };
-const StackedSuspense = memo(() => {
-  const msg3 = $store({
-    data: ""
-  });
-  const msg2 = resource(async () => {
-    console.log("called");
-    await sleep(200);
+const StackedSuspense = E(() => {
+  const msg3 = k(async () => {
+    await sleep(2e3);
+    return "hello world 3";
+  }, []);
+  const msg2 = k(async () => {
+    await sleep(2e3);
     return "hello world 2";
   }, []);
-  return () => /* @__PURE__ */ jsx(Template, {
+  console.log("suspense parent rerender");
+  return () => /* @__PURE__ */ m(Template, {
     title: () => "Stacked Suspense",
-    children: () => /* @__PURE__ */ jsx("div", {
+    children: () => /* @__PURE__ */ m("div", {
       class: () => "p-2 flex flex-col container m-auto",
-      children: () => [() => !msg2.loading && /* @__PURE__ */ jsx("input", {
-        onInput: () => (event) => {
-          msg2.mutate(event.currentTarget.value.toString());
-        },
-        value: () => msg2.data
-      }), () => /* @__PURE__ */ jsx(Suspense, {
+      children: () => [() => /* @__PURE__ */ m(se, {
+        fallback: () => "Lick my ass",
+        children: () => /* @__PURE__ */ m("input", {
+          onInput: () => (event) => {
+            msg2.mutate(event.currentTarget.value.toString());
+          },
+          value: () => msg2.data
+        })
+      }), () => /* @__PURE__ */ m(se, {
+        fallback: () => "Ngee",
         children: () => msg3.data
-      }), () => /* @__PURE__ */ jsx(Suspense, {
-        fallback: () => /* @__PURE__ */ jsx("div", {
+      }), () => /* @__PURE__ */ m(se, {
+        fallback: () => /* @__PURE__ */ m("div", {
           children: () => "loading 1..."
         }),
-        children: () => [() => /* @__PURE__ */ jsx(Component, {}), () => /* @__PURE__ */ jsx(Suspense, {
-          fallback: () => /* @__PURE__ */ jsx("div", {
+        children: () => [() => /* @__PURE__ */ m(Component, {}), () => /* @__PURE__ */ m(se, {
+          fallback: () => /* @__PURE__ */ m("div", {
             children: () => "loading 2..."
           }),
           children: () => msg2.data
+        }), () => /* @__PURE__ */ m("div", {
+          children: () => "hi"
         })]
       })]
     })
   });
 });
-const Component = memo(() => {
-  const msg = resource(async () => {
-    await sleep(100);
+const Component = E(() => {
+  const msg = k(async () => {
+    await sleep(1e3);
     return `hello world`;
   }, []);
-  return () => /* @__PURE__ */ jsx("div", {
+  console.log("suspense inner rerender");
+  return () => /* @__PURE__ */ m("div", {
     children: () => msg.data
   });
 });
 const routes = [{
   path: "/",
   component: () => {
-    console.log("layout rerender");
-    return () => /* @__PURE__ */ jsx("div", {
+    return () => /* @__PURE__ */ m("div", {
       class: () => "p-2 flex flex-col container m-auto",
-      children: () => [() => /* @__PURE__ */ jsx(ButtonPageList, {}), () => /* @__PURE__ */ jsx(Outlet, {})]
+      children: () => [() => /* @__PURE__ */ m(ButtonPageList, {}), () => /* @__PURE__ */ m(Outlet, {})]
     });
   },
   children: [{
     path: "/",
-    component: () => /* @__PURE__ */ jsx(Fragment, {
-      children: () => [() => /* @__PURE__ */ jsx(Lazy, {}), () => /* @__PURE__ */ jsx(Forms, {}), () => /* @__PURE__ */ jsx(Contexts, {}), () => /* @__PURE__ */ jsx(Dropdowns, {}), () => /* @__PURE__ */ jsx(NonAsyncSuspense, {}), () => /* @__PURE__ */ jsx(StackedSuspense, {}), () => /* @__PURE__ */ jsx(PokeDex, {}), () => /* @__PURE__ */ jsx(PokeDexSuspense, {})]
+    component: () => /* @__PURE__ */ m(r, {
+      children: () => [() => /* @__PURE__ */ m(Lazy, {}), () => /* @__PURE__ */ m(Forms, {}), () => /* @__PURE__ */ m(Contexts, {}), () => /* @__PURE__ */ m(Dropdowns, {}), () => /* @__PURE__ */ m(NonAsyncSuspense, {}), () => /* @__PURE__ */ m(StackedSuspense, {}), () => /* @__PURE__ */ m(PokeDex, {}), () => /* @__PURE__ */ m(PokeDexSuspense, {})]
     })
   }, {
     path: "/lazy",
@@ -1884,60 +1451,49 @@ const routes = [{
     component: NonAsyncSuspense
   }]
 }];
-const App = ({
+function App({
   url
-}) => {
-  return () => /* @__PURE__ */ jsx(Fragment, {
-    children: () => /* @__PURE__ */ jsx(Router, {
+}) {
+  return () => /* @__PURE__ */ m(r, {
+    children: () => /* @__PURE__ */ m(Router, {
       url: () => url,
       routes: () => routes
     })
   });
-};
-function renderToStream(App2) {
-  setIsServerStreaming(true);
-  const als = new AsyncLocalStorage();
-  const stream = new ReadableStream({
-    async start(controller) {
-      const encoder = new TextEncoder();
-      let pending = 0;
-      globalThis.__stream_context = {
-        encoder,
-        controller,
-        start: () => pending++,
-        endIfDone: () => {
-          pending--;
-          if (pending < 0) controller.close();
-        }
-      };
-      als.run(globalThis.__stream_context, () => {
-        const store = als.getStore();
-        globalThis.__stream_context = store;
-        try {
-          const html = h(App2, {});
-          controller.enqueue(encoder.encode(html));
-          queueMicrotask(() => globalThis.__stream_context.endIfDone());
-        } catch (err) {
-          console.error("renderToStream error:", err);
-        }
+}
+function T(c) {
+  return he(true), de(), new ReadableStream({ async start(r2) {
+    const o = new AsyncLocalStorage(), s = new TextEncoder(), n = x(0);
+    globalThis.__stream_context = { encoder: s, controller: r2, start: () => n.value++, end: () => n.value-- }, o.run(globalThis.__stream_context, () => {
+      const a = o.getStore();
+      globalThis.__stream_context = a;
+      try {
+        const t = w$1(c()) || "";
+        r2.enqueue(s.encode(t));
+      } catch (t) {
+        console.error("renderToStream error:", t);
+      }
+    }), C$1(() => {
+      n.value <= 0 && queueMicrotask(() => {
+        n.value <= 0 && r2.close();
       });
-    }
-  });
-  return stream;
+    });
+  } });
 }
 const render = (url) => {
-  return renderToStream(() => /* @__PURE__ */ jsx(App, {
+  return T(() => /* @__PURE__ */ m(App, {
     url: () => url
   }));
 };
 export {
-  $effect as $,
-  Fragment as F,
-  Suspense as S,
-  $state as a,
-  createContext as c,
-  jsx as j,
-  lazy as l,
-  onMount as o,
-  render
+  C$1 as C,
+  E,
+  M,
+  Z,
+  C as a,
+  m,
+  r,
+  render,
+  se as s,
+  x
 };

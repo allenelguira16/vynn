@@ -2,9 +2,9 @@
 // import { isNil } from "~/util/is-node-nil";
 // import { toArray } from "~/util/to-array";
 
-import { getNodeString } from "~/server/get-node-string";
+import { getNodeString, hasNoHTMLTags } from "~/server/get-node-string";
 import { isNil } from "~/util/is-node-nil";
-import { toArray } from "~/util/to-array";
+import { flattenArray, toArray } from "~/util/to-array";
 
 import { JSX } from "./jsx-runtime";
 
@@ -19,7 +19,7 @@ const skipWrappingTags = new Set(["title", "meta", "script", "style"]);
 export function renderChildren(parent: string, children: JSX.Element): string | null {
   const strings = [];
 
-  for (const child of toArray(children)) {
+  for (const child of flattenArray(toArray(children))) {
     const resolved = typeof child === "function" ? child() : child;
 
     if (isNil(resolved)) {
@@ -36,6 +36,15 @@ export function renderChildren(parent: string, children: JSX.Element): string | 
     if (!isNil(node)) strings.push(node);
   }
 
+  for (const [i] of strings.entries()) {
+    if (!!strings[i] && !!strings[i + 1]) {
+      if (hasNoHTMLTags(strings[i]) && hasNoHTMLTags(strings[i + 1])) {
+        strings.splice(i + 1, 0, "<!--split-->");
+      }
+    }
+  }
+
+  // console.log(strings);
   return strings.join("") || null;
   // function renderRecursive(value: JSX.Element) {
   //   const transformedChildren: string[] = [];

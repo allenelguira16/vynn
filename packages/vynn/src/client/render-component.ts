@@ -30,7 +30,7 @@ export function renderComponent<T extends PropsWithChildren<Record<string, any>>
 
   setRuntimeContext(context);
   // anchorHelper.init();
-  const rootNode = createAnchor(`root-${type.name}`);
+  const rootNode = createAnchor(`root-${type.name}`, true);
   // anchorHelper.set(rootNode);
 
   const value = untrack<JSX.Element>(

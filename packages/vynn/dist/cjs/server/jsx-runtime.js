@@ -1,18 +1,1 @@
-'use strict';
-
-var fragment = require('../chunks/Bp5SZ2VF.js');
-var logJsx = require('../chunks/BMPDAHvm.js');
-var h = require('../chunks/DOPi4EeN.js');
-
-const jsx = (type, { children, ...props } = {}, key) => {
-  if (logJsx.isServer) {
-    return h.h(type, props, children, key);
-  }
-  return logJsx.h(type, props, children);
-};
-
-exports.Fragment = fragment.Fragment;
-exports.logJsx = logJsx.logJsx;
-exports.jsx = jsx;
-exports.jsxs = jsx;
-//# sourceMappingURL=jsx-runtime.js.map
+"use strict";var r=require("../chunks/Tn5Mozr7.js"),g=require("../chunks/CkIjWYIf.js"),n=require("../chunks/BskpUcYD.js");const i=(e,{children:s,...a}={})=>r.isServer?n.h(e,a,s):r.h(e,a,s);exports.logJsx=r.logJsx,exports.Fragment=g.Fragment,exports.jsx=i,exports.jsxs=i;

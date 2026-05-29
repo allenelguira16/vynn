@@ -13,7 +13,11 @@ import { getNode } from "./get-node";
  *
  * @returns cleanup
  */
-export function renderChildren(parentNode: Node, children: JSX.Element, baseAnchor: Node) {
+export function renderChildren(
+  parentNode: Node,
+  children: JSX.Element,
+  baseAnchor: Node | null = null,
+) {
   if (!isNil(baseAnchor) && !baseAnchor?.parentNode) return () => {};
 
   let renderDisposers: (() => void)[] = [];
@@ -23,7 +27,7 @@ export function renderChildren(parentNode: Node, children: JSX.Element, baseAnch
     let nodeDisposers: (() => void)[] = [];
 
     // let anchor: ChildNode;
-    const anchor = createAnchor(`anchor-${child}`);
+    const anchor = createAnchor(`anchor-${child}`, true);
     parentNode.insertBefore(anchor, baseAnchor);
 
     // anchorHelper.set(anchor);
@@ -68,8 +72,8 @@ export function renderChildren(parentNode: Node, children: JSX.Element, baseAnch
             if (!newNode.isConnected) {
               parentNode.insertBefore(newNode, anchor);
             } else {
-              parentNode.insertBefore(baseAnchor, newNode.nextSibling);
-              parentNode.insertBefore(anchor, newNode.nextSibling);
+              if (baseAnchor) parentNode.insertBefore(baseAnchor, newNode.nextElementSibling);
+              parentNode.insertBefore(anchor, newNode.nextElementSibling);
             }
           } else {
             parentNode.replaceChild(newNode, node);

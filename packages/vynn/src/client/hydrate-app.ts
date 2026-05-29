@@ -1,9 +1,10 @@
 import { flattenDOMContents, flattenLazyDOMContents } from "~/client/flat-dom-contents";
-import { renderChildren } from "~/client/render-children";
-import { renderComponent } from "~/client/render-component";
 import { JSX } from "~/types/jsx";
 import { setLazyDom, setSsrDomWalker } from "~/util/ssr-dom-walker";
 import { flattenArray } from "~/util/to-array";
+
+import { renderChildren } from "./render-children";
+import { renderComponent } from "./render-component";
 
 /**
  * hydrate root app
@@ -30,6 +31,7 @@ export function hydrateApp(App: () => JSX.Element) {
         if (!(node instanceof HTMLElement)) throw new Error("Node must be of type Element");
         const flatDom = flattenDOMContents(node);
         const lazyDom = flattenLazyDOMContents(node);
+        // console.log(lazyDom);
         setLazyDom(lazyDom);
         setSsrDomWalker(flatDom.filter((node) => !flattenArray(lazyDom).flat().includes(node)));
         // setSsrDomWalker(flatDom);

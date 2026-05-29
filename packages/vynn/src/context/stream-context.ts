@@ -1,5 +1,4 @@
 import { MemoState } from "~/util/memo";
-import { isServer } from "~/util/server-util";
 
 declare global {
   var __stream_context: StreamContext;
@@ -44,43 +43,35 @@ export const clienStreamMap = new Map<
   }
 >();
 
+const defaultStreamContext = {
+  suspenseID: 0,
+  resourceID: 0,
+  lazyID: 0,
+  stateID: 0,
+  memo: new Map(),
+};
+
 export const clientStreamContext = () => {
-  let value:
-    | {
-        suspenseID: number;
-        resourceID: number;
-        lazyID: number;
-        stateID: number;
-        memo: Map<() => any, MemoState<any, any>>;
-      }
-    | undefined;
+  const context = getCurrentStream();
 
-  if (!isServer) {
-    if (!clienStreamMap.has(window))
-      clienStreamMap.set(window, {
-        suspenseID: 0,
-        resourceID: 0,
-        lazyID: 0,
-        stateID: 0,
-        memo: new Map(),
-      });
+  if (!clienStreamMap.has(context)) clienStreamMap.set(context, defaultStreamContext);
 
-    value = clienStreamMap.get(window)!;
-  } else {
-    const context = getCurrentStream();
-    if (!clienStreamMap.has(context))
-      clienStreamMap.set(context, {
-        suspenseID: 0,
-        resourceID: 0,
-        lazyID: 0,
-        stateID: 0,
-        memo: new Map(),
-      });
-
-    value = clienStreamMap.get(context)!;
-  }
+  const value = clienStreamMap.get(context)!;
 
   if (!value) throw new Error("[vynn]: context does not exists");
 
   return value;
+};
+
+export const resetClientStreamContext = () => {
+  // const context = getCurrentStream();
+
+  // console.log(clienStreamMap.get(context));
+  // clienStreamMap.clear();
+
+  clientStreamContext().memo.clear();
+  clientStreamContext().lazyID = 0;
+  clientStreamContext().resourceID = 0;
+  clientStreamContext().stateID = 0;
+  clientStreamContext().suspenseID = 0;
 };

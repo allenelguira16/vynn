@@ -13,17 +13,22 @@ export function ssrDomWalker() {
     renderedNodes,
     get currentNode() {
       if (isServer) return undefined;
-
       return renderedNodes[currentIndex];
     },
     get isHydrating() {
       return !!renderedNodes[currentIndex];
     },
     next: () => {
-      if (renderedNodes[currentIndex]) currentIndex++;
+      if (renderedNodes[currentIndex]) {
+        // consume current node
+        renderedNodes[currentIndex] = undefined as any;
+        currentIndex++;
+      }
     },
     prev: () => {
-      if (renderedNodes[currentIndex]) currentIndex--;
+      if (currentIndex > 0 && renderedNodes[currentIndex - 1]) {
+        currentIndex--;
+      }
     },
   };
 }

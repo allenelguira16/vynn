@@ -1,7 +1,6 @@
 import fs from "node:fs";
 
 import express, { Request, Response } from "express";
-import pretty from "pretty";
 import { createServer as createViteServer, ViteDevServer } from "vite";
 
 const PORT = 3000;
@@ -50,8 +49,9 @@ app.use("*all", async (req: Request, res: Response, next) => {
     const appHtml = await render(url);
 
     let html = template.replace("<!--ssr-outlet-->", appHtml);
-    if (isDev) html = pretty(html);
-    else html = html.replace(/\s*\n\s*/g, "").replace(/\s{2,}/g, " ");
+    // if (isDev) html = pretty(html);
+    // else html = html.replace(/\s*\n\s*/g, "").replace(/\s{2,}/g, " ");
+    html = html.replace(/\s*\n\s*/g, "").replace(/\s{2,}/g, " ");
 
     res.status(200).set({ "Content-Type": "text/html" }).end(html);
   } catch (e) {

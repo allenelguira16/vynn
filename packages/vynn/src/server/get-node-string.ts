@@ -1,7 +1,7 @@
 import { JSX } from "~/types/jsx";
 import { isNil } from "~/util/is-node-nil";
 
-function hasNoHTMLTags(str: string) {
+export function hasNoHTMLTags(str: string) {
   // Matches anything inside <...>
   const htmlTagRegex = /<[^>]+>/g;
   return !htmlTagRegex.test(str);
@@ -21,8 +21,11 @@ export function getNodeString<T extends string | null>(
 
   if (typeof jsxElement === "string" || typeof jsxElement === "number") {
     let str = String(jsxElement);
-    if (hasNoHTMLTags(str) && !skipWrappingTags) {
-      str = `<!--!-->${str}<!--/-->`;
+    // if (hasNoHTMLTags(str) && !skipWrappingTags) {
+    //   str = `<!--!-->${str}<!--/-->`;
+    // }
+    if (hasNoHTMLTags(str) && !skipWrappingTags && !str.length) {
+      str = `<!--empty-->${str}`;
     }
     return str as unknown as T;
   }

@@ -17,9 +17,6 @@ export const StackedSuspense = memo(() => {
     return "hello world 2";
   }, []);
 
-  // onDestroy(() => {
-  //   console.log("Parent Removed");
-  // });
   console.log("suspense parent rerender");
 
   return (

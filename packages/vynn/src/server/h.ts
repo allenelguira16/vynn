@@ -1,7 +1,6 @@
+import { resolveComponentProps } from "~/client/resolve-component-props";
 import { setRuntimeContext } from "~/context/runtime-context";
 import { createLifeCycleContext } from "~/lifecycle/create-lifecycle";
-import { resolveComponentProps } from "~/client/resolve-component-props";
-import { normalizeToString } from "~/server/normalize-to-string";
 import { stringifyProps } from "~/server/stringify-props";
 import { FC, PropsWithChildren } from "~/types/props";
 
@@ -36,18 +35,18 @@ export function h<T extends PropsWithChildren<Record<string, any>>>(
   type: string | FC<T>,
   props = {} as Omit<T, "children">,
   children?: T["children"],
-  _key?: () => string,
+  // _key?: () => string,
 ) {
   if (typeof type === "function") {
     resolveComponentProps(type, props);
 
-    const key = _key ? _key().toString() + type.toString() : undefined;
-    const context = createLifeCycleContext(key);
+    // const key = _key ? _key().toString() + type.toString() : undefined;
+    const context = createLifeCycleContext(crypto.randomUUID());
 
     setRuntimeContext(context);
 
     try {
-      const resolved = normalizeToString(type({ ...props, children } as PropsWithChildren<T>));
+      const resolved = type({ ...props, children } as PropsWithChildren<T>);
       return resolved || undefined;
     } finally {
       setRuntimeContext(null);
@@ -60,6 +59,19 @@ export function h<T extends PropsWithChildren<Record<string, any>>>(
     return `<${type}${stringifyProps(props)}>`;
   }
 
+  // try {
   const resolved = renderChildren(type, "html" in props ? props["html"] : children) || "";
   return `<${type}${stringifyProps(props)}>${resolved}</${type}>`;
+  // } catch (error) {
+  //   const handler = getSuspenseHandler();
+  //   if (error instanceof Promise) {
+  //     handler?.(error);
+  //     const resolved = renderChildren(type, "html" in props ? props["html"] : children) || "";
+  //     console.log(resolved);
+
+  //     // console.log(children);
+  //   } else {
+  //     throw error;
+  //   }
+  // }
 }

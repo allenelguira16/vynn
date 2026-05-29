@@ -1,8 +1,7 @@
 import { clientStreamContext } from "~/context/stream-context";
 import { JSX } from "~/types/jsx";
-import { IS_LOG_JSX } from "~/util/log-jsx";
 import { memo } from "~/util/memo";
-import { isServerStreaming } from "~/util/server-util";
+import { isServer, isServerStreaming } from "~/util/server-util";
 import { lazyNodes, setSsrDomWalker, ssrDomWalker } from "~/util/ssr-dom-walker";
 
 const MARKER_START = "lazy";
@@ -26,56 +25,49 @@ export const lazy = <M extends Record<string, any>, K extends keyof M = "default
   //   isWarned = true;
   // }
 
-  const loader = _loader();
-
-  const id = clientStreamContext().lazyID++;
+  // const loader = ;
+  // if (!loader) loader = ;
+  let id: number;
   let component: M[K] | undefined;
   let error: Error | undefined;
   let promise: Promise<void> | null = null;
 
   const getComponent = (): M[K] | undefined => {
-    if (component) return component;
+    if (component) {
+      try {
+        return component;
+      } finally {
+        component = undefined;
+      }
+    }
     if (error) throw error;
 
-    if (
-      !isServerStreaming() &&
-      ssrDomWalker().isHydrating &&
-      (window as any).__SSR_STREAMING_APP__ &&
-      !IS_LOG_JSX
-    ) {
-      const lazyNode = lazyNodes[id];
-
-      setSsrDomWalker([...new Set([...ssrDomWalker().renderedNodes, ...lazyNode])]);
-
-      promise = loader.then((modules) => {
+    promise = _loader()
+      .then(async (modules) => {
         if (!(namedExport in modules)) {
           throw new Error(`lazy(): Export "${String(namedExport)}" not found in module`);
         }
 
-        component = modules[namedExport] as M[K];
+        component = (() => {
+          const lazyNode = lazyNodes[id] || [];
+          setSsrDomWalker([...ssrDomWalker().renderedNodes, ...lazyNode]);
+          lazyNodes[id] = [];
+          return modules[namedExport]();
+        }) as M[K];
+      })
+      .catch((err) => {
+        error = err instanceof Error ? err : new Error(String(err));
       });
 
-      throw Object.assign(promise, { __fromLazy: true });
-    }
-
-    if (!promise) {
-      promise = loader
-        .then((modules) => {
-          if (!(namedExport in modules)) {
-            throw new Error(`lazy(): Export "${String(namedExport)}" not found in module`);
-          }
-
-          component = modules[namedExport];
-        })
-        .catch((err) => {
-          error = err instanceof Error ? err : new Error(String(err));
-        });
-    }
-
-    throw promise;
+    throw Object.assign(promise, { __fromLazy: !ssrDomWalker().isHydrating });
   };
 
   return memo(() => {
+    id ??= clientStreamContext().lazyID++;
+    if (isServer && !isServerStreaming()) {
+      throw new Promise(() => {}); // trigger on ssr to show only fallback
+    }
+
     const Component = getComponent()!;
     const resolved = Component();
 
@@ -87,7 +79,6 @@ export const lazy = <M extends Record<string, any>, K extends keyof M = "default
       ];
     }
 
-    (globalThis as any).__lazy++;
     return resolved;
   });
 };

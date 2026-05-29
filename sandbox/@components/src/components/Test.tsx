@@ -1,6 +1,6 @@
 import { $effect, onMount } from "vynn";
 
-export function Test() {
+export const Test = () => {
   onMount(() => {});
 
   $effect(() => {});
@@ -10,4 +10,4 @@ export function Test() {
       <test>Test me sheet</test>
     </div>
   );
-}
+};

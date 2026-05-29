@@ -71,7 +71,7 @@ function createElement(tag: string) {
 
   if (currentNode instanceof Element && !IS_LOG_JSX) {
     if (currentNode.tagName.toLowerCase() !== tag) {
-      console.error(
+      throw new Error(
         "Hydration mismatch because the initial UI does not match what was rendered on the server",
       );
     }

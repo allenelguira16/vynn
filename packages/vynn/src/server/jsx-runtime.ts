@@ -1,5 +1,5 @@
-import { Fragment } from "~/component/fragment";
 import { h } from "~/client/h";
+import { Fragment } from "~/component/fragment";
 import { JSX } from "~/types/jsx";
 import { FC, PropsWithChildren } from "~/types/props";
 import { logJsx } from "~/util/log-jsx";
@@ -18,13 +18,12 @@ import { h as hSSR } from "./h";
 const jsx = <T extends PropsWithChildren<Record<string, any>>>(
   type: string | FC<T>,
   { children, ...props } = {} as T,
-  key?: () => string,
 ) => {
   if (isServer) {
-    return hSSR(type, props, children, key);
+    return hSSR(type, props, children);
   }
 
-  return h(type, props, children, key);
+  return h(type, props, children);
 };
 
 export { Fragment, type JSX, jsx, jsx as jsxs, logJsx };

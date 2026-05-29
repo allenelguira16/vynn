@@ -12,10 +12,11 @@ export const Lazy = () => {
         <Suspense fallback="Tester">
           <LazyImport />
         </Suspense>
+        {/* <h1>Test</h1> */}
         <Suspense fallback="Tester2">
           <LazyTest />
         </Suspense>
-        <h1>Test</h1>
+        <h5>Test</h5>
       </div>
     </Template>
   );
