@@ -44,9 +44,6 @@ export function h<T extends PropsWithChildren<Record<string, any>>>(
 
     const observer = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
-        // if (mutation.addedNodes.length) {
-        //   // console.log();
-        // }
         for (const removedNodes of mutation.removedNodes) {
           if (element.isSameNode(removedNodes)) {
             renderCleanup();

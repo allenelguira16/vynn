@@ -9,12 +9,11 @@ import { RuntimeContext } from "~/context/runtime-context";
  */
 export function createLifeCycleContext(id: string) {
   const context: RuntimeContext = {
-    id,
     mount: [],
     state: createStateContext(id),
     effect: [],
     destroy: [],
-    memo: [],
+    memo: new Map(),
   };
 
   return context;

@@ -1,18 +1,18 @@
-import { memo, resource, Suspense } from "vynn";
+import { memo, onDestroy, onMount, resource, Suspense } from "vynn";
 
 import { Template } from "~/components/Template";
 import { sleep } from "~/utils";
 
-export const StackedSuspense = memo(() => {
+export const StackedSuspense = () => {
   const msg3 = resource(async () => {
     // console.log("called");
-    await sleep(2000);
+    await sleep(300);
 
     return "hello world 3";
   }, []);
   const msg2 = resource(async () => {
     // console.log("called");
-    await sleep(2000);
+    await sleep(200);
 
     return "hello world 2";
   }, []);
@@ -39,16 +39,22 @@ export const StackedSuspense = memo(() => {
       </div>
     </Template>
   );
-});
+};
 
 const Component = memo(() => {
   const msg = resource(async () => {
-    await sleep(1000);
+    await sleep(100);
 
     return `hello world`;
   }, []);
 
   console.log("suspense inner rerender");
+  onMount(() => {
+    console.log("bumalik...");
+  });
+  onDestroy(() => {
+    console.log("nawala...");
+  });
 
   return <div>{msg.data}</div>;
 });

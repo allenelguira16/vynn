@@ -1,4 +1,4 @@
-import { $state, $store, createContext, JSX } from "vynn";
+import { $state, $store, createContext, JSX, memo } from "vynn";
 
 import { Template } from "~/components/Template";
 
@@ -33,7 +33,7 @@ function Wrapper({ children }: { children: () => JSX.Element }) {
   );
 }
 
-const Input = () => {
+const Input = memo(() => {
   const forms = formContext();
 
   const i = $state(0);
@@ -70,4 +70,4 @@ const Input = () => {
       {i.value}
     </>
   );
-};
+});

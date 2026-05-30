@@ -12,6 +12,7 @@ export { $computed, type Computed } from "./reactivity/computed";
 export { $effect } from "./reactivity/effect";
 export { $state, type State } from "./reactivity/state";
 export { $store } from "./reactivity/store";
+export { untrack } from "./reactivity/untrack";
 export { type JSX } from "./types/jsx";
 export { type FC, type PropsWithChildren, type PropsWithRef } from "./types/props";
 export { memo } from "./util/memo";

@@ -1,8 +1,8 @@
-import { JSX } from 'vynn';
+import { JSX, FC, PropsWithChildren } from 'vynn';
 
 type Route = {
     path: string;
-    component: () => JSX.Element;
+    component: FC<PropsWithChildren>;
     children?: Route[];
 };
 type Location = {
@@ -11,17 +11,11 @@ type Location = {
 };
 declare const $location: Location;
 declare function navigate(path: string): void;
-declare function isActiveRoute(path: string, exact?: boolean): boolean;
-declare function matchRoute(path: string, routes: Route[], basePath?: string): {
-    chain: Route[];
-    params: Record<string, string>;
-} | undefined;
-declare const params: Record<string, string>;
-declare function Router({ url, routes }: {
+declare function isActiveRoute(targetpath: string): boolean;
+declare function Router(props: {
     url?: string;
     routes: Route[];
-}): () => JSX.Element;
-declare function Outlet(): JSX.Element;
+}): JSX.Element;
 declare function Link({ children, href, activeClass, class: className, }: {
     children: () => JSX.Element;
     href: string;
@@ -29,5 +23,5 @@ declare function Link({ children, href, activeClass, class: className, }: {
     class?: string;
 }): JSX.Element;
 
-export { $location, Link, Outlet, Router, isActiveRoute, matchRoute, navigate, params };
+export { $location, Link, Router, isActiveRoute, navigate };
 export type { Location, Route };

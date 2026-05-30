@@ -1,13 +1,13 @@
-import { Outlet } from "vynn-router";
+import { PropsWithChildren } from "vynn";
 
 import { ButtonPageList } from "~/components/ButtonPageList";
 
-export default function AppLayout() {
+export default function AppLayout({ children }: PropsWithChildren) {
   return (
     <div class="p-2 flex flex-col container m-auto">
       <ButtonPageList />
 
-      <Outlet />
+      {children()}
     </div>
   );
 }

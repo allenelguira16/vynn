@@ -12,6 +12,11 @@ export const ButtonPageList = () => {
           </button>
         </li>
         <li>
+          <button onClick={() => navigate("/lazy")} disabled={isActiveRoute("/lazy")}>
+            Lazy
+          </button>
+        </li>
+        <li>
           <button onClick={() => navigate("/forms")} disabled={isActiveRoute("/forms")}>
             Forms
           </button>

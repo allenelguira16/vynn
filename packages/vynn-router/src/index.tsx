@@ -1,8 +1,8 @@
-import { $store, createContext, JSX } from "vynn";
+import { $effect, $state, $store, FC, JSX, memo, PropsWithChildren } from "vynn";
 
 export type Route = {
   path: string;
-  component: () => JSX.Element;
+  component: FC<PropsWithChildren>;
   children?: Route[];
 };
 
@@ -39,133 +39,84 @@ export function navigate(path: string) {
   }
 }
 
-export function isActiveRoute(path: string, exact = true): boolean {
-  const current = $location.pathname;
-  const currentParts = current.split("/").filter(Boolean);
-  const targetParts = path.split("/").filter(Boolean);
+export function isActiveRoute(targetpath: string) {
+  const pathname = $location.pathname;
 
-  if (exact && currentParts.length !== targetParts.length) return false;
-  if (!exact && currentParts.length < targetParts.length) return false;
+  if (targetpath === "/") {
+    return targetpath === pathname;
+  }
 
-  return targetParts.every((part, i) => {
-    return part.startsWith(":") || part === currentParts[i];
-  });
+  function toSegment(fullpath: string) {
+    return fullpath
+      .split("/")
+      .filter(Boolean)
+      .map((path) => `${path}`);
+  }
+
+  const pathnameSegment = toSegment(pathname);
+  const targetnameSegment = toSegment(targetpath);
+
+  if (pathnameSegment.length !== targetnameSegment.length) {
+    return false;
+  }
+
+  return targetnameSegment.every((path, i) => path.startsWith(":") || path === pathnameSegment[i]);
 }
 
-export function matchRoute(
-  path: string,
-  routes: Route[],
-  basePath = "",
-): { chain: Route[]; params: Record<string, string> } | undefined {
-  const fullPath = (prefix: string, sub: string) => (prefix + "/" + sub).replace(/\/+/g, "/");
+function matchRoute(targetpath: string) {
+  const pathname = $location.pathname;
 
-  const pathSegments = path.split("/").filter(Boolean);
+  if (targetpath === "/") {
+    return pathname.startsWith("/");
+  }
 
-  for (const route of routes) {
-    const fullRoutePath = fullPath(basePath, route.path);
-    const routeSegments = fullRoutePath.split("/").filter(Boolean);
+  function toSegment(fullpath: string) {
+    return fullpath
+      .split("/")
+      .filter(Boolean)
+      .map((path) => `${path}`);
+  }
 
-    const params: Record<string, string> = {};
-    let matched = true;
+  const pathnameSegment = toSegment(pathname);
+  const targetnameSegment = toSegment(targetpath);
 
-    for (let i = 0; i < routeSegments.length; i++) {
-      const routePart = routeSegments[i];
-      const pathPart = pathSegments[i];
+  return targetnameSegment.every((path, i) => path.startsWith(":") || path === pathnameSegment[i]);
+}
 
-      if (routePart?.startsWith("*")) {
-        const key = routePart.slice(1) || "wildcard";
-        params[key] = pathSegments.slice(i).join("/");
-        return { chain: [route], params };
-      }
+const resolve = (routes: Route[]) => {
+  let oldPath: string;
+  const view = $state<FC>(() => null);
 
-      if (routePart?.startsWith(":")) {
-        if (!pathPart) {
-          matched = false;
-          break;
+  $effect(() => {
+    for (const route of routes) {
+      if (matchRoute(route.path)) {
+        if (oldPath !== route.path) {
+          oldPath = route.path;
+          const children = (route.children || []).map((childRoute) => {
+            return {
+              ...childRoute,
+              path: (route.path === "/" ? "" : route.path) + childRoute.path,
+            };
+          });
+          // console.log(children);
+          // TODO: Fix lifecycle hooks onMount onDestroy
+          view.value = () => route.component({ children: () => resolve(children) });
         }
-        params[routePart.slice(1)] = pathPart;
-      } else if (routePart !== pathPart) {
-        matched = false;
-        break;
       }
     }
-
-    if (!matched) continue;
-
-    // 🔑 Give children a chance FIRST
-    if (route.children) {
-      const childMatch = matchRoute(path, route.children, fullRoutePath);
-      if (childMatch) {
-        return {
-          chain: [route, ...childMatch.chain],
-          params: { ...params, ...childMatch.params },
-        };
-      }
-    }
-
-    // If no child matched, exact-length match = valid
-    if (routeSegments.length === pathSegments.length) {
-      return { chain: [route], params };
-    }
-  }
-
-  // fallback: /* catch-all
-  const star = routes.find((r) => r.path.startsWith("*"));
-  if (star) {
-    const key = star.path.slice(1) || "wildcard";
-    return { chain: [star], params: { [key]: pathSegments.join("/") } };
-  }
-
-  return undefined;
-}
-
-export const params = $store<Record<string, string>>({});
-
-export function Router({ url, routes }: { url?: string; routes: Route[] }) {
-  if (url) $location.pathname = url;
+  });
 
   return () => {
-    const matched = matchRoute($location.pathname, routes);
+    const Component = view.value;
 
-    if (matched) {
-      const { chain, params: extractedParams } = matched;
-      for (const key in params) delete params[key];
-      Object.assign(params, extractedParams);
-
-      return buildComponentTree(chain);
-    }
-
-    for (const key in params) delete params[key];
-    return <></>;
+    return <Component />;
   };
-}
+};
 
-const [OutletProvider, outletContext] = createContext<() => JSX.Element>();
+export function Router(props: { url?: string; routes: Route[] }) {
+  if (props.url) $location.pathname = props.url;
 
-export function Outlet() {
-  const Child = outletContext();
-
-  return <Child />;
-}
-
-function buildComponentTree(chain: Route[]): JSX.Element {
-  // Start from the leaf
-  let Component: () => JSX.Element = () => null;
-
-  for (let i = chain.length - 1; i >= 0; i--) {
-    const route = chain[i];
-
-    const Comp = route.component;
-    const child = Component;
-
-    Component = () => (
-      <OutletProvider value={child}>
-        <Comp />
-      </OutletProvider>
-    );
-  }
-
-  return <Component />;
+  return <>{resolve(props.routes)}</>;
 }
 
 export function Link({
@@ -188,7 +139,8 @@ export function Link({
         if (!isServer) {
           e.preventDefault();
           e.stopPropagation();
-          if (!isActiveRoute(href)) navigate(href);
+          // if (!isActiveRoute(href, true))
+          navigate(href);
         }
       }}
     >

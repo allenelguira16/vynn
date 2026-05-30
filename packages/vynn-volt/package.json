@@ -64,7 +64,6 @@
     "vynn": "workspace:^"
   },
   "peerDependencies": {
-    "vinxi": "^0.5.11",
     "vynn": "^0.0.0"
   }
 }

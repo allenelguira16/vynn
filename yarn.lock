@@ -2710,7 +2710,6 @@ __metadata:
     vynn: "workspace:^"
     vynn-router: "workspace:^"
   peerDependencies:
-    vinxi: ^0.5.11
     vynn: ^0.0.0
   languageName: unknown
   linkType: soft

@@ -8,6 +8,8 @@ import { createAnchor } from "~/util/create-target-node";
 import { toArray } from "~/util/to-array";
 
 import { resolveComponentProps } from "./resolve-component-props";
+import { isServer } from "~/util/server-util";
+import { runComponentCleanup } from "~/lifecycle/component-cleanup";
 
 export const rootNodes = new WeakSet<Node>();
 export const cleanupMap = new WeakMap<Node, (() => Promise<void> | void)[]>();
@@ -39,31 +41,31 @@ export function renderComponent<T extends PropsWithChildren<Record<string, any>>
 
   const jsxElements = toArray([rootNode, typeof value === "function" ? value : value]).flat();
 
-  // queueMicrotask(() => {
-  //   if (!rootNode.parentNode) return;
-
-  //   if (!isServer) {
-  //     const observer = new MutationObserver((mutations) => {
-  //       for (const mutation of mutations) {
-  //         for (const removedNodes of mutation.removedNodes) {
-  //           // console.log(rootNode, removedNodes);
-  //           if (rootNode === removedNodes) {
-  //             // console.log(removedNodes);
-  //             // console.log(clientStreamContext().memo.has(type as any));
-  //             // runComponentCleanup(removedNodes);
-  //             observer.disconnect();
-  //           }
-  //         }
-  //       }
-  //     });
-
-  //     observer.observe(rootNode.parentNode, { childList: true, subtree: true });
-  //   }
-  // });
-
   setRuntimeContext(null);
   runLifecycle(rootNode, context);
   rootNodes.add(rootNode);
 
   return jsxElements as JSX.Element;
 }
+
+queueMicrotask(() => {
+  // if (!rootNode.parentNode) return;
+
+  if (!isServer) {
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        for (const removedNodes of mutation.removedNodes) {
+          if (rootNodes.has(removedNodes)) {
+            // console.log("removed", removedNodes);
+            // console.log(removedNodes);
+            // console.log(clientStreamContext().memo.has(type as any));
+            runComponentCleanup(removedNodes);
+            // observer.disconnect();
+          }
+        }
+      }
+    });
+
+    observer.observe(document.body, { childList: true, subtree: true });
+  }
+});

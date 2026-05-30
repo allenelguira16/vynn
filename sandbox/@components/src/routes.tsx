@@ -1,4 +1,4 @@
-import { Outlet, Route } from "vynn-router";
+import { Route } from "vynn-router";
 
 import { ButtonPageList } from "./components/ButtonPageList";
 import { Contexts } from "./pages/Contexts";
@@ -13,14 +13,20 @@ import { StackedSuspense } from "./pages/StackedSuspense";
 export const routes: Route[] = [
   {
     path: "/",
-    component: () => {
-      // console.log("layout rerender");
+    component: ({ children }) => {
+      console.log("layout rerender");
 
       return (
         <div class="p-2 flex flex-col container m-auto">
           <ButtonPageList />
+          <div>
+            {/* <img
+              src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRpLi7keg1UMUkBEw-Y1jo04fSydwwnLocNSQ&s"
+              alt="monday left me broken"
+            /> */}
 
-          <Outlet />
+            {children()}
+          </div>
         </div>
       );
     },

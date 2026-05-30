@@ -83,7 +83,14 @@ app.use("*all", async (req: Request, res: Response, next) => {
     res.write(head.replace("<!--hydration-script-->", HydrateStreamScript() as string));
 
     for await (const chunk of stream) {
-      res.write(chunk);
+      // res.write(chunk);
+      await new Promise<void>((resolve) => {
+        if (!res.write(chunk)) {
+          res.once("drain", resolve);
+        } else {
+          resolve();
+        }
+      });
     }
 
     res.write(tail);

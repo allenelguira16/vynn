@@ -5,7 +5,7 @@ import { State } from "~/reactivity/state";
 import { MemoState } from "~/util/memo";
 
 export interface RuntimeContext {
-  id: string;
+  // id: string;
   mount: MountFn[];
   effect: EffectFn[];
   state: {
@@ -13,7 +13,7 @@ export interface RuntimeContext {
     index: number;
   };
   destroy: DestroyFn[];
-  memo: Map<() => any, MemoState<any, any>>[];
+  memo: Map<() => any, MemoState<any, any>>;
 }
 
 let runtimeContext: RuntimeContext | null = null;

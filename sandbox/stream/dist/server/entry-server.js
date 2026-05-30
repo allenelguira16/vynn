@@ -530,8 +530,8 @@ function N(t) {
       const u2 = Reflect.getOwnPropertyDescriptor(o, a);
       return (u2 == null ? void 0 : u2.get) ? u2.get.call(n) : typeof s == "object" && s !== null ? e(s) : s;
     }, set(o, a, n, s) {
-      const u2 = o[a], l2 = Reflect.set(o, a, n, s);
-      return u2 !== n && te(o, a), l2;
+      const u2 = o[a], f = Reflect.set(o, a, n, s);
+      return u2 !== n && te(o, a), f;
     } });
     return w.set(r2, i), i;
   }
@@ -542,13 +542,13 @@ function k(t, e, r2 = true) {
   let s = null;
   const u2 = () => {
     var _a;
-    const l2 = e.map((c) => c());
+    const f = e.map((c) => c());
     X(() => {
       n.loading = true, n.error = null, n.data = void 0, n.promiseStatus = "pending";
     }), !W() && !y && window.__resource && ((_a = window.__resource) == null ? void 0 : _a[a]) && r2 ? (X(() => {
       var _a2;
       n.data = (_a2 = window.__resource) == null ? void 0 : _a2[a], n.error = null, n.promiseStatus = "fulfilled", n.loading = false;
-    }), delete window.__resource[a], window.__resource.length || delete window.__resource) : (s = X(() => t(...l2)), s.then((c) => {
+    }), delete window.__resource[a], window.__resource.length || delete window.__resource) : (s = X(() => t(...f)), s.then((c) => {
       X(() => {
         n.data = c, n.error = null, n.promiseStatus = "fulfilled", n.loading = false;
       }), W() && r2 && i.controller.enqueue(i.encoder.encode(`<script>window.__resource ??= []; window.__resource[${a}] = ${JSON.stringify(c)};document.currentScript.remove();<\/script>`));
@@ -568,8 +568,8 @@ function k(t, e, r2 = true) {
     if (n.promiseStatus === "pending") throw s;
     if (n.promiseStatus === "rejected") throw n.error;
     return n.data;
-  }, refetch: u2, mutate(l2) {
-    n.data = l2;
+  }, refetch: u2, mutate(f) {
+    n.data = f;
   } };
 }
 function C() {
@@ -661,116 +661,64 @@ function navigate(path) {
     $location.pathname = path;
   }
 }
-function isActiveRoute(path, exact = true) {
-  const current = $location.pathname;
-  const currentParts = current.split("/").filter(Boolean);
-  const targetParts = path.split("/").filter(Boolean);
-  if (exact && currentParts.length !== targetParts.length) return false;
-  if (!exact && currentParts.length < targetParts.length) return false;
-  return targetParts.every((part, i) => {
-    return part.startsWith(":") || part === currentParts[i];
-  });
+function isActiveRoute(targetpath) {
+  const pathname = $location.pathname;
+  if (targetpath === "/") {
+    return targetpath === pathname;
+  }
+  function toSegment(fullpath) {
+    return fullpath.split("/").filter(Boolean).map((path) => `${path}`);
+  }
+  const pathnameSegment = toSegment(pathname);
+  const targetnameSegment = toSegment(targetpath);
+  if (pathnameSegment.length !== targetnameSegment.length) {
+    return false;
+  }
+  return targetnameSegment.every((path, i) => path.startsWith(":") || path === pathnameSegment[i]);
 }
-function matchRoute(path, routes2, basePath = "") {
-  const fullPath = (prefix, sub) => (prefix + "/" + sub).replace(/\/+/g, "/");
-  const pathSegments = path.split("/").filter(Boolean);
-  for (const route of routes2) {
-    const fullRoutePath = fullPath(basePath, route.path);
-    const routeSegments = fullRoutePath.split("/").filter(Boolean);
-    const params2 = {};
-    let matched = true;
-    for (let i = 0; i < routeSegments.length; i++) {
-      const routePart = routeSegments[i];
-      const pathPart = pathSegments[i];
-      if (routePart == null ? void 0 : routePart.startsWith("*")) {
-        const key = routePart.slice(1) || "wildcard";
-        params2[key] = pathSegments.slice(i).join("/");
-        return {
-          chain: [route],
-          params: params2
-        };
-      }
-      if (routePart == null ? void 0 : routePart.startsWith(":")) {
-        if (!pathPart) {
-          matched = false;
-          break;
+function matchRoute(targetpath) {
+  const pathname = $location.pathname;
+  if (targetpath === "/") {
+    return pathname.startsWith("/");
+  }
+  function toSegment(fullpath) {
+    return fullpath.split("/").filter(Boolean).map((path) => `${path}`);
+  }
+  const pathnameSegment = toSegment(pathname);
+  const targetnameSegment = toSegment(targetpath);
+  return targetnameSegment.every((path, i) => path.startsWith(":") || path === pathnameSegment[i]);
+}
+const resolve = E((routes2) => {
+  let oldPath;
+  const view = x(() => null);
+  C$1(() => {
+    for (const route of routes2) {
+      if (matchRoute(route.path)) {
+        if (oldPath !== route.path) {
+          oldPath = route.path;
+          const children = (route.children || []).map((childRoute) => {
+            return {
+              ...childRoute,
+              path: (route.path === "/" ? "" : route.path) + childRoute.path
+            };
+          });
+          view.value = () => route.component({
+            children: () => resolve(children)
+          });
         }
-        params2[routePart.slice(1)] = pathPart;
-      } else if (routePart !== pathPart) {
-        matched = false;
-        break;
       }
     }
-    if (!matched) continue;
-    if (route.children) {
-      const childMatch = matchRoute(path, route.children, fullRoutePath);
-      if (childMatch) {
-        return {
-          chain: [route, ...childMatch.chain],
-          params: {
-            ...params2,
-            ...childMatch.params
-          }
-        };
-      }
-    }
-    if (routeSegments.length === pathSegments.length) {
-      return {
-        chain: [route],
-        params: params2
-      };
-    }
-  }
-  const star = routes2.find((r2) => r2.path.startsWith("*"));
-  if (star) {
-    const key = star.path.slice(1) || "wildcard";
-    return {
-      chain: [star],
-      params: {
-        [key]: pathSegments.join("/")
-      }
-    };
-  }
-  return void 0;
-}
-const params = N({});
-function Router({
-  url,
-  routes: routes2
-}) {
-  if (url) $location.pathname = url;
+  });
   return () => {
-    const matched = matchRoute($location.pathname, routes2);
-    if (matched) {
-      const {
-        chain,
-        params: extractedParams
-      } = matched;
-      for (const key in params) delete params[key];
-      Object.assign(params, extractedParams);
-      return buildComponentTree(chain);
-    }
-    for (const key in params) delete params[key];
-    return () => /* @__PURE__ */ m(r, {});
+    const Component2 = view.value;
+    return () => /* @__PURE__ */ m(Component2, {});
   };
-}
-const [OutletProvider, outletContext] = C();
-function Outlet() {
-  const Child = outletContext();
-  return () => /* @__PURE__ */ m(Child, {});
-}
-function buildComponentTree(chain) {
-  let Component2 = () => null;
-  for (let i = chain.length - 1; i >= 0; i--) {
-    const route = chain[i];
-    const Comp = route.component;
-    const child = Component2;
-    Component2 = () => /* @__PURE__ */ m(OutletProvider, {
-      value: () => child,
-      children: () => /* @__PURE__ */ m(Comp, {})
-    });
-  }
-  return () => /* @__PURE__ */ m(Component2, {});
+});
+function Router(props) {
+  if (props.url) $location.pathname = props.url;
+  return () => /* @__PURE__ */ m(r, {
+    children: () => resolve(props.routes)
+  });
 }
 const Template = ({
   title,
@@ -904,8 +852,8 @@ const name = N({
   firstName: "First name",
   lastName: "Last name"
 });
-const sleep = (ms) => new Promise((resolve) => {
-  setTimeout(resolve, ms);
+const sleep = (ms) => new Promise((resolve2) => {
+  setTimeout(resolve2, ms);
 });
 const Dropdowns = () => {
   console.log("Dropdown rerender");
@@ -1414,10 +1362,15 @@ const Component = E(() => {
 });
 const routes = [{
   path: "/",
-  component: () => {
+  component: ({
+    children
+  }) => {
+    console.log("layout rerender");
     return () => /* @__PURE__ */ m("div", {
       class: () => "p-2 flex flex-col container m-auto",
-      children: () => [() => /* @__PURE__ */ m(ButtonPageList, {}), () => /* @__PURE__ */ m(Outlet, {})]
+      children: () => [() => /* @__PURE__ */ m(ButtonPageList, {}), () => /* @__PURE__ */ m("div", {
+        children: () => children()
+      })]
     });
   },
   children: [{

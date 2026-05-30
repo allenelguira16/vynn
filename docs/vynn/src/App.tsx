@@ -1,4 +1,3 @@
-import { memo, Suspense } from "vynn";
 import { Route, Router } from "vynn-router";
 
 import Layout from "./Layout";
@@ -19,17 +18,13 @@ import { SuspensePage } from "./pages/SuspensePage";
 import { ThingsToKnowPage } from "./pages/ThingsToKnowPage";
 
 export const App = () => {
-  return (
-    <Suspense>
-      <Router routes={routes} />
-    </Suspense>
-  );
+  return <Router url="" routes={routes} />;
 };
 
 export const routes: Route[] = [
   {
     path: "/",
-    component: memo(() => <HomePage />),
+    component: HomePage,
   },
   {
     path: "/docs",

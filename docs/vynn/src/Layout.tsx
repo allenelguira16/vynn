@@ -1,8 +1,9 @@
-import { Link, Outlet } from "vynn-router";
+import { PropsWithChildren } from "vynn";
+import { Link } from "vynn-router";
 
 import vynnLogo from "./assets/vynn.svg";
 
-export default function Layout() {
+export default function Layout({ children }: PropsWithChildren) {
   console.log("Layout Rerender");
   return (
     <div class="drawer max-w-screen-2xl mx-auto lg:drawer-open">
@@ -146,7 +147,8 @@ export default function Layout() {
             <span>Vynn</span>
           </Link>
         </div>
-        <Outlet />
+
+        {children()}
       </div>
     </div>
   );

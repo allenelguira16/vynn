@@ -128,6 +128,14 @@ type Store<T extends object> = T;
 declare function $store<T extends object>(initialObject: T): Store<T>;
 
 /**
+ * Unwrap a reactive value
+ *
+ * @param fn - The function that returns the reactive value.
+ * @returns The reactive value.
+ */
+declare function untrack<T>(fn: () => T): T;
+
+/**
  * memoize a function
  *
  * @param fn - The function to memoize.
@@ -144,5 +152,5 @@ declare function memo<P extends object, T>(fn: (props: P) => T): (props: P) => T
  */
 declare function unwrap<T>(value: any): Partial<T>;
 
-export { $computed, $effect, $state, $store, JSX, NoHydration, Portal, PropsWithChildren, Suspense, createContext, lazy, loop, memo, onDestroy, onMount, resource, unwrap };
+export { $computed, $effect, $state, $store, JSX, NoHydration, Portal, PropsWithChildren, Suspense, createContext, lazy, loop, memo, onDestroy, onMount, resource, untrack, unwrap };
 export type { Computed, DestroyFn, MountFn, State };
