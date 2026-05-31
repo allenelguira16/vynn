@@ -1,8 +1,8 @@
-import { $state, $store, createContext, JSX, memo } from "vynn";
+import { $state, $store, createContext, JSX, memo, onDestroy, useContext } from "vynn";
 
 import { Template } from "~/components/Template";
 
-export function Contexts() {
+export const Contexts = memo(() => {
   return (
     <Template title="Contexts">
       <Form>
@@ -15,15 +15,15 @@ export function Contexts() {
       </Form>
     </Template>
   );
-}
+});
 
-const [FormProvider, formContext] = createContext<{ name: string }>();
+const NameContext = createContext<{ name: string }>();
 
-function Form({ children }: { children: () => JSX.Element }) {
+const Form = memo(({ children }: { children: () => JSX.Element }) => {
   const state = $store<{ name: string }>({ name: "asd" });
 
-  return <FormProvider value={state}>{children()}</FormProvider>;
-}
+  return <NameContext.Provider value={state}>{children()}</NameContext.Provider>;
+});
 
 function Wrapper({ children }: { children: () => JSX.Element }) {
   return (
@@ -34,18 +34,18 @@ function Wrapper({ children }: { children: () => JSX.Element }) {
 }
 
 const Input = memo(() => {
-  const forms = formContext();
+  const forms = useContext(NameContext);
 
   const i = $state(0);
 
-  // const cleanup = setInterval(() => {
-  //   i.value++;
-  // }, 1000);
+  const cleanup = setInterval(() => {
+    i.value++;
+  }, 1000);
 
-  // onDestroy(() => {
-  //   console.log("cleared tanga");
-  //   clearInterval(cleanup);
-  // });
+  onDestroy(() => {
+    console.log("cleared tanga");
+    clearInterval(cleanup);
+  });
 
   const nameEl = <div>Name: {forms.name} Hi</div>;
 

@@ -1,11 +1,11 @@
-import { $effect, $state, $store } from "vynn";
+import { $effect, $state, $store, memo } from "vynn";
 
 import { Template } from "~/components/Template";
 import { name } from "~/utils";
 
 type SortDirection = "asc" | "desc";
 
-export const Dropdowns = () => {
+export const Dropdowns = memo(() => {
   console.log("Dropdown rerender");
   const dropdownStore = $store({
     showDropdown: false,
@@ -91,7 +91,7 @@ export const Dropdowns = () => {
       </div>
     </Template>
   );
-};
+});
 
 type TDropdownListProps = {
   dropdowns: {
@@ -99,7 +99,7 @@ type TDropdownListProps = {
   };
 };
 
-const DropdownList = ({ dropdowns }: TDropdownListProps) => {
+const DropdownList = memo(({ dropdowns }: TDropdownListProps) => {
   console.log("weh");
   // onMount(async () => {
   //   console.log("DropdownList onMount");
@@ -119,9 +119,9 @@ const DropdownList = ({ dropdowns }: TDropdownListProps) => {
       ))}
     </div>
   );
-};
+});
 
-const Dropdown = ({ number }: { number: number }) => {
+const Dropdown = memo(({ number }: { number: number }) => {
   console.log("rerender");
   const isOpen = $state(false);
 
@@ -152,4 +152,4 @@ const Dropdown = ({ number }: { number: number }) => {
       </div>
     </>
   );
-};
+});

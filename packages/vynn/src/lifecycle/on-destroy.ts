@@ -1,4 +1,4 @@
-import { getRuntimeContext } from "~/context/runtime-context";
+import { getOwner } from "./owner";
 
 export type DestroyFn = () => Promise<void> | void;
 
@@ -8,10 +8,17 @@ export type DestroyFn = () => Promise<void> | void;
  * @param fn - The function to run on destroy.
  */
 export function onDestroy(fn: DestroyFn) {
-  const context = getRuntimeContext();
-  if (!context) {
+  const owner = getOwner();
+  if (!owner) {
     throw new Error("onDestroy called outside of component");
   }
 
-  context.destroy.push(fn);
+  owner.cleanups.push(fn);
+  // console.log(owner);
+  // const context = getRuntimeContext();
+  // if (!context) {
+  //   throw new Error("onDestroy called outside of component");
+  // }
+  //
+  // context.destroy.push(fn);
 }

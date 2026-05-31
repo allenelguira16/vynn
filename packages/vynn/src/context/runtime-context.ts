@@ -1,27 +1,44 @@
-import { DestroyFn } from "~/lifecycle/on-destroy";
-import { MountFn } from "~/lifecycle/on-mount";
-import { EffectFn } from "~/reactivity/effect";
-import { State } from "~/reactivity/state";
 import { MemoState } from "~/util/memo";
 
-export interface RuntimeContext {
-  // id: string;
-  mount: MountFn[];
-  effect: EffectFn[];
-  state: {
-    states: State<any>[];
-    index: number;
-  };
-  destroy: DestroyFn[];
-  memo: Map<() => any, MemoState<any, any>>;
-}
+import { getStream, StreamContext } from "./stream-context";
 
-let runtimeContext: RuntimeContext | null = null;
+const globalContextMap = new Map<
+  StreamContext,
+  {
+    suspenseID: number;
+    resourceID: number;
+    lazyID: number;
+    stateID: number;
+    memo: Map<() => any, MemoState<any, any>>;
+  }
+>();
 
-export function setRuntimeContext(ctx: RuntimeContext | null) {
-  runtimeContext = ctx;
-}
+const globalContext = {
+  suspenseID: 0,
+  resourceID: 0,
+  lazyID: 0,
+  stateID: 0,
+  memo: new Map(),
+};
 
-export function getRuntimeContext(): RuntimeContext | null {
-  return runtimeContext;
-}
+export const getRuntimeContext = () => {
+  const context = getStream();
+
+  if (!globalContextMap.has(context)) globalContextMap.set(context, globalContext);
+
+  const value = globalContextMap.get(context);
+
+  if (!value) throw new Error("[vynn]: GlobalContext does not exists");
+
+  return value;
+};
+
+export const resetRuntimeContext = () => {
+  const stream = getRuntimeContext();
+
+  stream.memo.clear();
+  stream.lazyID = 0;
+  stream.resourceID = 0;
+  stream.stateID = 0;
+  stream.suspenseID = 0;
+};

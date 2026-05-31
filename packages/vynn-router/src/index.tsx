@@ -1,4 +1,4 @@
-import { $effect, $state, $store, FC, JSX, memo, PropsWithChildren } from "vynn";
+import { $effect, $state, $store, FC, JSX, PropsWithChildren } from "vynn";
 
 export type Route = {
   path: string;

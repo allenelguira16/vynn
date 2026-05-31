@@ -1,6 +1,6 @@
-import { $effect, $state, createContext, lazy, memo, onMount, State, Suspense } from "vynn";
+import { $effect, $state, createContext, lazy, onMount, State, Suspense, useContext } from "vynn";
 
-const [Provider, context] = createContext<State<string>>();
+const NameProvider = createContext<State<string>>();
 
 export function LazyImport() {
   const name = $state("test");
@@ -9,16 +9,16 @@ export function LazyImport() {
   $effect(() => {});
 
   return (
-    <Provider value={name}>
+    <NameProvider.Provider value={name}>
       <Children />
-    </Provider>
+    </NameProvider.Provider>
   );
 }
 
 const Test2 = lazy(() => import("./Test2"), "Test2");
 
-const Children = memo(() => {
-  const name = context();
+const Children = () => {
+  const name = useContext(NameProvider);
 
   return (
     <>
@@ -29,4 +29,4 @@ const Children = memo(() => {
       </Suspense>
     </>
   );
-});
+};

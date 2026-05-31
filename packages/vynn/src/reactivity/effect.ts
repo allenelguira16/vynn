@@ -1,4 +1,4 @@
-import { getRuntimeContext } from "~/context/runtime-context";
+// import { getRuntimeContext } from "~/context/runtime-context";
 
 /**
  * Effect function type with dependency tracking and cleanup
@@ -40,7 +40,8 @@ export function scheduleEffect(effect: EffectFn) {
  * Create an effect with an attached render frame
  */
 export function $effect(fn: () => void | (() => void)) {
-  const context = getRuntimeContext();
+  // const context = getRuntimeContext();
+
   const wrappedEffect: EffectFn = () => {
     removeEffect(wrappedEffect);
 
@@ -54,7 +55,9 @@ export function $effect(fn: () => void | (() => void)) {
 
     activeEffect = wrappedEffect;
 
-    if (context) context.effect.push(wrappedEffect);
+    // if (context) context.effect.push(wrappedEffect);
+    // const owner = getOwner();
+    // if (owner) owner.cleanups.push(() => wrappedEffect.cleanup?.());
 
     try {
       const result = fn();

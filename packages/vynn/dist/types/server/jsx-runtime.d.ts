@@ -11,6 +11,6 @@ export { l as logJsx } from '../log-jsx-DwiN_lFy.js';
  * @param children - The children of the element.
  * @returns The JSX element.
  */
-declare const jsx: <T extends PropsWithChildren<Record<string, any>>>(type: string | FC<T>, { children, ...props }?: T) => JSX.Element;
+declare const jsx: <T extends PropsWithChildren<Record<string, any>>>(type: string | FC<T>, { children, ...props }: T | undefined, key: () => string) => JSX.Element;
 
 export { JSX, jsx, jsx as jsxs };

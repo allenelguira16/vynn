@@ -1,4 +1,4 @@
-import { $state, $store, createContext, JSX, onDestroy } from "vynn";
+import { $state, $store, createContext, JSX, onDestroy, useContext } from "vynn";
 
 import { Template } from "~/components/Template";
 
@@ -17,12 +17,12 @@ export default function Contexts() {
   );
 }
 
-const [FormProvider, formContext] = createContext<{ name: string }>();
+const FormContext = createContext<{ name: string }>();
 
 function Form({ children }: { children: () => JSX.Element }) {
   const state = $store<{ name: string }>({ name: "" });
 
-  return <FormProvider value={state}>{children()}</FormProvider>;
+  return <FormContext.Provider value={state}>{children()}</FormContext.Provider>;
 }
 
 function Wrapper({ children }: { children: () => JSX.Element }) {
@@ -34,7 +34,7 @@ function Wrapper({ children }: { children: () => JSX.Element }) {
 }
 
 function Input() {
-  const forms = formContext();
+  const forms = useContext(FormContext);
 
   const i = $state(0);
 

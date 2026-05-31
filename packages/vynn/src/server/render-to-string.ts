@@ -1,4 +1,4 @@
-import { resetClientStreamContext } from "~/context/stream-context";
+import { resetRuntimeContext } from "~/context/runtime-context";
 import { JSX } from "~/types/jsx";
 
 import { normalizeToString } from "./normalize-to-string";
@@ -10,15 +10,7 @@ import { normalizeToString } from "./normalize-to-string";
  * @returns stream
  */
 export function renderToString(App: () => JSX.Element) {
-  resetClientStreamContext();
+  resetRuntimeContext();
 
   return normalizeToString(App) || "";
 }
-
-// function minifyHTML(html: string) {
-//   console.log(html);
-//   return html
-//     .replace(/\>[\r\n ]+\</g, "><") // Remove spaces between tags
-//     .replace(/(<.*?>)|\s+/g, (_, $1) => ($1 ? $1 : " ")) // Collapse multiple spaces to one
-//     .trim();
-// }

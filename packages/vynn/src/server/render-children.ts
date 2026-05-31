@@ -3,7 +3,7 @@
 // import { toArray } from "~/util/to-array";
 
 import { getNodeString, hasNoHTMLTags } from "~/server/get-node-string";
-import { isNil } from "~/util/is-node-nil";
+import { isNil } from "~/util/is-nil";
 import { flattenArray, toArray } from "~/util/to-array";
 
 import { JSX } from "./jsx-runtime";

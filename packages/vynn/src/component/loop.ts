@@ -1,4 +1,4 @@
-import { h } from "~/client/h";
+import { jsx } from "~/client/jsx";
 import { $effect } from "~/reactivity/effect";
 import { $state, State } from "~/reactivity/state";
 import { type JSX } from "~/types/jsx";
@@ -32,7 +32,7 @@ export function loop<T>(items: T[]) {
 
       // Use jsx to register it as a component
       // That way we can use life cycles hooks
-      return h(Loop as any, { each, children });
+      return jsx(Loop as any, { each, children });
     },
   };
 }

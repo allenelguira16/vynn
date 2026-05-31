@@ -1,4 +1,7 @@
-import { getRuntimeContext } from "~/context/runtime-context";
+// import { getRuntimeContext } from "~/context/runtime-context";
+
+// import { getContext } from "~/lifecycle/owner";
+import { getContext, setContext } from "~/lifecycle/owner";
 
 import { track, trigger } from "./track";
 
@@ -13,16 +16,20 @@ export type State<T> = { value: T };
 export function $state<T>(initialValue: T): State<T>;
 export function $state<T = undefined>(): State<T | undefined>;
 export function $state<T>(initialValue?: T): State<T | undefined> {
-  const context = getRuntimeContext();
-  if (context && context.state) {
-    const { states, index } = context.state;
+  let state = getContext<{ states: State<any>[]; index: number }>("state");
+  if (!state) {
+    state = { states: [], index: 0 };
+    setContext<{ states: State<any>[]; index: number }>("state", state);
+  }
+  if (state) {
+    const { states, index } = state;
     if (states.length <= index) {
       // Create new state if it doesn't exist
       const s = createState(initialValue);
       states.push(s);
     }
     // Return existing state and increment index
-    return states[context.state.index++];
+    return states[state.index++];
   }
   // fallback: not in a component context
   return createState(initialValue);

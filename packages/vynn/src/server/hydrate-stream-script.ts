@@ -1,6 +1,6 @@
 import { JSX } from "~/types/jsx";
 
-import { h } from "./h";
+import { jsx } from "./jsx";
 
 /**
  * Stream Hydration Script, used for hydrating async
@@ -39,7 +39,7 @@ export function HydrateStreamScript(): JSX.Element {
     tpl.remove();
   }
 
-  return h("script", {
+  return jsx("script", {
     html: `window.__hydrateAsync = ${hydrateAsync.toString()};window.__SSR_STREAMING_APP__ = true;`,
   }) as JSX.Element;
 }

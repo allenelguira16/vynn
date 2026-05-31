@@ -1,4 +1,4 @@
-import { $store, memo, onMount } from "vynn";
+import { $store, onMount } from "vynn";
 
 import { Template } from "~/components/Template";
 import { name, sleep } from "~/utils";
@@ -16,7 +16,7 @@ type PokeDexData = {
 type SortKey = keyof PokeDexData["results"][number];
 type SortDirection = "asc" | "desc";
 
-export const PokeDex = memo(() => {
+export const PokeDex = () => {
   const pokeDex = $store({
     isLoading: true,
     pokeDexList: [] as PokeDexData["results"],
@@ -140,4 +140,4 @@ export const PokeDex = memo(() => {
       </div>
     </Template>
   );
-});
+};

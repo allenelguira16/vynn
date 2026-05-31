@@ -3,7 +3,7 @@ import { memo, onDestroy, onMount, resource, Suspense } from "vynn";
 import { Template } from "~/components/Template";
 import { sleep } from "~/utils";
 
-export const StackedSuspense = () => {
+export const StackedSuspense = memo(() => {
   const msg3 = resource(async () => {
     // console.log("called");
     await sleep(300);
@@ -32,14 +32,14 @@ export const StackedSuspense = () => {
         </Suspense>
         <Suspense fallback="Ngee">{msg3.data}</Suspense>
         <Suspense fallback={<div>loading 1...</div>}>
+          <div>hi</div>
           <Component />
           <Suspense fallback={<div>loading 2...</div>}>{msg2.data}</Suspense>
-          <div>hi</div>
         </Suspense>
       </div>
     </Template>
   );
-};
+});
 
 const Component = memo(() => {
   const msg = resource(async () => {

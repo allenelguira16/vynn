@@ -1,15 +1,14 @@
-import { setRuntimeContext } from "~/context/runtime-context";
-import { createLifeCycleContext } from "~/lifecycle/create-lifecycle";
-import { runLifecycle } from "~/lifecycle/run-lifecycle";
+// import { runComponentCleanup } from "~/lifecycle/component-cleanup";
+import { runComponentCleanup, setComponentCleanup } from "~/lifecycle/component-cleanup";
+import { createOwner, getOwner, runWithOwner } from "~/lifecycle/owner";
 import { untrack } from "~/reactivity/untrack";
 import { JSX } from "~/types/jsx";
 import { FC, PropsWithChildren } from "~/types/props";
-import { createAnchor } from "~/util/create-target-node";
+import { createAnchor } from "~/util/create-anchor";
+import { isServer } from "~/util/server-util";
 import { toArray } from "~/util/to-array";
 
 import { resolveComponentProps } from "./resolve-component-props";
-import { isServer } from "~/util/server-util";
-import { runComponentCleanup } from "~/lifecycle/component-cleanup";
 
 export const rootNodes = new WeakSet<Node>();
 export const cleanupMap = new WeakMap<Node, (() => Promise<void> | void)[]>();
@@ -26,46 +25,81 @@ export function renderComponent<T extends PropsWithChildren<Record<string, any>>
   props?: Omit<T, "children">,
   children?: T["children"],
 ) {
-  resolveComponentProps(type, props);
+  const parent = getOwner();
+  const owner = createOwner(parent);
 
-  const context = createLifeCycleContext(window.crypto.randomUUID());
+  return runWithOwner(owner, () => {
+    resolveComponentProps(type, props);
 
-  setRuntimeContext(context);
-  // anchorHelper.init();
-  const rootNode = createAnchor(`root-${type.name}`, true);
-  // anchorHelper.set(rootNode);
+    const rootNode = createAnchor(`root-${type.name}-${children?.toString()}`);
+    // const endRootNode = createAnchor(`end-root-${type.name}`);
 
-  const value = untrack<JSX.Element>(
-    (): JSX.Element => (children ? type({ ...props, children } as T) : type(props as T)),
-  );
+    if (props && children) {
+      (props as T).children = children;
+    }
+    const value = untrack(() => type(props as T));
 
-  const jsxElements = toArray([rootNode, typeof value === "function" ? value : value]).flat();
+    const jsxElements = toArray([value, rootNode]).flat();
 
-  setRuntimeContext(null);
-  runLifecycle(rootNode, context);
-  rootNodes.add(rootNode);
+    rootNodes.add(rootNode);
+    // rootNodes.add(endRootNode);
+    setComponentCleanup(rootNode, owner.cleanups);
 
-  return jsxElements as JSX.Element;
-}
+    // queueMicrotask(() => {
+    //   if (!startRootNode.parentNode) return;
 
-queueMicrotask(() => {
-  // if (!rootNode.parentNode) return;
+    //   if (!isServer) {
+    //     const observer = new MutationObserver((mutations) => {
+    //       for (const mutation of mutations) {
+    //         if ([...mutation.removedNodes].includes(startRootNode)) {
+    //           runComponentCleanup(startRootNode);
+    //         }
+    //         // console.log();
+    //         // console.log([...mutation.removedNodes].includes(endRootNode));
+    //         // for (const removedNodes of mutation.removedNodes) {
+    //         //   // if () {
+    //         //   //   console.log(startRootNode === removedNodes);
+    //         //   // }
+    //         //   // console.log(endRootNode === removedNodes);
+    //         //   // if (removedNodes === startRootNode) {
+    //         //   //   // runComponentCleanup(startRootNode);
+    //         //   //   //   for (const cleanup of owner.cleanups) cleanup();
+    //         //   //   //   // console.log(owner.cleanups);
+    //         //   // }
+    //         // }
+    //       }
+    //     });
 
-  if (!isServer) {
-    const observer = new MutationObserver((mutations) => {
-      for (const mutation of mutations) {
-        for (const removedNodes of mutation.removedNodes) {
-          if (rootNodes.has(removedNodes)) {
-            // console.log("removed", removedNodes);
-            // console.log(removedNodes);
-            // console.log(clientStreamContext().memo.has(type as any));
-            runComponentCleanup(removedNodes);
-            // observer.disconnect();
+    //     observer.observe(startRootNode.parentNode, { childList: true, subtree: true });
+    //   }
+    // });
+
+    // queueMicrotask(() => {
+    //   console.log(owner);
+    // });
+    queueMicrotask(() => {
+      if (!rootNode.parentNode) return;
+
+      if (!isServer) {
+        const observer = new MutationObserver((mutations) => {
+          for (const mutation of mutations) {
+            for (const removedNodes of mutation.removedNodes) {
+              // console.log(getContext<boolean>("is-suspending"));
+              if (removedNodes === rootNode || !rootNode.isConnected) {
+                // console.log();
+                runComponentCleanup(rootNode);
+                // console.log(rootNode);
+                // for (const cleanup of owner.cleanups) cleanup();
+                // console.log(owner.cleanups);
+              }
+            }
           }
-        }
+        });
+
+        observer.observe(rootNode.parentNode, { childList: true, subtree: true });
       }
     });
 
-    observer.observe(document.body, { childList: true, subtree: true });
-  }
-});
+    return jsxElements as JSX.Element;
+  });
+}

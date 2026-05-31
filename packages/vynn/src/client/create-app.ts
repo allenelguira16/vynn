@@ -13,7 +13,7 @@ export function createApp(App: () => JSX.Element) {
 
   return {
     mount: (id: Document | HTMLElement | DocumentFragment | string) => {
-      // const start = performance.now();
+      const start = performance.now();
       try {
         let node: DocumentFragment | HTMLElement | null;
 
@@ -32,14 +32,14 @@ export function createApp(App: () => JSX.Element) {
           throw new Error("Node must be of type Element");
         }
       } finally {
-        // requestAnimationFrame(() => {
-        //   const duration = (performance.now() - start) / 1000;
-        //   console.log("after paint:", duration);
-        // });
-        // requestIdleCallback(() => {
-        //   const duration = (performance.now() - start) / 1000;
-        //   console.log("idle after hydration:", duration);
-        // });
+        requestAnimationFrame(() => {
+          const duration = (performance.now() - start) / 1000;
+          console.log("after paint:", duration);
+        });
+        requestIdleCallback(() => {
+          const duration = (performance.now() - start) / 1000;
+          console.log("idle after hydration:", duration);
+        });
       }
     },
     unmount: () => {

@@ -1,9 +1,8 @@
+import { jsx as jsxClient } from "~/client/jsx";
 import { Fragment } from "~/component/fragment";
 import { JSX } from "~/types/jsx";
 import { FC, PropsWithChildren } from "~/types/props";
 import { logJsx } from "~/util/log-jsx";
-
-import { h } from "./h";
 
 /**
  * jsx runtime
@@ -16,8 +15,9 @@ import { h } from "./h";
 const jsx = <T extends PropsWithChildren<Record<string, any>>>(
   type: string | FC<T>,
   { children, ...props } = {} as T,
+  key: () => string,
 ) => {
-  return h(type, props, children) as JSX.Element;
+  return jsxClient(type, props, children, key);
 };
 
 export { Fragment, type JSX, jsx, jsx as jsxs, logJsx };

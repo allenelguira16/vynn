@@ -1,4 +1,7 @@
-import { clientStreamContext } from "~/context/stream-context";
+import { getRuntimeContext } from "~/context/runtime-context";
+import { onDestroy } from "~/lifecycle/on-destroy";
+
+import { isServer } from "./server-util";
 
 export type MemoState<P, T> = { lastProps?: P; hasLast: boolean; lastResult?: T };
 
@@ -11,14 +14,19 @@ export type MemoState<P, T> = { lastProps?: P; hasLast: boolean; lastResult?: T 
 export function memo<T>(fn: () => T): () => T;
 export function memo<P extends object, T>(fn: (props: P) => T): (props: P) => T;
 export function memo<P, T>(fn: (props?: P) => T) {
+  const context = getRuntimeContext().memo;
   // wrapper will be the key in memoStore
-  const wrapper = ((props?: P) => {
-    const memoStore = clientStreamContext().memo;
+  function wrapper(props?: P): T {
+    if (!isServer) {
+      onDestroy(() => {
+        context.delete(wrapper);
+      });
+    }
 
-    let state = memoStore.get(wrapper) as MemoState<P, T> | undefined;
+    let state = context.get(wrapper) as MemoState<P, T> | undefined;
     if (!state) {
       state = { lastProps: undefined, hasLast: false, lastResult: undefined };
-      memoStore.set(wrapper, state);
+      context.set(wrapper, state);
     }
 
     // compare only if we have a previous value (handles undefined props correctly)
@@ -31,7 +39,7 @@ export function memo<P, T>(fn: (props?: P) => T) {
     state.lastResult = fn(props);
     state.hasLast = true;
     return state.lastResult as T;
-  }) as (props?: P) => T;
+  }
 
   return wrapper;
 }

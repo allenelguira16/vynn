@@ -1,10 +1,11 @@
 import { AsyncLocalStorage } from "async_hooks";
 
-import { resetClientStreamContext, StreamContext } from "~/context/stream-context";
-import { $effect } from "~/reactivity/effect";
-import { $state } from "~/reactivity/state";
+import { resetRuntimeContext } from "~/context/runtime-context";
+import { StreamContext } from "~/context/stream-context";
+import { runOwnerCleanups } from "~/lifecycle/owner";
+// import { resetClientStreamContext, StreamContext } from "~/context/stream-context";
 import { JSX } from "~/types/jsx";
-import { setIsServerStreaming } from "~/util/server-util";
+import { setisServerStreaming } from "~/util/server-util";
 
 import { normalizeToString } from "./normalize-to-string";
 
@@ -15,19 +16,18 @@ import { normalizeToString } from "./normalize-to-string";
  * @returns stream
  */
 export function renderToStream(App: () => JSX.Element) {
-  setIsServerStreaming(true);
-  resetClientStreamContext();
+  setisServerStreaming(true);
+  // globalThis.__stream_context = undefined;
+  resetRuntimeContext();
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       const als = new AsyncLocalStorage<StreamContext>();
       const encoder = new TextEncoder();
-      const pending = $state(0);
       globalThis.__stream_context = {
         encoder,
         controller,
-        start: () => pending.value++,
-        end: () => pending.value--,
+        promises: [],
       } satisfies StreamContext;
 
       als.run(globalThis.__stream_context, () => {
@@ -35,29 +35,34 @@ export function renderToStream(App: () => JSX.Element) {
         globalThis.__stream_context = store;
 
         try {
-          // console.log();
           const html = normalizeToString(App()) || "";
-          // queueMicrotask(() => {
+
           controller.enqueue(encoder.encode(html));
-          // });
+
+          endStream(() => {
+            runOwnerCleanups();
+            controller.close();
+          });
         } catch (err) {
           // If App throws a Promise (suspense), that promise will be created inside this ALS context
           // so later .then handlers can read getCurrentStream() safely.
           console.error("renderToStream error:", err);
         }
       });
-
-      $effect(() => {
-        if (pending.value <= 0) {
-          queueMicrotask(() => {
-            if (pending.value <= 0) {
-              controller.close();
-            }
-          });
-        }
-      });
     },
   });
 
   return stream;
+}
+
+function endStream(cb: () => void) {
+  queueMicrotask(async () => {
+    await globalThis.__stream_context.promises.pop();
+
+    if (globalThis.__stream_context.promises.length) {
+      endStream(cb);
+    } else {
+      cb();
+    }
+  });
 }

@@ -1,4 +1,4 @@
-import { clientStreamContext } from "~/context/stream-context";
+import { getRuntimeContext } from "~/context/runtime-context";
 import { normalizeToString } from "~/server/normalize-to-string";
 import { JSX } from "~/types/jsx";
 
@@ -8,8 +8,7 @@ type SuspenseSSRProps = {
 };
 
 export function SuspenseSSR({ children, fallback = () => null }: SuspenseSSRProps) {
-  const context = clientStreamContext();
-  const id = context.suspenseID++;
+  const id = getRuntimeContext().suspenseID++;
 
   try {
     return normalizeToString(children);

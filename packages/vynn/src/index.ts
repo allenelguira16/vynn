@@ -5,7 +5,7 @@ export { NoHydration } from "./component/no-hydration";
 export { Portal } from "./component/portal";
 export { resource } from "./component/resource";
 export { Suspense } from "./component/suspense";
-export { createContext } from "./context/create-context";
+export { createContext, useContext } from "./context/create-context";
 export { type DestroyFn, onDestroy } from "./lifecycle/on-destroy";
 export { type MountFn, onMount } from "./lifecycle/on-mount";
 export { $computed, type Computed } from "./reactivity/computed";

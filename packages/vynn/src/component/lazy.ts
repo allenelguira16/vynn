@@ -1,6 +1,5 @@
-import { clientStreamContext } from "~/context/stream-context";
+import { getRuntimeContext } from "~/context/runtime-context";
 import { JSX } from "~/types/jsx";
-import { memo } from "~/util/memo";
 import { isServer, isServerStreaming } from "~/util/server-util";
 import { lazyNodes, setSsrDomWalker, ssrDomWalker } from "~/util/ssr-dom-walker";
 
@@ -20,13 +19,6 @@ export const lazy = <M extends Record<string, any>, K extends keyof M = "default
   _loader: () => Promise<M>,
   namedExport = "default" as K,
 ): (() => JSX.Element) => {
-  // if (!isWarned) {
-  //   console.warn(`[vynn]: lazy() is still experimental so expect flickers`);
-  //   isWarned = true;
-  // }
-
-  // const loader = ;
-  // if (!loader) loader = ;
   let id: number;
   let component: M[K] | undefined;
   let error: Error | undefined;
@@ -59,11 +51,17 @@ export const lazy = <M extends Record<string, any>, K extends keyof M = "default
         error = err instanceof Error ? err : new Error(String(err));
       });
 
-    throw Object.assign(promise, { __fromLazy: !ssrDomWalker().isHydrating });
+    // throw promise;
+    if (!isServerStreaming() && ssrDomWalker().isHydrating) {
+      // console.log("hala nag throw rin?");
+      throw Object.assign(promise, { __fromLazy: true });
+    } else {
+      throw promise;
+    }
   };
 
-  return memo(() => {
-    id ??= clientStreamContext().lazyID++;
+  return () => {
+    id ??= getRuntimeContext().lazyID++;
     if (isServer && !isServerStreaming()) {
       throw new Promise(() => {}); // trigger on ssr to show only fallback
     }
@@ -72,6 +70,8 @@ export const lazy = <M extends Record<string, any>, K extends keyof M = "default
     const resolved = Component();
 
     if (isServerStreaming()) {
+      // console.log("lazy-id: " + id, _loader.toString());
+
       return () => [
         `<!--${MARKER_START}:${id}-->`,
         resolved instanceof Function ? resolved() : resolved,
@@ -80,7 +80,7 @@ export const lazy = <M extends Record<string, any>, K extends keyof M = "default
     }
 
     return resolved;
-  });
+  };
 };
 
 // function onDoneHydration(fn: () => void) {

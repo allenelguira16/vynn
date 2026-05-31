@@ -1,4 +1,4 @@
-import { $store, onDestroy, resource, Suspense } from "vynn";
+import { $store, memo, onDestroy, resource, Suspense } from "vynn";
 
 import { Template } from "~/components/Template";
 import { name } from "~/utils";
@@ -16,7 +16,7 @@ type PokeDexData = {
 type SortKey = keyof PokeDexData["results"][number];
 type SortDirection = "asc" | "desc";
 
-export const PokeDexSuspense = () => {
+export const PokeDexSuspense = memo(() => {
   const pokeDex = $store({
     url: "https://pokeapi.co/api/v2/pokemon/?offset=1100&limit=20",
     sortDirection: "asc" as SortDirection,
@@ -122,14 +122,18 @@ export const PokeDexSuspense = () => {
         <div class="flex gap-4 justify-center">
           <button
             class="btn"
-            onClick={() => pokeDex.changeUrl(pokeDexResource.data?.previous)}
+            onClick={() => {
+              pokeDex.changeUrl(pokeDexResource.data?.previous);
+            }}
             disabled={pokeDexResource.loading || !pokeDexResource.data?.previous}
           >
             Previous
           </button>
           <button
             class="btn"
-            onClick={() => pokeDex.changeUrl(pokeDexResource.data?.next)}
+            onClick={() => {
+              pokeDex.changeUrl(pokeDexResource.data?.next);
+            }}
             disabled={pokeDexResource.loading || !pokeDexResource.data?.next}
           >
             Next
@@ -138,4 +142,4 @@ export const PokeDexSuspense = () => {
       </div>
     </Template>
   );
-};
+});

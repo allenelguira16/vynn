@@ -1,5 +1,5 @@
 import { FC, PropsWithChildren } from "~/types/props";
-import { createAnchor } from "~/util/create-target-node";
+import { createAnchor } from "~/util/create-anchor";
 import { IS_LOG_JSX } from "~/util/log-jsx";
 import { ssrDomWalker } from "~/util/ssr-dom-walker";
 
@@ -15,13 +15,14 @@ import { renderComponent } from "./render-component";
  * @param children - The children of the element.
  * @returns The JSX element.
  */
-export function h<T extends PropsWithChildren<Record<string, any>>>(
+export function jsx<T extends PropsWithChildren<Record<string, any>>>(
   type: string | FC<T>,
   props = {} as Omit<T, "children">,
   children?: T["children"],
+  key?: () => string,
 ) {
   if (typeof type === "function") {
-    return renderComponent(type, props, children);
+    return renderComponent(type, { ...props, key }, children);
   }
 
   if (type === "html") {

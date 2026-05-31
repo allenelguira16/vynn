@@ -86,10 +86,14 @@ declare function Suspense(props: {
  *
  * @returns Provider and context
  */
-declare function createContext<T>(): readonly [(props: {
-    value: T;
-    children: () => JSX.Element;
-}) => () => JSX.Element, () => T];
+declare function createContext<T>(): {
+    id: symbol;
+    Provider: (props: {
+        value: T;
+        children: () => JSX.Element;
+    }) => () => () => JSX.Element;
+};
+declare function useContext<T>(context: ReturnType<typeof createContext<T>>): NonNullable<T>;
 
 type DestroyFn = () => Promise<void> | void;
 /**
@@ -152,5 +156,5 @@ declare function memo<P extends object, T>(fn: (props: P) => T): (props: P) => T
  */
 declare function unwrap<T>(value: any): Partial<T>;
 
-export { $computed, $effect, $state, $store, JSX, NoHydration, Portal, PropsWithChildren, Suspense, createContext, lazy, loop, memo, onDestroy, onMount, resource, untrack, unwrap };
+export { $computed, $effect, $state, $store, JSX, NoHydration, Portal, PropsWithChildren, Suspense, createContext, lazy, loop, memo, onDestroy, onMount, resource, untrack, unwrap, useContext };
 export type { Computed, DestroyFn, MountFn, State };

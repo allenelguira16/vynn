@@ -1,12 +1,13 @@
 import { getSuspenseHandler } from "~/component/suspense";
-import { runComponentCleanup } from "~/lifecycle/component-cleanup";
+import { getContext } from "~/lifecycle/owner";
 import { $effect } from "~/reactivity/effect";
 import { JSX } from "~/types/jsx";
-import { createAnchor } from "~/util/create-target-node";
-import { isNil } from "~/util/is-node-nil";
+import { createAnchor } from "~/util/create-anchor";
+import { isNil } from "~/util/is-nil";
 import { flattenArray, toArray } from "~/util/to-array";
 
 import { getNode } from "./get-node";
+import { rootNodes } from "./render-component";
 
 /**
  * Render children of jsx
@@ -23,8 +24,8 @@ export function renderChildren(
   let renderDisposers: (() => void)[] = [];
 
   for (const child of flattenArray(toArray(children))) {
-    let subRenderDisposers: (() => void)[] = [];
     let nodeDisposers: (() => void)[] = [];
+    let subRenderDisposers: (() => void)[] = [];
 
     const anchor = createAnchor(`anchor-${child}`, true);
     parentNode.insertBefore(anchor, baseAnchor);
@@ -32,6 +33,7 @@ export function renderChildren(
     let node: Element | null = null;
 
     const handler = getSuspenseHandler();
+    // let isRetrying = false;
     const effectDisposer = $effect(() => {
       try {
         subRenderDisposers.map((dispose) => dispose());
@@ -56,8 +58,8 @@ export function renderChildren(
             if (!newNode.isConnected) {
               parentNode.insertBefore(newNode, anchor);
             } else {
-              if (baseAnchor) parentNode.insertBefore(baseAnchor, newNode.nextElementSibling);
-              parentNode.insertBefore(anchor, newNode.nextElementSibling);
+              if (baseAnchor) parentNode.insertBefore(baseAnchor, newNode.nextSibling);
+              parentNode.insertBefore(anchor, newNode.nextSibling);
             }
           } else {
             parentNode.replaceChild(newNode, node);
@@ -65,8 +67,14 @@ export function renderChildren(
           node = newNode;
         }
 
-        nodeDisposers.push(() => node && runComponentCleanup(node));
-        nodeDisposers.push(() => node && node.remove());
+        renderDisposers.push(() => {
+          if (node) {
+            if (getContext<boolean>("is-suspending") && rootNodes.has(node)) {
+              return;
+            }
+            node.remove();
+          }
+        });
       } catch (error) {
         if (error instanceof Promise && handler) {
           handler(error);

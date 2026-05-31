@@ -10,9 +10,9 @@ export const Lazy = () => {
     <Template title="Lazy">
       <div>
         <Suspense fallback="Tester">
+          {/* <h1>Test</h1> */}
           <LazyImport />
         </Suspense>
-        {/* <h1>Test</h1> */}
         <Suspense fallback="Tester2">
           <LazyTest />
         </Suspense>

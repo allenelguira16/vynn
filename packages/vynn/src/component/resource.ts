@@ -1,4 +1,5 @@
-import { clientStreamContext, getCurrentStream } from "~/context/stream-context";
+import { getRuntimeContext } from "~/context/runtime-context";
+import { getStream } from "~/context/stream-context";
 import { $store } from "~/reactivity/store";
 import { untrack } from "~/reactivity/untrack";
 import { isServer, isServerStreaming } from "~/util/server-util";
@@ -24,8 +25,8 @@ export function resource<T, const P extends any[]>(
   _params: P,
   isPreload = true,
 ): ResourceReturn<T> {
-  const stream = getCurrentStream();
-  const context = clientStreamContext();
+  const stream = getStream();
+  const context = getRuntimeContext();
   const id = context.resourceID++;
 
   const state = $store({

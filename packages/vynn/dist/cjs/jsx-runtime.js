@@ -1,1 +1,1 @@
-"use strict";var g=require("./chunks/CkIjWYIf.js"),r=require("./chunks/CSwHl3hy.js");const e=(s,{children:t,...a}={})=>r.h(s,a,t);exports.Fragment=g.Fragment,exports.logJsx=r.logJsx,exports.jsx=e,exports.jsxs=e;
+"use strict";var r=require("./chunks/C4Id-c5X.js"),n=require("./chunks/CkIjWYIf.js");const e=(s,{children:t,...a}={},g)=>r.jsx(s,a,t,g);exports.logJsx=r.logJsx,exports.Fragment=n.Fragment,exports.jsx=e,exports.jsxs=e;

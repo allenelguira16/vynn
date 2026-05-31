@@ -1,4 +1,5 @@
-import { clientStreamContext, getCurrentStream } from "~/context/stream-context";
+import { getRuntimeContext } from "~/context/runtime-context";
+import { getStream } from "~/context/stream-context";
 import { normalizeToString } from "~/server/normalize-to-string";
 import { JSX } from "~/types/jsx";
 
@@ -8,13 +9,12 @@ type SuspenseStreamProps = {
 };
 
 export function SuspenseStream({ children, fallback = () => null }: SuspenseStreamProps) {
-  const context = clientStreamContext();
-  const id = context.suspenseID++;
+  const id = getRuntimeContext().suspenseID++;
 
-  const { controller, encoder, end: endIfDone, start } = getCurrentStream();
+  const stream = getStream();
 
   const handler = (promise: Promise<any>) => {
-    start();
+    stream.promises.push(promise);
     promise
       .then(() => {
         const html = normalizeToString(children);
@@ -22,27 +22,30 @@ export function SuspenseStream({ children, fallback = () => null }: SuspenseStre
         const template = `<template async-id="${id}">${html}</template>`;
         const script = `<script>__hydrateAsync("${id}");document.currentScript.remove();</script>`;
 
-        controller.enqueue(encoder.encode(template));
-        controller.enqueue(encoder.encode(script));
+        stream.controller.enqueue(stream.encoder.encode(template));
+        stream.controller.enqueue(stream.encoder.encode(script));
+
+        // endIfDone();
       })
       .catch((err) => {
         if (err instanceof Promise) {
-          start();
+          // endIfDone();
           handler(err);
         } else {
           throw err;
         }
-      })
-      .finally(() => endIfDone());
+      });
+    // .finally(endIfDone);
   };
 
   try {
     return normalizeToString(children);
   } catch (error) {
     if (error instanceof Promise) {
+      // start();
       handler(error);
     }
 
-    return [`<!--~$:${id}-->`, fallback?.() ?? "", `<!--/$:${id}-->`];
+    return [`<!--~$:${id}-->`, normalizeToString(fallback), `<!--/$:${id}-->`];
   }
 }
