@@ -20,11 +20,12 @@ export const routes: Route[] = [
         <div class="p-2 flex flex-col container m-auto">
           <ButtonPageList />
           <div>
-            <img
+            {/* <img
               src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRpLi7keg1UMUkBEw-Y1jo04fSydwwnLocNSQ&s"
               alt="monday left me broken"
-              fetchpriority="high"
-            />
+              fetchPriority="high"
+              class="p-2"
+            /> */}
 
             {children()}
           </div>

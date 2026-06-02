@@ -10,22 +10,22 @@
     "preview": "yarn build && yarn start"
   },
   "dependencies": {
-    "@tailwindcss/vite": "^4.1.8",
-    "@types/node": "^22.15.29",
+    "@tailwindcss/vite": "^4.3.0",
+    "@types/node": "^25.9.1",
     "@types/pretty": "^2.0.3",
     "@vynn/common": "workspace:^",
     "@vynn/volt": "workspace:^",
-    "postcss": "^8.5.14",
+    "postcss": "^8.5.15",
     "pretty": "^2.0.0",
-    "tailwindcss": "^4.1.8",
-    "tsx": "^4.19.4",
-    "typescript": "^5.8.3",
-    "vinxi": "^0.5.8",
-    "vite": "^6.3.5",
+    "tailwindcss": "^4.3.0",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3",
+    "vinxi": "^0.5.11",
+    "vite": "^8.0.14",
     "vynn": "workspace:^",
     "vynn-router": "workspace:^"
   },
   "devDependencies": {
-    "vite-css-modules": "^1.10.0"
+    "vite-css-modules": "^1.16.0"
   }
 }

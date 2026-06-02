@@ -13,40 +13,43 @@ type VitePluginVynnOptions = {
  *
  * @returns The vite plugin.
  */
-export default (options: VitePluginVynnOptions = { ssr: false }): any => {
-  const virtualCssPath = "/@virtual:ssr-css.css";
-  // keep styles map scoped to the plugin instance
-  const collectedStyles = new Map<string, string>();
+export default (options: VitePluginVynnOptions = { ssr: false }): PluginOption[] => {
+  const plugins: PluginOption[] = [];
 
-  return [
-    {
-      name: "vite-plugin-vynn",
-      enforce: "pre",
+  plugins.push({
+    name: "vite-plugin-vynn",
+    enforce: "pre",
 
-      transform(code, id) {
-        const [filename] = id.split("?", 2);
+    transform(code, id) {
+      const [filename] = id.split("?", 2);
 
-        if (/\.(t|j)sx($|\?)/.test(filename)) {
-          const result = transform(code, {
-            filename,
-            sourceMaps: true,
-            presets: [[babelPluginVynn, options], babelPluginTS],
-            generatorOpts: {
-              comments: true,
-              shouldPrintComment: (val) => /#__PURE__/.test(val),
-            },
-          });
+      if (/\.(t|j)sx($|\?)/.test(filename)) {
+        const result = transform(code, {
+          filename,
+          sourceMaps: true,
+          presets: [[babelPluginVynn, options], babelPluginTS],
+          generatorOpts: {
+            comments: true,
+            shouldPrintComment: (val) => /#__PURE__/.test(val),
+          },
+        });
 
-          if (result?.code) {
-            return {
-              code: result.code,
-              map: result.map,
-            };
-          }
+        if (result?.code) {
+          return {
+            code: result.code,
+            map: result.map,
+          };
         }
-      },
+      }
     },
-    options.ssr && {
+  });
+
+  if (options.ssr) {
+    const virtualCssPath = "/@virtual:ssr-css.css";
+    // keep styles map scoped to the plugin instance
+    const collectedStyles = new Map<string, string>();
+
+    plugins.push({
       name: "ssr-dev-fouc-fix",
       apply: "serve",
 
@@ -80,16 +83,11 @@ export default (options: VitePluginVynnOptions = { ssr: false }): any => {
           }
           next();
         });
-
-        // small debug so you can confirm the plugin is active
-        // remove or wrap in env guard if you don't want logspam
-
-        console.log("[ssr-dev-FOUC-fix] plugin active (dev server)");
       },
 
       // inject a single <link> pointing at the virtual stylesheet into the head
       transformIndexHtml: {
-        enforce: "pre",
+        order: "pre",
         handler: () => [
           {
             tag: "link",
@@ -98,6 +96,8 @@ export default (options: VitePluginVynnOptions = { ssr: false }): any => {
           },
         ],
       },
-    },
-  ] satisfies PluginOption;
+    });
+  }
+
+  return plugins;
 };

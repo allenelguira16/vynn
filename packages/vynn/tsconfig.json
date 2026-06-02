@@ -3,13 +3,13 @@
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
-      "~/*": ["src/*"],
-      "@/*": ["src_new/*"]
+      "~/*": ["src/*"]
     },
     "composite": true,
     "jsx": "preserve",
     "jsxImportSource": "src",
-    "lib": ["ESNext", "DOM", "DOM.Iterable"]
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "ignoreDeprecations": "6.0"
   },
   "include": ["src/**/*"],
   "exclude": ["dist/**/*"]

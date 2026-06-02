@@ -1,5 +1,5 @@
 import { flattenDOMContents } from "~/client/flat-dom-contents";
-import { JSX } from "~/jsx-runtime";
+import { JSX } from "~/types/jsx";
 import { isServer } from "~/util/server-util";
 import { ssrDomWalker } from "~/util/ssr-dom-walker";
 

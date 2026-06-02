@@ -1,7 +1,6 @@
-import { P as PropsWithChildren } from './props-uz5uYVoY.js';
-export { F as FC, a as Fragment, b as PropsWithRef } from './props-uz5uYVoY.js';
-import { J as JSX } from './jsx-CQ66VjTW.js';
-import { JSX as JSX$1 } from '~/jsx-runtime';
+import { P as PropsWithChildren } from './props-Jf6QYkA_.js';
+export { F as FC, a as Fragment, b as PropsWithRef } from './props-Jf6QYkA_.js';
+import { J as JSX } from './jsx-BgHN_1Il.js';
 
 /**
  * Lazily load components
@@ -41,8 +40,8 @@ declare function loop<T>(items: T[]): {
  * @returns The fragment.
  */
 declare function NoHydration({ children }: {
-    children?: () => JSX$1.Element;
-}): () => JSX$1.Element;
+    children?: () => JSX.Element;
+}): () => JSX.Element;
 
 /**
  * A portal component for rendering into different part of the dom

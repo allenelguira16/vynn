@@ -1,3 +1,5 @@
+import { PluginOption } from 'vite';
+
 type VitePluginVynnOptions = {
     ssr: boolean;
 };
@@ -6,6 +8,6 @@ type VitePluginVynnOptions = {
  *
  * @returns The vite plugin.
  */
-declare const _default: (options?: VitePluginVynnOptions) => any;
+declare const _default: (options?: VitePluginVynnOptions) => PluginOption[];
 
 export { _default as default };

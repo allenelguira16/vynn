@@ -147,6 +147,7 @@ type HTMLImgAttributes<T extends Element = HTMLImageElement> = HTMLVoidAttribute
     srcSet?: string;
     useMap?: string;
     width?: number | string;
+    fetchPriority?: "auto" | "high" | "low";
 };
 type HTMLLabelAttributes<T extends Element = HTMLLabelElement> = HTMLAttributes<T> & {
     form?: string;
@@ -181,6 +182,7 @@ type HTMLIframeAttributes<T extends Element = HTMLIFrameElement> = HTMLAttribute
     src?: string;
     srcDoc?: string;
     width?: number | string;
+    fetchPriority?: "auto" | "high" | "low";
 };
 type HTMLEmbedAttributes<T extends Element = HTMLEmbedElement> = HTMLVoidAttributes<T> & {
     height?: number | string;
@@ -210,6 +212,7 @@ type HTMLLinkAttributes<T extends Element = HTMLLinkElement> = HTMLVoidAttribute
     sizes?: string;
     type?: string;
     charSet?: string;
+    fetchPriority?: "auto" | "high" | "low";
 };
 type HTMLMetaAttributes<T extends Element = HTMLMetaElement> = HTMLVoidAttributes<T> & {
     charSet?: string;
@@ -228,6 +231,7 @@ type HTMLScriptAttributes<T extends Element = HTMLScriptElement> = HTMLAttribute
     referrerPolicy?: string;
     src?: string;
     type?: string;
+    fetchPriority?: "auto" | "high" | "low";
 };
 type HTMLInputAttributes<T extends Element = HTMLInputElement> = HTMLVoidAttributes<T> & {
     accept?: string;

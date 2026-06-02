@@ -16,7 +16,7 @@ export function ssrDomWalker() {
       return renderedNodes[currentIndex];
     },
     get isHydrating() {
-      return !!renderedNodes[currentIndex];
+      return !!renderedNodes[currentIndex] && !!lazyNodes.flat().length;
     },
     next: () => {
       if (renderedNodes[currentIndex]) {

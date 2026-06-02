@@ -8,9 +8,6 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
 
-    /* Path mapping for shared resolution (optional tweak per package) */
-    "baseUrl": ".",
-
     /* Compatibility & helpers */
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,

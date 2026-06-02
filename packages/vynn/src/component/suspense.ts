@@ -68,8 +68,7 @@ export function Suspense(props: { fallback?: JSX.Element; children: JSX.Element 
 
 function onDoneHydration(fn: () => void) {
   if (!ssrDomWalker().isHydrating) {
-    fn();
-    return;
+    return fn();
   }
 
   requestAnimationFrame(() => onDoneHydration(fn));

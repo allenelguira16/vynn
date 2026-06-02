@@ -1,3 +1,4 @@
+import { getOwner } from "~/lifecycle/owner";
 import { FC, PropsWithChildren } from "~/types/props";
 import { createAnchor } from "~/util/create-anchor";
 import { IS_LOG_JSX } from "~/util/log-jsx";
@@ -40,23 +41,28 @@ export function jsx<T extends PropsWithChildren<Record<string, any>>>(
   const renderCleanup = renderChildren(element, children, anchor);
   const propsCleanup = applyProps(element, props);
 
-  queueMicrotask(() => {
-    if (!element.parentNode) return;
+  const owner = getOwner();
+  owner?.cleanups.push(renderCleanup);
+  owner?.cleanups.push(propsCleanup);
+  // console.log();
 
-    const observer = new MutationObserver((mutations) => {
-      for (const mutation of mutations) {
-        for (const removedNodes of mutation.removedNodes) {
-          if (element.isSameNode(removedNodes)) {
-            renderCleanup();
-            propsCleanup();
-            observer.disconnect();
-          }
-        }
-      }
-    });
+  // queueMicrotask(() => {
+  //   if (!element.parentNode) return;
 
-    observer.observe(element.parentNode, { childList: true, subtree: true });
-  });
+  //   const observer = new MutationObserver((mutations) => {
+  //     for (const mutation of mutations) {
+  //       for (const removedNodes of mutation.removedNodes) {
+  //         if (element.isSameNode(removedNodes)) {
+  //           renderCleanup();
+  //           propsCleanup();
+  //           observer.disconnect();
+  //         }
+  //       }
+  //     }
+  //   });
+
+  //   observer.observe(element.parentNode, { childList: true, subtree: true });
+  // });
 
   xmlnsStack.pop();
   return element;
@@ -68,6 +74,7 @@ function createElement(tag: string) {
   const { currentNode, next } = ssrDomWalker();
 
   if (currentNode instanceof Element && !IS_LOG_JSX) {
+    // console.log(currentNode, tag);
     if (currentNode.tagName.toLowerCase() !== tag) {
       throw new Error(
         "Hydration mismatch because the initial UI does not match what was rendered on the server",

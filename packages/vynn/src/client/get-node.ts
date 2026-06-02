@@ -18,6 +18,7 @@ export function getNode<T extends Node>(jsxElement: JSX.Element): T {
     const { currentNode, next } = ssrDomWalker();
 
     if (currentNode instanceof Text && !IS_LOG_JSX) {
+      // console.log(currentNode, String(jsxElement));
       if (currentNode.textContent !== String(jsxElement)) {
         throw new Error(
           "Hydration mismatch because the initial UI does not match what was rendered on the server",

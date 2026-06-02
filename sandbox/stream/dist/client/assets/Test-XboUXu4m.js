@@ -1,0 +1,1 @@
+import{c as e,n as t,s as n}from"./index-BDfJFra-.js";var r=()=>(n(()=>{}),e(()=>{}),()=>t(`div`,{children:()=>t(`test`,{children:()=>`Test me sheet`})}));export{r as Test};

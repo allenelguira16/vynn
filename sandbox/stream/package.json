@@ -12,28 +12,28 @@
     "build:server": "NODE_ENV=production vite build --outDir dist/server --ssr src/entry-server.js"
   },
   "dependencies": {
-    "@tailwindcss/vite": "^4.1.8",
-    "@types/express": "^5.0.2",
-    "@types/node": "^22.15.29",
+    "@tailwindcss/vite": "^4.3.0",
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.9.1",
     "@types/pretty": "^2.0.3",
     "@vynn/common": "workspace:^",
     "compression": "^1.8.1",
-    "express": "^5.1.0",
-    "postcss": "^8.5.14",
+    "express": "^5.2.1",
+    "postcss": "^8.5.15",
     "pretty": "^2.0.0",
-    "sirv": "^3.0.1",
-    "tailwindcss": "^4.1.8",
-    "tsx": "^4.19.4",
-    "typescript": "^5.8.3",
-    "vite": "^6.3.5",
-    "vite-plugin-preload": "^0.4.4",
+    "sirv": "^3.0.2",
+    "tailwindcss": "^4.3.0",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.14",
+    "vite-plugin-preload": "^0.7.0",
     "vite-plugin-vynn": "workspace:^",
-    "vite-tsconfig-paths": "^5.1.4",
+    "vite-tsconfig-paths": "^6.1.1",
     "vynn": "workspace:^",
     "vynn-router": "workspace:^"
   },
   "devDependencies": {
-    "@types/compression": "^1",
-    "vite-css-modules": "^1.10.0"
+    "@types/compression": "^1.8.1",
+    "vite-css-modules": "^1.16.0"
   }
 }

@@ -35,6 +35,7 @@ export type HTMLImgAttributes<T extends Element = HTMLImageElement> = HTMLVoidAt
   srcSet?: string;
   useMap?: string;
   width?: number | string;
+  fetchPriority?: "auto" | "high" | "low";
 };
 
 export type HTMLLabelAttributes<T extends Element = HTMLLabelElement> = HTMLAttributes<T> & {
@@ -74,6 +75,7 @@ export type HTMLIframeAttributes<T extends Element = HTMLIFrameElement> = HTMLAt
   src?: string;
   srcDoc?: string;
   width?: number | string;
+  fetchPriority?: "auto" | "high" | "low";
 };
 
 export type HTMLEmbedAttributes<T extends Element = HTMLEmbedElement> = HTMLVoidAttributes<T> & {
@@ -106,6 +108,7 @@ export type HTMLLinkAttributes<T extends Element = HTMLLinkElement> = HTMLVoidAt
   sizes?: string;
   type?: string;
   charSet?: string;
+  fetchPriority?: "auto" | "high" | "low";
 };
 
 export type HTMLMetaAttributes<T extends Element = HTMLMetaElement> = HTMLVoidAttributes<T> & {
@@ -126,6 +129,7 @@ export type HTMLScriptAttributes<T extends Element = HTMLScriptElement> = HTMLAt
   referrerPolicy?: string;
   src?: string;
   type?: string;
+  fetchPriority?: "auto" | "high" | "low";
 };
 
 export type HTMLInputAttributes<T extends Element = HTMLInputElement> = HTMLVoidAttributes<T> & {
