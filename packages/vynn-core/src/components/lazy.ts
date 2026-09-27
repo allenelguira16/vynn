@@ -1,0 +1,87 @@
+import type { JSX } from "../types/jsx";
+import { $async } from "../reactivity/$async";
+import { $cmpnt, $dyn } from "../render";
+import { createSSRAsync, SSR_NODE } from "../render/resolve-node";
+import { getCurrentOwner, runWithOwner } from "../life-cycle/owner";
+import { getRenderMode } from "../utils/render-mode";
+
+type AnyComponent = (props: never) => JSX.Element;
+
+type ComponentExport<
+  M extends Record<string, unknown>,
+  K extends keyof M,
+> = M[K] extends AnyComponent ? M[K] : never;
+
+/**
+ * Lazily loads a component from a dynamically imported module.
+ *
+ * The component is not loaded until it is rendered. While the module is
+ * loading, the returned component integrates with Suspense through `$async`.
+ *
+ * @template M The type of the dynamically imported module.
+ * @template K The name of the export containing the component.
+ * @param loader A function that dynamically imports the component module.
+ * @param namedExport The name of the component export to load.
+ * @returns A component that loads and renders the requested export lazily.
+ */
+export function lazy<M extends Record<string, unknown>, K extends keyof M>(
+  loader: () => Promise<M>,
+  namedExport: K,
+): ComponentExport<M, K>;
+
+export function lazy<
+  M extends Record<string, unknown> & { default: AnyComponent },
+>(loader: () => Promise<M>): M["default"];
+
+export function lazy<
+  M extends Record<string, unknown>,
+  K extends keyof M = "default" & keyof M,
+>(
+  loader: () => Promise<M>,
+  namedExport = "default" as K,
+): ComponentExport<M, K> {
+  type Component = ComponentExport<M, K>;
+
+  let cached: ComponentExport<M, K>;
+  return $cmpnt(function LazyComponent(
+    props: Parameters<Component>[0],
+  ): JSX.Element {
+    const component = $async(async () => {
+      const components = await loader();
+      const component = components[namedExport];
+
+      // await sleep(1000);
+
+      if (typeof component !== "function") {
+        throw new Error(
+          `lazy(): export "${String(namedExport)}" is not a component.`,
+        );
+      }
+
+      return component as Component;
+    });
+    const owner = getCurrentOwner();
+
+    if (getRenderMode() === "async") {
+      return createSSRAsync(async () => {
+        return runWithOwner(owner, async () => {
+          const Component = await (component.value as unknown as Promise<
+            ComponentExport<M, K>
+          >);
+
+          return Component(props);
+        }) as unknown as SSR_NODE[];
+      }) as unknown as JSX.Element[];
+    } else {
+      return $dyn(() => {
+        if (!cached) cached = component.value;
+        return cached(props);
+      });
+    }
+    // return component.value(props);
+  }) as Component;
+}
+
+// const sleep = (ms: number): Promise<void> => {
+//   return new Promise((resolve) => setTimeout(resolve, ms));
+// };
