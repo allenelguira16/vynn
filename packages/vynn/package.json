@@ -1,0 +1,32 @@
+{
+  "name": "vynn",
+  "version": "0.0.0",
+  "description": "",
+  "main": "src/index.ts",
+  "type": "module",
+  "scripts": {},
+  "exports": {
+    ".": {
+      "import": "./src/index.ts"
+    },
+    "./jsx-runtime": {
+      "import": "./src/jsx-runtime.ts"
+    },
+    "./client": {
+      "import": "./src/client/index.ts"
+    }
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "version": "^11.17.0",
+      "onFail": "download"
+    }
+  },
+  "dependencies": {
+    "typescript": "^7.0.2"
+  }
+}
