@@ -7,21 +7,22 @@ type RuntimeHelperName =
   | "$cmpnt"
   | "$insert"
   | "$attr"
-  | "$on";
+  | "$on"
+  | "$spread";
 
 type IdentifierAllocator = {
   nextElement(): t.Identifier;
 };
 
 type ReactivePluginOptions = {
-  ssr?: boolean;
+  // ssr?: boolean;
 };
 
 export default function reactivePlugin(
   _api: PluginAPI,
-  options: ReactivePluginOptions = {},
+  _options: ReactivePluginOptions = {},
 ) {
-  const runtimeImportSource = options.ssr ? "vynn/server" : "vynn/client";
+  const runtimeImportSource = "vynn/render";
   let programPath: any = null;
 
   const runtimeHelpers = new Map<RuntimeHelperName, t.Identifier>();
@@ -212,9 +213,8 @@ export default function reactivePlugin(
         //   const items = [<div>A</div>, <div>B</div>];
         //   const render = () => <span>{forms.name}</span>;
         //
-        // Reuse the same recursive expression transformer so JSX nested inside
-        // calls, arrays, objects, callbacks, logical expressions, etc. is also
-        // lowered to Vynn syntax.
+        // These are expression contexts, so createElement() may still use
+        // an IIFE when necessary.
         const node = path.node as t.VariableDeclarator;
 
         if (!node.init || !t.isExpression(node.init)) {
@@ -227,8 +227,8 @@ export default function reactivePlugin(
             path,
             createIdentifierAllocator(path.scope),
             true,
-            true,
           );
+
           return;
         }
 
@@ -242,6 +242,7 @@ export default function reactivePlugin(
               createIdentifierAllocator(path.scope),
             );
           }
+
           return;
         }
 
@@ -275,27 +276,25 @@ export default function reactivePlugin(
       return;
     }
 
-    const argument = returnStatement.argument;
-
     const allocator = createIdentifierAllocator(path.scope);
+    const statements: t.Statement[] = [];
 
-    if (t.isJSXFragment(argument)) {
-      const elements: t.Expression[] = [];
+    const transformed = transformStatementContextExpression(
+      returnStatement.argument,
+      path,
+      allocator,
+      statements,
+      t.isJSXFragment(returnStatement.argument),
+    );
 
-      for (const child of argument.children) {
-        const expression = transformFragmentChild(child, path, allocator);
+    returnStatement.argument = transformed;
 
-        if (expression) {
-          elements.push(expression);
-        }
-      }
+    if (statements.length > 0) {
+      const body = node.body.body;
+      const returnIndex = body.indexOf(returnStatement);
 
-      returnStatement.argument = t.arrayExpression(elements);
-    } else if (t.isJSXElement(argument)) {
-      if (isComponentElement(argument)) {
-        returnStatement.argument = createComponentCall(argument);
-      } else {
-        returnStatement.argument = createElement(argument, path, allocator);
+      if (returnIndex !== -1) {
+        body.splice(returnIndex, 0, ...statements);
       }
     }
 
@@ -335,6 +334,10 @@ export default function reactivePlugin(
     const arrow = node.init;
     const allocator = createIdentifierAllocator(path.scope);
 
+    // -------------------------------------------------------------------------
+    // Block-bodied arrow
+    // -------------------------------------------------------------------------
+
     if (t.isBlockStatement(arrow.body)) {
       const returnStatement = findArrowReturnStatement(arrow.body);
 
@@ -342,32 +345,25 @@ export default function reactivePlugin(
         return false;
       }
 
-      const argument = returnStatement.argument;
+      const statements: t.Statement[] = [];
 
-      if (t.isJSXFragment(argument)) {
-        const elements: t.Expression[] = [];
+      const transformed = transformStatementContextExpression(
+        returnStatement.argument,
+        path,
+        allocator,
+        statements,
+        t.isJSXFragment(returnStatement.argument),
+      );
 
-        for (const child of argument.children) {
-          const expression = transformFragmentChild(child, path, allocator);
+      returnStatement.argument = transformed;
 
-          if (expression) {
-            elements.push(expression);
-          }
+      if (statements.length > 0) {
+        const body = arrow.body.body;
+        const returnIndex = body.indexOf(returnStatement);
+
+        if (returnIndex !== -1) {
+          body.splice(returnIndex, 0, ...statements);
         }
-
-        returnStatement.argument = t.arrayExpression(elements);
-      } else if (t.isJSXElement(argument)) {
-        if (isComponentElement(argument)) {
-          returnStatement.argument = createComponentCall(argument);
-        } else {
-          returnStatement.argument = createElement(argument, path, allocator);
-        }
-      } else {
-        returnStatement.argument = transformEmbeddedExpression(
-          argument,
-          path,
-          allocator,
-        );
       }
 
       const functionExpression = t.functionExpression(
@@ -385,40 +381,40 @@ export default function reactivePlugin(
       return true;
     }
 
+    // -------------------------------------------------------------------------
+    // Expression-bodied arrow
+    //
+    // Convert:
+    //
+    //   const App = () => <div />;
+    //
+    // into:
+    //
+    //   const App = $cmpnt(function App() {
+    //     const el1 = $tmpl("div");
+    //     return el1;
+    //   });
+    //
+    // This lets us avoid an unnecessary IIFE.
+    // -------------------------------------------------------------------------
+
     const bodyExpression = arrow.body;
+    const statements: t.Statement[] = [];
 
-    let transformedBody: t.Expression;
+    const transformedBody = transformStatementContextExpression(
+      bodyExpression,
+      path,
+      allocator,
+      statements,
+      t.isJSXFragment(bodyExpression),
+    );
 
-    if (t.isJSXFragment(bodyExpression)) {
-      const elements: t.Expression[] = [];
-
-      for (const child of bodyExpression.children) {
-        const expression = transformFragmentChild(child, path, allocator);
-
-        if (expression) {
-          elements.push(expression);
-        }
-      }
-
-      transformedBody = t.arrayExpression(elements);
-    } else if (t.isJSXElement(bodyExpression)) {
-      if (isComponentElement(bodyExpression)) {
-        transformedBody = createComponentCall(bodyExpression);
-      } else {
-        transformedBody = createElement(bodyExpression, path, allocator);
-      }
-    } else {
-      transformedBody = transformEmbeddedExpression(
-        bodyExpression,
-        path,
-        allocator,
-      );
-    }
+    statements.push(t.returnStatement(transformedBody));
 
     const functionExpression = t.functionExpression(
       t.identifier(node.id.name),
       arrow.params,
-      t.blockStatement([t.returnStatement(transformedBody)]),
+      t.blockStatement(statements),
       arrow.generator ?? undefined,
       arrow.async ?? undefined,
     );
@@ -455,21 +451,99 @@ export default function reactivePlugin(
   }
 
   // ===========================================================================
-  // Fragment children
+  // Statement-context JSX lowering
   // ===========================================================================
 
-  function transformFragmentChild(
+  function transformStatementContextExpression(
+    expression: t.Expression,
+    componentPath: any,
+    allocator: IdentifierAllocator,
+    statements: t.Statement[],
+    dynamicExpressions = false,
+  ): t.Expression {
+    if (t.isJSXElement(expression)) {
+      if (isComponentElement(expression)) {
+        return createComponentCall(expression);
+      }
+
+      return createElementStatements(
+        expression,
+        componentPath,
+        statements,
+        allocator,
+      );
+    }
+
+    if (t.isJSXFragment(expression)) {
+      return createFragmentInStatements(
+        expression,
+        componentPath,
+        allocator,
+        statements,
+        dynamicExpressions,
+      );
+    }
+
+    return transformEmbeddedExpression(expression, componentPath, allocator);
+  }
+
+  function createFragmentInStatements(
+    fragment: t.JSXFragment,
+    componentPath: any,
+    allocator: IdentifierAllocator,
+    statements: t.Statement[],
+    dynamicExpressions = false,
+  ): t.Expression {
+    const children: t.Expression[] = [];
+
+    for (const child of fragment.children) {
+      const expression = transformFragmentChildInStatements(
+        child,
+        componentPath,
+        allocator,
+        statements,
+        dynamicExpressions,
+      );
+
+      if (expression) {
+        children.push(expression);
+      }
+    }
+
+    if (children.length === 1) {
+      return children[0];
+    }
+
+    return t.arrayExpression(children);
+  }
+
+  function transformFragmentChildInStatements(
     child: t.JSXElement["children"][number],
     componentPath: any,
     allocator: IdentifierAllocator,
+    statements: t.Statement[],
+    dynamicExpressions = false,
   ): t.Expression | null {
+    // -------------------------------------------------------------------------
+    // Native element
+    // -------------------------------------------------------------------------
+
     if (t.isJSXElement(child)) {
       if (isComponentElement(child)) {
         return createComponentCall(child);
       }
 
-      return createElement(child, componentPath, allocator);
+      return createElementStatements(
+        child,
+        componentPath,
+        statements,
+        allocator,
+      );
     }
+
+    // -------------------------------------------------------------------------
+    // Text
+    // -------------------------------------------------------------------------
 
     if (t.isJSXText(child)) {
       const text = normalizeJSXText(child.value);
@@ -481,6 +555,10 @@ export default function reactivePlugin(
       return t.stringLiteral(text);
     }
 
+    // -------------------------------------------------------------------------
+    // Expression
+    // -------------------------------------------------------------------------
+
     if (t.isJSXExpressionContainer(child)) {
       const expression = child.expression;
 
@@ -489,50 +567,47 @@ export default function reactivePlugin(
       }
 
       if (t.isExpression(expression)) {
-        return createDynamicExpression(
-          transformStandaloneExpression(expression, componentPath, allocator),
+        const transformed = transformStandaloneExpression(
+          expression,
+          componentPath,
+          allocator,
         );
+
+        if (dynamicExpressions) {
+          return createDynamicExpression(transformed);
+        }
+
+        return transformed;
       }
 
       return null;
     }
 
+    // -------------------------------------------------------------------------
+    // Nested fragment
+    // -------------------------------------------------------------------------
+
     if (t.isJSXFragment(child)) {
-      return createNestedFragment(child, componentPath, allocator, true, true);
+      return createFragmentInStatements(
+        child,
+        componentPath,
+        allocator,
+        statements,
+        dynamicExpressions,
+      );
     }
 
     return null;
   }
 
-  /**
-   * Creates a fragment expression.
-   *
-   * preserveArray:
-   *   Whether the source fragment must remain an array.
-   *
-   * dynamicExpressions:
-   *   Whether expression-container children inside this fragment need
-   *   their own $dyn() wrapper.
-   *
-   * This distinction is important:
-   *
-   *   $insert(el, () => <>{items.map(...)}</>)
-   *
-   * already has a reactive owner, so the expression does NOT need $dyn.
-   *
-   * But:
-   *
-   *   get children() {
-   *     return <>{items.map(...)}</>;
-   *   }
-   *
-   * is a component getter. It needs $dyn around the expression.
-   */
+  // ===========================================================================
+  // Fragment expressions
+  // ===========================================================================
+
   function createNestedFragment(
     fragment: t.JSXFragment,
     componentPath: any,
     allocator: IdentifierAllocator,
-    preserveArray = false,
     dynamicExpressions = false,
   ): t.Expression {
     const children: t.Expression[] = [];
@@ -550,19 +625,13 @@ export default function reactivePlugin(
       }
     }
 
-    if (!preserveArray && children.length === 1) {
+    if (children.length === 1) {
       return children[0];
     }
 
     return t.arrayExpression(children);
   }
 
-  /**
-   * Transforms children belonging to a nested fragment.
-   *
-   * dynamicExpressions controls whether JSX expression containers
-   * receive $dyn().
-   */
   function transformFragmentChildForExpression(
     child: t.JSXElement["children"][number],
     componentPath: any,
@@ -616,7 +685,6 @@ export default function reactivePlugin(
         child,
         componentPath,
         allocator,
-        false,
         dynamicExpressions,
       );
     }
@@ -633,11 +701,29 @@ export default function reactivePlugin(
     componentPath: any,
     allocator: IdentifierAllocator,
   ): t.Expression {
+    const statements: t.Statement[] = [];
+
+    const elementId = createElementStatements(
+      node,
+      componentPath,
+      statements,
+      allocator,
+    );
+
+    statements.push(t.returnStatement(elementId));
+
+    return createIIFE(statements);
+  }
+
+  function createElementStatements(
+    node: t.JSXElement,
+    componentPath: any,
+    statements: t.Statement[],
+    allocator: IdentifierAllocator,
+  ): t.Identifier {
     const tagName = getJSXIdentifierName(node.openingElement.name);
 
     const elementId = allocator.nextElement();
-
-    const statements: t.Statement[] = [];
 
     statements.push(
       t.variableDeclaration("const", [
@@ -660,9 +746,7 @@ export default function reactivePlugin(
       allocator,
     );
 
-    statements.push(t.returnStatement(elementId));
-
-    return createIIFE(statements);
+    return elementId;
   }
 
   // ===========================================================================
@@ -677,6 +761,10 @@ export default function reactivePlugin(
     allocator: IdentifierAllocator,
   ): void {
     for (const child of children) {
+      // -----------------------------------------------------------------------
+      // Text
+      // -----------------------------------------------------------------------
+
       if (t.isJSXText(child)) {
         const text = normalizeJSXText(child.value);
 
@@ -690,6 +778,10 @@ export default function reactivePlugin(
 
         continue;
       }
+
+      // -----------------------------------------------------------------------
+      // Expression
+      // -----------------------------------------------------------------------
 
       if (t.isJSXExpressionContainer(child)) {
         const expression = child.expression;
@@ -714,6 +806,10 @@ export default function reactivePlugin(
         continue;
       }
 
+      // -----------------------------------------------------------------------
+      // JSX element
+      // -----------------------------------------------------------------------
+
       if (t.isJSXElement(child)) {
         if (isComponentElement(child)) {
           statements.push(
@@ -735,12 +831,16 @@ export default function reactivePlugin(
         continue;
       }
 
+      // -----------------------------------------------------------------------
+      // JSX fragment
+      // -----------------------------------------------------------------------
+
       if (t.isJSXFragment(child)) {
-        const fragment = createNestedFragment(
+        const fragment = createFragmentInStatements(
           child,
           componentPath,
           allocator,
-          true,
+          statements,
           false,
         );
 
@@ -784,19 +884,10 @@ export default function reactivePlugin(
 
     // -------------------------------------------------------------------------
     // JSX fragment
-    //
-    // This expression is already being evaluated inside $insert(),
-    // so expression-container children do NOT create $dyn().
     // -------------------------------------------------------------------------
 
     if (t.isJSXFragment(expression)) {
-      return createNestedFragment(
-        expression,
-        componentPath,
-        allocator,
-        false,
-        false,
-      );
+      return createNestedFragment(expression, componentPath, allocator, false);
     }
 
     // -------------------------------------------------------------------------
@@ -1369,8 +1460,6 @@ export default function reactivePlugin(
     //   <Form.Field />
     //   <UI.Modal.Footer />
     //
-    // JSX member expressions are component references regardless of the
-    // casing of the final property name.
     if (t.isJSXMemberExpression(name)) {
       return true;
     }
@@ -1420,9 +1509,19 @@ export default function reactivePlugin(
       t.ObjectProperty | t.ObjectMethod | t.SpreadElement
     > = [];
 
+    const allocator = createIdentifierAllocator(programPath.scope);
+
     for (const attribute of node.openingElement.attributes) {
+      // -----------------------------------------------------------------------
+      // Spread
+      // -----------------------------------------------------------------------
+
       if (t.isJSXSpreadAttribute(attribute)) {
-        properties.push(t.spreadElement(attribute.argument));
+        properties.push(
+          t.spreadElement(
+            transformEmbeddedExpression(attribute.argument, null, allocator),
+          ),
+        );
 
         continue;
       }
@@ -1436,6 +1535,47 @@ export default function reactivePlugin(
       }
 
       const name = attribute.name.name;
+
+      // -----------------------------------------------------------------------
+      // Ref
+      //
+      // `ref` must NOT become a getter.
+      //
+      //   <Child ref={input} />
+      //
+      // becomes:
+      //
+      //   {
+      //     ref(r$) {
+      //       const _ref = input;
+      //       typeof _ref === "function"
+      //         ? _ref(r$)
+      //         : input = r$;
+      //     }
+      //   }
+      // -----------------------------------------------------------------------
+
+      if (name === "ref") {
+        const value = attribute.value;
+
+        if (!t.isJSXExpressionContainer(value)) {
+          continue;
+        }
+
+        const expression = value.expression;
+
+        if (t.isJSXEmptyExpression(expression) || !t.isExpression(expression)) {
+          continue;
+        }
+
+        properties.push(createComponentRef(expression));
+
+        continue;
+      }
+
+      // -----------------------------------------------------------------------
+      // Static string prop
+      // -----------------------------------------------------------------------
 
       if (t.isStringLiteral(attribute.value)) {
         properties.push(
@@ -1452,6 +1592,10 @@ export default function reactivePlugin(
         continue;
       }
 
+      // -----------------------------------------------------------------------
+      // Expression prop
+      // -----------------------------------------------------------------------
+
       if (t.isJSXExpressionContainer(attribute.value)) {
         const expression = attribute.value.expression;
 
@@ -1460,22 +1604,22 @@ export default function reactivePlugin(
         }
 
         if (t.isExpression(expression)) {
-          const transformed = transformComponentPropExpression(expression);
-
-          if (transformed) {
-            properties.push(
-              t.objectMethod(
-                "get",
-                createPropertyKey(name),
-                [],
-                t.blockStatement([t.returnStatement(transformed)]),
-              ),
-            );
-          }
+          properties.push(
+            t.objectMethod(
+              "get",
+              createPropertyKey(name),
+              [],
+              createComponentGetterBody(expression, node),
+            ),
+          );
         }
 
         continue;
       }
+
+      // -----------------------------------------------------------------------
+      // Boolean prop
+      // -----------------------------------------------------------------------
 
       if (attribute.value === null) {
         properties.push(
@@ -1489,16 +1633,11 @@ export default function reactivePlugin(
       }
     }
 
-    const children = createComponentChildren(node);
+    const children = createComponentChildrenGetterBody(node);
 
     if (children) {
       properties.push(
-        t.objectMethod(
-          "get",
-          t.identifier("children"),
-          [],
-          t.blockStatement([t.returnStatement(children)]),
-        ),
+        t.objectMethod("get", t.identifier("children"), [], children),
       );
     }
 
@@ -1509,48 +1648,184 @@ export default function reactivePlugin(
     return t.objectExpression(properties);
   }
 
-  function transformComponentPropExpression(
-    expression: t.Expression | t.JSXElement | t.JSXFragment,
-  ): t.Expression | null {
-    if (t.isJSXElement(expression)) {
-      if (isComponentElement(expression)) {
-        return createComponentCall(expression);
-      }
+  // ===========================================================================
+  // Component refs
+  // ===========================================================================
 
-      return createStandaloneElement(expression);
-    }
+  /**
+   * Component refs are represented as a special method:
+   *
+   *   ref(r$) {
+   *     ...
+   *   }
+   *
+   * This lets the component decide what value should be exposed.
+   *
+   * For:
+   *
+   *   <Child ref={input} />
+   *
+   * emit:
+   *
+   *   {
+   *     ref(r$) {
+   *       const _ref = input;
+   *
+   *       typeof _ref === "function"
+   *         ? _ref(r$)
+   *         : input = r$;
+   *     }
+   *   }
+   *
+   * For:
+   *
+   *   <Child ref={props.ref} />
+   *
+   * emit:
+   *
+   *   {
+   *     ref(r$) {
+   *       const _ref = props.ref;
+   *
+   *       typeof _ref === "function"
+   *         ? _ref(r$)
+   *         : void 0;
+   *     }
+   *   }
+   */
+  function createComponentRef(expression: t.Expression): t.ObjectMethod {
+    const refParameter = t.identifier("r$");
+    const statements: t.Statement[] = [];
 
-    if (t.isJSXFragment(expression)) {
-      return createNestedFragment(
-        expression,
-        null,
-        createIdentifierAllocator(programPath.scope),
-        true,
-        true,
+    // -------------------------------------------------------------------------
+    // Identifier
+    // -------------------------------------------------------------------------
+
+    if (t.isIdentifier(expression)) {
+      const refIdentifier = programPath.scope.generateUidIdentifier("ref");
+
+      statements.push(
+        t.variableDeclaration("const", [
+          t.variableDeclarator(refIdentifier, t.cloneNode(expression)),
+        ]),
+      );
+
+      statements.push(
+        t.expressionStatement(
+          t.conditionalExpression(
+            t.binaryExpression(
+              "===",
+              t.unaryExpression("typeof", t.cloneNode(refIdentifier)),
+              t.stringLiteral("function"),
+            ),
+
+            t.callExpression(t.cloneNode(refIdentifier), [refParameter]),
+
+            t.assignmentExpression(
+              "=",
+              t.cloneNode(expression),
+              t.cloneNode(refParameter),
+            ),
+          ),
+        ),
+      );
+
+      return t.objectMethod(
+        "method",
+        t.identifier("ref"),
+        [refParameter],
+        t.blockStatement(statements),
       );
     }
 
-    if (t.isExpression(expression)) {
-      return transformEmbeddedExpression(
-        expression,
-        null,
-        createIdentifierAllocator(programPath.scope),
-      );
-    }
+    // -------------------------------------------------------------------------
+    // Arbitrary / forwarded ref expression
+    // -------------------------------------------------------------------------
+    //
+    //   <Child ref={props.ref} />
+    //
+    // A member expression cannot be assigned to safely as a ref target, so it
+    // is treated as a callback source.
+    //
+    // We intentionally evaluate it once.
+    // -------------------------------------------------------------------------
 
-    return null;
+    const refIdentifier = programPath.scope.generateUidIdentifier("ref");
+
+    statements.push(
+      t.variableDeclaration("const", [
+        t.variableDeclarator(refIdentifier, expression),
+      ]),
+    );
+
+    statements.push(
+      t.expressionStatement(
+        t.conditionalExpression(
+          t.binaryExpression(
+            "===",
+            t.unaryExpression("typeof", t.cloneNode(refIdentifier)),
+            t.stringLiteral("function"),
+          ),
+
+          t.callExpression(t.cloneNode(refIdentifier), [
+            t.cloneNode(refParameter),
+          ]),
+
+          t.unaryExpression("void", t.numericLiteral(0)),
+        ),
+      ),
+    );
+
+    return t.objectMethod(
+      "method",
+      t.identifier("ref"),
+      [refParameter],
+      t.blockStatement(statements),
+    );
+  }
+
+  // ===========================================================================
+  // Component getter body
+  // ===========================================================================
+
+  function createComponentGetterBody(
+    expression: t.Expression,
+    componentPath: any,
+  ): t.BlockStatement {
+    const statements: t.Statement[] = [];
+
+    const allocator = createIdentifierAllocator(programPath.scope);
+
+    const transformed = transformStatementContextExpression(
+      expression,
+      componentPath,
+      allocator,
+      statements,
+      t.isJSXFragment(expression),
+    );
+
+    statements.push(t.returnStatement(transformed));
+
+    return t.blockStatement(statements);
   }
 
   // ===========================================================================
   // Component children
   // ===========================================================================
 
-  function createComponentChildren(node: t.JSXElement): t.Expression | null {
+  function createComponentChildrenGetterBody(
+    node: t.JSXElement,
+  ): t.BlockStatement | null {
     const children: t.Expression[] = [];
+    const statements: t.Statement[] = [];
 
     const allocator = createIdentifierAllocator(programPath.scope);
 
     for (const child of node.children) {
+      // -----------------------------------------------------------------------
+      // Text
+      // -----------------------------------------------------------------------
+
       if (t.isJSXText(child)) {
         const text = normalizeJSXText(child.value);
 
@@ -1560,6 +1835,10 @@ export default function reactivePlugin(
 
         continue;
       }
+
+      // -----------------------------------------------------------------------
+      // Expression
+      // -----------------------------------------------------------------------
 
       if (t.isJSXExpressionContainer(child)) {
         const expression = child.expression;
@@ -1579,30 +1858,30 @@ export default function reactivePlugin(
         continue;
       }
 
+      // -----------------------------------------------------------------------
+      // JSX element
+      // -----------------------------------------------------------------------
+
       if (t.isJSXElement(child)) {
         if (isComponentElement(child)) {
           children.push(createComponentCall(child));
         } else {
-          children.push(createStandaloneElement(child));
+          children.push(
+            createElementStatements(child, node, statements, allocator),
+          );
         }
 
         continue;
       }
 
+      // -----------------------------------------------------------------------
+      // JSX fragment
+      // -----------------------------------------------------------------------
+
       if (t.isJSXFragment(child)) {
-        /*
-         * IMPORTANT:
-         *
-         * Component children are returned from a getter:
-         *
-         *   get children() {
-         *     return ...
-         *   }
-         *
-         * Therefore expressions inside this fragment need their own
-         * $dyn() boundary.
-         */
-        children.push(createNestedFragment(child, node, allocator, true, true));
+        children.push(
+          createFragmentInStatements(child, node, allocator, statements, true),
+        );
       }
     }
 
@@ -1610,121 +1889,12 @@ export default function reactivePlugin(
       return null;
     }
 
-    if (children.length === 1) {
-      return children[0];
-    }
+    const result =
+      children.length === 1 ? children[0] : t.arrayExpression(children);
 
-    return t.arrayExpression(children);
-  }
+    statements.push(t.returnStatement(result));
 
-  // ===========================================================================
-  // Standalone elements
-  // ===========================================================================
-
-  function createStandaloneElement(node: t.JSXElement): t.Expression {
-    const allocator = createIdentifierAllocator(programPath.scope);
-
-    const tagName = getJSXIdentifierName(node.openingElement.name);
-
-    const elementId = allocator.nextElement();
-
-    const statements: t.Statement[] = [];
-
-    statements.push(
-      t.variableDeclaration("const", [
-        t.variableDeclarator(
-          elementId,
-          t.callExpression(getRuntimeHelper("$tmpl"), [
-            t.stringLiteral(tagName),
-          ]),
-        ),
-      ]),
-    );
-
-    transformAttributes(node.openingElement, elementId, statements);
-
-    transformStandaloneChildren(
-      node.children,
-      elementId,
-      statements,
-      allocator,
-    );
-
-    statements.push(t.returnStatement(elementId));
-
-    return createIIFE(statements);
-  }
-
-  function transformStandaloneChildren(
-    children: t.JSXElement["children"],
-    elementId: t.Identifier,
-    statements: t.Statement[],
-    allocator: IdentifierAllocator,
-  ): void {
-    for (const child of children) {
-      if (t.isJSXText(child)) {
-        const text = normalizeJSXText(child.value);
-
-        if (!text) {
-          continue;
-        }
-
-        statements.push(
-          t.expressionStatement(createInsert(elementId, t.stringLiteral(text))),
-        );
-
-        continue;
-      }
-
-      if (t.isJSXExpressionContainer(child)) {
-        const expression = child.expression;
-
-        if (t.isJSXEmptyExpression(expression)) {
-          continue;
-        }
-
-        if (t.isExpression(expression)) {
-          statements.push(
-            t.expressionStatement(
-              createInsert(
-                elementId,
-                transformElementExpression(expression, null, allocator),
-              ),
-            ),
-          );
-        }
-
-        continue;
-      }
-
-      if (t.isJSXElement(child)) {
-        if (isComponentElement(child)) {
-          statements.push(
-            t.expressionStatement(
-              createInsert(elementId, createComponentCall(child)),
-            ),
-          );
-        } else {
-          statements.push(
-            t.expressionStatement(
-              createInsert(elementId, createStandaloneElement(child)),
-            ),
-          );
-        }
-
-        continue;
-      }
-
-      if (t.isJSXFragment(child)) {
-        const fragment = createFragmentChildren(child);
-
-        for (const expression of fragment) {
-          statements.push(
-            t.expressionStatement(createInsert(elementId, expression)),
-          );
-        }
-      }
-    }
+    return t.blockStatement(statements);
   }
 
   // ===========================================================================
@@ -1737,7 +1907,17 @@ export default function reactivePlugin(
     statements: t.Statement[],
   ): void {
     for (const attribute of opening.attributes) {
+      // -----------------------------------------------------------------------
+      // Spread attributes
+      // -----------------------------------------------------------------------
+
       if (t.isJSXSpreadAttribute(attribute)) {
+        statements.push(
+          t.expressionStatement(
+            createSpreadAttribute(elementId, attribute.argument),
+          ),
+        );
+
         continue;
       }
 
@@ -1750,6 +1930,28 @@ export default function reactivePlugin(
       }
 
       const name = attribute.name.name;
+
+      // -----------------------------------------------------------------------
+      // Refs
+      // -----------------------------------------------------------------------
+
+      if (name === "ref") {
+        const value = attribute.value;
+
+        if (!t.isJSXExpressionContainer(value)) {
+          continue;
+        }
+
+        const expression = value.expression;
+
+        if (t.isJSXEmptyExpression(expression) || !t.isExpression(expression)) {
+          continue;
+        }
+
+        statements.push(...createRef(elementId, expression));
+
+        continue;
+      }
 
       // -----------------------------------------------------------------------
       // Events
@@ -1827,6 +2029,141 @@ export default function reactivePlugin(
     }
   }
 
+  // ===========================================================================
+  // Refs
+  // ===========================================================================
+
+  /**
+   * Native element refs:
+   *
+   *   let input;
+   *   <input ref={input} />
+   *
+   * becomes:
+   *
+   *   typeof input === "function"
+   *     ? input(el1)
+   *     : input = el1;
+   *
+   * Callback refs:
+   *
+   *   <input ref={el => el.focus()} />
+   *
+   * become:
+   *
+   *   (el => el.focus())(el1);
+   *
+   * Forwarded refs:
+   *
+   *   <input ref={props.ref} />
+   *
+   * become:
+   *
+   *   const _ref = props.ref;
+   *   typeof _ref === "function"
+   *     ? _ref(el1)
+   *     : void 0;
+   */
+  function createRef(
+    elementId: t.Identifier,
+    expression: t.Expression,
+  ): t.Statement[] {
+    // -------------------------------------------------------------------------
+    // Identifier ref
+    // -------------------------------------------------------------------------
+
+    if (t.isIdentifier(expression)) {
+      const refIdentifier = t.cloneNode(expression);
+
+      const callbackCall = t.callExpression(t.cloneNode(expression), [
+        t.cloneNode(elementId),
+      ]);
+
+      const assignment = t.assignmentExpression(
+        "=",
+        refIdentifier,
+        t.cloneNode(elementId),
+      );
+
+      return [
+        t.expressionStatement(
+          t.conditionalExpression(
+            t.binaryExpression(
+              "===",
+              t.unaryExpression("typeof", t.cloneNode(expression)),
+              t.stringLiteral("function"),
+            ),
+            callbackCall,
+            assignment,
+          ),
+        ),
+      ];
+    }
+
+    // -------------------------------------------------------------------------
+    // Inline callback
+    // -------------------------------------------------------------------------
+
+    if (
+      t.isArrowFunctionExpression(expression) ||
+      t.isFunctionExpression(expression)
+    ) {
+      return [
+        t.expressionStatement(
+          t.callExpression(expression, [t.cloneNode(elementId)]),
+        ),
+      ];
+    }
+
+    // -------------------------------------------------------------------------
+    // Arbitrary / forwarded expression
+    // -------------------------------------------------------------------------
+    //
+    //   ref={props.ref}
+    //
+    // A member expression can't be used as the left side of an assignment.
+    // Treat it as a callback source instead.
+    // -------------------------------------------------------------------------
+
+    const refIdentifier = programPath.scope.generateUidIdentifier("ref");
+
+    return [
+      t.variableDeclaration("const", [
+        t.variableDeclarator(refIdentifier, expression),
+      ]),
+
+      t.expressionStatement(
+        t.conditionalExpression(
+          t.binaryExpression(
+            "===",
+            t.unaryExpression("typeof", t.cloneNode(refIdentifier)),
+            t.stringLiteral("function"),
+          ),
+
+          t.callExpression(t.cloneNode(refIdentifier), [
+            t.cloneNode(elementId),
+          ]),
+
+          t.unaryExpression("void", t.numericLiteral(0)),
+        ),
+      ),
+    ];
+  }
+
+  // ===========================================================================
+  // Spread / attributes / events
+  // ===========================================================================
+
+  function createSpreadAttribute(
+    elementId: t.Identifier,
+    expression: t.Expression,
+  ): t.CallExpression {
+    return t.callExpression(getRuntimeHelper("$spread"), [
+      elementId,
+      t.arrowFunctionExpression([], expression),
+    ]);
+  }
+
   function createAttribute(
     elementId: t.Identifier,
     name: string,
@@ -1884,6 +2221,19 @@ export default function reactivePlugin(
     if (isStaticInsertValue(expression)) {
       child = expression;
     } else if (isIIFE(expression)) {
+      // Reuse the IIFE's function body directly as the $insert callback.
+      //
+      //   (() => {
+      //     const el2 = ...
+      //     return el2;
+      //   })()
+      //
+      // becomes:
+      //
+      //   () => {
+      //     const el2 = ...
+      //     return el2;
+      //   }
       child = expression.callee;
     } else {
       child = t.arrowFunctionExpression([], expression);
@@ -1941,6 +2291,7 @@ export default function reactivePlugin(
     }
 
     const lines = value.replace(/\r\n?/g, "\n").split("\n");
+
     const normalized: string[] = [];
 
     for (let i = 0; i < lines.length; i++) {
@@ -1964,61 +2315,5 @@ export default function reactivePlugin(
     }
 
     return normalized.join(" ");
-  }
-
-  // ===========================================================================
-  // Fragment children helper
-  // ===========================================================================
-
-  function createFragmentChildren(fragment: t.JSXFragment): t.Expression[] {
-    const children: t.Expression[] = [];
-
-    const allocator = createIdentifierAllocator(programPath.scope);
-
-    for (const child of fragment.children) {
-      if (t.isJSXText(child)) {
-        const text = normalizeJSXText(child.value);
-
-        if (text) {
-          children.push(t.stringLiteral(text));
-        }
-
-        continue;
-      }
-
-      if (t.isJSXExpressionContainer(child)) {
-        const expression = child.expression;
-
-        if (t.isJSXEmptyExpression(expression)) {
-          continue;
-        }
-
-        if (t.isExpression(expression)) {
-          children.push(
-            createDynamicExpression(
-              transformStandaloneExpression(expression, null, allocator),
-            ),
-          );
-        }
-
-        continue;
-      }
-
-      if (t.isJSXElement(child)) {
-        if (isComponentElement(child)) {
-          children.push(createComponentCall(child));
-        } else {
-          children.push(createStandaloneElement(child));
-        }
-
-        continue;
-      }
-
-      if (t.isJSXFragment(child)) {
-        children.push(...createFragmentChildren(child));
-      }
-    }
-
-    return children;
   }
 }

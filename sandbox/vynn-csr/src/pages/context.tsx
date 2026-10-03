@@ -35,7 +35,7 @@ function Wrapper({ children }: { children: JSX.Element }) {
 
 const Input = () => {
   const forms = useNameContext();
-  console.log(forms);
+  // console.log(forms);
 
   const i = $state(0);
 
@@ -44,13 +44,13 @@ const Input = () => {
   }, 1000);
 
   onDestroy(() => {
-    console.log("cleared tanga");
+    // console.log("cleared tanga");
     clearInterval(cleanup);
   });
 
   const nameEl = <>Name: {forms.name} Hi</>;
 
-  console.log("hi");
+  // console.log("hi");
 
   // $effect(() => {
   //   console.log(i.value);

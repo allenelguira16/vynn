@@ -68,5 +68,73 @@ export default (options: VitePluginVynnOptions = { ssr: false }): Plugin[] => {
     },
   });
 
+  if (options.ssr) {
+    const virtualCssPath = "/@virtual:ssr-css.css";
+
+    // Keep styles scoped to this plugin instance.
+    const collectedStyles = new Map<string, string>();
+
+    plugins.push({
+      name: "ssr-dev-fouc-fix",
+      apply: "serve",
+
+      // Gather CSS contents as they are transformed.
+      transform(code, id) {
+        if (id.includes("node_modules")) {
+          return null;
+        }
+
+        if (/\.css(?:\?|$)/.test(id)) {
+          collectedStyles.set(id, code);
+        }
+
+        return null;
+      },
+
+      // Update collected CSS on HMR.
+      handleHotUpdate(ctx) {
+        const { file, read } = ctx;
+
+        if (/\.css(?:\?|$)/.test(file)) {
+          return Promise.resolve(read()).then((code) => {
+            collectedStyles.set(file, code);
+          });
+        }
+      },
+
+      // Serve a virtual stylesheet containing the collected styles.
+      configureServer(server: ViteDevServer) {
+        server.middlewares.use(
+          (req: IncomingMessage, res: ServerResponse, next) => {
+            if (req.url === virtualCssPath) {
+              res.setHeader("Content-Type", "text/css");
+              res.statusCode = 200;
+              res.end(Array.from(collectedStyles.values()).join("\n"));
+              return;
+            }
+
+            next();
+          },
+        );
+      },
+
+      // Inject one stylesheet link into the HTML head.
+      transformIndexHtml: {
+        order: "pre",
+
+        handler: () => [
+          {
+            tag: "link",
+            injectTo: "head",
+            attrs: {
+              rel: "stylesheet",
+              href: virtualCssPath,
+            },
+          },
+        ],
+      },
+    });
+  }
+
   return plugins;
 };

@@ -6,7 +6,7 @@ import { name } from "../utils";
 type SortDirection = "asc" | "desc";
 
 export const Dropdowns = () => {
-  console.log("Dropdown rerender");
+  // console.log("Dropdown rerender");
   const dropdownStore = $store({
     showDropdown: true,
     sortDirection: "asc" as SortDirection,
@@ -51,7 +51,7 @@ export const Dropdowns = () => {
   });
 
   $effect(() => {
-    console.log(dropdownStore.numbers);
+    // console.log(dropdownStore.numbers);
   });
 
   // onMount(async () => {
@@ -110,7 +110,7 @@ type TDropdownListProps = {
 };
 
 const DropdownList = ({ dropdowns }: TDropdownListProps) => {
-  console.log("weh");
+  // console.log("weh");
   // onMount(async () => {
   //   console.log("DropdownList onMount");
   // });
@@ -132,7 +132,7 @@ const DropdownList = ({ dropdowns }: TDropdownListProps) => {
 };
 
 const Dropdown = ({ number }: { number: number }) => {
-  console.log("rerender");
+  // console.log("rerender");
   const isOpen = $state(false);
 
   const handleToggle = () => {

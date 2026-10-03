@@ -40,7 +40,7 @@ export const Counter = () => {
     // console.log(double.value);
   });
 
-  console.log("rerender?");
+  // console.log("rerender?");
 
   return (
     <>

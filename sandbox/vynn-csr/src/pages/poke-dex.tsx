@@ -48,14 +48,17 @@ export const PokeDex = () => {
     },
   });
 
-  onMount(async () => {
-    console.log("hi");
+  onMount(() => {
+    // console.log("hi");
     const controller = new AbortController();
 
-    await pokeDex.fetchData(
-      "https://pokeapi.co/api/v2/pokemon/?offset=1100&limit=20",
-      controller,
-    );
+    (async () => {
+      await pokeDex.fetchData(
+        "https://pokeapi.co/api/v2/pokemon/?offset=1100&limit=20",
+        controller,
+      );
+    })();
+
     return () => {
       console.log("Cleaning up PokeDex component");
       controller.abort();

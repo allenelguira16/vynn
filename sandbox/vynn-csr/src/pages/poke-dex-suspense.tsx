@@ -1,9 +1,10 @@
 import {
-  $computed,
+  $async,
   $effect,
   $state,
   isPending,
   onDestroy,
+  onMount,
   Suspense,
 } from "vynn";
 
@@ -25,9 +26,11 @@ type SortDirection = "asc" | "desc";
 
 export const PokeDexSuspense = () => {
   const url = $state("https://pokeapi.co/api/v2/pokemon/?offset=1100&limit=20");
+  const sortBy = $state<SortKey>("name");
   const sortDirection = $state<SortDirection>("asc");
+  const style = { "aria-label": "Hi", test: "123", name: name.firstName };
 
-  const pokeDex = $computed(async () => {
+  const pokeDex = $async(async () => {
     const response = await fetch(url.value);
     const json = (await response.json()) as PokeDexData;
 
@@ -36,14 +39,14 @@ export const PokeDexSuspense = () => {
     return json;
   });
 
-  const showUrlOnClick = (url: string) => () => alert(url);
   const sortOnClick = (key: SortKey) => () => {
     sortDirection.value = sortDirection.value === "asc" ? "desc" : "asc";
+    sortBy.value = key;
 
     pokeDex.value = {
       ...pokeDex.value,
       results: [...pokeDex.value.results].sort((a, b) => {
-        const cmp = a[key].localeCompare(b[key]);
+        const cmp = a[sortBy.value].localeCompare(b[sortBy.value]);
         return sortDirection.value === "asc" ? cmp : -cmp;
       }),
     };
@@ -55,18 +58,31 @@ export const PokeDexSuspense = () => {
     url.value = newUrl.replace(/limit=\d+/, "limit=20");
   };
 
+  onMount(() => {
+    // console.log("pokedex-suspense mounted");
+  });
+
   onDestroy(() => {
     console.log("pokedex-suspense destroyed");
   });
 
   $effect(() => {
-    // console.log(isPending(pokeDex));
+    // console.log("rerender");
+    // console.log(pokeDex.value);
+  });
+
+  let el!: HTMLDivElement;
+
+  onMount(() => {
+    console.log(el);
   });
 
   return (
     <Template title="PokeDex List (via Suspense)">
-      <div>
-        <div class="break-all">Hi {name.firstName}</div>
+      <div ref={el}>
+        <div class="break-all" {...style}>
+          Hi {name.firstName}
+        </div>
         <table class="w-full mx-auto my-2 table-fixed">
           <thead>
             <tr>
@@ -119,16 +135,7 @@ export const PokeDexSuspense = () => {
                   </tr>
                 ))} */}
                 {pokeDex.value.results.map(({ name, url }, index) => (
-                  <tr>
-                    <td class="w-1/3 text-center">{index + 1}</td>
-                    <td class="w-1/3 text-center truncate">{name}</td>
-                    <td
-                      class="w-1/3 text-center truncate"
-                      onClick={showUrlOnClick(url)}
-                    >
-                      {url}
-                    </td>
-                  </tr>
+                  <Row name={name} url={url} index={index} />
                 ))}
               </>
             </Suspense>
@@ -158,3 +165,41 @@ export const PokeDexSuspense = () => {
     </Template>
   );
 };
+
+function Row({
+  name,
+  url,
+  index,
+}: {
+  name: string;
+  url: string;
+  index: number;
+}) {
+  const showUrlOnClick = (url: string) => () => alert(url);
+
+  onMount(() => {
+    // console.log(url);
+    console.log(`rerun`);
+  });
+
+  const data = $async(async () => {
+    const res = await fetch(url);
+    const json = await res.json();
+
+    return json;
+  });
+
+  $effect(() => {
+    console.log(data.value);
+  });
+
+  return (
+    <tr>
+      <td class="w-1/3 text-center">{index + 1}</td>
+      <td class="w-1/3 text-center truncate">{name}</td>
+      <td class="w-1/3 text-center truncate" onClick={showUrlOnClick(url)}>
+        {url}
+      </td>
+    </tr>
+  );
+}

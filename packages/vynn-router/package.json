@@ -1,9 +1,15 @@
 {
-  "name": "@babel/preset-vynn",
+  "name": "vynn-router",
   "version": "0.0.0",
   "description": "",
   "main": "src/index.ts",
+  "type": "module",
   "scripts": {},
+  "exports": {
+    ".": {
+      "import": "./src/index.tsx"
+    }
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",
@@ -14,13 +20,8 @@
       "onFail": "download"
     }
   },
-  "type": "module",
   "dependencies": {
-    "@babel/core": "^8.0.5",
-    "@babel/helper-plugin-utils": "^8.0.1",
-    "@babel/plugin-syntax-jsx": "^8.0.1",
-    "@babel/traverse": "^8.0.6",
-    "@babel/types": "^8.0.5",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "vynn": "workspace:*"
   }
 }
