@@ -1,7 +1,8 @@
-import { $effect, $state, $store } from "vynn";
+import { $effect, $state, $store, onDestroy, onMount } from "vynn";
 
 import { Template } from "../components/template";
 import { name } from "../utils";
+import { $for } from "vynn/render";
 
 type SortDirection = "asc" | "desc";
 
@@ -10,7 +11,7 @@ export const Dropdowns = () => {
   const dropdownStore = $store({
     showDropdown: true,
     sortDirection: "asc" as SortDirection,
-    numbers: [1, 2, 3, 4, 5, 6, 7, 8],
+    numbers: Array.from({ length: 8 }, (_, i) => i + 1),
 
     handleSort() {
       dropdownStore.numbers = [...dropdownStore.numbers].sort((a, b) => {
@@ -110,23 +111,29 @@ type TDropdownListProps = {
 };
 
 const DropdownList = ({ dropdowns }: TDropdownListProps) => {
-  // console.log("weh");
-  // onMount(async () => {
-  //   console.log("DropdownList onMount");
-  // });
+  console.log("weh");
+  onMount(async () => {
+    console.log("DropdownList onMount");
+  });
 
-  // onDestroy(async () => {
-  //   console.log("DropdownList onDestroy");
-  // });
+  onDestroy(async () => {
+    console.log("DropdownList onDestroy");
+  });
 
   return (
     <div class="flex gap-2 flex-col lg:flex-row">
       {/* {loop(dropdowns.numbers).each((number) => (
         <Dropdown number={number} />
       ))} */}
-      {dropdowns.numbers.map((number) => (
+      {/* {dropdowns.numbers.map((number) => (
         <Dropdown number={number} />
-      ))}
+      ))} */}
+      {$for(
+        () => dropdowns.numbers,
+        (item) => (
+          <Dropdown number={item} />
+        ),
+      )}
     </div>
   );
 };
@@ -138,6 +145,14 @@ const Dropdown = ({ number }: { number: number }) => {
   const handleToggle = () => {
     isOpen.value = !isOpen.value;
   };
+
+  onMount(async () => {
+    console.log("Dropdown onMount");
+  });
+
+  onDestroy(async () => {
+    console.log("Dropdown onDestroy");
+  });
 
   return (
     <>

@@ -5,18 +5,16 @@ import { sleep } from "../utils";
 
 export const StackedSuspense = () => {
   const msg3 = $async(async () => {
-    // console.log("called");
     await sleep(3000);
 
     return "hello world 3";
   });
   const msg2 = $async(async () => {
-    // console.log("called");
     await sleep(2000);
 
     return "hello world 2";
   });
-  // console.log("suspense parent rerender");
+  console.log("suspense parent rerender");
 
   return (
     <Template title="Stacked Suspense">

@@ -15,11 +15,15 @@ const NonAsyncSuspense = lazy(
   () => import("./pages/non-async-suspense"),
   "NonAsyncSuspense",
 );
+const PokeDex = lazy(() => import("./pages/poke-dex"), "PokeDex");
 const PokeDexSuspense = lazy(
   () => import("./pages/poke-dex-suspense"),
   "PokeDexSuspense",
 );
-const PokeDex = lazy(() => import("./pages/poke-dex"), "PokeDex");
+const PokeDexAwait = lazy(
+  () => import("./pages/poke-dex-await"),
+  "PokeDexAwait",
+);
 const StackedSuspense = lazy(
   () => import("./pages/stacked-suspense"),
   "StackedSuspense",
@@ -58,11 +62,13 @@ export const routes: Route[] = [
         path: "/",
         component: () => (
           <>
+            <Lazy />
             <Forms />
             <Contexts />
             <Dropdowns />
             <NonAsyncSuspense />
             <PokeDex />
+            <PokeDexAwait />
             <PokeDexSuspense />
             <StackedSuspense />
           </>
@@ -96,6 +102,10 @@ export const routes: Route[] = [
       {
         path: "/poke-dex",
         component: () => <PokeDex />,
+      },
+      {
+        path: "/poke-dex-await",
+        component: () => <PokeDexAwait />,
       },
       {
         path: "/poke-dex-suspense",

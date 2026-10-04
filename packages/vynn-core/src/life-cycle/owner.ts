@@ -5,6 +5,7 @@ export interface Owner {
   mount: (() => void | (() => void))[];
   disposed?: boolean;
   context: Map<string | symbol, any>;
+  nodeCount: number;
 }
 
 let currentOwner: Owner | null = null;
@@ -33,6 +34,7 @@ export function createOwner(parent = currentOwner): Owner {
     cleanups: [],
     mount: [],
     context: new Map(),
+    nodeCount: 0,
   };
 
   parent?.children.push(owner);

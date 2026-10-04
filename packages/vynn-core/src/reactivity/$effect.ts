@@ -1,5 +1,5 @@
 import { getCurrentOwner, runWithOwner } from "../life-cycle/owner";
-import { getSuspenseBoundary } from "../components/suspense";
+import { getAsyncBoundary } from "../components/boundary";
 import { transaction, scheduleEffect } from "./transaction";
 
 export type EffectFn = (() => void) & {
@@ -38,8 +38,6 @@ let lastDisposer: (() => void) | null = null;
 export function $effect(callback: () => void | (() => void)): () => void {
   const owner = getCurrentOwner();
 
-  const boundary = getSuspenseBoundary();
-
   const wrappedEffect: EffectFn = () => {
     return runWithOwner(owner, () =>
       transaction(() => {
@@ -57,6 +55,8 @@ export function $effect(callback: () => void | (() => void)): () => void {
           }
         } catch (error) {
           if (error instanceof Promise) {
+            const boundary = getAsyncBoundary();
+            // console.log(error, boundary);
             boundary?.(error);
           } else {
             throw error;

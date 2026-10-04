@@ -23,6 +23,7 @@ export function $dyn(child: () => JSX.Element): Node[] {
       initialNodes = newNodes;
     }
 
+    // console.log(initialNodes);
     replaceElementsBetween(newNodes);
   });
 

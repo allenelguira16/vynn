@@ -1,6 +1,7 @@
 import type { JSX } from "../types/jsx";
-import { $async } from "..";
-import { $dyn } from "../render";
+import { $async } from "../reactivity/$async";
+import { $cmpnt, $dyn } from "../render";
+import { UnwrapPromise } from "../reactivity/is-promise-like";
 
 type AnyComponent = (props: never) => JSX.Element;
 
@@ -39,8 +40,9 @@ export function lazy<
 ): ComponentExport<M, K> {
   type Component = ComponentExport<M, K>;
 
-  return ((props: Parameters<Component>[0]): JSX.Element => {
-    const s = $async(async () => {
+  let cached: UnwrapPromise<ComponentExport<M, K>>;
+  return $cmpnt((props: Parameters<Component>[0]): JSX.Element => {
+    const component = $async(async () => {
       const components = await loader();
       const component = components[namedExport];
 
@@ -53,6 +55,10 @@ export function lazy<
       return component as Component;
     });
 
-    return $dyn(() => s.value(props));
+    return $dyn(() => {
+      if (!cached) cached = component.value;
+
+      return cached(props);
+    });
   }) as Component;
 }

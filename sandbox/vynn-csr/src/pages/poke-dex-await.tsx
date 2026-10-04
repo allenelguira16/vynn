@@ -2,10 +2,10 @@ import {
   $async,
   $effect,
   $state,
+  Await,
   isPending,
   onDestroy,
   onMount,
-  Suspense,
 } from "vynn";
 
 import { Template } from "../components/template";
@@ -25,11 +25,10 @@ type PokeDexData = {
 type SortKey = keyof PokeDexData["results"][number];
 type SortDirection = "asc" | "desc";
 
-export const PokeDexSuspense = () => {
+export const PokeDexAwait = () => {
   const url = $state("https://pokeapi.co/api/v2/pokemon/?offset=1100&limit=20");
   const sortBy = $state<SortKey>("name");
   const sortDirection = $state<SortDirection>("asc");
-  const style = { "aria-label": "Hi", test: "123", name: name.firstName };
 
   const pokeDex = $async(async () => {
     const response = await fetch(url.value);
@@ -60,11 +59,11 @@ export const PokeDexSuspense = () => {
   };
 
   onMount(() => {
-    // console.log("pokedex-suspense mounted");
+    // console.log("pokedex-await mounted");
   });
 
   onDestroy(() => {
-    console.log("pokedex-suspense destroyed");
+    console.log("pokedex-await destroyed");
   });
 
   $effect(() => {
@@ -79,11 +78,9 @@ export const PokeDexSuspense = () => {
   });
 
   return (
-    <Template title="PokeDex List (via Suspense)">
+    <Template title="PokeDex List (via Await)">
       <div ref={el}>
-        <div class="break-all" {...style}>
-          Hi {name.firstName}
-        </div>
+        <div class="break-all">Hi {name.firstName}</div>
         <table class="w-full mx-auto my-2 table-fixed">
           <thead>
             <tr>
@@ -103,7 +100,7 @@ export const PokeDexSuspense = () => {
             </tr>
           </thead>
           <tbody>
-            <Suspense
+            <Await
               fallback={
                 <>
                   {/* {loop(Array.from({ length: 20 }).map((_, i) => i + 1)).each((number) => (
@@ -145,7 +142,7 @@ export const PokeDexSuspense = () => {
                   <Row name={name} url={url} index={index} />
                 ))}
               </>
-            </Suspense>
+            </Await>
           </tbody>
         </table>
         <div class="flex gap-4 justify-center">
@@ -175,26 +172,6 @@ export const PokeDexSuspense = () => {
 
 function Row(props: { name: string; url: string; index: number }) {
   const showUrlOnClick = (url: string) => () => alert(url);
-
-  // $effect(() => {
-  //   // console.log(props.index);
-  // });
-
-  // onMount(() => {
-  //   // console.log(url);
-  //   console.log(`rerun`);
-  // });
-
-  // const data = $async(async () => {
-  //   const res = await fetch(props.url);
-  //   const json = await res.json();
-
-  //   return json;
-  // });
-
-  // // $effect(() => {
-  // //   console.log(data.value);
-  // // });
 
   return (
     <tr>

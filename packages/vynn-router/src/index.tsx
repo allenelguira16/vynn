@@ -1,4 +1,4 @@
-import { $effect, $state, $store, FC, PropsWithChildren } from "vynn";
+import { $effect, $state, $store, FC, PropsWithChildren, untrack } from "vynn";
 import { $dyn } from "vynn/render";
 
 export type Route = {
@@ -219,7 +219,7 @@ function RouteOutlet(props: { routes: Route[]; parentPath?: string }) {
 
     const { route, fullPath } = match;
 
-    console.log(match);
+    // console.log(match);
 
     return route.component({
       get children() {

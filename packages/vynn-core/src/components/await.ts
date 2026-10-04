@@ -17,15 +17,16 @@ type Range = {
 };
 
 /**
- * Displays a fallback while async operations in its children are pending.
+ * Displays a fallback while the children are initially loading.
  *
- * The fallback is shown whenever one or more async operations are pending.
- * Once all pending operations resolve, the children are displayed.
+ * The fallback is shown only during the first pending state.
+ * Once the children have been displayed successfully, subsequent async
+ * operations keep the current children visible.
  *
  * @param props The fallback content and children to render.
  * @returns The rendered content.
  */
-export const Suspense = $cmpnt(function Suspense(props: {
+export const Await = $cmpnt(function Suspense(props: {
   fallback?: JSX.Element;
   children: JSX.Element;
 }): JSX.Element {
@@ -38,10 +39,19 @@ export const Suspense = $cmpnt(function Suspense(props: {
 
   let pendingCount = 0;
 
+  /**
+   * Becomes true once the children have been displayed for the first time.
+   *
+   * After this point, new async operations do not show the fallback again.
+   */
+  let resolved = false;
+
   const show = (range: Range) => {
     const parent = start.parentNode;
 
-    if (!parent || active === range) return;
+    if (!parent || active === range) {
+      return;
+    }
 
     if (active) {
       moveRange(active, active.parkingLot);
@@ -54,7 +64,13 @@ export const Suspense = $cmpnt(function Suspense(props: {
   enterAsyncBoundary((promise) => {
     pendingCount++;
 
-    if (start.parentNode && fallback) {
+    /*
+     * Only show the fallback during the initial load.
+     *
+     * Once the children have been shown, keep them visible even when
+     * another async operation starts.
+     */
+    if (!resolved && start.parentNode && fallback) {
       show(fallback);
     }
 
@@ -62,6 +78,14 @@ export const Suspense = $cmpnt(function Suspense(props: {
       pendingCount--;
 
       if (pendingCount === 0 && start.parentNode && children) {
+        /*
+         * The first time all initial async work completes, mark this
+         * Suspense as resolved permanently.
+         */
+        if (!resolved) {
+          resolved = true;
+        }
+
         show(children);
       }
     };
@@ -72,7 +96,15 @@ export const Suspense = $cmpnt(function Suspense(props: {
   fallback = createRange(resolveNode(() => props.fallback));
   children = createRange(resolveNode(() => props.children));
 
-  active = pendingCount > 0 ? fallback : children;
+  /*
+   * If there was no async work during the initial render, the children
+   * are immediately considered resolved.
+   */
+  if (pendingCount === 0) {
+    resolved = true;
+  }
+
+  active = pendingCount > 0 && !resolved ? fallback : children;
 
   return [start, active.start, ...active.nodes, active.end, end];
 });
@@ -149,3 +181,49 @@ function moveRange(
     }
   }
 }
+
+// import { JSX } from "../types/jsx";
+// import { $state } from "../reactivity/$state";
+// import { $cmpnt } from "../render/$cmpnt";
+// import { $dyn } from "../render/$dyn";
+// import { enterAsyncBoundary } from "./boundary";
+
+// /**
+//  * Displays async content with an optional fallback.
+//  *
+//  * The fallback is displayed while the async content has not yet been
+//  * resolved. Once the content is resolved, the children are displayed.
+//  *
+//  * Unlike `Suspense`, `Await` does not display the fallback simply because
+//  * an async operation becomes pending after the content has been resolved.
+//  *
+//  * @param props The fallback content and children to render.
+//  * @returns The rendered content.
+//  */
+// export const Await = $cmpnt(function Await(props: {
+//   fallback?: JSX.Element;
+//   children: JSX.Element;
+// }) {
+//   const view = $state<Node>();
+
+//   const fallback = document.createDocumentFragment();
+//   const children = document.createDocumentFragment();
+
+//   let initialized = false;
+
+//   enterAsyncBoundary((promise: Promise<void>) => {
+//     if (initialized) return;
+
+//     view.value = fallback;
+
+//     promise.then(() => {
+//       view.value = children;
+//       initialized = true;
+//     });
+//   });
+
+//   fallback.append(...$dyn(() => props.fallback));
+//   children.append(...$dyn(() => props.children));
+
+//   return $dyn(() => view.value || children);
+// });

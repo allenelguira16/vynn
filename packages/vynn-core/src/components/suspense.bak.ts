@@ -1,69 +1,123 @@
-import { JSX } from "../types/jsx";
-import { $state } from "../reactivity/$state";
+import type { JSX } from "../types/jsx";
 import { $cmpnt } from "../render/$cmpnt";
-import { $dyn } from "../render/$dyn";
-
-const suspenseBoundaries: ((promise: Promise<void>) => void)[] = [];
+import { resolveNode } from "../render/resolve-node";
+import { enterAsyncBoundary } from "./boundary";
 
 /**
- * Returns the currently active Suspense boundary.
+ * Represents a movable DOM range.
  *
- * The active boundary is the nearest Suspense component being evaluated.
- * It can be used to register an async operation with that boundary.
- *
- * @returns The active Suspense boundary, or `undefined` when evaluated
- * outside of a Suspense boundary.
+ * The range lives inside its parking lot while inactive and is moved into
+ * the document when it becomes active.
  */
-export function getSuspenseBoundary() {
-  return suspenseBoundaries[suspenseBoundaries.length - 1] as
-    | ((promise: Promise<void>) => void)
-    | undefined;
-}
+type Range = {
+  start: Comment;
+  end: Comment;
+  nodes: Node[];
+  parkingLot: DocumentFragment;
+};
 
 /**
- * Renders content with a fallback while an async operation is pending.
+ * Displays a fallback while async operations in its children are pending.
  *
- * Content rendered inside the boundary can register promises with the
- * currently active Suspense boundary. The fallback is displayed while
- * those promises are pending, and the children are displayed once they
- * resolve.
+ * The fallback is shown whenever one or more async operations are pending.
+ * Once all pending operations resolve, the children are displayed.
  *
  * @param props The fallback content and children to render.
- * @returns The active Suspense view.
+ * @returns The rendered content.
  */
 export const Suspense = $cmpnt(function Suspense(props: {
   fallback?: JSX.Element;
   children: JSX.Element;
-}) {
-  const view = $state<Node>();
+}): JSX.Element {
+  const start = document.createComment("suspense-start");
+  const end = document.createComment("suspense-end");
 
-  const fallback = document.createDocumentFragment();
-  const children = document.createDocumentFragment();
+  let fallback: Range;
+  let children: Range;
+  let active: Range | undefined;
 
-  const boundary = (promise: Promise<void>) => {
-    if (!fallback.childNodes.length) {
-      fallback.append(...$dyn(() => props.fallback));
+  let pendingCount = 0;
+
+  const show = (range: Range) => {
+    const parent = start.parentNode;
+
+    if (!parent || active === range) return;
+
+    if (active) {
+      moveRange(active, active.parkingLot);
     }
 
-    view.value = fallback;
-
-    promise.then(() => {
-      if (!children.childNodes.length) {
-        children.append(...$dyn(() => props.children));
-      }
-
-      view.value = children;
-    });
+    moveRange(range, parent, end);
+    active = range;
   };
 
-  suspenseBoundaries.push(boundary);
+  enterAsyncBoundary((promise) => {
+    pendingCount++;
 
-  try {
-    fallback.append(...$dyn(() => props.fallback));
-    children.append(...$dyn(() => props.children));
-  } finally {
-    suspenseBoundaries.pop();
+    if (start.parentNode && fallback) {
+      show(fallback);
+    }
+
+    const complete = () => {
+      pendingCount--;
+
+      if (pendingCount === 0 && start.parentNode && children) {
+        show(children);
+      }
+    };
+
+    promise.then(complete, complete);
+  });
+
+  fallback = createRange(resolveNode(() => props.fallback));
+  children = createRange(resolveNode(() => props.children));
+
+  active = pendingCount > 0 ? fallback : children;
+
+  return [start, active.start, ...active.nodes, active.end, end];
+});
+
+/**
+ * Creates a parked DOM range from a list of nodes.
+ */
+function createRange(nodes: Node[]): Range {
+  const start = document.createComment("range-start");
+  const end = document.createComment("range-end");
+  const parkingLot = document.createDocumentFragment();
+
+  parkingLot.append(start, ...nodes, end);
+
+  return {
+    start,
+    end,
+    nodes,
+    parkingLot,
+  };
+}
+
+/**
+ * Moves an entire range from its current parent into the target.
+ *
+ * The range's start and end markers move together with its contents.
+ *
+ * @param range The range to move.
+ * @param target The node that will contain the range.
+ * @param before The node to insert the range before.
+ */
+function moveRange(range: Range, target: Node, before: Node | null = null) {
+  const fragment = document.createDocumentFragment();
+
+  let node: Node | null = range.start;
+
+  while (node) {
+    const next: ChildNode | null = node.nextSibling;
+
+    fragment.append(node);
+
+    if (node === range.end) break;
+
+    node = next;
   }
 
-  return $dyn(() => view.value || children);
-});
+  target.insertBefore(fragment, before);
+}
