@@ -1,8 +1,7 @@
 import { transformSync } from "@babel/core";
 import babelPluginTS from "@babel/preset-typescript";
 import babelPluginVynn from "@babel/preset-vynn";
-import type { IncomingMessage, ServerResponse } from "node:http";
-import type { Plugin, ViteDevServer } from "vite";
+import type { Plugin } from "vite";
 
 type VitePluginVynnOptions = {
   ssr?: boolean;
@@ -40,15 +39,23 @@ export default (options: VitePluginVynnOptions = { ssr: false }): Plugin[] => {
         const result = transformSync(code, {
           filename,
           sourceMaps: true,
+
           presets: [
             [
               babelPluginVynn,
               {
                 ssr: isSSR,
+
+                // Vite's module ID is passed to Vynn so the generated
+                // HMR handler can identify the module correctly.
+                //
+                // HMR is only relevant to client transforms.
+                hmrId: isSSR ? undefined : filename,
               },
             ],
             babelPluginTS,
           ],
+
           generatorOpts: {
             comments: true,
             shouldPrintComment: (value: string) => /#__PURE__/.test(value),

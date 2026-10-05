@@ -2,12 +2,12 @@ import { $effect, $state, $store, onDestroy, onMount } from "vynn";
 
 import { Template } from "../components/template";
 import { name } from "../utils";
-import { $for } from "vynn/render";
+// import { $for } from "vynn/render";
 
 type SortDirection = "asc" | "desc";
 
 export const Dropdowns = () => {
-  // console.log("Dropdown rerender");
+  console.log("Dropdown rerender"); // log once
   const dropdownStore = $store({
     showDropdown: true,
     sortDirection: "asc" as SortDirection,
@@ -111,48 +111,50 @@ type TDropdownListProps = {
 };
 
 const DropdownList = ({ dropdowns }: TDropdownListProps) => {
-  console.log("weh");
-  onMount(async () => {
-    console.log("DropdownList onMount");
-  });
+  console.log("DropdownList rerender"); // log twice
+  // onMount(async () => {
+  //   console.log("DropdownList onMount");
+  // });
 
-  onDestroy(async () => {
-    console.log("DropdownList onDestroy");
-  });
+  // onDestroy(async () => {
+  //   console.log("DropdownList onDestroy");
+  // });
+
+  // console.log("hey");
 
   return (
     <div class="flex gap-2 flex-col lg:flex-row">
       {/* {loop(dropdowns.numbers).each((number) => (
         <Dropdown number={number} />
       ))} */}
-      {/* {dropdowns.numbers.map((number) => (
+      {dropdowns.numbers.map((number) => (
         <Dropdown number={number} />
-      ))} */}
-      {$for(
+      ))}
+      {/* {$for(
         () => dropdowns.numbers,
         (item) => (
           <Dropdown number={item} />
         ),
-      )}
+      )} */}
     </div>
   );
 };
 
 const Dropdown = ({ number }: { number: number }) => {
-  // console.log("rerender");
+  console.log("rerender"); // log thrice
   const isOpen = $state(false);
 
   const handleToggle = () => {
     isOpen.value = !isOpen.value;
   };
 
-  onMount(async () => {
-    console.log("Dropdown onMount");
-  });
+  // onMount(async () => {
+  //   console.log("Dropdown onMount");
+  // });
 
-  onDestroy(async () => {
-    console.log("Dropdown onDestroy");
-  });
+  // onDestroy(async () => {
+  //   console.log("Dropdown onDestroy");
+  // });
 
   return (
     <>

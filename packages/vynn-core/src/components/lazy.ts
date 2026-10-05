@@ -46,6 +46,8 @@ export function lazy<
       const components = await loader();
       const component = components[namedExport];
 
+      // await sleep(1000);
+
       if (typeof component !== "function") {
         throw new Error(
           `lazy(): export "${String(namedExport)}" is not a component.`,
@@ -62,3 +64,7 @@ export function lazy<
     });
   }) as Component;
 }
+
+// const sleep = (ms: number): Promise<void> => {
+//   return new Promise((resolve) => setTimeout(resolve, ms));
+// };

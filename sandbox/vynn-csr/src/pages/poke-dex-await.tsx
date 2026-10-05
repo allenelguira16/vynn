@@ -10,7 +10,6 @@ import {
 
 import { Template } from "../components/template";
 import { name, sleep } from "../utils";
-import { $for } from "vynn/render";
 
 type PokeDexData = {
   count: number;
