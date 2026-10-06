@@ -29,8 +29,8 @@ const properties = new Set([
  * @param name The property or attribute name.
  * @param value The value to assign, or a function that returns the value reactively.
  */
-export function $attr(
-  element: Node,
+export function $attr<E extends HTMLElement>(
+  element: E,
   name: string,
   value: AttributeValue | (() => AttributeValue),
 ): void {

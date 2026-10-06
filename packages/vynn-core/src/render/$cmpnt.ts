@@ -8,6 +8,7 @@ import {
 import type { JSX } from "../jsx-runtime";
 
 import { untrack } from "../reactivity/untrack";
+import { IS_SERVER_ENV } from "../utils/is-server-env";
 
 /**
  * Associates a component's DOM marker with its owner.
@@ -56,30 +57,32 @@ export function $cmpnt<P>(
 ): (props?: P) => JSX.Element;
 
 export function $cmpnt<P>(
-  Component: ((props: P) => JSX.Element) | (() => JSX.Element),
+  Component: ((props?: P) => JSX.Element) | (() => JSX.Element),
 ) {
   return (props?: P): JSX.Element => {
-    const marker = document.createTextNode("");
     const owner = createOwner();
+    let marker: Node | undefined;
 
-    rootNodes.set(marker, owner);
+    if (!IS_SERVER_ENV) {
+      marker = document.createTextNode("");
+      rootNodes.set(marker, owner);
+    }
 
-    const result = runWithOwner(owner, () => [
-      untrack(() => Component(props || ({} as P))),
-      marker,
-    ]);
+    return runWithOwner(owner, () => {
+      try {
+        const resolved = untrack(() => Component(props));
 
-    try {
-      return result;
-    } finally {
-      for (const mount of owner.mount) {
-        const cleanup = mount();
+        return [resolved, marker];
+      } finally {
+        for (const mount of owner.mount) {
+          const cleanup = mount();
 
-        if (typeof cleanup === "function") {
-          owner.cleanups.push(cleanup);
+          if (typeof cleanup === "function") {
+            owner.cleanups.push(cleanup);
+          }
         }
       }
-    }
+    });
   };
 }
 

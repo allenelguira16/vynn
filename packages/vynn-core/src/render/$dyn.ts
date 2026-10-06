@@ -11,7 +11,7 @@ import { resolveNode } from "./resolve-node";
  * @param child A function that returns the content to render reactively.
  * @returns The start marker, current child nodes, and end marker for the range.
  */
-export function $dyn(child: () => JSX.Element): Node[] {
+export function $dyn(child: () => JSX.Element): JSX.Element[] {
   let initialNodes: Node[] = [];
   const markerStart = document.createTextNode("");
   const markerEnd = document.createTextNode("");

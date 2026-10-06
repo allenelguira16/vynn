@@ -1,5 +1,12 @@
 import { getCurrentOwner } from "../life-cycle/owner";
 
+type VynnEvent<
+  E extends HTMLElement,
+  K extends keyof HTMLElementEventMap,
+> = HTMLElementEventMap[K] & {
+  readonly currentTarget: E;
+};
+
 /**
  * Registers an event listener on a DOM node.
  *
@@ -8,15 +15,16 @@ import { getCurrentOwner } from "../life-cycle/owner";
  *
  * Must be called while a component owner is active.
  *
+ * @template E The element type.
  * @template K The event name.
- * @param element The DOM node to attach the listener to.
+ * @param element The DOM element to attach the listener to.
  * @param event The name of the event to listen for.
  * @param handler The function to call when the event is dispatched.
  */
-export function $on<K extends keyof HTMLElementEventMap>(
-  element: Node,
+export function $on<E extends HTMLElement, K extends keyof HTMLElementEventMap>(
+  element: E,
   event: K,
-  handler: (event: HTMLElementEventMap[K]) => void,
+  handler: (event: VynnEvent<E, K>) => void,
 ): void {
   const owner = getCurrentOwner();
 
@@ -24,8 +32,8 @@ export function $on<K extends keyof HTMLElementEventMap>(
     throw new Error(`Vynn: $on must be used inside component`);
   }
 
-  function handle(e: Event) {
-    handler(e as HTMLElementEventMap[K]);
+  function handle(event: Event) {
+    handler(event as VynnEvent<E, K>);
   }
 
   element.addEventListener(event, handle);

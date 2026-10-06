@@ -1,0 +1,34 @@
+{
+  "name": "ssr",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "cross-env NODE_ENV=development tsx server.tsx",
+    "start": "cross-env NODE_ENV=production tsx server.tsx",
+    "preview": "cross-env NODE_ENV=production pnpm build && tsx server.tsx",
+    "build": "pnpm build:client && pnpm build:server",
+    "build:client": "cross-env NODE_ENV=production vite build --outDir dist/client",
+    "build:server": "cross-env NODE_ENV=production vite build --outDir dist/server --ssr src/entry-server.js"
+  },
+  "dependencies": {
+    "@babel/core": "^8.0.5",
+    "@tailwindcss/vite": "^4.3.3",
+    "compression": "^1.8.2",
+    "express": "^5.2.1",
+    "sirv": "^3.0.2",
+    "tailwindcss": "^4.3.3",
+    "vite-plugin-vynn": "workspace:*",
+    "vynn": "workspace:*",
+    "vynn-router": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/compression": "^1.8.1",
+    "@types/express": "^5.0.6",
+    "cross-env": "^10.1.0",
+    "esbuild": "^0.28.2",
+    "tsx": "^4.23.15",
+    "typescript": "~6.0.2",
+    "vite": "^8.1.1"
+  }
+}

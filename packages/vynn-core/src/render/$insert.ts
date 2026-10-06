@@ -14,9 +14,9 @@ import { resolveNode } from "./resolve-node";
  * @param child The content to insert, or a function that produces the content reactively.
  * @param before The node to insert the content before, or `null` to append it.
  */
-export function $insert(
-  element: Node,
-  child: (() => JSX.Element) | string | number,
+export function $insert<E extends HTMLElement>(
+  element: E,
+  child: (() => JSX.Element) | JSX.Element,
   before: Node | null = null,
 ): void {
   let oldNodes: Node[] = [];

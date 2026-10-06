@@ -2,6 +2,7 @@ import type { JSX } from "../types/jsx";
 import { $cmpnt, markParked, unmarkParked } from "../render/$cmpnt";
 import { resolveNode } from "../render/resolve-node";
 import { enterAsyncBoundary } from "./boundary";
+import { IS_SERVER_ENV } from "../utils/is-server-env";
 
 /**
  * Represents a movable DOM range.
@@ -29,8 +30,8 @@ export const Suspense = $cmpnt(function Suspense(props: {
   fallback?: JSX.Element;
   children: JSX.Element;
 }): JSX.Element {
-  const start = document.createComment("suspense-start");
-  const end = document.createComment("suspense-end");
+  const start = document.createComment("");
+  const end = document.createComment("");
 
   let fallback: Range;
   let children: Range;
