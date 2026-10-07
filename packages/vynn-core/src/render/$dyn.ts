@@ -1,6 +1,7 @@
 import type { JSX } from "../jsx-runtime";
 import { $effect } from "../reactivity/$effect";
-import { resolveNode } from "./resolve-node";
+import { IS_SERVER_ENV } from "../utils/is-server-env";
+import { createSSRNode, resolveNode } from "./resolve-node";
 
 /**
  * Creates a reactive DOM range from a child expression.
@@ -12,6 +13,18 @@ import { resolveNode } from "./resolve-node";
  * @returns The start marker, current child nodes, and end marker for the range.
  */
 export function $dyn(child: () => JSX.Element): JSX.Element[] {
+  if (IS_SERVER_ENV) {
+    // try {
+    // let resolved: Node[] = [];
+
+    // $effect(() => {
+    let resolved = resolveNode(child);
+    // console.log(resolved);
+    // });
+
+    return resolved;
+  }
+
   let initialNodes: Node[] = [];
   const markerStart = document.createTextNode("");
   const markerEnd = document.createTextNode("");

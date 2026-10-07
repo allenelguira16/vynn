@@ -16,6 +16,7 @@
     "@tailwindcss/vite": "^4.3.3",
     "compression": "^1.8.2",
     "express": "^5.2.1",
+    "pretty": "^2.0.0",
     "sirv": "^3.0.2",
     "tailwindcss": "^4.3.3",
     "vite-plugin-vynn": "workspace:*",
@@ -25,6 +26,7 @@
   "devDependencies": {
     "@types/compression": "^1.8.1",
     "@types/express": "^5.0.6",
+    "@types/pretty": "^2.0.3",
     "cross-env": "^10.1.0",
     "esbuild": "^0.28.2",
     "tsx": "^4.23.15",

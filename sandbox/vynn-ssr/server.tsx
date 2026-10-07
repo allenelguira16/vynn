@@ -1,10 +1,11 @@
 import fs from "node:fs";
 
+import pretty from "pretty";
 import express, { Request, Response } from "express";
 import { createServer as createViteServer, ViteDevServer } from "vite";
 
-const PORT = 3000;
 const isDev = process.env.NODE_ENV === "development";
+const PORT = isDev ? 5173 : 4173;
 
 const start = Date.now();
 const app = express();
@@ -49,11 +50,35 @@ app.use("*all", async (req: Request, res: Response, next) => {
     const appHtml = await render(url);
 
     let html = template.replace("<!--ssr-outlet-->", appHtml);
-    // if (isDev) html = pretty(html);
-    // else html = html.replace(/\s*\n\s*/g, "").replace(/\s{2,}/g, " ");
-    html = html.replace(/\s*\n\s*/g, "").replace(/\s{2,}/g, " ");
+    if (isDev) html = pretty(html);
+    else html = html.replace(/\s*\n\s*/g, "").replace(/\s{2,}/g, " ");
+    // html = html.replace(/\s*\n\s*/g, "").replace(/\s{2,}/g, " ");
 
     res.status(200).set({ "Content-Type": "text/html" }).end(html);
+
+    // const stream = await render(url);
+
+    // const [head, tail] = template.split("<!--ssr-outlet-->");
+
+    // res.status(200).set({ "Content-Type": "text/html" });
+    // res.write(head);
+    // // res.write(
+    // //   head.replace("<!--hydration-script-->", HydrateStreamScript() as string),
+    // // );
+
+    // for await (const chunk of stream) {
+    //   // res.write(chunk);
+    //   await new Promise<void>((resolve) => {
+    //     if (!res.write(chunk)) {
+    //       res.once("drain", resolve);
+    //     } else {
+    //       resolve();
+    //     }
+    //   });
+    // }
+
+    // res.write(tail);
+    // res.end();
   } catch (e) {
     if (e instanceof Error && vite) {
       vite.ssrFixStacktrace(e);

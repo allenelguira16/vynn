@@ -2,6 +2,7 @@ import { JSX } from "../types/jsx";
 import { onMount } from "../life-cycle/on-mount";
 import { $cmpnt, $insert } from "../render";
 import { PropsWithChildren } from "../types/props";
+import { IS_SERVER_ENV } from "../utils/is-server-env";
 
 /**
  * Renders its children into a specified mount node.
@@ -12,13 +13,19 @@ import { PropsWithChildren } from "../types/props";
  * @param props The portal mount node and child content to render.
  * @returns `null` because the portal does not render at its original location.
  */
-export const Portal = $cmpnt(function Portal(
-  props: PropsWithChildren<{ mount: Node }>,
+export const Portal = $cmpnt(function Portal<E extends HTMLElement>(
+  props: PropsWithChildren<{ mount: E }>,
 ): JSX.Element {
+  if (IS_SERVER_ENV) {
+    return null;
+  }
+
   onMount(() => {
     if (!props.mount) return;
 
-    $insert(props.mount, () => props.children);
+    if (props.mount instanceof Node) {
+      $insert(props.mount, () => props.children);
+    }
   });
 
   return null;

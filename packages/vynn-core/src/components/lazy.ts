@@ -60,6 +60,7 @@ export function lazy<
     return $dyn(() => {
       if (!cached) cached = component.value;
 
+      // console.log(cached);
       return cached(props);
     });
   }) as Component;

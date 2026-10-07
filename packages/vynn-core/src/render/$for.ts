@@ -3,6 +3,7 @@ import { $effect } from "../reactivity/$effect";
 import { $state, State } from "../reactivity/$state";
 import { $dyn } from "./$dyn";
 import { untrack } from "../reactivity/untrack";
+import { IS_SERVER_ENV } from "../utils/is-server-env";
 
 type ForEntry<T> = {
   item: T;
@@ -14,6 +15,10 @@ export function $for<T>(
   items: () => T[],
   each: (item: T, index: State<number>) => JSX.Element,
 ): JSX.Element {
+  if (IS_SERVER_ENV) {
+    return items().map((item, i) => each(item, { value: i }));
+  }
+
   const result = $state<JSX.Element[]>([]);
   let oldEntries: ForEntry<T>[] = [];
   let initialized = false;

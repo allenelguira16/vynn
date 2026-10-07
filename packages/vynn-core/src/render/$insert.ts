@@ -1,6 +1,7 @@
 import { $effect } from "../reactivity/$effect";
 import { JSX } from "../jsx-runtime";
 import { resolveNode } from "./resolve-node";
+import { IS_SERVER_ENV } from "../utils/is-server-env";
 
 /**
  * Inserts reactive content into a DOM node.
@@ -19,6 +20,18 @@ export function $insert<E extends HTMLElement>(
   child: (() => JSX.Element) | JSX.Element,
   before: Node | null = null,
 ): void {
+  if (IS_SERVER_ENV) {
+    const newNodes = resolveNode(
+      typeof child === "function" ? child : () => child,
+    );
+
+    for (const node of [newNodes].flat()) {
+      // console.log(node);
+      element.appendChild(node);
+    }
+    return;
+  }
+
   let oldNodes: Node[] = [];
 
   $effect(() => {

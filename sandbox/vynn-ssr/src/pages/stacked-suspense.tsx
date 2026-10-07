@@ -1,4 +1,4 @@
-import { $async, onDestroy, onMount, Suspense } from "vynn";
+import { $async, $effect, onDestroy, onMount, Suspense } from "vynn";
 
 import { Template } from "../components/template";
 import { sleep } from "../utils";
@@ -14,7 +14,7 @@ export const StackedSuspense = () => {
 
     return "hello world 2";
   });
-  console.log("suspense parent rerender");
+  // console.log("suspense parent rerender");
 
   return (
     <Template title="Stacked Suspense">
@@ -44,12 +44,16 @@ const Component = () => {
 
     return `hello world`;
   });
-  console.log("suspense inner rerender");
   onMount(() => {
-    console.log("bumalik...");
+    // console.log("bumalik...");
   });
   onDestroy(() => {
-    console.log("nawala...");
+    // console.log("nawala...");
+  });
+
+  $effect(() => {
+    // console.log("suspense inner rerender");
+    // console.log(msg.value);
   });
 
   return <div>{msg.value}</div>;

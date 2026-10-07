@@ -48,7 +48,7 @@ const Input = () => {
     clearInterval(cleanup);
   });
 
-  const nameEl = <>Name: {forms.name} Hi</>;
+  const nameEl = <>Name: {forms.name} Hi </>;
 
   // console.log("hi");
 

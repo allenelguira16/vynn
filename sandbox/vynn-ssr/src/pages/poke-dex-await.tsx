@@ -62,7 +62,7 @@ export const PokeDexAwait = () => {
   });
 
   onDestroy(() => {
-    console.log("pokedex-await destroyed");
+    // console.log("pokedex-await destroyed");
   });
 
   $effect(() => {
@@ -73,7 +73,7 @@ export const PokeDexAwait = () => {
   let el!: HTMLDivElement;
 
   onMount(() => {
-    console.log(el);
+    // console.log(el);
   });
 
   return (

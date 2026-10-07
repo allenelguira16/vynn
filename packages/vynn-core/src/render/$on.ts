@@ -1,4 +1,5 @@
 import { getCurrentOwner } from "../life-cycle/owner";
+import { IS_SERVER_ENV } from "../utils/is-server-env";
 
 type VynnEvent<
   E extends HTMLElement,
@@ -26,6 +27,8 @@ export function $on<E extends HTMLElement, K extends keyof HTMLElementEventMap>(
   event: K,
   handler: (event: VynnEvent<E, K>) => void,
 ): void {
+  if (IS_SERVER_ENV) return;
+
   const owner = getCurrentOwner();
 
   if (!owner) {

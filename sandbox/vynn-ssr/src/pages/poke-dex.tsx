@@ -60,8 +60,8 @@ export const PokeDex = () => {
     })();
 
     return () => {
-      console.log("Cleaning up PokeDex component");
-      controller.abort();
+      // console.log("Cleaning up PokeDex component");
+      // controller.abort();
     };
   });
 

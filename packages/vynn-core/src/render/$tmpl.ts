@@ -1,5 +1,8 @@
 // import { IS_SERVER_ENV } from "../utils/is-server-env";
 
+import { IS_SERVER_ENV } from "../utils/is-server-env";
+import { createSSRNode } from "./resolve-node";
+
 /**
  * Creates a native DOM element for the given HTML tag name.
  *
@@ -9,6 +12,10 @@
 export function $tmpl<T extends keyof HTMLElementTagNameMap>(
   key: T,
 ): HTMLElementTagNameMap[T] {
+  if (IS_SERVER_ENV) {
+    return createSSRNode(key) as unknown as HTMLElementTagNameMap[T];
+  }
+
   const element = document.createElement(key);
 
   return element;

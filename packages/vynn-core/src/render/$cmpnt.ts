@@ -72,6 +72,8 @@ export function $cmpnt<P>(
       try {
         const resolved = untrack(() => Component(props));
 
+        if (IS_SERVER_ENV) return resolved;
+
         return [resolved, marker];
       } finally {
         for (const mount of owner.mount) {
@@ -86,49 +88,51 @@ export function $cmpnt<P>(
   };
 }
 
-/**
- * Disposes component owners when their DOM markers are removed.
- *
- * The observer watches the document subtree so components are cleaned up
- * automatically when their markers leave the DOM.
- */
-const pendingDisposals = new Set<Node>();
+if (!IS_SERVER_ENV) {
+  /**
+   * Disposes component owners when their DOM markers are removed.
+   *
+   * The observer watches the document subtree so components are cleaned up
+   * automatically when their markers leave the DOM.
+   */
+  const pendingDisposals = new Set<Node>();
 
-new MutationObserver((mutations) => {
-  for (const mutation of mutations) {
-    for (const node of mutation.removedNodes) {
-      if (rootNodes.has(node)) {
-        pendingDisposals.add(node);
-      }
-    }
-  }
-
-  queueMicrotask(() => {
-    for (const node of pendingDisposals) {
-      pendingDisposals.delete(node);
-
-      /*
-       * The node was intentionally moved into a parking lot.
-       * It is still mounted.
-       */
-      if (parkedNodes.has(node)) {
-        continue;
-      }
-
-      /*
-       * It was removed and has not been reinserted.
-       */
-      if (!node.isConnected) {
-        const owner = rootNodes.get(node);
-
-        // console.log(node);
-        if (owner) {
-          disposeOwner(owner);
+  new MutationObserver((mutations) => {
+    for (const mutation of mutations) {
+      for (const node of mutation.removedNodes) {
+        if (rootNodes.has(node)) {
+          pendingDisposals.add(node);
         }
       }
     }
+
+    queueMicrotask(() => {
+      for (const node of pendingDisposals) {
+        pendingDisposals.delete(node);
+
+        /*
+         * The node was intentionally moved into a parking lot.
+         * It is still mounted.
+         */
+        if (parkedNodes.has(node)) {
+          continue;
+        }
+
+        /*
+         * It was removed and has not been reinserted.
+         */
+        if (!node.isConnected) {
+          const owner = rootNodes.get(node);
+
+          // console.log(node);
+          if (owner) {
+            disposeOwner(owner);
+          }
+        }
+      }
+    });
+  }).observe(document, {
+    childList: true,
+    subtree: true,
   });
-}).observe(document, {
-  childList: true,
-  subtree: true,
-});
+}

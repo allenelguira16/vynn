@@ -64,7 +64,7 @@ export const PokeDexSuspense = () => {
   });
 
   onDestroy(() => {
-    console.log("pokedex-suspense destroyed");
+    // console.log("pokedex-suspense destroyed");
   });
 
   $effect(() => {
@@ -75,7 +75,7 @@ export const PokeDexSuspense = () => {
   let el!: HTMLDivElement;
 
   onMount(() => {
-    console.log(el);
+    // console.log(el);
   });
 
   return (
