@@ -11,8 +11,6 @@ export function renderToServer(
 
   const owner = createOwner();
   return runWithOwner(owner, () => {
-    // const app = App() as unknown as SSR_NODE[];
-
     if (mode === "sync") {
       try {
         return resolveSync(App);
@@ -22,13 +20,9 @@ export function renderToServer(
     }
 
     if (mode === "async") {
-      return resolveAsync(App)
-        .finally(() => {
-          disposeOwner(owner);
-        })
-        .catch((e) => {
-          console.log(e);
-        });
+      return resolveAsync(App).finally(() => {
+        disposeOwner(owner);
+      });
     }
 
     // if (mode === "stream") {
@@ -51,7 +45,7 @@ function resolveSync(App: () => JSX.Element) {
         attr = !!attr.length ? ` ${attr}` : attr;
         string += `<${node.type}${attr}>${resolve(node.children)}</${node.type}>`;
       } else if (node.type === "#text") {
-        string += node.value;
+        string += escapeHtml(node.value);
       }
     }
 
@@ -72,7 +66,7 @@ async function resolveAsync(App: () => JSX.Element) {
     for (const node of app.flat(Infinity).filter(Boolean)) {
       if ("value" in node && node.type === "#text") {
         // console.log(node);
-        string += node.value;
+        string += escapeHtml(node.value);
       } else if ("children" in node) {
         let attr = Object.entries(node.attributes)
           .map(([key, value]) => `${key}="${value}"`)
@@ -89,6 +83,25 @@ async function resolveAsync(App: () => JSX.Element) {
   }
 
   return resolve(App() as unknown as SSR_NODE[]);
+}
+
+export function escapeHtml(value: unknown): string {
+  return String(value).replace(/[&<>"']/g, (char) => {
+    switch (char) {
+      case "&":
+        return "&amp;";
+      case "<":
+        return "&lt;";
+      case ">":
+        return "&gt;";
+      case '"':
+        return "&quot;";
+      case "'":
+        return "&#39;";
+      default:
+        return char;
+    }
+  });
 }
 
 // function memoize<This, Args extends unknown[], Return>(
