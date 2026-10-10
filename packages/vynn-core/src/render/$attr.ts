@@ -1,4 +1,5 @@
 import { $effect } from "../reactivity/$effect";
+import { escapeHtml } from "../utils/escape-html";
 import { getRenderMode } from "../utils/render-mode";
 import { SSR_ELEMENT } from "./resolve-node";
 
@@ -51,8 +52,8 @@ export function $attr<E extends HTMLElement>(
           delete node.attributes[name.toLowerCase()];
           // attributes = attributes.filter((attribute) => attribute === name);
         }
-      } else {
-        node.attributes[name.toLowerCase()] = String(next);
+      } else if (next != null) {
+        node.attributes[name.toLowerCase()] = escapeHtml(String(next));
       }
     });
     // });

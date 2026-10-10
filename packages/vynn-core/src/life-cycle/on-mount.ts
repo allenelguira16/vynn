@@ -16,7 +16,7 @@ export function onMount(callback: () => void): void;
 export function onMount(callback: () => () => void): void;
 
 export function onMount(callback: () => void | (() => void)): void {
-  if (getRenderMode() === "sync") {
+  if (getRenderMode()) {
     return;
   }
 

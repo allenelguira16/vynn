@@ -1,5 +1,6 @@
 import { createOwner, disposeOwner, runWithOwner } from "../life-cycle/owner";
 import { JSX } from "../types/jsx";
+import { escapeHtml } from "../utils/escape-html";
 import { setRenderMode } from "../utils/render-mode";
 import { SSR_NODE } from "./resolve-node";
 
@@ -83,25 +84,6 @@ async function resolveAsync(App: () => JSX.Element) {
   }
 
   return resolve(App() as unknown as SSR_NODE[]);
-}
-
-export function escapeHtml(value: unknown): string {
-  return String(value).replace(/[&<>"']/g, (char) => {
-    switch (char) {
-      case "&":
-        return "&amp;";
-      case "<":
-        return "&lt;";
-      case ">":
-        return "&gt;";
-      case '"':
-        return "&quot;";
-      case "'":
-        return "&#39;";
-      default:
-        return char;
-    }
-  });
 }
 
 // function memoize<This, Args extends unknown[], Return>(
