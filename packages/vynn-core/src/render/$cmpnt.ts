@@ -8,34 +8,15 @@ import {
 import type { JSX } from "../jsx-runtime";
 
 import { untrack } from "../reactivity/untrack";
-import { IS_SERVER_ENV } from "../utils/is-server-env";
-
-/**
- * Associates a component's DOM marker with its owner.
- *
- * The marker is used to detect when the component is removed from the DOM so
- * its owner can be disposed.
- */
-export const rootNodes = new WeakMap<Node, Owner>();
-
-/**
- * Nodes that are temporarily detached by the renderer but still mounted.
- *
- * Suspense uses this when moving rendered content into a DocumentFragment.
- */
-export const parkedNodes = new WeakSet<Node>();
-
-export function isRootNode(node: Node): boolean {
-  return rootNodes.has(node);
-}
-
-export function markParked(node: Node): void {
-  parkedNodes.add(node);
-}
-
-export function unmarkParked(node: Node): void {
-  parkedNodes.delete(node);
-}
+import { getRenderMode } from "../utils/render-mode";
+import {
+  rootNodes,
+  addUnmountListener,
+  isRootNode,
+  markParked,
+  parkedNodes,
+  unmarkParked,
+} from "./$cmpnt.util";
 
 /**
  * Creates a component function with its own reactive owner and lifecycle.
@@ -61,20 +42,23 @@ export function $cmpnt<P>(
 ) {
   return (props?: P): JSX.Element => {
     const owner = createOwner();
+    // owner.Component = Component;
     let marker: Node | undefined;
 
-    if (!IS_SERVER_ENV) {
+    if (!getRenderMode()) {
       marker = document.createTextNode("");
       rootNodes.set(marker, owner);
     }
 
-    return runWithOwner(owner, () => {
+    if (owner.result) return owner.result;
+
+    owner.result = runWithOwner(owner, () => {
       try {
         const resolved = untrack(() => Component(props));
 
-        if (IS_SERVER_ENV) return resolved;
+        if (getRenderMode()) return [resolved].flat();
 
-        return [resolved, marker];
+        return [resolved, marker].flat();
       } finally {
         for (const mount of owner.mount) {
           const cleanup = mount();
@@ -85,54 +69,16 @@ export function $cmpnt<P>(
         }
       }
     });
+
+    return owner.result;
   };
 }
 
-if (!IS_SERVER_ENV) {
-  /**
-   * Disposes component owners when their DOM markers are removed.
-   *
-   * The observer watches the document subtree so components are cleaned up
-   * automatically when their markers leave the DOM.
-   */
-  const pendingDisposals = new Set<Node>();
-
-  new MutationObserver((mutations) => {
-    for (const mutation of mutations) {
-      for (const node of mutation.removedNodes) {
-        if (rootNodes.has(node)) {
-          pendingDisposals.add(node);
-        }
-      }
-    }
-
-    queueMicrotask(() => {
-      for (const node of pendingDisposals) {
-        pendingDisposals.delete(node);
-
-        /*
-         * The node was intentionally moved into a parking lot.
-         * It is still mounted.
-         */
-        if (parkedNodes.has(node)) {
-          continue;
-        }
-
-        /*
-         * It was removed and has not been reinserted.
-         */
-        if (!node.isConnected) {
-          const owner = rootNodes.get(node);
-
-          // console.log(node);
-          if (owner) {
-            disposeOwner(owner);
-          }
-        }
-      }
-    });
-  }).observe(document, {
-    childList: true,
-    subtree: true,
-  });
-}
+export {
+  rootNodes,
+  addUnmountListener,
+  isRootNode,
+  markParked,
+  parkedNodes,
+  unmarkParked,
+};

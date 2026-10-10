@@ -1,8 +1,7 @@
 // import { IS_SERVER_ENV } from "../utils/is-server-env";
 
-import { IS_SERVER_ENV } from "../utils/is-server-env";
+import { getRenderMode } from "../utils/render-mode";
 import { createSSRNode } from "./resolve-node";
-
 /**
  * Creates a native DOM element for the given HTML tag name.
  *
@@ -12,7 +11,7 @@ import { createSSRNode } from "./resolve-node";
 export function $tmpl<T extends keyof HTMLElementTagNameMap>(
   key: T,
 ): HTMLElementTagNameMap[T] {
-  if (IS_SERVER_ENV) {
+  if (getRenderMode()) {
     return createSSRNode(key) as unknown as HTMLElementTagNameMap[T];
   }
 

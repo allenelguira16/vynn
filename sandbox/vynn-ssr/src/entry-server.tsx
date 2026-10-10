@@ -2,8 +2,8 @@
 import "./main.css";
 
 import { App } from "./app";
-import { renderToString } from "vynn/render";
+import { renderToServer } from "vynn/render";
 
 export function render(url: string) {
-  return renderToString(() => App({ url }));
+  return renderToServer(() => App({ url }), "async");
 }

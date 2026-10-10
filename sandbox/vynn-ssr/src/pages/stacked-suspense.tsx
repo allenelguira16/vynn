@@ -44,6 +44,7 @@ const Component = () => {
 
     return `hello world`;
   });
+  // console.log("render");
   onMount(() => {
     // console.log("bumalik...");
   });
@@ -56,5 +57,5 @@ const Component = () => {
     // console.log(msg.value);
   });
 
-  return <div>{msg.value}</div>;
+  return <div class="dang fuck you">{msg.value}</div>;
 };

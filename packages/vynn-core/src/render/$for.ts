@@ -3,7 +3,7 @@ import { $effect } from "../reactivity/$effect";
 import { $state, State } from "../reactivity/$state";
 import { $dyn } from "./$dyn";
 import { untrack } from "../reactivity/untrack";
-import { IS_SERVER_ENV } from "../utils/is-server-env";
+import { getRenderMode } from "../utils/render-mode";
 
 type ForEntry<T> = {
   item: T;
@@ -15,7 +15,7 @@ export function $for<T>(
   items: () => T[],
   each: (item: T, index: State<number>) => JSX.Element,
 ): JSX.Element {
-  if (IS_SERVER_ENV) {
+  if (getRenderMode()) {
     return items().map((item, i) => each(item, { value: i }));
   }
 
@@ -118,6 +118,7 @@ export function $for<T>(
   });
 
   return $dyn(() => result.value);
+  // return result.value;
 }
 
 export function isEqual(a: unknown, b: unknown): boolean {

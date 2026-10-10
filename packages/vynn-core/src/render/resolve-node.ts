@@ -1,7 +1,8 @@
+// import { getAsyncBoundary } from "../components/boundary";
 import { JSX } from "../jsx-runtime";
-import { IS_SERVER_ENV } from "../utils/is-server-env";
+import { getRenderMode } from "../utils/render-mode";
 
-export type SSR_NODE = SSR_ELEMENT | SSR_TEXT;
+export type SSR_NODE = SSR_ELEMENT | SSR_TEXT | SSR_ASYNC;
 
 export type SSR_ELEMENT = {
   type: string;
@@ -9,15 +10,22 @@ export type SSR_ELEMENT = {
   parent: SSR_ELEMENT | null;
   attributes: Record<string, string>;
 
-  insertBefore(node: SSR_NODE, before: SSR_NODE | null): void;
-  appendChild(node: SSR_NODE): void;
-  removeChild(node: SSR_NODE): void;
+  insertBefore(node: SSR_ELEMENT, before: SSR_ELEMENT | null): void;
+  appendChild(node: SSR_ELEMENT): void;
+  removeChild(node: SSR_ELEMENT): void;
 };
 
 export type SSR_TEXT = {
   type: "#text";
   value: string;
   parent: SSR_ELEMENT | null;
+};
+
+type SSR_ASYNC = SSR_ELEMENT & {
+  type: "#async";
+  loader: () => SSR_NODE[];
+  content: () => SSR_NODE[];
+  pending: Promise<any>;
 };
 
 export function createSSRNode<T extends keyof HTMLElementTagNameMap>(
@@ -77,6 +85,59 @@ function createSSRText(value: string): SSR_TEXT {
   };
 }
 
+export function createAsyncElement(
+  loader: () => JSX.Element,
+  content: () => JSX.Element,
+  pending: Promise<any>,
+): SSR_ASYNC {
+  const node: SSR_ASYNC = {
+    type: "#async",
+    loader: loader as unknown as () => SSR_NODE[],
+    content: content as unknown as () => SSR_NODE[],
+    pending,
+    children: [],
+    parent: null,
+    attributes: {},
+    insertBefore(child, before) {
+      if (child.parent) {
+        child.parent.removeChild(child);
+      }
+
+      child.parent = node;
+
+      if (before === null) {
+        node.children.push(child);
+        return;
+      }
+
+      const index = node.children.indexOf(before);
+
+      if (index === -1) {
+        throw new Error("The reference node is not a child of this node.");
+      }
+
+      node.children.splice(index, 0, child);
+    },
+
+    appendChild(child) {
+      node.insertBefore(child, null);
+    },
+
+    removeChild(child) {
+      const index = node.children.indexOf(child);
+
+      if (index === -1) {
+        return;
+      }
+
+      node.children.splice(index, 1);
+      child.parent = null;
+    },
+  };
+
+  return node;
+}
+
 /**
  * Resolves a JSX value into an array of DOM nodes.
  *
@@ -87,18 +148,23 @@ function createSSRText(value: string): SSR_TEXT {
  * @returns The resolved DOM nodes.
  */
 export function resolveNode(child: () => JSX.Element): Node[] {
-  if (IS_SERVER_ENV) {
-    try {
-      return resolveElementString(child()) as unknown as Node[];
-    } catch (error) {
-      if (error instanceof Promise) {
-        return error.then(() =>
-          resolveElementString(child()),
-        ) as unknown as Node[];
-      } else {
-        throw error;
-      }
-    }
+  // if (getRenderMode() === "async") {
+  //   try {
+  //     return resolveElementString(child()) as unknown as Node[];
+  //   } catch (error) {
+  //     if (error instanceof Promise) {
+  //       return error.then(() =>
+  //         resolveElementString(child()),
+  //       ) as unknown as Node[];
+  //     }
+
+  //     throw error;
+  //     // console.log(error);
+  //   }
+  // }
+
+  if (getRenderMode()) {
+    return resolveElementString(child()) as unknown as Node[];
   }
 
   return resolveElement(child());

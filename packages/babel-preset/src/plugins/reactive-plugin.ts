@@ -5,6 +5,7 @@ type RuntimeHelperName =
   | "$dyn"
   | "$tmpl"
   | "$cmpnt"
+  | "$mount"
   | "$insert"
   | "$attr"
   | "$on"
@@ -361,6 +362,20 @@ export default function reactivePlugin(
       }
     }
 
+    // Keep `$cmpnt` as the component-definition wrapper.
+    //
+    // Component instances themselves are mounted through `$mount()`.
+    //
+    //   function Child() {
+    //     return <div />;
+    //   }
+    //
+    // becomes:
+    //
+    //   const Child = $cmpnt(function Child() {
+    //     const el1 = $tmpl("div");
+    //     return el1;
+    //   });
     const functionExpression = t.functionExpression(
       node.id,
       node.params,
@@ -431,6 +446,16 @@ export default function reactivePlugin(
         }
       }
 
+      // Keep `$cmpnt` around the component definition.
+      //
+      //   const Child = () => <div />;
+      //
+      // becomes:
+      //
+      //   const Child = $cmpnt(function Child() {
+      //     const el1 = $tmpl("div");
+      //     return el1;
+      //   });
       const functionExpression = t.functionExpression(
         t.identifier(node.id.name),
         arrow.params,
@@ -2102,6 +2127,29 @@ export default function reactivePlugin(
     return /^[A-Z]/.test(name);
   }
 
+  /**
+   * JSX component instances are mounted through `$mount`.
+   *
+   *   <Child />
+   *
+   * becomes:
+   *
+   *   $mount(Child, {})
+   *
+   * and:
+   *
+   *   <Child name="Allen" />
+   *
+   * becomes:
+   *
+   *   $mount(Child, {
+   *     get name() {
+   *       return "Allen";
+   *     }
+   *   })
+   *
+   * `$cmpnt` remains the definition wrapper around component declarations.
+   */
   function createComponentCall(node: t.JSXElement): t.CallExpression {
     const componentExpression = createComponentExpression(
       node.openingElement.name,
@@ -2109,7 +2157,10 @@ export default function reactivePlugin(
 
     const props = createComponentProps(node);
 
-    return t.callExpression(componentExpression, props ? [props] : []);
+    return t.callExpression(getRuntimeHelper("$mount"), [
+      componentExpression,
+      props ?? t.objectExpression([]),
+    ]);
   }
 
   function createComponentExpression(

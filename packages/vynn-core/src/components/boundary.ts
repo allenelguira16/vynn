@@ -1,6 +1,6 @@
 import { getOwnerContext, setOwnerContext } from "../life-cycle/owner";
 
-export type AsyncBoundary = (promise: Promise<void>) => void;
+export type AsyncBoundary<T = any> = (promise: Promise<T>) => void;
 
 /**
  * Returns the nearest active async rendering boundary.
@@ -12,7 +12,7 @@ export type AsyncBoundary = (promise: Promise<void>) => void;
  * @returns The nearest active async boundary, or `undefined` when
  * called outside of an async boundary.
  */
-export function getAsyncBoundary(): AsyncBoundary | undefined {
+export function getAsyncBoundary<T = any>(): AsyncBoundary<T> | undefined {
   return getOwnerContext<AsyncBoundary>("boundary");
   // return asyncBoundaries.at(-1);
 }
@@ -25,6 +25,47 @@ export function getAsyncBoundary(): AsyncBoundary | undefined {
  *
  * @param boundary The async boundary to make active.
  */
-export function enterAsyncBoundary(boundary: AsyncBoundary): void {
-  return setOwnerContext<AsyncBoundary>("boundary", boundary);
+export function enterAsyncBoundary<T>(boundary: AsyncBoundary<T>): void {
+  return setOwnerContext<AsyncBoundary<T>>("boundary", boundary);
+}
+
+export class NotReadyError extends Error {
+  constructor(public readonly source: unknown) {
+    super();
+    this.name = "NotReadyError";
+  }
+}
+
+export class NeedsParentError extends Error {
+  constructor() {
+    super();
+    this.name = "NeedsParentError";
+  }
+}
+
+export type RenderParent = ParentNode;
+
+export type RenderBoundary = {
+  parent: RenderParent;
+};
+
+let currentBoundary: RenderBoundary | null = null;
+
+export function getRenderBoundary(): RenderBoundary | null {
+  return currentBoundary;
+}
+
+export function withRenderBoundary<T>(
+  parent: RenderParent,
+  callback: () => T,
+): T {
+  const previous = currentBoundary;
+
+  currentBoundary = { parent };
+
+  try {
+    return callback();
+  } finally {
+    currentBoundary = previous;
+  }
 }

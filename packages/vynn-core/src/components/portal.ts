@@ -2,7 +2,7 @@ import { JSX } from "../types/jsx";
 import { onMount } from "../life-cycle/on-mount";
 import { $cmpnt, $insert } from "../render";
 import { PropsWithChildren } from "../types/props";
-import { IS_SERVER_ENV } from "../utils/is-server-env";
+import { getRenderMode } from "../utils/render-mode";
 
 /**
  * Renders its children into a specified mount node.
@@ -16,7 +16,7 @@ import { IS_SERVER_ENV } from "../utils/is-server-env";
 export const Portal = $cmpnt(function Portal<E extends HTMLElement>(
   props: PropsWithChildren<{ mount: E }>,
 ): JSX.Element {
-  if (IS_SERVER_ENV) {
+  if (getRenderMode()) {
     return null;
   }
 

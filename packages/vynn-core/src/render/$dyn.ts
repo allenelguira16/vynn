@@ -1,7 +1,8 @@
+import { getRenderBoundary, withRenderBoundary } from "../components/boundary";
 import type { JSX } from "../jsx-runtime";
 import { $effect } from "../reactivity/$effect";
-import { IS_SERVER_ENV } from "../utils/is-server-env";
-import { createSSRNode, resolveNode } from "./resolve-node";
+import { getRenderMode } from "../utils/render-mode";
+import { resolveNode } from "./resolve-node";
 
 /**
  * Creates a reactive DOM range from a child expression.
@@ -13,31 +14,25 @@ import { createSSRNode, resolveNode } from "./resolve-node";
  * @returns The start marker, current child nodes, and end marker for the range.
  */
 export function $dyn(child: () => JSX.Element): JSX.Element[] {
-  if (IS_SERVER_ENV) {
-    // try {
-    // let resolved: Node[] = [];
+  const creationBoundary = getRenderBoundary();
 
-    // $effect(() => {
-    let resolved = resolveNode(child);
-    // console.log(resolved);
-    // });
+  if (getRenderMode()) {
+    const render = () => resolveNode(child);
 
-    return resolved;
+    return creationBoundary
+      ? withRenderBoundary(creationBoundary.parent, render)
+      : render();
   }
 
-  let initialNodes: Node[] = [];
   const markerStart = document.createTextNode("");
   const markerEnd = document.createTextNode("");
 
+  let nodes: Node[] = [];
+
   $effect(() => {
-    const newNodes = resolveNode(child);
+    nodes = resolveNode(child);
 
-    if (!initialNodes.length) {
-      initialNodes = newNodes;
-    }
-
-    // console.log(initialNodes);
-    replaceElementsBetween(newNodes);
+    replaceElementsBetween(nodes);
   });
 
   function replaceElementsBetween(newElementsArray: Node[]) {
@@ -56,5 +51,5 @@ export function $dyn(child: () => JSX.Element): JSX.Element[] {
     }
   }
 
-  return [markerStart, ...initialNodes, markerEnd];
+  return [markerStart, ...nodes, markerEnd];
 }

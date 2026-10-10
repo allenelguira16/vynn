@@ -1,6 +1,5 @@
 import { $effect } from "../reactivity/$effect";
-import { untrack } from "../reactivity/untrack";
-import { IS_SERVER_ENV } from "../utils/is-server-env";
+import { getRenderMode } from "../utils/render-mode";
 import { SSR_ELEMENT } from "./resolve-node";
 
 type AttributeValue = string | number | boolean | null | undefined;
@@ -37,8 +36,7 @@ export function $attr<E extends HTMLElement>(
   name: string,
   value: AttributeValue | (() => AttributeValue),
 ): void {
-  if (IS_SERVER_ENV) {
-    // return untrack(() => {
+  if (getRenderMode()) {
     $effect(() => {
       const node = element as unknown as SSR_ELEMENT;
       const next = typeof value === "function" ? value() : value;
@@ -56,27 +54,6 @@ export function $attr<E extends HTMLElement>(
       } else {
         node.attributes[name.toLowerCase()] = String(next);
       }
-
-      // console.log;
-      // console.log(attributes);
-      // console.log(name, next);
-      // if (properties.has(name)) {
-      //   if (typeof next === "string" || typeof next === "number")
-      //     attributes.push(`${name}="${String(next)}"`);
-      //   else if (next) {
-      //     attributes.push(`${name}`);
-      //     console.log(name, next);
-      //   }
-      // } else if (next == null) {
-      //   console.log(ssrElement.attributes);
-      //   return;
-      // } else if (typeof next === "boolean") {
-      //   if (next) attributes.push(`${name}`);
-      // } else {
-      //   attributes.push(`${name}="${String(next)}"`);
-      // }
-
-      // ssrElement.attributes = attributes.join(" ");
     });
     // });
     return;

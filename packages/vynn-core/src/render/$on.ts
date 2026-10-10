@@ -1,5 +1,6 @@
+import { NotReadyError } from "../components/boundary";
 import { getCurrentOwner } from "../life-cycle/owner";
-import { IS_SERVER_ENV } from "../utils/is-server-env";
+import { getRenderMode } from "../utils/render-mode";
 
 type VynnEvent<
   E extends HTMLElement,
@@ -27,7 +28,7 @@ export function $on<E extends HTMLElement, K extends keyof HTMLElementEventMap>(
   event: K,
   handler: (event: VynnEvent<E, K>) => void,
 ): void {
-  if (IS_SERVER_ENV) return;
+  if (getRenderMode()) return;
 
   const owner = getCurrentOwner();
 
@@ -36,7 +37,15 @@ export function $on<E extends HTMLElement, K extends keyof HTMLElementEventMap>(
   }
 
   function handle(event: Event) {
-    handler(event as VynnEvent<E, K>);
+    try {
+      handler(event as VynnEvent<E, K>);
+    } catch (error) {
+      if (error instanceof NotReadyError) {
+        // DO NOTHING
+      } else {
+        throw error;
+      }
+    }
   }
 
   element.addEventListener(event, handle);

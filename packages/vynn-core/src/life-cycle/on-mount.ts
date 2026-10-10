@@ -1,3 +1,4 @@
+import { getRenderMode } from "../utils/render-mode";
 import { getCurrentOwner } from "./owner";
 
 /**
@@ -15,6 +16,10 @@ export function onMount(callback: () => void): void;
 export function onMount(callback: () => () => void): void;
 
 export function onMount(callback: () => void | (() => void)): void {
+  if (getRenderMode() === "sync") {
+    return;
+  }
+
   const owner = getCurrentOwner();
 
   if (!owner) {

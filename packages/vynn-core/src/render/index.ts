@@ -3,10 +3,11 @@ export { $cmpnt } from "./$cmpnt";
 export { $dyn } from "./$dyn";
 export { $for } from "./$for";
 export { $insert } from "./$insert";
+export { $mount } from "./$mount";
 export { $on } from "./$on";
 export { $spread } from "./$spread";
 export { $tmpl } from "./$tmpl";
 
 export { renderToDOM } from "./render-to-dom";
-export { renderToString } from "./render-to-string";
+export { renderToServer } from "./render-to-server";
 export { resolveNode } from "./resolve-node";

@@ -180,10 +180,10 @@ function Row(props: { name: string; url: string; index: number }) {
   //   // console.log(props.index);
   // });
 
-  // onMount(() => {
-  //   // console.log(url);
-  //   console.log(`rerun`);
-  // });
+  onMount(() => {
+    // console.log(url);
+    console.log(`rerun`);
+  });
 
   // const data = $async(async () => {
   //   const res = await fetch(props.url);

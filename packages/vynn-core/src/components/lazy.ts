@@ -2,6 +2,7 @@ import type { JSX } from "../types/jsx";
 import { $async } from "../reactivity/$async";
 import { $cmpnt, $dyn } from "../render";
 import { UnwrapPromise } from "../reactivity/is-promise-like";
+import { getCurrentOwner } from "../life-cycle/owner";
 
 type AnyComponent = (props: never) => JSX.Element;
 
@@ -41,7 +42,9 @@ export function lazy<
   type Component = ComponentExport<M, K>;
 
   let cached: UnwrapPromise<ComponentExport<M, K>>;
-  return $cmpnt((props: Parameters<Component>[0]): JSX.Element => {
+  return $cmpnt(function LazyComponent(
+    props: Parameters<Component>[0],
+  ): JSX.Element {
     const component = $async(async () => {
       const components = await loader();
       const component = components[namedExport];

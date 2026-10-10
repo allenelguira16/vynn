@@ -8,7 +8,8 @@ type RuntimeHelperName =
   | "$insert"
   | "$attr"
   | "$on"
-  | "$spread";
+  | "$spread"
+  | "$for";
 
 type IdentifierAllocator = {
   nextElement(): t.Identifier;
@@ -26,6 +27,46 @@ export default function reactivePlugin(
   let programPath: any = null;
 
   const runtimeHelpers = new Map<RuntimeHelperName, t.Identifier>();
+
+  /**
+   * `$for` expressions created by this compiler pass.
+   *
+   * Babel may visit a generated expression again after we replace the
+   * original AST node. Without a marker, the generated `$for` can be sent
+   * through the same JSX-array lowering logic repeatedly.
+   */
+  const generatedForExpressions = new WeakSet<t.CallExpression>();
+
+  /**
+   * Index member expressions created by this compiler pass.
+   *
+   * `transformEmbeddedExpression()` recursively transforms member-expression
+   * objects. Without marking `index.value` as already transformed, the
+   * `index` identifier inside it would be transformed again forever:
+   *
+   *   index -> index.value -> index.value.value -> ...
+   */
+  const generatedForIndexReferences = new WeakSet<t.MemberExpression>();
+
+  /**
+   * Active `$for` index parameter names.
+   *
+   * A `$for` callback has the shape:
+   *
+   *   (item, index) => ...
+   *
+   * Only the second parameter is reactive and is transformed from:
+   *
+   *   index
+   *
+   * into:
+   *
+   *   index.value
+   *
+   * Multiple names are supported so nested `$for` callbacks can correctly
+   * shadow outer indices.
+   */
+  let activeForIndexNames: string[] = [];
 
   // ===========================================================================
   // Identifier allocation
@@ -189,10 +230,12 @@ export default function reactivePlugin(
         enter(path: any) {
           programPath = path;
           runtimeHelpers.clear();
+          activeForIndexNames = [];
         },
 
         exit() {
           injectRuntimeImports();
+          activeForIndexNames = [];
           programPath = null;
         },
       },
@@ -259,6 +302,23 @@ export default function reactivePlugin(
   // Component transformation
   // ===========================================================================
 
+  function transformComponentBody(
+    body: t.BlockStatement,
+    returnStatement: t.ReturnStatement,
+    componentPath: any,
+    allocator: IdentifierAllocator,
+  ): void {
+    body.body = body.body.map((statement) => {
+      // The root return is compiled separately so native JSX can keep the
+      // statement-context fast path instead of becoming an IIFE.
+      if (statement === returnStatement) {
+        return statement;
+      }
+
+      return transformStatement(statement, componentPath, allocator);
+    });
+  }
+
   function transformComponent(path: any): void {
     const node = path.node as t.FunctionDeclaration;
 
@@ -277,6 +337,9 @@ export default function reactivePlugin(
     }
 
     const allocator = createIdentifierAllocator(path.scope);
+
+    transformComponentBody(node.body, returnStatement, path, allocator);
+
     const statements: t.Statement[] = [];
 
     const transformed = transformStatementContextExpression(
@@ -344,6 +407,8 @@ export default function reactivePlugin(
       if (!returnStatement?.argument) {
         return false;
       }
+
+      transformComponentBody(arrow.body, returnStatement, path, allocator);
 
       const statements: t.Statement[] = [];
 
@@ -448,6 +513,391 @@ export default function reactivePlugin(
     }
 
     return undefined;
+  }
+
+  // ===========================================================================
+  // JSX array / $for helpers
+  // ===========================================================================
+
+  function getForIndexName(
+    indexParameter: t.Node | null | undefined,
+  ): string | null {
+    if (t.isIdentifier(indexParameter)) {
+      return indexParameter.name;
+    }
+
+    if (
+      t.isAssignmentPattern(indexParameter) &&
+      t.isIdentifier(indexParameter.left)
+    ) {
+      return indexParameter.left.name;
+    }
+
+    return null;
+  }
+
+  /**
+   * Collect every binding introduced by a JavaScript pattern.
+   *
+   * This is used to correctly model lexical shadowing inside nested
+   * callbacks/functions.
+   */
+  function collectBindingNames(
+    node: t.Node | null | undefined,
+    names = new Set<string>(),
+  ): Set<string> {
+    if (!node) {
+      return names;
+    }
+
+    if (t.isIdentifier(node)) {
+      names.add(node.name);
+      return names;
+    }
+
+    if (t.isRestElement(node)) {
+      return collectBindingNames(node.argument, names);
+    }
+
+    if (t.isAssignmentPattern(node)) {
+      return collectBindingNames(node.left, names);
+    }
+
+    if (t.isObjectPattern(node)) {
+      for (const property of node.properties) {
+        if (t.isRestElement(property)) {
+          collectBindingNames(property.argument, names);
+          continue;
+        }
+
+        if (t.isObjectProperty(property)) {
+          collectBindingNames(property.value, names);
+        }
+      }
+
+      return names;
+    }
+
+    if (t.isArrayPattern(node)) {
+      for (const element of node.elements) {
+        if (element) {
+          collectBindingNames(element, names);
+        }
+      }
+    }
+
+    return names;
+  }
+
+  /**
+   * Enters a `$for` callback scope.
+   *
+   * Every callback parameter shadows an outer `$for` index with the same name.
+   * The second callback parameter is then registered as this callback's
+   * reactive index.
+   *
+   * Example:
+   *
+   *   items.map((item, index) => ...)
+   *
+   * creates a scope where:
+   *
+   *   item   -> normal item value
+   *   index  -> reactive State<number>
+   */
+  function withForCallback<T>(
+    parameters: readonly t.Node[],
+    callback: () => T,
+  ): T {
+    const previous = activeForIndexNames;
+    const shadowed = new Set<string>();
+
+    for (const parameter of parameters) {
+      collectBindingNames(parameter, shadowed);
+    }
+
+    // Remove outer indices shadowed by callback parameters.
+    const next = previous.filter((name) => !shadowed.has(name));
+
+    // `$for`'s second callback parameter is the reactive index.
+    const indexName = getForIndexName(parameters[1]);
+
+    activeForIndexNames = indexName ? [...next, indexName] : next;
+
+    try {
+      return callback();
+    } finally {
+      activeForIndexNames = previous;
+    }
+  }
+
+  /**
+   * Enters an ordinary nested function scope.
+   *
+   * Function parameters can shadow an outer `$for` index, but they do not
+   * introduce a new `$for` index themselves.
+   */
+  function withShadowedForIndices<T>(
+    parameters: readonly t.Node[],
+    callback: () => T,
+  ): T {
+    const previous = activeForIndexNames;
+    const shadowed = new Set<string>();
+
+    for (const parameter of parameters) {
+      collectBindingNames(parameter, shadowed);
+    }
+
+    activeForIndexNames = previous.filter((name) => !shadowed.has(name));
+
+    try {
+      return callback();
+    } finally {
+      activeForIndexNames = previous;
+    }
+  }
+
+  function transformForIndexReference(expression: t.Expression): t.Expression {
+    if (!t.isIdentifier(expression)) {
+      return expression;
+    }
+
+    if (!activeForIndexNames.includes(expression.name)) {
+      return expression;
+    }
+
+    const result = t.memberExpression(
+      t.identifier(expression.name),
+      t.identifier("value"),
+    );
+
+    generatedForIndexReferences.add(result);
+
+    return result;
+  }
+
+  function isRuntimeHelperCall(
+    expression: t.Expression,
+    name: RuntimeHelperName,
+  ): boolean {
+    const helper = runtimeHelpers.get(name);
+
+    return (
+      !!helper &&
+      t.isCallExpression(expression) &&
+      t.isIdentifier(expression.callee) &&
+      expression.callee.name === helper.name
+    );
+  }
+
+  function isForExpression(expression: t.Expression): boolean {
+    return isRuntimeHelperCall(expression, "$for");
+  }
+
+  /**
+   * Detect JSX in an AST subtree without treating JSX inside a nested
+   * function as the value produced by that expression. This distinction keeps
+   * arrays of render functions as ordinary JavaScript arrays.
+   */
+  function containsJSX(node: t.Node | null | undefined): boolean {
+    if (!node) {
+      return false;
+    }
+
+    if (t.isJSXElement(node) || t.isJSXFragment(node)) {
+      return true;
+    }
+
+    if (t.isCallExpression(node) && isJSXMapExpression(node)) {
+      return true;
+    }
+
+    if (
+      t.isArrowFunctionExpression(node) ||
+      t.isFunctionExpression(node) ||
+      t.isFunctionDeclaration(node)
+    ) {
+      return false;
+    }
+
+    const visitorKeys = ((t as any).VISITOR_KEYS?.[node.type] ??
+      []) as string[];
+
+    for (const key of visitorKeys) {
+      const value = (node as any)[key];
+
+      if (Array.isArray(value)) {
+        for (const child of value) {
+          if (child && containsJSX(child)) {
+            return true;
+          }
+        }
+
+        continue;
+      }
+
+      if (value && containsJSX(value)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  function mapCallbackReturnsJSX(
+    callback: t.Expression,
+  ): callback is t.ArrowFunctionExpression | t.FunctionExpression {
+    if (t.isArrowFunctionExpression(callback)) {
+      if (callback.async) {
+        return false;
+      }
+
+      if (t.isBlockStatement(callback.body)) {
+        return callback.body.body.some(
+          (statement) =>
+            t.isReturnStatement(statement) && containsJSX(statement.argument),
+        );
+      }
+
+      return containsJSX(callback.body);
+    }
+
+    if (t.isFunctionExpression(callback)) {
+      if (callback.async) {
+        return false;
+      }
+
+      return callback.body.body.some(
+        (statement) =>
+          t.isReturnStatement(statement) && containsJSX(statement.argument),
+      );
+    }
+
+    return false;
+  }
+
+  function isJSXMapExpression(expression: t.CallExpression): boolean {
+    if (expression.arguments.length !== 1) {
+      return false;
+    }
+
+    if (!t.isMemberExpression(expression.callee)) {
+      return false;
+    }
+
+    if (expression.callee.computed) {
+      if (!t.isStringLiteral(expression.callee.property)) {
+        return false;
+      }
+
+      if (expression.callee.property.value !== "map") {
+        return false;
+      }
+    } else if (
+      !t.isIdentifier(expression.callee.property) ||
+      expression.callee.property.name !== "map"
+    ) {
+      return false;
+    }
+
+    const callback = expression.arguments[0];
+
+    return t.isExpression(callback) && mapCallbackReturnsJSX(callback);
+  }
+
+  function createArrayIdentityFor(array: t.ArrayExpression): t.CallExpression {
+    const item = programPath.scope.generateUidIdentifier("item");
+
+    const result = t.callExpression(getRuntimeHelper("$for"), [
+      t.arrowFunctionExpression([], array),
+      t.arrowFunctionExpression([item], t.cloneNode(item)),
+    ]);
+
+    generatedForExpressions.add(result);
+
+    return result;
+  }
+
+  function createMapFor(
+    expression: t.CallExpression,
+    componentPath: any,
+    allocator: IdentifierAllocator,
+  ): t.CallExpression {
+    const callee = expression.callee;
+
+    if (!t.isMemberExpression(callee)) {
+      throw new Error("Vynn `$for` requires a `.map()` call.");
+    }
+
+    const source = callee.object;
+    const callback = expression.arguments[0];
+
+    if (!t.isExpression(source)) {
+      throw new Error("Vynn `$for` map source must be an expression.");
+    }
+
+    if (!t.isExpression(callback)) {
+      throw new Error("Vynn `$for` requires a map callback expression.");
+    }
+
+    /*
+     * Transform the source outside of the callback scope.
+     *
+     *   items.map(...)
+     *
+     * becomes conceptually:
+     *
+     *   $for(() => items, ...)
+     */
+    const transformedSource = transformEmbeddedExpression(
+      source,
+      componentPath,
+      allocator,
+    );
+
+    if (
+      !t.isArrowFunctionExpression(callback) &&
+      !t.isFunctionExpression(callback)
+    ) {
+      throw new Error("Vynn `$for` requires a function callback.");
+    }
+
+    const transformedCallback = withForCallback(callback.params, () => {
+      if (t.isArrowFunctionExpression(callback)) {
+        if (t.isBlockStatement(callback.body)) {
+          callback.body = transformBlockStatement(
+            callback.body,
+            componentPath,
+            allocator,
+          );
+        } else {
+          callback.body = transformEmbeddedExpression(
+            callback.body,
+            componentPath,
+            allocator,
+          );
+        }
+
+        return callback;
+      }
+
+      callback.body = transformBlockStatement(
+        callback.body,
+        componentPath,
+        allocator,
+      );
+
+      return callback;
+    });
+
+    const result = t.callExpression(getRuntimeHelper("$for"), [
+      t.arrowFunctionExpression([], transformedSource),
+      transformedCallback,
+    ]);
+
+    generatedForExpressions.add(result);
+
+    return result;
   }
 
   // ===========================================================================
@@ -573,7 +1023,7 @@ export default function reactivePlugin(
           allocator,
         );
 
-        if (dynamicExpressions) {
+        if (dynamicExpressions && !isForExpression(transformed)) {
           return createDynamicExpression(transformed);
         }
 
@@ -670,7 +1120,7 @@ export default function reactivePlugin(
           allocator,
         );
 
-        if (dynamicExpressions) {
+        if (dynamicExpressions && !isForExpression(transformed)) {
           return createDynamicExpression(transformed);
         }
 
@@ -870,6 +1320,67 @@ export default function reactivePlugin(
     componentPath: any,
     allocator: IdentifierAllocator,
   ): t.Expression {
+    // A `$for` generated by this pass is already fully transformed. Babel may
+    // encounter it again while traversing the replacement AST, so do not
+    // recursively transform its arguments a second time.
+    if (
+      t.isCallExpression(expression) &&
+      generatedForExpressions.has(expression)
+    ) {
+      return expression;
+    }
+
+    if (
+      t.isMemberExpression(expression) &&
+      generatedForIndexReferences.has(expression)
+    ) {
+      return expression;
+    }
+
+    const transformedForIndex = transformForIndexReference(expression);
+
+    // `transformForIndexReference()` creates a complete terminal expression
+    // (`index.value`). Do not continue walking that generated member, because
+    // its object is the original index identifier and would be transformed
+    // again recursively (`index.value.value...`).
+    if (transformedForIndex !== expression) {
+      return transformedForIndex;
+    }
+
+    // -------------------------------------------------------------------------
+    // JSX array via Array.prototype.map()
+    // -------------------------------------------------------------------------
+
+    if (t.isCallExpression(expression) && isJSXMapExpression(expression)) {
+      return createMapFor(expression, componentPath, allocator);
+    }
+
+    // -------------------------------------------------------------------------
+    // JSX array literal
+    // -------------------------------------------------------------------------
+
+    if (t.isArrayExpression(expression) && containsJSX(expression)) {
+      expression.elements = expression.elements.map((element) => {
+        if (!element) {
+          return null;
+        }
+
+        if (t.isSpreadElement(element)) {
+          element.argument = transformEmbeddedExpression(
+            element.argument,
+            componentPath,
+            allocator,
+          );
+
+          return element;
+        }
+
+        return transformEmbeddedExpression(element, componentPath, allocator);
+      });
+
+      return createArrayIdentityFor(expression);
+    }
+
     // -------------------------------------------------------------------------
     // JSX element
     // -------------------------------------------------------------------------
@@ -971,21 +1482,23 @@ export default function reactivePlugin(
     // -------------------------------------------------------------------------
 
     if (t.isArrowFunctionExpression(expression)) {
-      if (t.isBlockStatement(expression.body)) {
-        expression.body = transformBlockStatement(
-          expression.body,
-          componentPath,
-          allocator,
-        );
-      } else {
-        expression.body = transformEmbeddedExpression(
-          expression.body,
-          componentPath,
-          allocator,
-        );
-      }
+      return withShadowedForIndices(expression.params, () => {
+        if (t.isBlockStatement(expression.body)) {
+          expression.body = transformBlockStatement(
+            expression.body,
+            componentPath,
+            allocator,
+          );
+        } else {
+          expression.body = transformEmbeddedExpression(
+            expression.body,
+            componentPath,
+            allocator,
+          );
+        }
 
-      return expression;
+        return expression;
+      });
     }
 
     // -------------------------------------------------------------------------
@@ -993,13 +1506,15 @@ export default function reactivePlugin(
     // -------------------------------------------------------------------------
 
     if (t.isFunctionExpression(expression)) {
-      expression.body = transformBlockStatement(
-        expression.body,
-        componentPath,
-        allocator,
-      );
+      return withShadowedForIndices(expression.params, () => {
+        expression.body = transformBlockStatement(
+          expression.body,
+          componentPath,
+          allocator,
+        );
 
-      return expression;
+        return expression;
+      });
     }
 
     // -------------------------------------------------------------------------
@@ -1046,21 +1561,27 @@ export default function reactivePlugin(
 
         if (t.isObjectProperty(property)) {
           if (t.isExpression(property.value)) {
-            property.value = transformEmbeddedExpression(
-              property.value,
+            const originalValue = property.value;
+
+            const transformedValue = transformEmbeddedExpression(
+              originalValue,
               componentPath,
               allocator,
             );
+
+            if (property.shorthand && transformedValue !== originalValue) {
+              property.shorthand = false;
+            }
+
+            property.value = transformedValue;
           }
 
           return property;
         }
 
         if (t.isObjectMethod(property)) {
-          property.body = transformBlockStatement(
-            property.body,
-            componentPath,
-            allocator,
+          property.body = withShadowedForIndices(property.params, () =>
+            transformBlockStatement(property.body, componentPath, allocator),
           );
 
           return property;
@@ -1325,13 +1846,54 @@ export default function reactivePlugin(
 
       if (t.isVariableDeclaration(statement)) {
         for (const declaration of statement.declarations) {
-          if (declaration.init && t.isExpression(declaration.init)) {
-            declaration.init = transformEmbeddedExpression(
+          if (!declaration.init || !t.isExpression(declaration.init)) {
+            continue;
+          }
+
+          /*
+           * JSX used as a variable value needs the same reactive fragment
+           * lowering as a JSX expression stored by the top-level visitor.
+           *
+           *   const nameEl = <>Name: {forms.name} Hi</>;
+           *
+           * becomes:
+           *
+           *   const nameEl = [
+           *     "Name: ",
+           *     $dyn(() => forms.name),
+           *     " Hi",
+           *   ];
+           */
+          if (t.isJSXFragment(declaration.init)) {
+            declaration.init = createNestedFragment(
               declaration.init,
               componentPath,
               allocator,
+              true,
             );
+
+            continue;
           }
+
+          if (t.isJSXElement(declaration.init)) {
+            if (isComponentElement(declaration.init)) {
+              declaration.init = createComponentCall(declaration.init);
+            } else {
+              declaration.init = createElement(
+                declaration.init,
+                componentPath,
+                allocator,
+              );
+            }
+
+            continue;
+          }
+
+          declaration.init = transformEmbeddedExpression(
+            declaration.init,
+            componentPath,
+            allocator,
+          );
         }
 
         return statement;
@@ -1382,6 +1944,75 @@ export default function reactivePlugin(
     componentPath: any,
     allocator: IdentifierAllocator,
   ): t.Statement {
+    if (t.isVariableDeclaration(statement)) {
+      for (const declaration of statement.declarations) {
+        if (!declaration.init || !t.isExpression(declaration.init)) {
+          continue;
+        }
+
+        /*
+         * JSX fragments assigned to local variables need reactive expression
+         * lowering.
+         *
+         *   const nameEl = <>Name: {forms.name} Hi</>;
+         *
+         * becomes:
+         *
+         *   const nameEl = [
+         *     "Name: ",
+         *     $dyn(() => forms.name),
+         *     " Hi",
+         *   ];
+         */
+        if (t.isJSXFragment(declaration.init)) {
+          declaration.init = createNestedFragment(
+            declaration.init,
+            componentPath,
+            allocator,
+            true,
+          );
+
+          continue;
+        }
+
+        if (t.isJSXElement(declaration.init)) {
+          if (isComponentElement(declaration.init)) {
+            declaration.init = createComponentCall(declaration.init);
+          } else {
+            declaration.init = createElement(
+              declaration.init,
+              componentPath,
+              allocator,
+            );
+          }
+
+          continue;
+        }
+
+        declaration.init = transformEmbeddedExpression(
+          declaration.init,
+          componentPath,
+          allocator,
+        );
+      }
+
+      return statement;
+    }
+
+    if (t.isExpressionStatement(statement)) {
+      statement.expression = transformEmbeddedExpression(
+        statement.expression,
+        componentPath,
+        allocator,
+      );
+
+      return statement;
+    }
+
+    if (t.isBlockStatement(statement)) {
+      return transformBlockStatement(statement, componentPath, allocator);
+    }
+
     if (t.isIfStatement(statement)) {
       statement.test = transformEmbeddedExpression(
         statement.test,
@@ -1848,10 +2479,16 @@ export default function reactivePlugin(
         }
 
         if (t.isExpression(expression)) {
+          const transformed = transformStandaloneExpression(
+            expression,
+            node,
+            allocator,
+          );
+
           children.push(
-            createDynamicExpression(
-              transformStandaloneExpression(expression, node, allocator),
-            ),
+            isForExpression(transformed)
+              ? transformed
+              : createDynamicExpression(transformed),
           );
         }
 
@@ -1914,7 +2551,14 @@ export default function reactivePlugin(
       if (t.isJSXSpreadAttribute(attribute)) {
         statements.push(
           t.expressionStatement(
-            createSpreadAttribute(elementId, attribute.argument),
+            createSpreadAttribute(
+              elementId,
+              transformEmbeddedExpression(
+                attribute.argument,
+                null,
+                createIdentifierAllocator(programPath.scope),
+              ),
+            ),
           ),
         );
 
@@ -1972,7 +2616,15 @@ export default function reactivePlugin(
 
         statements.push(
           t.expressionStatement(
-            createEvent(elementId, name.slice(2).toLowerCase(), expression),
+            createEvent(
+              elementId,
+              name.slice(2).toLowerCase(),
+              transformEmbeddedExpression(
+                expression,
+                null,
+                createIdentifierAllocator(programPath.scope),
+              ),
+            ),
           ),
         );
 
@@ -1995,7 +2647,17 @@ export default function reactivePlugin(
         }
 
         statements.push(
-          t.expressionStatement(createAttribute(elementId, name, expression)),
+          t.expressionStatement(
+            createAttribute(
+              elementId,
+              name,
+              transformEmbeddedExpression(
+                expression,
+                null,
+                createIdentifierAllocator(programPath.scope),
+              ),
+            ),
+          ),
         );
 
         continue;
@@ -2218,7 +2880,7 @@ export default function reactivePlugin(
   ): t.CallExpression {
     let child: t.Expression;
 
-    if (isStaticInsertValue(expression)) {
+    if (isStaticInsertValue(expression) || isForExpression(expression)) {
       child = expression;
     } else if (isIIFE(expression)) {
       // Reuse the IIFE's function body directly as the $insert callback.

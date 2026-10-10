@@ -1,8 +1,8 @@
 import type { JSX } from "../types/jsx";
 import { $cmpnt, markParked, unmarkParked } from "../render/$cmpnt";
-import { resolveNode } from "../render/resolve-node";
+import { createAsyncElement, resolveNode } from "../render/resolve-node";
 import { enterAsyncBoundary } from "./boundary";
-import { IS_SERVER_ENV } from "../utils/is-server-env";
+import { getRenderMode } from "../utils/render-mode";
 
 /**
  * Represents a movable DOM range.
@@ -31,8 +31,17 @@ export const Await = $cmpnt(function Suspense(props: {
   fallback?: JSX.Element;
   children: JSX.Element;
 }): JSX.Element {
-  if (IS_SERVER_ENV) {
-    return props.children;
+  if (getRenderMode() === "sync") {
+    return props.fallback;
+  }
+  if (getRenderMode() === "async") {
+    const pending = new Set<Promise<any>>();
+
+    enterAsyncBoundary((promise) => {
+      pending.add(promise);
+    });
+
+    return resolveNode(() => props.children);
   }
 
   const start = document.createComment("suspense-start");

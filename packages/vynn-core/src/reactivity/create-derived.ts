@@ -4,6 +4,7 @@ import { Computed } from "./$computed";
 import { Async } from "./$async";
 import { transaction } from "./transaction";
 import { isPromiseLike, MaybePromise, UnwrapPromise } from "./is-promise-like";
+import { getAsyncBoundary, NotReadyError } from "../components/boundary";
 
 const context = new WeakMap<object, { value: unknown }>();
 
@@ -40,111 +41,86 @@ export function createDerived<T>(
   type Value = UnwrapPromise<T>;
 
   const result = $state<MaybePromise<Value> | undefined>();
-
   let currentPromise: PromiseLike<Value> | undefined;
   let initialized = false;
 
-  $effect(() => {
-    try {
-      const value = getter();
+  const setValue = (value: MaybePromise<Value>) => {
+    transaction(() => {
+      initialized = true;
+      result.value = value;
+    });
+  };
 
-      if (isPromiseLike<Value>(value)) {
-        const promise = value;
-
+  const setPromise = (promise: PromiseLike<Value>) => {
+    currentPromise = promise;
+    setValue(promise);
+    promise.then(
+      (value) => {
+        if (currentPromise !== promise) return;
         transaction(() => {
-          currentPromise = promise;
-          initialized = true;
-          result.value = promise;
+          if (currentPromise === promise) {
+            result.value = value;
+          }
         });
-
-        promise.then(
-          (resolved) => {
-            if (currentPromise !== promise) {
-              return;
-            }
-
-            transaction(() => {
-              // Re-check inside the transaction as well.
-              if (currentPromise !== promise) {
-                return;
-              }
-
-              result.value = resolved;
-            });
-          },
-          (error) => {
-            if (currentPromise !== promise) {
-              return;
-            }
-
-            transaction(() => {
-              if (currentPromise !== promise) {
-                return;
-              }
-
-              currentPromise = undefined;
-              result.value = error;
-            });
-          },
-        );
-
-        return;
-      }
-
-      transaction(() => {
-        currentPromise = undefined;
-        initialized = true;
-        result.value = value as Value;
-      });
-    } catch (error) {
-      if (isPromiseLike<Value>(error)) {
+      },
+      (error) => {
+        if (currentPromise !== promise) return;
         transaction(() => {
-          currentPromise = error;
-          initialized = true;
+          if (currentPromise !== promise) return;
+          currentPromise = undefined;
           result.value = error;
         });
+      },
+    );
+  };
 
-        return;
+  const update = (value: T | PromiseLike<Value>) => {
+    if (isPromiseLike<Value>(value)) {
+      setPromise(value);
+      return;
+    }
+    currentPromise = undefined;
+    setValue(value as Value);
+  };
+
+  $effect(() => {
+    try {
+      update(getter());
+    } catch (error) {
+      if (!isPromiseLike<Value>(error)) {
+        throw error;
       }
-
-      throw error;
+      setPromise(error);
     }
   });
 
-  const value = {};
+  const derived = {} as Computed<T> | Async<T>;
 
-  Object.defineProperty(value, "value", {
+  Object.defineProperty(derived, "value", {
     enumerable: true,
     configurable: true,
-
     get(): Value {
-      const currentValue = result.value;
-
+      const value = result.value;
       if (!initialized) {
         throw new Error("Computed value was read before initialization");
       }
+      if (isPromiseLike<Value>(value)) {
+        const boundary = getAsyncBoundary();
 
-      if (isPromiseLike<Value>(currentValue)) {
-        throw currentValue;
+        boundary?.(value as Promise<any>);
+        throw new NotReadyError(derived);
+        // throw value;
       }
-
-      return currentValue as Value;
+      return value as Value;
     },
-
-    ...(writable
-      ? {
-          set(newValue: Value) {
-            transaction(() => {
-              currentPromise = undefined;
-              initialized = true;
-              result.value = newValue;
-            });
-          },
-        }
-      : {}),
+    ...(writable && {
+      set(value: Value) {
+        currentPromise = undefined;
+        setValue(value);
+      },
+    }),
   });
 
-  context.set(value, result);
-
-  return value as Computed<T> | Async<T>;
+  context.set(derived, result);
+  return derived;
 }

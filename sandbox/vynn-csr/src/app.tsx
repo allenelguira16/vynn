@@ -28,9 +28,9 @@ const StackedSuspense = lazy(
 export function App() {
   return (
     <>
-      <Suspense fallback={<div>Page Is Loading</div>}>
-        <Router routes={routes} />
-      </Suspense>
+      {/* <Suspense fallback={<div>Page Is Loading</div>}> */}
+      <Router routes={routes} />
+      {/* </Suspense> */}
     </>
   );
 }
@@ -47,9 +47,9 @@ export const routes: Route[] = [
           <Portal mount={document.body}>{name.firstName}</Portal>
           <ButtonPageList />
 
-          {/* <Suspense fallback={<div>Page Is Loading</div>}> */}
-          {props.children}
-          {/* </Suspense> */}
+          <Suspense fallback={<div>Page Is Loading</div>}>
+            {props.children}
+          </Suspense>
         </div>
       );
     },

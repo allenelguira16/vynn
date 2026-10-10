@@ -1,7 +1,8 @@
 import { $effect } from "../reactivity/$effect";
 import { JSX } from "../jsx-runtime";
 import { resolveNode } from "./resolve-node";
-import { IS_SERVER_ENV } from "../utils/is-server-env";
+import { getRenderMode } from "../utils/render-mode";
+import { withRenderBoundary } from "../components/boundary";
 
 /**
  * Inserts reactive content into a DOM node.
@@ -19,45 +20,57 @@ export function $insert<E extends HTMLElement>(
   element: E,
   child: (() => JSX.Element) | JSX.Element,
   before: Node | null = null,
-): void {
-  if (IS_SERVER_ENV) {
-    const newNodes = resolveNode(
-      typeof child === "function" ? child : () => child,
-    );
+) {
+  if (getRenderMode()) {
+    let oldNodes: Node[] = [];
+    $effect(() => {
+      const newNodes = resolveNode(
+        typeof child === "function" ? child : () => child,
+      );
 
-    for (const node of [newNodes].flat()) {
-      // console.log(node);
-      element.appendChild(node);
-    }
+      for (const node of [oldNodes].flat()) {
+        element.removeChild(node);
+      }
+
+      for (const node of [newNodes].flat()) {
+        element.appendChild(node);
+      }
+
+      oldNodes = newNodes;
+    });
     return;
   }
 
-  let oldNodes: Node[] = [];
+  return withRenderBoundary(element, () => {
+    // parents.push(element);
+    let oldNodes: Node[] = [];
 
-  $effect(() => {
-    const newNodes = resolveNode(
-      typeof child === "function" ? child : () => child,
-    );
+    return $effect(() => {
+      const newNodes = resolveNode(
+        typeof child === "function" ? child : () => child,
+      );
 
-    const length = Math.min(oldNodes.length, newNodes.length);
+      // oldNodes = newNodes;
+      const length = Math.min(oldNodes.length, newNodes.length);
 
-    // Replace existing nodes.
-    for (let i = 0; i < length; i++) {
-      if (oldNodes[i] !== newNodes[i]) {
-        element.replaceChild(newNodes[i], oldNodes[i]);
+      // Replace existing nodes.
+      for (let i = 0; i < length; i++) {
+        if (oldNodes[i] !== newNodes[i]) {
+          element.replaceChild(newNodes[i], oldNodes[i]);
+        }
       }
-    }
 
-    // Add new nodes.
-    for (let i = length; i < newNodes.length; i++) {
-      element.insertBefore(newNodes[i], before);
-    }
+      // Add new nodes.
+      for (let i = length; i < newNodes.length; i++) {
+        element.insertBefore(newNodes[i], before);
+      }
 
-    // Remove nodes that no longer exist.
-    for (let i = newNodes.length; i < oldNodes.length; i++) {
-      element.removeChild(oldNodes[i]);
-    }
+      // Remove nodes that no longer exist.
+      for (let i = newNodes.length; i < oldNodes.length; i++) {
+        element.removeChild(oldNodes[i]);
+      }
 
-    oldNodes = newNodes;
+      oldNodes = newNodes;
+    });
   });
 }

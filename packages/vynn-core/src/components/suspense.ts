@@ -2,8 +2,7 @@ import type { JSX } from "../types/jsx";
 import { $cmpnt, markParked, unmarkParked } from "../render/$cmpnt";
 import { resolveNode } from "../render/resolve-node";
 import { enterAsyncBoundary } from "./boundary";
-import { IS_SERVER_ENV } from "../utils/is-server-env";
-import { registerSSRPromise } from "../render/render-to-string";
+import { getRenderMode } from "../utils/render-mode";
 
 /**
  * Represents a movable DOM range.
@@ -18,6 +17,35 @@ type Range = {
   parkingLot: DocumentFragment;
 };
 
+// type CacheNode = Map<unknown, CacheNode | unknown>;
+
+// function memoize<This, Args extends unknown[], Return>(
+//   fn: (this: This, ...args: Args) => Return,
+// ): (this: This, ...args: Args) => Return {
+//   const cache: Map<unknown, any> = new Map();
+
+//   return function (this: This, ...args: Args): Return {
+//     let current = cache;
+
+//     for (const arg of args) {
+//       if (!current.has(arg)) {
+//         current.set(arg, new Map());
+//       }
+
+//       current = current.get(arg);
+//     }
+
+//     if (current.has(fn)) {
+//       return current.get(fn) as Return;
+//     }
+
+//     const result = fn.apply(this, args);
+//     current.set(fn, result);
+
+//     return result;
+//   };
+// }
+
 /**
  * Displays a fallback while async operations in its children are pending.
  *
@@ -31,8 +59,43 @@ export const Suspense = $cmpnt(function Suspense(props: {
   fallback?: JSX.Element;
   children: JSX.Element;
 }): JSX.Element {
-  if (IS_SERVER_ENV) {
-    return props.children;
+  // const parent = getParent();
+
+  if (getRenderMode() === "sync") {
+    return props.fallback;
+  }
+  if (getRenderMode() === "async") {
+    const pending: Promise<any>[] = [];
+
+    // enterAsyncBoundary((promise) => {
+    //   pending.push(promise);
+    //   // promise.then((value) => {
+    //   //   console.log(value);
+    //   // });
+    // });
+
+    // let children: JSX.Element;
+    // let fallback: JSX.Element;
+
+    // // try {
+    // try {
+    //   fallback = props.fallback;
+    //   children = props.children;
+    //   // return resolveNode(() => props.children);
+
+    //   return children;
+    // } catch (error) {
+    //   if (error instanceof Promise) {
+    //     return createAsyncElement(
+    //       () => fallback,
+    //       () => children,
+    //       Promise.all([error]),
+    //     );
+    //   }
+
+    //   throw error;
+    // }
+    return "hi";
   }
 
   const start = document.createComment("");
