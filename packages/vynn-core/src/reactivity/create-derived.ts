@@ -105,11 +105,11 @@ export function createDerived<T>(
         throw new Error("Computed value was read before initialization");
       }
       if (isPromiseLike<Value>(value)) {
-        const boundary = getAsyncBoundary();
+        // const boundary = getAsyncBoundary();
 
-        boundary?.(value as Promise<any>);
-        throw new NotReadyError(derived);
-        // throw value;
+        // boundary?.(value as Promise<any>);
+        // throw new NotReadyError(derived);
+        throw value;
       }
       return value as Value;
     },

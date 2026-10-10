@@ -21,27 +21,25 @@ export function $insert<E extends HTMLElement>(
   child: (() => JSX.Element) | JSX.Element,
   before: Node | null = null,
 ) {
-  if (getRenderMode()) {
-    let oldNodes: Node[] = [];
-    $effect(() => {
+  return withRenderBoundary(element, () => {
+    if (getRenderMode()) {
+      // let oldNodes: Node[] = [];
       const newNodes = resolveNode(
         typeof child === "function" ? child : () => child,
       );
 
-      for (const node of [oldNodes].flat()) {
-        element.removeChild(node);
-      }
+      // for (const node of [oldNodes].flat()) {
+      //   element.removeChild(node);
+      // }
 
       for (const node of [newNodes].flat()) {
         element.appendChild(node);
       }
 
-      oldNodes = newNodes;
-    });
-    return;
-  }
+      // oldNodes = newNodes;
+      return;
+    }
 
-  return withRenderBoundary(element, () => {
     // parents.push(element);
     let oldNodes: Node[] = [];
 

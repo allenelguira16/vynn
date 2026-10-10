@@ -14,14 +14,11 @@ import { resolveNode } from "./resolve-node";
  * @returns The start marker, current child nodes, and end marker for the range.
  */
 export function $dyn(child: () => JSX.Element): JSX.Element[] {
-  const creationBoundary = getRenderBoundary();
-
   if (getRenderMode()) {
-    const render = () => resolveNode(child);
+    let render: Node[] = [];
+    render = resolveNode(child);
 
-    return creationBoundary
-      ? withRenderBoundary(creationBoundary.parent, render)
-      : render();
+    return render;
   }
 
   const markerStart = document.createTextNode("");

@@ -1,6 +1,7 @@
 import { getCurrentOwner, runWithOwner } from "../life-cycle/owner";
-import { NotReadyError } from "../components/boundary";
+import { getAsyncBoundary, NotReadyError } from "../components/boundary";
 import { transaction, scheduleEffect } from "./transaction";
+import { getRenderMode } from "../utils/render-mode";
 
 export type EffectFn = (() => void) & {
   deps?: Set<EffectFn>[];
@@ -54,9 +55,10 @@ export function $effect(callback: () => void | (() => void)): () => void {
             wrappedEffect.cleanup = result;
           }
         } catch (error) {
-          if (error instanceof NotReadyError) {
-            // const boundary = getAsyncBoundary();
-            // boundary?.(error);
+          if (error instanceof Promise && !getRenderMode()) {
+            const boundary = getAsyncBoundary();
+
+            boundary?.(error);
           } else {
             throw error;
           }

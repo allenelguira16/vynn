@@ -65,37 +65,7 @@ export const Suspense = $cmpnt(function Suspense(props: {
     return props.fallback;
   }
   if (getRenderMode() === "async") {
-    const pending: Promise<any>[] = [];
-
-    // enterAsyncBoundary((promise) => {
-    //   pending.push(promise);
-    //   // promise.then((value) => {
-    //   //   console.log(value);
-    //   // });
-    // });
-
-    // let children: JSX.Element;
-    // let fallback: JSX.Element;
-
-    // // try {
-    // try {
-    //   fallback = props.fallback;
-    //   children = props.children;
-    //   // return resolveNode(() => props.children);
-
-    //   return children;
-    // } catch (error) {
-    //   if (error instanceof Promise) {
-    //     return createAsyncElement(
-    //       () => fallback,
-    //       () => children,
-    //       Promise.all([error]),
-    //     );
-    //   }
-
-    //   throw error;
-    // }
-    return "hi";
+    return props.children;
   }
 
   const start = document.createComment("");

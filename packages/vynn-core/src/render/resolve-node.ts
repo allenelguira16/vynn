@@ -77,7 +77,7 @@ export function createSSRNode<T extends keyof HTMLElementTagNameMap>(
   return node;
 }
 
-function createSSRText(value: string): SSR_TEXT {
+export function createSSRText(value: string): SSR_TEXT {
   return {
     type: "#text",
     value,
@@ -148,20 +148,20 @@ export function createAsyncElement(
  * @returns The resolved DOM nodes.
  */
 export function resolveNode(child: () => JSX.Element): Node[] {
-  // if (getRenderMode() === "async") {
-  //   try {
-  //     return resolveElementString(child()) as unknown as Node[];
-  //   } catch (error) {
-  //     if (error instanceof Promise) {
-  //       return error.then(() =>
-  //         resolveElementString(child()),
-  //       ) as unknown as Node[];
-  //     }
+  if (getRenderMode() === "async") {
+    try {
+      return resolveElementString(child()) as unknown as Node[];
+    } catch (error) {
+      if (error instanceof Promise) {
+        return error.then(() =>
+          resolveElementString(child()),
+        ) as unknown as Node[];
+      }
 
-  //     throw error;
-  //     // console.log(error);
-  //   }
-  // }
+      throw error;
+      // console.log(error);
+    }
+  }
 
   if (getRenderMode()) {
     return resolveElementString(child()) as unknown as Node[];

@@ -2,7 +2,6 @@ import type { JSX } from "../types/jsx";
 import { $async } from "../reactivity/$async";
 import { $cmpnt, $dyn } from "../render";
 import { UnwrapPromise } from "../reactivity/is-promise-like";
-import { getCurrentOwner } from "../life-cycle/owner";
 
 type AnyComponent = (props: never) => JSX.Element;
 

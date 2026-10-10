@@ -22,9 +22,13 @@ export function renderToServer(
     }
 
     if (mode === "async") {
-      return resolveAsync(App).finally(() => {
-        disposeOwner(owner);
-      });
+      return resolveAsync(App)
+        .finally(() => {
+          disposeOwner(owner);
+        })
+        .catch((e) => {
+          console.log(e);
+        });
     }
 
     // if (mode === "stream") {
@@ -57,31 +61,18 @@ function resolveSync(App: () => JSX.Element) {
   return resolve(App() as unknown as SSR_NODE[]);
 }
 
-// const asyncContext = new Map<SSR_NODE, Promise<JSX.Element>>();
-const asyncPromises: Promise<SSR_NODE>[] = [];
-
-export function registerAsyncPromises(
-  _fallback: JSX.Element,
-  promises: Promise<JSX.Element>,
-) {
-  // asyncContext.set(node as unknown as SSR_NODE, promises);
-  asyncPromises.push(promises as unknown as Promise<SSR_NODE>);
-}
-
-function resolveAsync(App: () => JSX.Element) {
+async function resolveAsync(App: () => JSX.Element) {
   // console.log(asyncPromises);
 
   async function resolve(app: SSR_NODE[]) {
     // console.log(asyncPromises);
+    // console.log(resolveNode(() => app));
     let string = "";
+
     for (const node of app.flat(Infinity).filter(Boolean)) {
       if ("value" in node && node.type === "#text") {
         // console.log(node);
         string += node.value;
-      } else if ("loader" in node && node.type === "#async") {
-        await node.pending;
-
-        console.log(node.content());
       } else if ("children" in node) {
         let attr = Object.entries(node.attributes)
           .map(([key, value]) => `${key}="${value}"`)
@@ -89,7 +80,8 @@ function resolveAsync(App: () => JSX.Element) {
         attr = !!attr.length ? ` ${attr}` : attr;
         string += `<${node.type}${attr}>${await resolve(node.children)}</${node.type}>`;
       } else {
-        // console.log(node);
+        // console.log();
+        string += await resolve(await node);
       }
     }
 
@@ -98,6 +90,33 @@ function resolveAsync(App: () => JSX.Element) {
 
   return resolve(App() as unknown as SSR_NODE[]);
 }
+
+// function memoize<This, Args extends unknown[], Return>(
+//   fn: (this: This, ...args: Args) => Return,
+// ): (this: This, ...args: Args) => Return {
+//   const cache: Map<unknown, any> = new Map();
+
+//   return function (this: This, ...args: Args): Return {
+//     let current = cache;
+
+//     for (const arg of args) {
+//       if (!current.has(arg)) {
+//         current.set(arg, new Map());
+//       }
+
+//       current = current.get(arg);
+//     }
+
+//     if (current.has(fn)) {
+//       return current.get(fn) as Return;
+//     }
+
+//     const result = fn.apply(this, args);
+//     current.set(fn, result);
+
+//     return result;
+//   };
+// }
 
 // // let id = 0;
 // const asyncPromiseContext = new Map<number, Promise<JSX.Element>>();
