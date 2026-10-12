@@ -3,6 +3,16 @@ import { lazy, Portal, Suspense } from "vynn";
 import { ButtonPageList } from "./components/button-page-list";
 import { name } from "./utils";
 
+// import { Lazy } from "./pages/lazy";
+// import { Forms } from "./pages/forms";
+// import { Contexts } from "./pages/context";
+// import { Dropdowns } from "./pages/dropdown-list";
+// import { NonAsyncSuspense } from "./pages/non-async-suspense";
+// import { PokeDex } from "./pages/poke-dex";
+// import { PokeDexAwait } from "./pages/poke-dex-await";
+// import { PokeDexSuspense } from "./pages/poke-dex-suspense";
+// import { StackedSuspense } from "./pages/stacked-suspense";
+
 const Contexts = lazy(() => import("./pages/context"), "Contexts");
 const Dropdowns = lazy(() => import("./pages/dropdown-list"), "Dropdowns");
 const Forms = lazy(() => import("./pages/forms"), "Forms");
@@ -44,6 +54,8 @@ export const routes: Route[] = [
       // console.log();
       return (
         <div class="p-2 flex flex-col container m-auto">
+          {"<div>Hi</div>"}
+
           <Portal mount={document.body}>{name.firstName}</Portal>
           <ButtonPageList />
 
@@ -74,23 +86,6 @@ export const routes: Route[] = [
         path: "/lazy",
         component: () => <Lazy />,
       },
-      // {
-      //   path: "/test",
-      //   children: [
-      //     {
-      //       path: "/",
-      //       component: () => {
-      //         return <div>Child</div>;
-      //       },
-      //     },
-      //     {
-      //       path: "/test",
-      //       component: () => {
-      //         return <div>2nd Child</div>;
-      //       },
-      //     },
-      //   ],
-      // },
       {
         path: "/contexts",
         component: () => <Contexts />,

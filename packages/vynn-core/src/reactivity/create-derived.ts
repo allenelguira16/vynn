@@ -5,6 +5,7 @@ import { Async } from "./$async";
 import { transaction } from "./transaction";
 import { isPromiseLike, MaybePromise, UnwrapPromise } from "./is-promise-like";
 import { getAsyncBoundary, NotReadyError } from "../components/boundary";
+import { getRenderMode } from "../utils/render-mode";
 
 const context = new WeakMap<object, { value: unknown }>();
 
@@ -105,11 +106,14 @@ export function createDerived<T>(
         throw new Error("Computed value was read before initialization");
       }
       if (isPromiseLike<Value>(value)) {
-        // const boundary = getAsyncBoundary();
+        if (getRenderMode()) {
+          const boundary = getAsyncBoundary();
 
-        // boundary?.(value as Promise<any>);
-        // throw new NotReadyError(derived);
-        throw value;
+          boundary?.(value as Promise<any>);
+          // throw new NotReadyError(derived);
+        } else {
+          throw value;
+        }
       }
       return value as Value;
     },

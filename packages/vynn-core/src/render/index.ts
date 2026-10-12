@@ -3,6 +3,7 @@ export { $cmpnt } from "./$cmpnt";
 export { $dyn } from "./$dyn";
 export { $for } from "./$for";
 export { $insert } from "./$insert";
+export { $memo } from "./$memo";
 export { $mount } from "./$mount";
 export { $on } from "./$on";
 export { $spread } from "./$spread";

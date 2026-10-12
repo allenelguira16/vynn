@@ -43,29 +43,29 @@ export class NeedsParentError extends Error {
   }
 }
 
-export type RenderParent = ParentNode;
+// export type RenderParent = ParentNode;
 
-export type RenderBoundary = {
-  parent: RenderParent;
-};
+// export type RenderBoundary = {
+//   parent: RenderParent;
+// };
 
-let currentBoundary: RenderBoundary | null = null;
+// let currentBoundary: RenderBoundary | null = null;
 
-export function getRenderBoundary(): RenderBoundary | null {
-  return currentBoundary;
-}
+// export function getRenderBoundary(): RenderBoundary | null {
+//   return currentBoundary;
+// }
 
-export function withRenderBoundary<T>(
-  parent: RenderParent,
-  callback: () => T,
-): T {
-  const previous = currentBoundary;
+// export function withRenderBoundary<T>(
+//   parent: RenderParent,
+//   callback: () => T,
+// ): T {
+//   const previous = currentBoundary;
 
-  currentBoundary = { parent };
+//   currentBoundary = { parent };
 
-  try {
-    return callback();
-  } finally {
-    currentBoundary = previous;
-  }
-}
+//   try {
+//     return callback();
+//   } finally {
+//     currentBoundary = previous;
+//   }
+// }

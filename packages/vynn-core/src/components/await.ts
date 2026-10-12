@@ -1,21 +1,18 @@
 import type { JSX } from "../types/jsx";
 import { $cmpnt, markParked, unmarkParked } from "../render/$cmpnt";
-import { createAsyncElement, resolveNode } from "../render/resolve-node";
+import { createSSRAsync, resolveNode, SSR_NODE } from "../render/resolve-node";
 import { enterAsyncBoundary } from "./boundary";
 import { getRenderMode } from "../utils/render-mode";
+import { getCurrentOwner, runWithOwner } from "../life-cycle/owner";
 
-/**
- * Represents a movable DOM range.
- *
- * The range lives inside its parking lot while inactive and is moved into
- * the document when it becomes active.
- */
-type Range = {
+type RenderRange = {
   start: Comment;
   end: Comment;
   nodes: Node[];
   parkingLot: DocumentFragment;
 };
+
+type PendingPromise = Promise<unknown>;
 
 /**
  * Displays a fallback while the children are initially loading.
@@ -31,36 +28,60 @@ export const Await = $cmpnt(function Suspense(props: {
   fallback?: JSX.Element;
   children: JSX.Element;
 }): JSX.Element {
-  if (getRenderMode() === "sync") {
+  const mode = getRenderMode();
+
+  if (mode === "sync") {
     return props.fallback;
   }
-  if (getRenderMode() === "async") {
-    const pending = new Set<Promise<any>>();
+
+  if (mode === "async") {
+    const children = memoize(() => props.children);
+    const owner = getCurrentOwner();
+
+    const pending: Promise<any>[] = [];
 
     enterAsyncBoundary((promise) => {
-      pending.add(promise);
+      pending.push(promise);
     });
 
-    return resolveNode(() => props.children);
+    try {
+      return children();
+    } finally {
+      if (pending.length) {
+        return createSSRAsync(async () => {
+          return runWithOwner(owner, async () => {
+            await Promise.all(pending);
+            // console.log(pending);
+
+            const result = await Promise.all([children()].flat());
+            return resolveNode(() => result);
+          }) as unknown as SSR_NODE[];
+        }) as unknown as JSX.Element[];
+      }
+
+      return children();
+    }
   }
 
-  const start = document.createComment("suspense-start");
-  const end = document.createComment("suspense-end");
+  if (mode) {
+    return props.children;
+  }
 
-  let fallback: Range;
-  let children: Range;
-  let active: Range | undefined;
+  const start = document.createTextNode("");
+  const end = document.createTextNode("");
 
-  let pendingCount = 0;
+  const getFallback = memoize(() => props.fallback);
+  const getChildren = memoize(() => props.children);
 
-  /**
-   * Becomes true once the children have been displayed for the first time.
-   *
-   * After this point, new async operations do not show the fallback again.
-   */
-  let resolved = false;
+  const fallbackRange = createRange(resolveNode(getFallback));
+  const childrenRange = createRange([]);
 
-  const show = (range: Range) => {
+  const pending = new Set<PendingPromise>();
+
+  let active: RenderRange | undefined;
+  let childrenReady = false;
+
+  function show(range: RenderRange): void {
     const parent = start.parentNode;
 
     if (!parent || active === range) {
@@ -72,63 +93,106 @@ export const Await = $cmpnt(function Suspense(props: {
     }
 
     moveRange(range, parent, end);
+
     active = range;
-  };
-
-  enterAsyncBoundary((promise) => {
-    pendingCount++;
-
-    /*
-     * Only show the fallback during the initial load.
-     *
-     * Once the children have been shown, keep them visible even when
-     * another async operation starts.
-     */
-    if (!resolved && start.parentNode && fallback) {
-      show(fallback);
-    }
-
-    const complete = () => {
-      pendingCount--;
-
-      if (pendingCount === 0 && start.parentNode && children) {
-        /*
-         * The first time all initial async work completes, mark this
-         * Suspense as resolved permanently.
-         */
-        if (!resolved) {
-          resolved = true;
-        }
-
-        show(children);
-      }
-    };
-
-    promise.then(complete, complete);
-  });
-
-  fallback = createRange(resolveNode(() => props.fallback));
-  children = createRange(resolveNode(() => props.children));
-
-  /*
-   * If there was no async work during the initial render, the children
-   * are immediately considered resolved.
-   */
-  if (pendingCount === 0) {
-    resolved = true;
   }
 
-  active = pendingCount > 0 && !resolved ? fallback : children;
+  let resolved = false;
+
+  function registerPromise(promise: PendingPromise): void {
+    if (pending.has(promise)) {
+      return;
+    }
+
+    pending.add(promise);
+
+    if (!resolved && start.parentNode && active !== fallbackRange) {
+      show(fallbackRange);
+    }
+
+    promise.then(
+      () => settlePromise(promise),
+      () => settlePromise(promise),
+    );
+  }
+
+  function renderChildren(): void {
+    try {
+      const nodes = resolveNode(getChildren);
+
+      populateRange(childrenRange, nodes);
+      childrenReady = true;
+      resolved = true;
+    } catch (error) {
+      if (error instanceof Promise) {
+        registerPromise(error);
+        return;
+      }
+
+      throw error;
+    }
+  }
+
+  /**
+   * Marks a promise as settled and displays children only when all
+   * tracked operations have settled.
+   */
+  function settlePromise(promise: PendingPromise): void {
+    if (!pending.delete(promise)) {
+      return;
+    }
+
+    if (pending.size > 0) {
+      return;
+    }
+
+    if (!childrenReady) {
+      renderChildren();
+    }
+
+    if (pending.size === 0 && childrenReady && start.parentNode) {
+      show(childrenRange);
+    }
+  }
+
+  enterAsyncBoundary(registerPromise);
+
+  renderChildren();
+
+  active = pending.size > 0 ? fallbackRange : childrenRange;
 
   return [start, active.start, ...active.nodes, active.end, end];
 });
 
 /**
- * Creates a parked DOM range from a list of nodes.
+ * Caches a getter's first successful result.
+ *
+ * If the getter throws, it is not cached and may be retried.
  */
-function createRange(nodes: Node[]): Range {
-  const start = document.createComment("range-start");
-  const end = document.createComment("range-end");
+function memoize<T>(getter: () => T): () => T {
+  let initialized = false;
+  let value: T;
+
+  return () => {
+    if (initialized) {
+      return value;
+    }
+
+    const result = getter();
+
+    value = result;
+    initialized = true;
+
+    return result;
+  };
+}
+
+/**
+ * Creates a range whose nodes initially live in a DocumentFragment.
+ */
+function createRange(nodes: Node[]): RenderRange {
+  const start = document.createTextNode("");
+  const end = document.createTextNode("");
   const parkingLot = document.createDocumentFragment();
 
   parkingLot.append(start, ...nodes, end);
@@ -142,33 +206,46 @@ function createRange(nodes: Node[]): Range {
 }
 
 /**
- * Moves an entire range from its current parent into the target.
+ * Populates a previously empty range.
+ */
+function populateRange(range: RenderRange, nodes: Node[]): void {
+  const parent = range.end.parentNode;
+
+  if (!parent) {
+    throw new Error("Cannot populate a detached Suspense range.");
+  }
+
+  for (const node of nodes) {
+    parent.insertBefore(node, range.end);
+  }
+
+  range.nodes = nodes;
+}
+
+/**
+ * Moves a complete range, including its start and end markers.
  *
- * The range's start and end markers move together with its contents.
- *
- * @param range The range to move.
- * @param target The node that will contain the range.
- * @param before The node to insert the range before.
+ * Nodes moved into a parking lot are marked as parked so Vynn's
+ * unmount observer doesn't dispose their owners.
  */
 function moveRange(
-  range: Range,
+  range: RenderRange,
   target: Node,
   before: Node | null = null,
 ): void {
   const fragment = document.createDocumentFragment();
-
   const parking = target === range.parkingLot;
 
   let node: Node | null = range.start;
 
   while (node) {
-    const next: ChildNode | null = node.nextSibling;
+    const next = node.nextSibling as Node;
 
     if (parking) {
       markParked(node);
     }
 
-    fragment.append(node);
+    fragment.appendChild(node);
 
     if (node === range.end) {
       break;
@@ -180,12 +257,12 @@ function moveRange(
   target.insertBefore(fragment, before);
 
   if (!parking) {
-    let node: Node | null = range.start;
+    node = range.start;
 
     while (node) {
-      unmarkParked(node);
+      const next = node.nextSibling as Node;
 
-      const next: ChildNode | null = node.nextSibling;
+      unmarkParked(node);
 
       if (node === range.end) {
         break;
@@ -195,49 +272,3 @@ function moveRange(
     }
   }
 }
-
-// import { JSX } from "../types/jsx";
-// import { $state } from "../reactivity/$state";
-// import { $cmpnt } from "../render/$cmpnt";
-// import { $dyn } from "../render/$dyn";
-// import { enterAsyncBoundary } from "./boundary";
-
-// /**
-//  * Displays async content with an optional fallback.
-//  *
-//  * The fallback is displayed while the async content has not yet been
-//  * resolved. Once the content is resolved, the children are displayed.
-//  *
-//  * Unlike `Suspense`, `Await` does not display the fallback simply because
-//  * an async operation becomes pending after the content has been resolved.
-//  *
-//  * @param props The fallback content and children to render.
-//  * @returns The rendered content.
-//  */
-// export const Await = $cmpnt(function Await(props: {
-//   fallback?: JSX.Element;
-//   children: JSX.Element;
-// }) {
-//   const view = $state<Node>();
-
-//   const fallback = document.createDocumentFragment();
-//   const children = document.createDocumentFragment();
-
-//   let initialized = false;
-
-//   enterAsyncBoundary((promise: Promise<void>) => {
-//     if (initialized) return;
-
-//     view.value = fallback;
-
-//     promise.then(() => {
-//       view.value = children;
-//       initialized = true;
-//     });
-//   });
-
-//   fallback.append(...$dyn(() => props.fallback));
-//   children.append(...$dyn(() => props.children));
-
-//   return $dyn(() => view.value || children);
-// });

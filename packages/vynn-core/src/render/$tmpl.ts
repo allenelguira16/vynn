@@ -2,6 +2,7 @@
 
 import { getRenderMode } from "../utils/render-mode";
 import { createSSRNode } from "./resolve-node";
+
 /**
  * Creates a native DOM element for the given HTML tag name.
  *

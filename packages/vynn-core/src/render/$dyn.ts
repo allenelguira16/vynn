@@ -1,8 +1,9 @@
-import { getRenderBoundary, withRenderBoundary } from "../components/boundary";
 import type { JSX } from "../jsx-runtime";
 import { $effect } from "../reactivity/$effect";
+import { isPromiseLike } from "../reactivity/is-promise-like";
+import { transaction } from "../reactivity/transaction";
 import { getRenderMode } from "../utils/render-mode";
-import { resolveNode } from "./resolve-node";
+import { createSSRAsync, resolveNode, SSR_NODE } from "./resolve-node";
 
 /**
  * Creates a reactive DOM range from a child expression.
@@ -14,11 +15,10 @@ import { resolveNode } from "./resolve-node";
  * @returns The start marker, current child nodes, and end marker for the range.
  */
 export function $dyn(child: () => JSX.Element): JSX.Element[] {
-  if (getRenderMode()) {
-    let render: Node[] = [];
-    render = resolveNode(child);
+  const mode = getRenderMode();
 
-    return render;
+  if (mode) {
+    return resolveNode(child);
   }
 
   const markerStart = document.createTextNode("");
@@ -28,23 +28,28 @@ export function $dyn(child: () => JSX.Element): JSX.Element[] {
 
   $effect(() => {
     nodes = resolveNode(child);
-
     replaceElementsBetween(nodes);
   });
 
-  function replaceElementsBetween(newElementsArray: Node[]) {
+  function replaceElementsBetween(newNodes: Node[]) {
     const parent = markerStart.parentNode;
+
+    // The initial effect runs before these markers are mounted.
+    if (!parent) return;
+
     let current = markerStart.nextSibling;
 
+    // Remove the entire current dynamic range.
     while (current && current !== markerEnd) {
       const next = current.nextSibling;
 
-      parent?.removeChild(current);
+      parent.removeChild(current);
       current = next;
     }
 
-    for (const node of newElementsArray) {
-      parent?.insertBefore(node, markerEnd);
+    // Insert the new content into the same range.
+    for (const node of newNodes) {
+      parent.insertBefore(node, markerEnd);
     }
   }
 

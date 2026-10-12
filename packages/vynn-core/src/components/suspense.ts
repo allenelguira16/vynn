@@ -1,127 +1,222 @@
 import type { JSX } from "../types/jsx";
 import { $cmpnt, markParked, unmarkParked } from "../render/$cmpnt";
-import { resolveNode } from "../render/resolve-node";
-import { enterAsyncBoundary } from "./boundary";
+import { createSSRAsync, resolveNode, SSR_NODE } from "../render/resolve-node";
+import { enterAsyncBoundary, NotReadyError } from "./boundary";
 import { getRenderMode } from "../utils/render-mode";
+import { getCurrentOwner, runWithOwner } from "../life-cycle/owner";
+import { $effect } from "../reactivity/$effect";
 
-/**
- * Represents a movable DOM range.
- *
- * The range lives inside its parking lot while inactive and is moved into
- * the document when it becomes active.
- */
-type Range = {
+type RenderRange = {
   start: Comment;
   end: Comment;
   nodes: Node[];
   parkingLot: DocumentFragment;
 };
 
-// type CacheNode = Map<unknown, CacheNode | unknown>;
-
-// function memoize<This, Args extends unknown[], Return>(
-//   fn: (this: This, ...args: Args) => Return,
-// ): (this: This, ...args: Args) => Return {
-//   const cache: Map<unknown, any> = new Map();
-
-//   return function (this: This, ...args: Args): Return {
-//     let current = cache;
-
-//     for (const arg of args) {
-//       if (!current.has(arg)) {
-//         current.set(arg, new Map());
-//       }
-
-//       current = current.get(arg);
-//     }
-
-//     if (current.has(fn)) {
-//       return current.get(fn) as Return;
-//     }
-
-//     const result = fn.apply(this, args);
-//     current.set(fn, result);
-
-//     return result;
-//   };
-// }
+type PendingPromise = Promise<unknown>;
 
 /**
- * Displays a fallback while async operations in its children are pending.
+ * Displays a fallback while asynchronous operations in its children
+ * are pending.
  *
- * The fallback is shown whenever one or more async operations are pending.
- * Once all pending operations resolve, the children are displayed.
- *
- * @param props The fallback content and children to render.
- * @returns The rendered content.
+ * Inactive branches are parked in DocumentFragments. This preserves their
+ * DOM nodes and prevents their component owners from being disposed when
+ * they are temporarily hidden.
  */
 export const Suspense = $cmpnt(function Suspense(props: {
   fallback?: JSX.Element;
   children: JSX.Element;
 }): JSX.Element {
-  // const parent = getParent();
+  const mode = getRenderMode();
 
-  if (getRenderMode() === "sync") {
+  // Preserve the existing server-rendering behavior.
+  if (mode === "sync") {
     return props.fallback;
   }
-  if (getRenderMode() === "async") {
+
+  if (mode === "async") {
+    const children = memoize(() => props.children);
+    const owner = getCurrentOwner();
+
+    const pending: Promise<any>[] = [];
+
+    enterAsyncBoundary((promise) => {
+      pending.push(promise);
+    });
+
+    try {
+      resolveNode(children);
+    } catch (_) {
+      // Ignore errors on first pass then let it run again
+    } finally {
+      if (pending.length) {
+        return createSSRAsync(async () => {
+          return runWithOwner(owner, async () => {
+            await Promise.all(pending);
+            // console.log(pending);
+
+            const result = await Promise.all([children()].flat());
+            return resolveNode(() => result);
+          }) as unknown as SSR_NODE[];
+        }) as unknown as JSX.Element[];
+      }
+
+      return children();
+    }
+  }
+
+  if (mode) {
     return props.children;
   }
 
-  const start = document.createComment("");
-  const end = document.createComment("");
+  const start = document.createTextNode("");
+  const end = document.createTextNode("");
 
-  let fallback: Range;
-  let children: Range;
-  let active: Range | undefined;
+  // Props are getters in Vynn. Cache each successfully evaluated branch
+  // so switching branches doesn't reconstruct its JSX tree.
+  const getFallback = memoize(() => props.fallback);
+  const getChildren = memoize(() => props.children);
 
-  let pendingCount = 0;
+  const fallbackRange = createRange(resolveNode(getFallback));
+  const childrenRange = createRange([]);
 
-  const show = (range: Range) => {
+  const pending = new Set<PendingPromise>();
+
+  let active: RenderRange | undefined;
+  let childrenReady = false;
+
+  /**
+   * Shows a branch and parks the previously active branch.
+   */
+  function show(range: RenderRange): void {
     const parent = start.parentNode;
 
-    if (!parent || active === range) return;
+    if (!parent || active === range) {
+      return;
+    }
 
     if (active) {
       moveRange(active, active.parkingLot);
     }
 
     moveRange(range, parent, end);
+
     active = range;
-  };
+  }
 
-  enterAsyncBoundary((promise) => {
-    pendingCount++;
-
-    if (start.parentNode && fallback) {
-      show(fallback);
+  /**
+   * Registers an asynchronous operation with this boundary.
+   */
+  function registerPromise(promise: PendingPromise): void {
+    // A boundary should track each promise only once.
+    if (pending.has(promise)) {
+      return;
     }
 
-    const complete = () => {
-      pendingCount--;
+    pending.add(promise);
 
-      if (pendingCount === 0 && start.parentNode && children) {
-        show(children);
+    // Once mounted, switch to the fallback immediately.
+    if (start.parentNode && active !== fallbackRange) {
+      show(fallbackRange);
+    }
+
+    promise.then(
+      () => settlePromise(promise),
+      () => settlePromise(promise),
+    );
+  }
+
+  /**
+   * Retries rendering if accessing props.children previously threw
+   * a promise before producing a complete JSX tree.
+   */
+  function renderChildren(): void {
+    try {
+      const nodes = resolveNode(getChildren);
+
+      populateRange(childrenRange, nodes);
+      childrenReady = true;
+    } catch (error) {
+      if (error instanceof Promise) {
+        registerPromise(error);
+        return;
       }
-    };
 
-    promise.then(complete, complete);
-  });
+      throw error;
+    }
+  }
 
-  fallback = createRange(resolveNode(() => props.fallback));
-  children = createRange(resolveNode(() => props.children));
+  /**
+   * Marks a promise as settled and displays children only when all
+   * tracked operations have settled.
+   */
+  function settlePromise(promise: PendingPromise): void {
+    if (!pending.delete(promise)) {
+      return;
+    }
 
-  active = pendingCount > 0 ? fallback : children;
+    if (pending.size > 0) {
+      return;
+    }
+
+    // The original children getter might have thrown before returning
+    // its JSX value. Retry it only after pending work has settled.
+    if (!childrenReady) {
+      renderChildren();
+    }
+
+    // Rendering children may have registered another pending promise.
+    if (pending.size === 0 && childrenReady && start.parentNode) {
+      show(childrenRange);
+    }
+  }
+
+  // Install this boundary before evaluating the children.
+  // Descendant effects inherit it through the owner hierarchy.
+  enterAsyncBoundary(registerPromise);
+
+  // Attempt the initial render. If this throws a promise, renderChildren
+  // registers it and leaves the children range available for a later retry.
+  renderChildren();
+
+  // Select the initial branch. The outer markers have not been mounted yet,
+  // so asynchronous registrations during initial rendering won't attempt
+  // to move DOM prematurely.
+  active = pending.size > 0 ? fallbackRange : childrenRange;
 
   return [start, active.start, ...active.nodes, active.end, end];
 });
 
 /**
- * Creates a parked DOM range from a list of nodes.
+ * Caches a getter's first successful result.
+ *
+ * If the getter throws, it is not cached and may be retried.
  */
-function createRange(nodes: Node[]): Range {
-  const start = document.createComment("range-start");
-  const end = document.createComment("range-end");
+function memoize<T>(getter: () => T): () => T {
+  let initialized = false;
+  let value: T;
+
+  return () => {
+    console.log(initialized);
+    if (initialized) {
+      return value;
+    }
+
+    const result = getter();
+
+    value = result;
+    initialized = true;
+
+    return result;
+  };
+}
+
+/**
+ * Creates a range whose nodes initially live in a DocumentFragment.
+ */
+function createRange(nodes: Node[]): RenderRange {
+  const start = document.createTextNode("");
+  const end = document.createTextNode("");
   const parkingLot = document.createDocumentFragment();
 
   parkingLot.append(start, ...nodes, end);
@@ -135,33 +230,46 @@ function createRange(nodes: Node[]): Range {
 }
 
 /**
- * Moves an entire range from its current parent into the target.
+ * Populates a previously empty range.
+ */
+function populateRange(range: RenderRange, nodes: Node[]): void {
+  const parent = range.end.parentNode;
+
+  if (!parent) {
+    throw new Error("Cannot populate a detached Suspense range.");
+  }
+
+  for (const node of nodes) {
+    parent.insertBefore(node, range.end);
+  }
+
+  range.nodes = nodes;
+}
+
+/**
+ * Moves a complete range, including its start and end markers.
  *
- * The range's start and end markers move together with its contents.
- *
- * @param range The range to move.
- * @param target The node that will contain the range.
- * @param before The node to insert the range before.
+ * Nodes moved into a parking lot are marked as parked so Vynn's
+ * unmount observer doesn't dispose their owners.
  */
 function moveRange(
-  range: Range,
+  range: RenderRange,
   target: Node,
   before: Node | null = null,
 ): void {
   const fragment = document.createDocumentFragment();
-
   const parking = target === range.parkingLot;
 
   let node: Node | null = range.start;
 
   while (node) {
-    const next: ChildNode | null = node.nextSibling;
+    const next = node.nextSibling as Node;
 
     if (parking) {
       markParked(node);
     }
 
-    fragment.append(node);
+    fragment.appendChild(node);
 
     if (node === range.end) {
       break;
@@ -173,12 +281,12 @@ function moveRange(
   target.insertBefore(fragment, before);
 
   if (!parking) {
-    let node: Node | null = range.start;
+    node = range.start;
 
     while (node) {
-      unmarkParked(node);
+      const next = node.nextSibling as Node;
 
-      const next: ChildNode | null = node.nextSibling;
+      unmarkParked(node);
 
       if (node === range.end) {
         break;

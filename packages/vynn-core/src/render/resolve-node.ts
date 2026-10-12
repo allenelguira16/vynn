@@ -2,7 +2,7 @@
 import { JSX } from "../jsx-runtime";
 import { getRenderMode } from "../utils/render-mode";
 
-export type SSR_NODE = SSR_ELEMENT | SSR_TEXT | SSR_ASYNC;
+export type SSR_NODE = SSR_ELEMENT | SSR_TEXT | SSR_ASYNC | SSR_COMMENT;
 
 export type SSR_ELEMENT = {
   type: string;
@@ -21,11 +21,15 @@ export type SSR_TEXT = {
   parent: SSR_ELEMENT | null;
 };
 
-type SSR_ASYNC = SSR_ELEMENT & {
+export type SSR_COMMENT = {
+  type: "#comment";
+  value: string;
+  parent: SSR_ELEMENT | null;
+};
+
+export type SSR_ASYNC = SSR_ELEMENT & {
   type: "#async";
-  loader: () => SSR_NODE[];
-  content: () => SSR_NODE[];
-  pending: Promise<any>;
+  resolve: () => Promise<SSR_NODE[]>;
 };
 
 export function createSSRNode<T extends keyof HTMLElementTagNameMap>(
@@ -85,19 +89,22 @@ export function createSSRText(value: string): SSR_TEXT {
   };
 }
 
-export function createAsyncElement(
-  loader: () => JSX.Element,
-  content: () => JSX.Element,
-  pending: Promise<any>,
-): SSR_ASYNC {
+export function createSSRComment(value: string): SSR_COMMENT {
+  return {
+    type: "#comment",
+    value,
+    parent: null,
+  };
+}
+
+export function createSSRAsync(resolve: () => Promise<SSR_NODE[]>): SSR_ASYNC {
   const node: SSR_ASYNC = {
     type: "#async",
-    loader: loader as unknown as () => SSR_NODE[],
-    content: content as unknown as () => SSR_NODE[],
-    pending,
+    resolve,
     children: [],
     parent: null,
     attributes: {},
+
     insertBefore(child, before) {
       if (child.parent) {
         child.parent.removeChild(child);
@@ -126,9 +133,7 @@ export function createAsyncElement(
     removeChild(child) {
       const index = node.children.indexOf(child);
 
-      if (index === -1) {
-        return;
-      }
+      if (index === -1) return;
 
       node.children.splice(index, 1);
       child.parent = null;
@@ -148,21 +153,6 @@ export function createAsyncElement(
  * @returns The resolved DOM nodes.
  */
 export function resolveNode(child: () => JSX.Element): Node[] {
-  if (getRenderMode() === "async") {
-    try {
-      return resolveElementString(child()) as unknown as Node[];
-    } catch (error) {
-      if (error instanceof Promise) {
-        return error.then(() =>
-          resolveElementString(child()),
-        ) as unknown as Node[];
-      }
-
-      throw error;
-      // console.log(error);
-    }
-  }
-
   if (getRenderMode()) {
     return resolveElementString(child()) as unknown as Node[];
   }
@@ -182,7 +172,7 @@ function resolveElement(element: JSX.Element): Node[] {
   }
 
   if (typeof element === "string" || typeof element === "number") {
-    return [new Text(String(element))];
+    return [document.createTextNode(String(element))];
   }
 
   if (element instanceof Node) {

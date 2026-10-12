@@ -19,19 +19,19 @@ export const StackedSuspense = () => {
   return (
     <Template title="Stacked Suspense">
       <div class="p-2 flex flex-col container m-auto">
-        <Suspense fallback="Lick my ass">
+        {/* <Suspense fallback="Lick my ass">
           <input
             onInput={(event) => {
               msg2.value = event.currentTarget.value.toString();
             }}
             value={msg2.value}
           ></input>
-        </Suspense>
-        <Suspense fallback="Ngee">{msg3.value}</Suspense>
+        </Suspense> */}
+        {/* <Suspense fallback="Ngee">{msg3.value}</Suspense> */}
         <Suspense fallback={<div>loading 1...</div>}>
-          <div>hi</div>
+          {/* <div>hi</div> */}
           <Component />
-          <Suspense fallback={<div>loading 2...</div>}>{msg2.value}</Suspense>
+          {/* <Suspense fallback={<div>loading 2...</div>}>{msg2.value}</Suspense> */}
         </Suspense>
       </div>
     </Template>

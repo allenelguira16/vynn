@@ -27,6 +27,7 @@
     }
   },
   "dependencies": {
+    "node-html-parser": "^9.0.4",
     "typescript": "^7.0.2"
   }
 }

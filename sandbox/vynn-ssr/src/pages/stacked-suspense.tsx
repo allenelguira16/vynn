@@ -44,7 +44,7 @@ const Component = () => {
 
     return `hello world`;
   });
-  // console.log("render");
+  console.log("render");
   onMount(() => {
     // console.log("bumalik...");
   });
