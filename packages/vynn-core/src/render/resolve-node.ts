@@ -1,5 +1,7 @@
 // import { getAsyncBoundary } from "../components/boundary";
+import { NotReadyError } from "../components/boundary";
 import { JSX } from "../jsx-runtime";
+import { untrack } from "../reactivity/untrack";
 import { getRenderMode } from "../utils/render-mode";
 
 export type SSR_NODE = SSR_ELEMENT | SSR_TEXT | SSR_ASYNC | SSR_COMMENT;
@@ -29,7 +31,8 @@ export type SSR_COMMENT = {
 
 export type SSR_ASYNC = SSR_ELEMENT & {
   type: "#async";
-  resolve: () => Promise<SSR_NODE[]>;
+  content: () => SSR_NODE[];
+  fallback: () => SSR_NODE[];
 };
 
 export function createSSRNode<T extends keyof HTMLElementTagNameMap>(
@@ -97,10 +100,14 @@ export function createSSRComment(value: string): SSR_COMMENT {
   };
 }
 
-export function createSSRAsync(resolve: () => Promise<SSR_NODE[]>): SSR_ASYNC {
+export function createSSRAsync(
+  fallback: () => SSR_NODE[],
+  content: () => SSR_NODE[],
+): SSR_ASYNC {
   const node: SSR_ASYNC = {
     type: "#async",
-    resolve,
+    content,
+    fallback,
     children: [],
     parent: null,
     attributes: {},
@@ -153,6 +160,20 @@ export function createSSRAsync(resolve: () => Promise<SSR_NODE[]>): SSR_ASYNC {
  * @returns The resolved DOM nodes.
  */
 export function resolveNode(child: () => JSX.Element): Node[] {
+  // if (getRenderMode() === "async") {
+  //   try {
+  //     return resolveElementString(child()) as unknown as Node[];
+  //   } catch (error) {
+  //     if (!(error instanceof NotReadyError)) throw error;
+
+  //     // console.log();
+  //     return error.promise.then(() => {
+  //       console.log(child());
+  //       return resolveElementString(child());
+  //     }) as unknown as Node[];
+  //   }
+  // }
+
   if (getRenderMode()) {
     return resolveElementString(child()) as unknown as Node[];
   }
@@ -179,6 +200,10 @@ function resolveElement(element: JSX.Element): Node[] {
     return [element];
   }
 
+  if (element instanceof Function) {
+    return resolveElement((element as unknown as () => JSX.Element)());
+  }
+
   return element.flatMap(resolveElement);
 }
 
@@ -194,6 +219,10 @@ function resolveElementString(element: JSX.Element): SSR_NODE[] {
   // console.log(element);
   if (!Array.isArray(element)) {
     return [element as unknown as SSR_ELEMENT];
+  }
+
+  if (element instanceof Function) {
+    return resolveElementString((element as unknown as () => JSX.Element)());
   }
 
   return element.flatMap(resolveElementString);

@@ -18,7 +18,6 @@ export {
 export { createContext } from "./context/context";
 
 export { Portal } from "./components/portal";
-export { Suspense } from "./components/suspense";
 export { Await } from "./components/await";
 export { lazy } from "./components/lazy";
 

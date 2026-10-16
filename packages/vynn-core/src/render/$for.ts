@@ -4,6 +4,7 @@ import { $state, State } from "../reactivity/$state";
 import { $dyn } from "./$dyn";
 import { untrack } from "../reactivity/untrack";
 import { getRenderMode } from "../utils/render-mode";
+import { $computed } from "../reactivity/$computed";
 
 type ForEntry<T> = {
   item: T;
@@ -15,15 +16,17 @@ export function $for<T>(
   items: () => T[],
   each: (item: T, index: State<number>) => JSX.Element,
 ): JSX.Element {
-  if (getRenderMode()) {
-    return items().map((item, i) => each(item, { value: i }));
-  }
+  // if (getRenderMode()) {
+  // console.log(items().map((item, i) => each(item, { value: i })));
+  // return $dyn(() => items().map((item, i) => each(item, { value: i })));
+  // }
 
-  const result = $state<JSX.Element[]>([]);
+  // const result = $state<JSX.Element[]>([]);
+  let result: JSX.Element[] = [];
   let oldEntries: ForEntry<T>[] = [];
   let initialized = false;
 
-  $effect(() => {
+  const value = $computed(() => {
     const newItems = items();
 
     untrack(() => {
@@ -42,7 +45,7 @@ export function $for<T>(
         });
 
         oldEntries = entries;
-        result.value = entries.map((entry) => entry.node);
+        result = entries.map((entry) => entry.node);
         initialized = true;
 
         return;
@@ -113,11 +116,17 @@ export function $for<T>(
       /*
        * Result now contains the exact existing nodes in the new order.
        */
-      result.value = newEntries.map((entry) => entry.node);
+      result = newEntries.map((entry) => entry.node);
     });
+
+    return result;
   });
 
-  return $dyn(() => result.value);
+  // $effect(() => {
+  //   console.log(value.value);
+  // });
+
+  return $dyn(() => value.value);
   // return result.value;
 }
 

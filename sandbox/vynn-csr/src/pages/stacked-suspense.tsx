@@ -1,4 +1,4 @@
-import { $async, onDestroy, onMount, Suspense } from "vynn";
+import { $async, onDestroy, onMount, Await as Suspense } from "vynn";
 
 import { Template } from "../components/template";
 import { sleep } from "../utils";

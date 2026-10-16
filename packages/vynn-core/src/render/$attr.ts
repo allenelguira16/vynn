@@ -41,22 +41,17 @@ export function $attr<E extends HTMLElement>(
     $effect(() => {
       const node = element as unknown as SSR_ELEMENT;
       const next = typeof value === "function" ? value() : value;
-      // let attributes: string[] = [];
 
-      if (typeof next === "boolean") {
-        // console.log(name, next);
-        if (next) {
-          node.attributes[name.toLowerCase()] = "";
-        } else {
-          // console.log();
-          delete node.attributes[name.toLowerCase()];
-          // attributes = attributes.filter((attribute) => attribute === name);
-        }
-      } else if (next != null) {
+      if (next === true) {
+        node.attributes[name] = "";
+      } else if (next === false) {
+        delete node.attributes[name.toLowerCase()];
+      } else if (typeof next === "number" || typeof next === "string") {
         node.attributes[name.toLowerCase()] = escapeHtml(String(next));
+      } else {
+        console.log(node, next);
       }
     });
-    // });
     return;
   }
 

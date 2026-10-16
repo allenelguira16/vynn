@@ -1,9 +1,6 @@
 import type { JSX } from "../types/jsx";
 import { $async } from "../reactivity/$async";
 import { $cmpnt, $dyn } from "../render";
-import { createSSRAsync, SSR_NODE } from "../render/resolve-node";
-import { getCurrentOwner, runWithOwner } from "../life-cycle/owner";
-import { getRenderMode } from "../utils/render-mode";
 
 type AnyComponent = (props: never) => JSX.Element;
 
@@ -60,25 +57,11 @@ export function lazy<
 
       return component as Component;
     });
-    const owner = getCurrentOwner();
 
-    if (getRenderMode() === "async") {
-      return createSSRAsync(async () => {
-        return runWithOwner(owner, async () => {
-          const Component = await (component.value as unknown as Promise<
-            ComponentExport<M, K>
-          >);
-
-          return Component(props);
-        }) as unknown as SSR_NODE[];
-      }) as unknown as JSX.Element[];
-    } else {
-      return $dyn(() => {
-        if (!cached) cached = component.value;
-        return cached(props);
-      });
-    }
-    // return component.value(props);
+    return $dyn(() => {
+      if (!cached) cached = component.value;
+      return cached(props);
+    });
   }) as Component;
 }
 

@@ -1,4 +1,5 @@
 import type { JSX } from "../jsx-runtime";
+import { onDestroy } from "../life-cycle/on-destroy";
 import { $effect } from "../reactivity/$effect";
 import { getRenderMode } from "../utils/render-mode";
 import { resolveNode } from "./resolve-node";
@@ -16,42 +17,35 @@ export function $dyn(child: () => JSX.Element): JSX.Element[] {
   const mode = getRenderMode();
 
   if (mode) {
-    return resolveNode(child);
+    let nodes: JSX.Element[] = [];
+
+    $effect(() => {
+      nodes = resolveNode(child);
+    });
+
+    return nodes;
   }
 
-  const markerStart = document.createTextNode("");
-  const markerEnd = document.createTextNode("");
+  // const markerStart = document.createComment("dynamic");
+  const marker = document.createComment("dynamic-marker");
 
   let nodes: Node[] = [];
 
   $effect(() => {
+    for (const node of nodes) {
+      (node as ChildNode).remove();
+    }
+
     nodes = resolveNode(child);
-    replaceElementsBetween(nodes);
+
+    queueMicrotask(() => {
+      if (marker.parentNode) {
+        for (const node of nodes) {
+          marker.parentNode.insertBefore(node, marker);
+        }
+      }
+    });
   });
 
-  function replaceElementsBetween(newNodes: Node[]) {
-    const parent = markerStart.parentNode;
-
-    // The initial effect may run before mounting.
-    if (!parent || markerEnd.parentNode !== parent) {
-      return;
-    }
-
-    // Remove the existing contents of this dynamic range.
-    let current = markerStart.nextSibling;
-
-    while (current && current !== markerEnd) {
-      const next = current.nextSibling;
-
-      parent.removeChild(current);
-      current = next;
-    }
-
-    // Insert the new contents before the ending marker.
-    for (const node of newNodes) {
-      parent.insertBefore(node, markerEnd);
-    }
-  }
-
-  return [markerStart, ...nodes, markerEnd];
+  return [...nodes, marker];
 }

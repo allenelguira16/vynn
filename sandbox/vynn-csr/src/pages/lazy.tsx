@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "vynn";
+import { lazy, Await } from "vynn";
 
 import { Template } from "../components/template";
 
@@ -12,13 +12,13 @@ export const Lazy = () => {
   return (
     <Template title="Lazy">
       <div>
-        <Suspense fallback="Tester">
+        <Await fallback="Tester">
           <h4>Test</h4>
           <LazyImport />
-        </Suspense>
-        <Suspense fallback="Tester2">
+        </Await>
+        <Await fallback="Tester2">
           <LazyTest />
-        </Suspense>
+        </Await>
         <h5>Test</h5>
       </div>
     </Template>

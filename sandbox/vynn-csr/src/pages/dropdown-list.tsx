@@ -88,6 +88,7 @@ export const Dropdowns = () => {
         </div>
         <div>
           <button
+            class="btn"
             onClick={() =>
               (dropdownStore.showDropdown = !dropdownStore.showDropdown)
             }
@@ -175,25 +176,6 @@ const Dropdown = ({ number }: { number: number }) => {
 
         <div class="break-all mt-4">Hi {name.firstName}</div>
       </div>
-      {/* <details class="dropdown lg:w-[12.5%]">
-        <div>
-          <button class="btn w-full" onClick={handleToggle}>
-            Open Dropdown {number}
-          </button>
-          <div class="break-all">Hi {name.firstName}</div>
-        </div>
-        {isOpen.value && (
-          <ul class="menu lg:menu-horizontal bg-base-200 rounded-box">
-            {Array.from({ length: 3 })
-              .map((_, i) => i + 1)
-              .map((item) => (
-                <li class="cursor-pointer p-2 rounded hover:bg-gray-100">
-                  Dropdown {item}
-                </li>
-              ))}
-          </ul>
-        )}
-      </details> */}
     </>
   );
 };

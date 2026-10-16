@@ -1,8 +1,10 @@
+import { characterCodeToRegularExpressionFlag } from "typescript/unstable/ast";
 import { createOwner, disposeOwner, runWithOwner } from "../life-cycle/owner";
 import { JSX } from "../types/jsx";
 import { escapeHtml } from "../utils/escape-html";
 import { setRenderMode } from "../utils/render-mode";
 import { resolveNode, SSR_NODE } from "./resolve-node";
+import { NotReadyError } from "../components/boundary";
 
 export function renderToServer(
   App: () => JSX.Element,
@@ -60,38 +62,80 @@ function resolveSync(App: () => JSX.Element) {
 async function resolveAsync(App: () => JSX.Element): Promise<string> {
   async function resolve(app: SSR_NODE[]): Promise<string> {
     let html = "";
-
     for (const node of app.flat(Infinity).filter(Boolean)) {
-      if (node.type === "#async" && "resolve" in node) {
-        html += await resolve(await node.resolve());
-        // console.log(await node.resolve());
+      if (node instanceof Function) {
+        html += await resolve(
+          resolveNode(
+            node as unknown as () => JSX.Element,
+          ) as unknown as SSR_NODE[],
+        );
       } else if ("value" in node && node.type === "#text") {
         html += escapeHtml(node.value);
-      } else if ("value" in node && node.type === "#comment") {
-        html += `<!--${node.value}-->`;
+      } else if ("fallback" in node) {
+        // html += await resolve(node.content());
+        try {
+          console.log(node.content());
+        } catch (error) {
+          // console.log(node)
+          if (error instanceof NotReadyError) {
+            await error.promise;
+            console.log(node.content());
+          }
+        }
+        // // console.log(node.children);
+        // let attributes = Object.entries(node.attributes)
+        //   .map(([key, value]) => `${key}="${value}"`)
+        //   .join(" ");
+        // attributes = attributes ? ` ${attributes}` : "";
+
+        // // console.log();
+        // html += `<${node.type}${attributes}>${await resolve(node.children)}</${node.type}>`;
       } else if ("children" in node) {
+        // console.log(node.children);
         let attributes = Object.entries(node.attributes)
           .map(([key, value]) => `${key}="${value}"`)
           .join(" ");
-
         attributes = attributes ? ` ${attributes}` : "";
 
-        html += `<${node.type}${attributes}>`;
-        const children = (await Promise.all(
-          node.children,
-        )) as unknown as JSX.Element[];
         // console.log();
-        html += await resolve(
-          resolveNode(() => children) as unknown as SSR_NODE[],
-        );
-        html += `</${node.type}>`;
+        html += `<${node.type}${attributes}>${await resolve(node.children)}</${node.type}>`;
+      } else if (node instanceof Promise) {
+        html += await resolve(await node);
       }
     }
 
     return html;
+    //   let html = "";
+    //   for (const node of app.flat(Infinity).filter(Boolean)) {
+    //     if (node.type === "#async" && "resolve" in node) {
+    //       html += await resolve(await node.resolve());
+    //       // console.log(await node.resolve());
+    //     } else if ("value" in node && node.type === "#text") {
+    //       html += escapeHtml(node.value);
+    //     } else if ("value" in node && node.type === "#comment") {
+    //       html += `<!--${node.value}-->`;
+    //     } else if ("children" in node) {
+    //       let attributes = Object.entries(node.attributes)
+    //         .map(([key, value]) => `${key}="${value}"`)
+    //         .join(" ");
+    //       attributes = attributes ? ` ${attributes}` : "";
+    //       html += `<${node.type}${attributes}>`;
+    //       const children = (await Promise.all(
+    //         node.children,
+    //       )) as unknown as JSX.Element[];
+    //       // console.log();
+    //       html += await resolve(
+    //         resolveNode(() => children) as unknown as SSR_NODE[],
+    //       );
+    //       html += `</${node.type}>`;
+    //     }
+    //   }
+    //   return html;
   }
 
-  return resolve(App() as unknown as SSR_NODE[]);
+  return resolve(resolveNode(App) as unknown as SSR_NODE[]);
+
+  // return "" as string;
 }
 
 // export type StreamContext = {

@@ -1,4 +1,4 @@
-import { NotReadyError } from "../components/boundary";
+import { getAsyncBoundary, NotReadyError } from "../components/boundary";
 import { transaction } from "./transaction";
 import { $state } from "./$state";
 import { $effect } from "./$effect";
@@ -51,8 +51,8 @@ export function $async<T>(getter: () => Promise<T>): Async<T> {
             result.value = v;
           });
 
-          // const boundary = getAsyncBoundary();
-          // boundary?.(result.value);
+          const boundary = getAsyncBoundary();
+          boundary?.(result.value);
           throw new NotReadyError(result.value);
         }
 
