@@ -1,5 +1,5 @@
 import { Route, Router } from "vynn-router";
-import { lazy, Portal, Suspense } from "vynn";
+import { lazy, Portal } from "vynn";
 import { ButtonPageList } from "./components/button-page-list";
 import { name } from "./utils";
 
@@ -10,7 +10,6 @@ import { Dropdowns } from "./pages/dropdown-list";
 import { NonAsyncSuspense } from "./pages/non-async-suspense";
 import { PokeDex } from "./pages/poke-dex";
 import { PokeDexAwait } from "./pages/poke-dex-await";
-import { PokeDexSuspense } from "./pages/poke-dex-suspense";
 import { StackedSuspense } from "./pages/stacked-suspense";
 
 // const Contexts = lazy(() => import("./pages/context"), "Contexts");
@@ -22,10 +21,6 @@ import { StackedSuspense } from "./pages/stacked-suspense";
 //   "NonAsyncSuspense",
 // );
 // const PokeDex = lazy(() => import("./pages/poke-dex"), "PokeDex");
-// const PokeDexSuspense = lazy(
-//   () => import("./pages/poke-dex-suspense"),
-//   "PokeDexSuspense",
-// );
 // const PokeDexAwait = lazy(
 //   () => import("./pages/poke-dex-await"),
 //   "PokeDexAwait",
@@ -54,10 +49,11 @@ export const routes: Route[] = [
       // console.log();
       return (
         <div class="p-2 flex flex-col container m-auto">
-          {/* <Portal mount={document.body}>{name.firstName}</Portal> */}
-          {/* <ButtonPageList /> */}
-
           {"<div>Hi</div>"}
+
+          <Portal mount={document.body}>{name.firstName}</Portal>
+          <ButtonPageList />
+
           {/* <Suspense fallback={<div>Page Is Loading</div>}> */}
           {props.children}
           {/* </Suspense> */}
@@ -76,7 +72,6 @@ export const routes: Route[] = [
             <NonAsyncSuspense />
             <PokeDex />
             <PokeDexAwait />
-            <PokeDexSuspense />
             <StackedSuspense />
           </>
         ),
@@ -85,23 +80,6 @@ export const routes: Route[] = [
         path: "/lazy",
         component: () => <Lazy />,
       },
-      // {
-      //   path: "/test",
-      //   children: [
-      //     {
-      //       path: "/",
-      //       component: () => {
-      //         return <div>Child</div>;
-      //       },
-      //     },
-      //     {
-      //       path: "/test",
-      //       component: () => {
-      //         return <div>2nd Child</div>;
-      //       },
-      //     },
-      //   ],
-      // },
       {
         path: "/contexts",
         component: () => <Contexts />,
@@ -113,10 +91,6 @@ export const routes: Route[] = [
       {
         path: "/poke-dex-await",
         component: () => <PokeDexAwait />,
-      },
-      {
-        path: "/poke-dex-suspense",
-        component: () => <PokeDexSuspense />,
       },
       {
         path: "/dropdown-list",

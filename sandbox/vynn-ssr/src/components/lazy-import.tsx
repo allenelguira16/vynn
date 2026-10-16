@@ -5,7 +5,7 @@ import {
   lazy,
   onMount,
   State,
-  Suspense,
+  Await,
   // useContext,
 } from "vynn";
 
@@ -37,9 +37,9 @@ const Children = () => {
         onInput={(event: any) => (name.value = event.currentTarget.value)}
         value={name.value}
       />
-      <Suspense>
+      <Await>
         <Test2 />
-      </Suspense>
+      </Await>
     </>
   );
 };

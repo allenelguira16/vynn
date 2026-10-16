@@ -87,15 +87,6 @@ export const ButtonPageList = () => {
             PokeDex List with Await
           </button>
         </li>
-        <li>
-          <button
-            class="btn"
-            onClick={() => navigate("/poke-dex-suspense")}
-            disabled={isActiveRoute("/poke-dex-suspense")}
-          >
-            PokeDex List with Suspense
-          </button>
-        </li>
       </ul>
     </Template>
   );
