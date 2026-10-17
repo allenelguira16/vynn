@@ -1,9 +1,7 @@
-// import { getAsyncBoundary } from "../components/boundary";
-import { NotReadyError } from "../components/boundary";
 import { JSX } from "../jsx-runtime";
-import { untrack } from "../reactivity/untrack";
 import { escapeHtml } from "../utils/escape-html";
 import { getRenderMode } from "../context/render-mode";
+import { getCurrentOwner, runWithOwner } from "../life-cycle/owner";
 
 export type SSR_NODE = SSR_ELEMENT | SSR_TEXT | SSR_ASYNC | SSR_COMMENT;
 
@@ -105,16 +103,16 @@ export function createSSRComment(value: string): SSR_COMMENT {
 export function createSSRAsync(
   fallback: () => SSR_NODE[],
   children: () => SSR_NODE[],
-  promises: Promise<any>[],
+  promises: Promise<unknown>[],
 ): SSR_ASYNC {
-  const node: SSR_ASYNC = {
+  const owner = getCurrentOwner();
+
+  return {
     type: "#async",
-    fallback,
-    children,
+    fallback: () => runWithOwner(owner, fallback),
+    children: () => runWithOwner(owner, children),
     promises,
   };
-
-  return node;
 }
 
 /**
@@ -180,7 +178,7 @@ function resolveElementString(element: JSX.Element): SSR_NODE[] {
   }
 
   if (typeof element === "string" || typeof element === "number") {
-    return [createSSRText(escapeHtml(String(element)))];
+    return [createSSRText(String(element))];
   }
 
   // console.log(element);

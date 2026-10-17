@@ -1,10 +1,12 @@
 import type { JSX } from "../types/jsx";
 import { $cmpnt } from "../render/$cmpnt";
 import { createSSRAsync, resolveNode, SSR_NODE } from "../render/resolve-node";
-import { enterAsyncBoundary, NotReadyError } from "./boundary";
+import { enterAsyncBoundary } from "./boundary";
 import { $state } from "../reactivity/$state";
 import { $effect } from "../reactivity/$effect";
 import { getRenderMode } from "../context/render-mode";
+import { getCurrentOwner, runWithOwner } from "../life-cycle/owner";
+import { NotReadyError } from "../reactivity/not-ready-error";
 
 /**
  * Displays a fallback while the children are initially loading.
@@ -32,12 +34,7 @@ export const Await = $cmpnt(function Suspense(props: {
     });
 
     try {
-      const fallback = props.fallback;
-      const children = props.children;
-
-      // return children;
-      // console.log(pending);
-      return children;
+      return props.children;
     } catch (error) {
       if (!(error instanceof NotReadyError)) {
         throw error;

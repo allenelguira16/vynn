@@ -1,4 +1,4 @@
-import { NotReadyError } from "../components/boundary";
+import { NotReadyError } from "../reactivity/not-ready-error";
 import { getCurrentOwner } from "../life-cycle/owner";
 import { getRenderMode } from "../context/render-mode";
 

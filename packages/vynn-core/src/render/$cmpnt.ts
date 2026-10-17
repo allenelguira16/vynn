@@ -45,7 +45,8 @@ export function $cmpnt<P>(
       rootNodes.set(marker, owner);
     }
 
-    const result = runWithOwner(owner, () => {
+    // const result =
+    return runWithOwner(owner, () => {
       try {
         const resolved = untrack(() => Component(props));
 
@@ -64,7 +65,7 @@ export function $cmpnt<P>(
     });
 
     // return function read() {
-    return runWithOwner(owner, () => result);
+    // return runWithOwner(owner, () => result);
     // } as unknown as JSX.Element;
   };
 }

@@ -1,46 +1,61 @@
-import { getOwnerContext, setOwnerContext } from "../life-cycle/owner";
+import {
+  getCurrentOwner,
+  getOwnerContext,
+  setOwnerContext,
+} from "../life-cycle/owner";
 
-export type AsyncBoundary<T = any> = (promise: Promise<T>) => void;
+export type AsyncBoundary<T = unknown> = (promise: Promise<T>) => void;
 
-/**
- * Returns the nearest active async rendering boundary.
- *
- * The active boundary is the most recently entered async boundary.
- * Async operations can use it to register promises that should be
- * tracked by the boundary.
- *
- * @returns The nearest active async boundary, or `undefined` when
- * called outside of an async boundary.
- */
-export function getAsyncBoundary<T = any>(): AsyncBoundary<T> | undefined {
-  return getOwnerContext<AsyncBoundary>("boundary");
+const ASYNC_BOUNDARY = Symbol("vynn.async-boundary");
+
+export function getAsyncBoundary<T = unknown>(): AsyncBoundary<T> | undefined {
+  return getOwnerContext<AsyncBoundary<T>>(ASYNC_BOUNDARY);
 }
 
 /**
- * Enters an async rendering boundary.
- *
- * The boundary becomes active for async operations evaluated within
- * the current rendering scope.
- *
- * @param boundary The async boundary to make active.
+ * Permanently sets the boundary on the current owner.
+ * Use for a component-level boundary such as client-side Await.
  */
 export function enterAsyncBoundary<T>(boundary: AsyncBoundary<T>): void {
-  return setOwnerContext<AsyncBoundary<T>>("boundary", boundary);
+  setOwnerContext(ASYNC_BOUNDARY, boundary);
 }
 
-export class NotReadyError extends Error {
-  constructor(public readonly promise: Promise<any>) {
-    super();
-    this.name = "NotReadyError";
+/**
+ * Temporarily overrides the boundary during synchronous evaluation.
+ * Always restores the previous boundary, even if evaluation throws.
+ */
+export function withAsyncBoundary<T, R>(
+  boundary: AsyncBoundary<T>,
+  callback: () => R,
+): R {
+  const owner = getCurrentOwner();
+
+  if (!owner) {
+    return callback();
+  }
+
+  const hadPrevious = owner.context.has(ASYNC_BOUNDARY);
+  const previous = owner.context.get(ASYNC_BOUNDARY);
+
+  owner.context.set(ASYNC_BOUNDARY, boundary);
+
+  try {
+    return callback();
+  } finally {
+    if (hadPrevious) {
+      owner.context.set(ASYNC_BOUNDARY, previous);
+    } else {
+      owner.context.delete(ASYNC_BOUNDARY);
+    }
   }
 }
 
-export class NeedsParentError extends Error {
-  constructor() {
-    super();
-    this.name = "NeedsParentError";
-  }
-}
+// export class NeedsParentError extends Error {
+//   constructor() {
+//     super();
+//     this.name = "NeedsParentError";
+//   }
+// }
 
 // export type RenderParent = ParentNode;
 

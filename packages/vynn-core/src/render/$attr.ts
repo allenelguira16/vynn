@@ -18,6 +18,34 @@ const properties = new Set([
   "indeterminate",
 ]);
 
+const booleanAttributes = new Set([
+  "allowfullscreen",
+  "async",
+  "autofocus",
+  "autoplay",
+  "checked",
+  "controls",
+  "default",
+  "defer",
+  "disabled",
+  "formnovalidate",
+  "hidden",
+  "inert",
+  "ismap",
+  "itemscope",
+  "loop",
+  "multiple",
+  "muted",
+  "nomodule",
+  "novalidate",
+  "open",
+  "playsinline",
+  "readonly",
+  "required",
+  "reversed",
+  "selected",
+]);
+
 /**
  * Sets a reactive DOM attribute or property.
  *
@@ -40,15 +68,20 @@ export function $attr<E extends HTMLElement>(
   if (getRenderMode()) {
     // $effect(() => {
     const node = element as unknown as SSR_ELEMENT;
+    const key = name.toLowerCase();
     const next = typeof value === "function" ? value() : value;
 
-    if (next === true) {
-      node.attributes[name] = "";
-    } else if (next === false) {
-      delete node.attributes[name.toLowerCase()];
-    } else if (typeof next === "number" || typeof next === "string") {
-      node.attributes[name.toLowerCase()] = escapeHtml(String(next));
+    if (next == null) {
+      delete node.attributes[key];
+    } else if (booleanAttributes.has(key)) {
+      if (next) {
+        node.attributes[key] = "";
+      } else {
+        delete node.attributes[key];
+      }
     } else {
+      // Keep the raw value here. The serializer escapes it exactly once.
+      node.attributes[key] = String(next);
     }
     // });
     return;

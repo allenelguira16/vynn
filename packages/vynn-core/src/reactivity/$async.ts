@@ -1,69 +1,121 @@
-import { getAsyncBoundary, NotReadyError } from "../components/boundary";
-import { transaction } from "./transaction";
+import { getAsyncBoundary } from "../components/boundary";
 import { $state } from "./$state";
 import { $effect } from "./$effect";
+import { NotReadyError } from "./not-ready-error";
 
 export type Async<T> = {
-  /**
-   * The resolved value of the async operation.
-   */
   value: T;
 };
 
-const context = new WeakMap<object, { value: unknown }>();
+type AsyncRecord<T> =
+  | {
+      status: "pending";
+      promise: Promise<T>;
+      version: number;
+    }
+  | {
+      status: "resolved";
+      value: T;
+      version: number;
+    }
+  | {
+      status: "rejected";
+      error: unknown;
+      version: number;
+    };
 
-/**
- * Checks whether a derived value is currently pending on a promise.
- *
- * @param value The derived value to check.
- * @returns `true` when the value is backed by a pending promise.
- */
-export const isPending = (value: object): boolean => {
-  return context.get(value)?.value instanceof Promise;
-};
+const context = new WeakMap<object, () => boolean>();
 
-/**
- * Handles an async operation and integrates with Suspense.
- *
- * @example
- * const value = $async(async () => {
- *   return doSomething();
- * });
- *
- * value.value;
- *
- * @template T The result type of the async operation.
- * @param getter A function that returns a Promise.
- * @returns A reactive async value containing the resolved result.
- */
+export function isPending(value: object): boolean {
+  return context.get(value)?.() ?? false;
+}
+
 export function $async<T>(getter: () => Promise<T>): Async<T> {
-  const result = $state<T | Promise<T>>();
+  const result = $state<AsyncRecord<T> | undefined>();
+  let version = 0;
 
   $effect(() => {
-    result.value = getter();
+    const currentVersion = ++version;
+
+    let promise: Promise<T>;
+
+    try {
+      promise = Promise.resolve(getter());
+    } catch (error) {
+      result.value = {
+        status: "rejected",
+        error,
+        version: currentVersion,
+      };
+      return;
+    }
+
+    result.value = {
+      status: "pending",
+      promise,
+      version: currentVersion,
+    };
+
+    // Attach exactly one settlement handler for this operation.
+    promise.then(
+      (value) => {
+        if (currentVersion !== version) return;
+
+        result.value = {
+          status: "resolved",
+          value,
+          version: currentVersion,
+        };
+      },
+      (error: unknown) => {
+        if (currentVersion !== version) return;
+
+        result.value = {
+          status: "rejected",
+          error,
+          version: currentVersion,
+        };
+      },
+    );
   });
 
-  const derived = {
-    get value() {
-      return transaction(() => {
-        if (result.value instanceof Promise) {
-          result.value.then((v) => {
-            result.value = v;
-          });
+  const derived: Async<T> = {
+    get value(): T {
+      const record = result.value;
 
-          const boundary = getAsyncBoundary();
-          boundary?.(result.value);
-          throw new NotReadyError(result.value);
-        }
+      if (!record) {
+        throw new Error(
+          "$async was read before its operation was initialized.",
+        );
+      }
 
-        return result.value as T;
-      });
+      if (record.status === "pending") {
+        getAsyncBoundary()?.(record.promise);
+        throw new NotReadyError(record.promise);
+      }
+
+      if (record.status === "rejected") {
+        throw record.error;
+      }
+
+      return record.value;
     },
-    set value(newValue) {
-      result.value = newValue as T;
+
+    set value(value: T) {
+      // Manual assignment invalidates any older outstanding request.
+      const currentVersion = ++version;
+
+      result.value = {
+        status: "resolved",
+        value,
+        version: currentVersion,
+      };
     },
   };
 
-  context.set(derived, result);
+  context.set(derived, () => {
+    return result.value?.status === "pending";
+  });
+
   return derived;
 }

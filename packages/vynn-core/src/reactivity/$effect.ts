@@ -1,5 +1,5 @@
 import { getCurrentOwner, runWithOwner } from "../life-cycle/owner";
-import { NotReadyError } from "../components/boundary";
+import { NotReadyError } from "../reactivity/not-ready-error";
 import { transaction, scheduleEffect } from "./transaction";
 
 export type EffectFn = (() => void) & {

@@ -1,13 +1,17 @@
+import {
+  getCurrentOwner,
+  getOwnerContext,
+  setOwnerContext,
+} from "../life-cycle/owner";
+
 export type RenderMode = "sync" | "async" | "stream";
 
-let currentBoundary: RenderMode | null = null;
+const RENDER_MODE = Symbol("vynn.render-mode");
 
 export function getRenderMode(): RenderMode | null {
-  return currentBoundary;
+  return getOwnerContext<RenderMode>(RENDER_MODE) ?? null;
 }
 
-export function withRenderMode<T>(mode: RenderMode, callback: () => T): T {
-  currentBoundary = mode;
-
-  return callback();
+export function setRenderMode(mode: RenderMode): void {
+  setOwnerContext(RENDER_MODE, mode);
 }
