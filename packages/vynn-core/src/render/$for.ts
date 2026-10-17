@@ -1,5 +1,4 @@
 import { JSX } from "../types/jsx";
-import { $effect } from "../reactivity/$effect";
 import { $state, State } from "../reactivity/$state";
 import { $dyn } from "./$dyn";
 import { untrack } from "../reactivity/untrack";
@@ -16,10 +15,11 @@ export function $for<T>(
   items: () => T[],
   each: (item: T, index: State<number>) => JSX.Element,
 ): JSX.Element {
-  // if (getRenderMode()) {
-  // console.log(items().map((item, i) => each(item, { value: i })));
-  // return $dyn(() => items().map((item, i) => each(item, { value: i })));
-  // }
+  if (getRenderMode()) {
+    // console.log();
+
+    return $dyn(() => items().map((item, i) => each(item, { value: i })));
+  }
 
   // const result = $state<JSX.Element[]>([]);
   let result: JSX.Element[] = [];

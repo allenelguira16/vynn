@@ -159,7 +159,7 @@ const Dropdown = ({ number }: { number: number }) => {
 
   return (
     <>
-      <div class=" lg:w-[12.5%]">
+      <div class="lg:w-[12.5%]">
         <details class="dropdown">
           <summary class="btn w-full" onClick={handleToggle}>
             Open Dropdown {number}

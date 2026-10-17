@@ -1,9 +1,10 @@
 import type { JSX } from "../types/jsx";
 import { $cmpnt } from "../render/$cmpnt";
-import { resolveNode } from "../render/resolve-node";
-import { enterAsyncBoundary } from "./boundary";
+import { createSSRAsync, resolveNode, SSR_NODE } from "../render/resolve-node";
+import { enterAsyncBoundary, NotReadyError } from "./boundary";
 import { $state } from "../reactivity/$state";
 import { $effect } from "../reactivity/$effect";
+import { getRenderMode } from "../utils/render-mode";
 
 /**
  * Displays a fallback while the children are initially loading.
@@ -19,8 +20,52 @@ export const Await = $cmpnt(function Suspense(props: {
   fallback?: JSX.Element;
   children: JSX.Element;
 }): JSX.Element {
+  const mode = getRenderMode();
+  if (mode === "sync") {
+    return props.fallback;
+  }
+  if (mode === "async") {
+    let pending: Promise<any>[] = [];
+
+    enterAsyncBoundary((promise) => {
+      pending.push(promise);
+    });
+
+    // try {
+    const fallback = props.fallback;
+    const children = props.children;
+    // props.children;
+    // console.log(pending);
+
+    if (!pending.length) {
+      return props.children;
+    }
+
+    // console.log(pending);
+
+    return createSSRAsync(
+      () => resolveNode(() => fallback) as unknown as SSR_NODE[],
+      () => resolveNode(() => children) as unknown as SSR_NODE[],
+      pending,
+    ) as unknown as JSX.Element;
+    // } catch (error) {
+    //   if (error instanceof NotReadyError) {
+    //     // error.promise.then(() => {
+    //     //   console.log(props.children);
+    //     // });
+    //     return createSSRAsync(
+    //       () => resolveNode(() => props.fallback) as unknown as SSR_NODE[],
+    //       () => resolveNode(() => props.children) as unknown as SSR_NODE[],
+    //       [...pending, error.promise],
+    //     ) as unknown as JSX.Element;
+    //   }
+    // }
+
+    // return;
+  }
+
   let resolved = false;
-  const markerStart = document.createComment("");
+  // const markerStart = document.createComment("");
   const markerEnd = document.createComment("");
 
   const view = $state<Node[]>([]);
@@ -60,5 +105,5 @@ export const Await = $cmpnt(function Suspense(props: {
     }
   });
 
-  return [markerStart, nodes, markerEnd];
+  return [nodes, markerEnd];
 });

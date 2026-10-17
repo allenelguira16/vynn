@@ -2,6 +2,7 @@
 import { NotReadyError } from "../components/boundary";
 import { JSX } from "../jsx-runtime";
 import { untrack } from "../reactivity/untrack";
+import { escapeHtml } from "../utils/escape-html";
 import { getRenderMode } from "../utils/render-mode";
 
 export type SSR_NODE = SSR_ELEMENT | SSR_TEXT | SSR_ASYNC | SSR_COMMENT;
@@ -29,10 +30,11 @@ export type SSR_COMMENT = {
   parent: SSR_ELEMENT | null;
 };
 
-export type SSR_ASYNC = SSR_ELEMENT & {
+export type SSR_ASYNC = {
   type: "#async";
-  content: () => SSR_NODE[];
+  children: () => SSR_NODE[];
   fallback: () => SSR_NODE[];
+  promises: Promise<any>[];
 };
 
 export function createSSRNode<T extends keyof HTMLElementTagNameMap>(
@@ -102,49 +104,14 @@ export function createSSRComment(value: string): SSR_COMMENT {
 
 export function createSSRAsync(
   fallback: () => SSR_NODE[],
-  content: () => SSR_NODE[],
+  children: () => SSR_NODE[],
+  promises: Promise<any>[],
 ): SSR_ASYNC {
   const node: SSR_ASYNC = {
     type: "#async",
-    content,
     fallback,
-    children: [],
-    parent: null,
-    attributes: {},
-
-    insertBefore(child, before) {
-      if (child.parent) {
-        child.parent.removeChild(child);
-      }
-
-      child.parent = node;
-
-      if (before === null) {
-        node.children.push(child);
-        return;
-      }
-
-      const index = node.children.indexOf(before);
-
-      if (index === -1) {
-        throw new Error("The reference node is not a child of this node.");
-      }
-
-      node.children.splice(index, 0, child);
-    },
-
-    appendChild(child) {
-      node.insertBefore(child, null);
-    },
-
-    removeChild(child) {
-      const index = node.children.indexOf(child);
-
-      if (index === -1) return;
-
-      node.children.splice(index, 1);
-      child.parent = null;
-    },
+    children,
+    promises,
   };
 
   return node;
@@ -213,7 +180,7 @@ function resolveElementString(element: JSX.Element): SSR_NODE[] {
   }
 
   if (typeof element === "string" || typeof element === "number") {
-    return [createSSRText(String(element))];
+    return [createSSRText(escapeHtml(String(element)))];
   }
 
   // console.log(element);

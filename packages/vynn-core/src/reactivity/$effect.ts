@@ -59,9 +59,9 @@ export function $effect(callback: () => void | (() => void)): () => void {
             if (error instanceof NotReadyError) {
               // const boundary = getAsyncBoundary();
               // boundary?.(error.promise);
-              // error.promise.then(() => {
-              //   run();
-              // });
+              error.promise.then(() => {
+                run();
+              });
             } else {
               throw error;
             }

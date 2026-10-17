@@ -1,8 +1,9 @@
+import { enterAsyncBoundary } from "../components/boundary";
 import type { JSX } from "../jsx-runtime";
 import { onDestroy } from "../life-cycle/on-destroy";
 import { $effect } from "../reactivity/$effect";
 import { getRenderMode } from "../utils/render-mode";
-import { resolveNode } from "./resolve-node";
+import { createSSRAsync, resolveNode, SSR_NODE } from "./resolve-node";
 
 /**
  * Creates a reactive DOM range from a child expression.
@@ -13,17 +14,29 @@ import { resolveNode } from "./resolve-node";
  * @param child A function that returns the content to render reactively.
  * @returns The start marker, current child nodes, and end marker for the range.
  */
-export function $dyn(child: () => JSX.Element): JSX.Element[] {
+export function $dyn(child: () => JSX.Element): JSX.Element {
   const mode = getRenderMode();
 
   if (mode) {
+    const promises: Promise<any>[] = [];
+    enterAsyncBoundary((promise) => {
+      promises.push(promise);
+    });
     let nodes: JSX.Element[] = [];
 
     $effect(() => {
       nodes = resolveNode(child);
     });
 
-    return nodes;
+    if (!promises.length) {
+      return nodes;
+    }
+
+    return createSSRAsync(
+      () => [],
+      () => nodes as unknown as SSR_NODE[],
+      promises,
+    ) as unknown as JSX.Element;
   }
 
   // const markerStart = document.createComment("dynamic");

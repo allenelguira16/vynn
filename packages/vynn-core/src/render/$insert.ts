@@ -23,20 +23,23 @@ export function $insert<E extends HTMLElement>(
 ) {
   return withRenderBoundary(element, () => {
     if (getRenderMode()) {
-      // let oldNodes: Node[] = [];
-      const newNodes = resolveNode(
-        typeof child === "function" ? child : () => child,
-      );
+      $effect(() => {
+        // let oldNodes: Node[] = [];
+        const newNodes = resolveNode(
+          typeof child === "function" ? child : () => child,
+        );
+        // console.log(newNodes);
 
-      // for (const node of [oldNodes].flat()) {
-      //   element.removeChild(node);
-      // }
+        // for (const node of [oldNodes].flat()) {
+        //   element.removeChild(node);
+        // }
 
-      for (const node of [newNodes].flat()) {
-        element.appendChild(node);
-      }
+        for (const node of [newNodes].flat()) {
+          element.appendChild(node);
+        }
 
-      // oldNodes = newNodes;
+        // oldNodes = newNodes;
+      });
       return;
     }
 

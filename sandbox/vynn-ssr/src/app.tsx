@@ -35,6 +35,7 @@ export function App(props: { url: string }) {
     <>
       {/* <Suspense fallback={<div>Page Is Loading</div>}> */}
       <Router routes={routes} url={props.url} />
+      {/* <StackedSuspense /> */}
       {/* </Suspense> */}
     </>
   );

@@ -63,9 +63,9 @@ export function $cmpnt<P>(
       }
     });
 
-    return function read() {
-      return runWithOwner(owner, () => result);
-    } as unknown as JSX.Element;
+    // return function read() {
+    return runWithOwner(owner, () => result);
+    // } as unknown as JSX.Element;
   };
 }
 
