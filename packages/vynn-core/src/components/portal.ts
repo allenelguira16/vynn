@@ -2,7 +2,7 @@ import { JSX } from "../types/jsx";
 import { onMount } from "../life-cycle/on-mount";
 import { $cmpnt, $insert } from "../render";
 import { PropsWithChildren } from "../types/props";
-import { getRenderMode } from "../utils/render-mode";
+import { getRenderMode } from "../context/render-mode";
 
 /**
  * Renders its children into a specified mount node.

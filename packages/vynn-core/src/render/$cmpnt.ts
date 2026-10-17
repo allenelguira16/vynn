@@ -3,7 +3,7 @@ import { createOwner, runWithOwner } from "../life-cycle/owner";
 import type { JSX } from "../jsx-runtime";
 
 import { untrack } from "../reactivity/untrack";
-import { getRenderMode } from "../utils/render-mode";
+import { getRenderMode } from "../context/render-mode";
 import {
   rootNodes,
   addUnmountListener,

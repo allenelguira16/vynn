@@ -3,7 +3,7 @@ import { NotReadyError } from "../components/boundary";
 import { JSX } from "../jsx-runtime";
 import { untrack } from "../reactivity/untrack";
 import { escapeHtml } from "../utils/escape-html";
-import { getRenderMode } from "../utils/render-mode";
+import { getRenderMode } from "../context/render-mode";
 
 export type SSR_NODE = SSR_ELEMENT | SSR_TEXT | SSR_ASYNC | SSR_COMMENT;
 

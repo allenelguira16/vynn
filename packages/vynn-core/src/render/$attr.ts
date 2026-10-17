@@ -1,6 +1,6 @@
 import { $effect } from "../reactivity/$effect";
 import { escapeHtml } from "../utils/escape-html";
-import { getRenderMode } from "../utils/render-mode";
+import { getRenderMode } from "../context/render-mode";
 import { SSR_ELEMENT } from "./resolve-node";
 
 type AttributeValue = string | number | boolean | null | undefined;
@@ -38,20 +38,19 @@ export function $attr<E extends HTMLElement>(
   value: AttributeValue | (() => AttributeValue),
 ): void {
   if (getRenderMode()) {
-    $effect(() => {
-      const node = element as unknown as SSR_ELEMENT;
-      const next = typeof value === "function" ? value() : value;
+    // $effect(() => {
+    const node = element as unknown as SSR_ELEMENT;
+    const next = typeof value === "function" ? value() : value;
 
-      if (next === true) {
-        node.attributes[name] = "";
-      } else if (next === false) {
-        delete node.attributes[name.toLowerCase()];
-      } else if (typeof next === "number" || typeof next === "string") {
-        node.attributes[name.toLowerCase()] = escapeHtml(String(next));
-      } else {
-        console.log(node, next);
-      }
-    });
+    if (next === true) {
+      node.attributes[name] = "";
+    } else if (next === false) {
+      delete node.attributes[name.toLowerCase()];
+    } else if (typeof next === "number" || typeof next === "string") {
+      node.attributes[name.toLowerCase()] = escapeHtml(String(next));
+    } else {
+    }
+    // });
     return;
   }
 

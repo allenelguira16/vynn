@@ -4,7 +4,7 @@ import { createSSRAsync, resolveNode, SSR_NODE } from "../render/resolve-node";
 import { enterAsyncBoundary, NotReadyError } from "./boundary";
 import { $state } from "../reactivity/$state";
 import { $effect } from "../reactivity/$effect";
-import { getRenderMode } from "../utils/render-mode";
+import { getRenderMode } from "../context/render-mode";
 
 /**
  * Displays a fallback while the children are initially loading.
@@ -31,23 +31,43 @@ export const Await = $cmpnt(function Suspense(props: {
       pending.push(promise);
     });
 
-    // try {
-    const fallback = props.fallback;
-    const children = props.children;
-    // props.children;
-    // console.log(pending);
+    try {
+      const fallback = props.fallback;
+      const children = props.children;
 
-    if (!pending.length) {
-      return props.children;
+      // return children;
+      // console.log(pending);
+      return children;
+    } catch (error) {
+      if (!(error instanceof NotReadyError)) {
+        throw error;
+      }
+
+      return createSSRAsync(
+        () => resolveNode(() => props.fallback) as unknown as SSR_NODE[],
+        () => resolveNode(() => props.children) as unknown as SSR_NODE[],
+        pending,
+      ) as unknown as JSX.Element;
     }
 
-    // console.log(pending);
+    // try {
+    //   const fallback = props.fallback;
+    //   const children = props.children;
+    //   // props.children;
+    //   // console.log(pending);
 
-    return createSSRAsync(
-      () => resolveNode(() => fallback) as unknown as SSR_NODE[],
-      () => resolveNode(() => children) as unknown as SSR_NODE[],
-      pending,
-    ) as unknown as JSX.Element;
+    //   if (!pending.length) {
+    //     return props.children;
+    //   }
+
+    //   // console.log(pending);
+
+    //   // console.log(children);
+    //   return createSSRAsync(
+    //     () => resolveNode(() => fallback) as unknown as SSR_NODE[],
+    //     () => resolveNode(() => children) as unknown as SSR_NODE[],
+    //     pending,
+    //   ) as unknown as JSX.Element;
     // } catch (error) {
     //   if (error instanceof NotReadyError) {
     //     // error.promise.then(() => {

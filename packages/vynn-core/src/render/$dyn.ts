@@ -2,7 +2,7 @@ import { enterAsyncBoundary } from "../components/boundary";
 import type { JSX } from "../jsx-runtime";
 import { onDestroy } from "../life-cycle/on-destroy";
 import { $effect } from "../reactivity/$effect";
-import { getRenderMode } from "../utils/render-mode";
+import { getRenderMode } from "../context/render-mode";
 import { createSSRAsync, resolveNode, SSR_NODE } from "./resolve-node";
 
 /**

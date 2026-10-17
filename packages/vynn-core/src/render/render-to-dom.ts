@@ -1,4 +1,3 @@
-import { withRenderBoundary } from "../components/boundary";
 import { JSX } from "../jsx-runtime";
 import { addUnmountListener } from "./$cmpnt";
 import { resolveNode } from "./resolve-node";
@@ -26,14 +25,12 @@ export function renderToDOM(
   }
 
   if (node instanceof HTMLElement || node instanceof DocumentFragment) {
-    withRenderBoundary(node, () => {
-      const app = resolveNode(App);
-      const nodes = app.map((element) => element);
+    const app = resolveNode(App);
+    const nodes = app.map((element) => element);
 
-      node.append(...nodes);
+    node.append(...nodes);
 
-      addUnmountListener();
-    });
+    addUnmountListener();
   } else {
     throw new Error("Node must be of type Element");
   }

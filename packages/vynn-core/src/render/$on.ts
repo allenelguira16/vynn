@@ -1,6 +1,6 @@
 import { NotReadyError } from "../components/boundary";
 import { getCurrentOwner } from "../life-cycle/owner";
-import { getRenderMode } from "../utils/render-mode";
+import { getRenderMode } from "../context/render-mode";
 
 type VynnEvent<
   E extends HTMLElement,

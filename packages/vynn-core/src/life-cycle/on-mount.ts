@@ -1,4 +1,4 @@
-import { getRenderMode } from "../utils/render-mode";
+import { getRenderMode } from "../context/render-mode";
 import { getCurrentOwner } from "./owner";
 
 /**

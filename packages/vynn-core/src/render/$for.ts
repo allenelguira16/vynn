@@ -2,7 +2,7 @@ import { JSX } from "../types/jsx";
 import { $state, State } from "../reactivity/$state";
 import { $dyn } from "./$dyn";
 import { untrack } from "../reactivity/untrack";
-import { getRenderMode } from "../utils/render-mode";
+import { getRenderMode } from "../context/render-mode";
 import { $computed } from "../reactivity/$computed";
 
 type ForEntry<T> = {
@@ -16,8 +16,6 @@ export function $for<T>(
   each: (item: T, index: State<number>) => JSX.Element,
 ): JSX.Element {
   if (getRenderMode()) {
-    // console.log();
-
     return $dyn(() => items().map((item, i) => each(item, { value: i })));
   }
 

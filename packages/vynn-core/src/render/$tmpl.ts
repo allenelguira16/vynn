@@ -1,6 +1,6 @@
 // import { IS_SERVER_ENV } from "../utils/is-server-env";
 
-import { getRenderMode } from "../utils/render-mode";
+import { getRenderMode } from "../context/render-mode";
 import { createSSRNode } from "./resolve-node";
 
 /**
