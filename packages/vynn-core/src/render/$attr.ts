@@ -1,7 +1,8 @@
-import { $effect } from "../reactivity/$effect";
+import { $effect, $renderEffect } from "../reactivity/$effect";
 import { escapeHtml } from "../utils/escape-html";
 import { getRenderMode } from "../context/render-mode";
 import { SSR_ELEMENT } from "./resolve-node";
+import { NotReadyError } from "../reactivity/not-ready-error";
 
 type AttributeValue = string | number | boolean | null | undefined;
 
@@ -66,7 +67,7 @@ export function $attr<E extends HTMLElement>(
   value: AttributeValue | (() => AttributeValue),
 ): void {
   if (getRenderMode()) {
-    // $effect(() => {
+    // $renderEffect(() => {
     const node = element as unknown as SSR_ELEMENT;
     const key = name.toLowerCase();
     const next = typeof value === "function" ? value() : value;
@@ -89,7 +90,7 @@ export function $attr<E extends HTMLElement>(
 
   if (!(element instanceof HTMLElement)) return;
 
-  $effect(() => {
+  $renderEffect(() => {
     const next = typeof value === "function" ? value() : value;
 
     if (properties.has(name)) {

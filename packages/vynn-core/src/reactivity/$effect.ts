@@ -2,18 +2,21 @@ import { getCurrentOwner, runWithOwner } from "../life-cycle/owner";
 import { NotReadyError } from "../reactivity/not-ready-error";
 import { transaction, scheduleEffect } from "./transaction";
 
+export type EffectPhase = "effect" | "render";
+
 export type EffectFn = (() => void) & {
   deps?: Set<EffectFn>[];
   cleanup?: () => void;
+  phase?: EffectPhase;
+  disposed?: boolean;
+  running?: boolean;
+  rerun?: boolean;
 };
 
 export let activeEffect: EffectFn | null = null;
 
 /**
  * Sets the effect currently being evaluated.
- *
- * @param newActiveEffect The effect to make active, or `null` when no effect
- * is currently being evaluated.
  */
 export function setActiveEffect(newActiveEffect: EffectFn | null): void {
   activeEffect = newActiveEffect;
@@ -22,63 +25,112 @@ export function setActiveEffect(newActiveEffect: EffectFn | null): void {
 let lastDisposer: (() => void) | null = null;
 
 /**
- * Creates and runs a reactive effect.
- *
- * The callback runs immediately and is re-run when any reactive values it
- * accesses change. Returning a function registers it as the effect cleanup,
- * which runs before the effect re-executes or is disposed.
- *
- * Async errors represented by promises are forwarded to the nearest
- * Suspense boundary.
- *
- * @param callback The function to execute reactively. It may return a cleanup
- * function that runs before the next execution or when the effect is disposed.
- * @returns A function that disposes the effect.
+ * Creates a reactive effect with the specified execution phase.
  */
-export function $effect(callback: () => void | (() => void)): () => void {
+function createReactiveEffect(
+  callback: () => void | (() => void),
+  phase: EffectPhase,
+): () => void {
   const owner = getCurrentOwner();
 
-  const wrappedEffect: EffectFn = () => {
-    return runWithOwner(owner, () =>
-      transaction(() => {
-        removeEffect(wrappedEffect);
+  let wrappedEffect!: EffectFn;
 
-        const previousEffect = activeEffect;
+  wrappedEffect = (() => {
+    if (wrappedEffect.disposed) {
+      return;
+    }
 
-        activeEffect = wrappedEffect;
+    // Avoid recursively executing an effect that is already running.
+    // Its next execution happens after the current execution completes.
+    if (wrappedEffect.running) {
+      wrappedEffect.rerun = true;
+      return;
+    }
 
-        try {
-          const result = callback();
+    wrappedEffect.running = true;
 
-          if (typeof result === "function") {
-            wrappedEffect.cleanup = result;
-          }
-        } catch (error) {
-          if (error instanceof NotReadyError) {
-            // DO NOTHING AT ALL
-          } else {
-            throw error;
-          }
-        } finally {
-          activeEffect = previousEffect;
+    try {
+      do {
+        wrappedEffect.rerun = false;
+
+        if (wrappedEffect.disposed) {
+          break;
         }
-      }),
-    );
-  };
+
+        runWithOwner(owner, () =>
+          transaction(() => {
+            // Remove old dependencies and run the previous cleanup.
+            removeEffect(wrappedEffect);
+
+            const previousEffect = activeEffect;
+            activeEffect = wrappedEffect;
+
+            try {
+              const result = callback();
+
+              if (typeof result === "function") {
+                wrappedEffect.cleanup = result;
+              }
+            } catch (error) {
+              if (!(error instanceof NotReadyError)) {
+                throw error;
+              }
+
+              // Preserve the existing Vynn NotReadyError behavior.
+            } finally {
+              activeEffect = previousEffect;
+            }
+          }),
+        );
+      } while (wrappedEffect.rerun && !wrappedEffect.disposed);
+    } finally {
+      wrappedEffect.running = false;
+    }
+  }) as EffectFn;
 
   wrappedEffect.deps = [];
+  wrappedEffect.phase = phase;
+  wrappedEffect.disposed = false;
+  wrappedEffect.running = false;
+  wrappedEffect.rerun = false;
 
   const disposer = () => {
+    if (wrappedEffect.disposed) {
+      return;
+    }
+
+    wrappedEffect.disposed = true;
     removeEffect(wrappedEffect);
   };
 
   lastDisposer = disposer;
 
+  // Both APIs preserve Vynn's existing immediate initial execution.
   wrappedEffect();
 
   owner?.cleanups.push(disposer);
 
   return disposer;
+}
+
+/**
+ * Creates an application-level effect.
+ *
+ * Initial execution is immediate. Subsequent executions are scheduled
+ * through Vynn's normal effect queue.
+ */
+export function $effect(callback: () => void | (() => void)): () => void {
+  return createReactiveEffect(callback, "effect");
+}
+
+/**
+ * Creates a synchronous render-phase effect.
+ *
+ * Initial execution is immediate. Subsequent executions happen
+ * synchronously when the surrounding transaction commits.
+ */
+export function $renderEffect(callback: () => void | (() => void)): () => void {
+  return createReactiveEffect(callback, "render");
 }
 
 /**
@@ -92,9 +144,7 @@ export function stopEffect(): void {
 }
 
 /**
- * Removes an effect from all of its dependencies and runs its cleanup.
- *
- * @param effect The effect to remove.
+ * Removes an effect from its dependencies and runs its cleanup.
  */
 export function removeEffect(effect: EffectFn): void {
   if (effect.deps) {
@@ -106,8 +156,10 @@ export function removeEffect(effect: EffectFn): void {
   }
 
   if (effect.cleanup) {
-    effect.cleanup();
+    const cleanup = effect.cleanup;
     effect.cleanup = undefined;
+
+    cleanup();
   }
 }
 

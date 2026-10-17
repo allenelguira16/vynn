@@ -1,7 +1,8 @@
 import { JSX } from "../jsx-runtime";
-import { escapeHtml } from "../utils/escape-html";
 import { getRenderMode } from "../context/render-mode";
 import { getCurrentOwner, runWithOwner } from "../life-cycle/owner";
+import { withAsyncBoundary } from "../components/boundary";
+import { NotReadyError } from "../reactivity/not-ready-error";
 
 export type SSR_NODE = SSR_ELEMENT | SSR_TEXT | SSR_ASYNC | SSR_COMMENT;
 
@@ -11,9 +12,9 @@ export type SSR_ELEMENT = {
   parent: SSR_ELEMENT | null;
   attributes: Record<string, string>;
 
-  insertBefore(node: SSR_ELEMENT, before: SSR_ELEMENT | null): void;
-  appendChild(node: SSR_ELEMENT): void;
-  removeChild(node: SSR_ELEMENT): void;
+  insertBefore(node: SSR_NODE, before: SSR_NODE | null): void;
+  appendChild(node: SSR_NODE): void;
+  removeChild(node: SSR_NODE): void;
 };
 
 export type SSR_TEXT = {
@@ -32,7 +33,8 @@ export type SSR_ASYNC = {
   type: "#async";
   children: () => SSR_NODE[];
   fallback: () => SSR_NODE[];
-  promises: Promise<any>[];
+  promises: Promise<unknown>[];
+  parent: SSR_ELEMENT | null;
 };
 
 export function createSSRNode<T extends keyof HTMLElementTagNameMap>(
@@ -45,14 +47,15 @@ export function createSSRNode<T extends keyof HTMLElementTagNameMap>(
     attributes: {},
 
     insertBefore(child, before) {
+      if (child === before) return;
+
       if (child.parent) {
         child.parent.removeChild(child);
       }
 
-      child.parent = node;
-
       if (before === null) {
         node.children.push(child);
+        child.parent = node;
         return;
       }
 
@@ -63,6 +66,7 @@ export function createSSRNode<T extends keyof HTMLElementTagNameMap>(
       }
 
       node.children.splice(index, 0, child);
+      child.parent = node;
     },
 
     appendChild(child) {
@@ -72,9 +76,7 @@ export function createSSRNode<T extends keyof HTMLElementTagNameMap>(
     removeChild(child) {
       const index = node.children.indexOf(child);
 
-      if (index === -1) {
-        return;
-      }
+      if (index === -1) return;
 
       node.children.splice(index, 1);
       child.parent = null;
@@ -109,6 +111,7 @@ export function createSSRAsync(
 
   return {
     type: "#async",
+    parent: null,
     fallback: () => runWithOwner(owner, fallback),
     children: () => runWithOwner(owner, children),
     promises,
@@ -116,29 +119,53 @@ export function createSSRAsync(
 }
 
 /**
- * Resolves a JSX value into an array of DOM nodes.
+ * Resolves an SSR child expression and collects pending promises.
  *
- * Empty JSX values are represented by an empty text node, while strings,
- * numbers, DOM nodes, and nested arrays are normalized into a flat node list.
- *
- * @param child A function that returns the JSX value to resolve.
- * @returns The resolved DOM nodes.
+ * If the expression suspends, returns a deferred SSR node that retries
+ * the expression after the collected promises settle.
+ */
+export function resolveSSRChild(child: () => JSX.Element): SSR_NODE[] {
+  const promises: Promise<unknown>[] = [];
+
+  const register = (promise: Promise<unknown>) => {
+    if (!promises.includes(promise)) {
+      promises.push(promise);
+    }
+  };
+
+  let nodes: SSR_NODE[] = [];
+
+  try {
+    nodes = withAsyncBoundary(
+      register,
+      () => resolveNode(child) as unknown as SSR_NODE[],
+    );
+  } catch (error) {
+    if (!(error instanceof NotReadyError)) {
+      throw error;
+    }
+
+    register(error.promise);
+  }
+
+  if (promises.length === 0) {
+    return nodes;
+  }
+
+  return [
+    createSSRAsync(
+      () => [],
+      () => resolveSSRChild(child),
+      promises,
+    ),
+  ];
+}
+
+/**
+ * Resolves JSX into DOM nodes on the client or SSR nodes on the server.
+ * The Node[] return type is retained for compatibility with existing callers.
  */
 export function resolveNode(child: () => JSX.Element): Node[] {
-  // if (getRenderMode() === "async") {
-  //   try {
-  //     return resolveElementString(child()) as unknown as Node[];
-  //   } catch (error) {
-  //     if (!(error instanceof NotReadyError)) throw error;
-
-  //     // console.log();
-  //     return error.promise.then(() => {
-  //       console.log(child());
-  //       return resolveElementString(child());
-  //     }) as unknown as Node[];
-  //   }
-  // }
-
   if (getRenderMode()) {
     return resolveElementString(child()) as unknown as Node[];
   }
@@ -146,12 +173,6 @@ export function resolveNode(child: () => JSX.Element): Node[] {
   return resolveElement(child());
 }
 
-/**
- * Recursively resolves a JSX value into DOM nodes.
- *
- * @param element The JSX value to resolve.
- * @returns The DOM nodes represented by the JSX value.
- */
 function resolveElement(element: JSX.Element): Node[] {
   if (element === null || element === undefined || element === false) {
     return [document.createTextNode("")];
@@ -165,7 +186,7 @@ function resolveElement(element: JSX.Element): Node[] {
     return [element];
   }
 
-  if (element instanceof Function) {
+  if (typeof element === "function") {
     return resolveElement((element as unknown as () => JSX.Element)());
   }
 
@@ -181,13 +202,13 @@ function resolveElementString(element: JSX.Element): SSR_NODE[] {
     return [createSSRText(String(element))];
   }
 
-  // console.log(element);
-  if (!Array.isArray(element)) {
-    return [element as unknown as SSR_ELEMENT];
+  // Resolve functions before treating other non-array values as SSR elements.
+  if (typeof element === "function") {
+    return resolveElementString((element as unknown as () => JSX.Element)());
   }
 
-  if (element instanceof Function) {
-    return resolveElementString((element as unknown as () => JSX.Element)());
+  if (!Array.isArray(element)) {
+    return [element as unknown as SSR_ELEMENT];
   }
 
   return element.flatMap(resolveElementString);

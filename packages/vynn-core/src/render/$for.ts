@@ -120,12 +120,7 @@ export function $for<T>(
     return result;
   });
 
-  // $effect(() => {
-  //   console.log(value.value);
-  // });
-
   return $dyn(() => value.value);
-  // return result.value;
 }
 
 export function isEqual(a: unknown, b: unknown): boolean {

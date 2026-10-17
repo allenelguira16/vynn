@@ -1,58 +1,44 @@
-import { $effect } from "../reactivity/$effect";
-import { JSX } from "../jsx-runtime";
-import { resolveNode } from "./resolve-node";
+import { $renderEffect } from "../reactivity/$effect";
+import type { JSX } from "../jsx-runtime";
+import { resolveNode, resolveSSRChild } from "./resolve-node";
 import { getRenderMode } from "../context/render-mode";
-// import { withRenderBoundary } from "../components/boundary";
+import type { SSR_ELEMENT } from "./resolve-node";
 
 /**
- * Inserts reactive content into a DOM node.
+ * Inserts reactive content into an element.
  *
- * When `child` is a function, it is evaluated reactively and the inserted
- * nodes are updated whenever its dependencies change. Existing nodes are
- * reused when possible, while added or removed nodes are synchronized with
- * the new result.
+ * On the server, children are resolved directly and deferred async nodes
+ * are preserved in the SSR tree.
  *
- * @param element The DOM node that will contain the inserted content.
- * @param child The content to insert, or a function that produces the content reactively.
- * @param before The node to insert the content before, or `null` to append it.
+ * On the client, children are synchronized reactively.
  */
 export function $insert<E extends HTMLElement>(
   element: E,
   child: (() => JSX.Element) | JSX.Element,
   before: Node | null = null,
-) {
+): void | (() => void) {
   if (getRenderMode()) {
-    let oldNodes: Node[] = [];
+    const parent = element as unknown as SSR_ELEMENT;
 
-    $effect(() => {
-      const newNodes = resolveNode(
-        typeof child === "function" ? child : () => child,
-      );
-      // console.log(newNodes);
+    const renderChild = typeof child === "function" ? child : () => child;
 
-      for (const node of [oldNodes].flat()) {
-        element.removeChild(node);
-      }
+    const nodes = resolveSSRChild(renderChild);
+    const reference = before as unknown as SSR_ELEMENT | null;
 
-      // console.log(newNodes);
-      for (const node of [newNodes].flat()) {
-        element.appendChild(node);
-      }
+    for (const node of nodes) {
+      parent.insertBefore(node, reference);
+    }
 
-      oldNodes = newNodes;
-    });
     return;
   }
 
-  // parents.push(element);
   let oldNodes: Node[] = [];
 
-  return $effect(() => {
+  return $renderEffect(() => {
     const newNodes = resolveNode(
       typeof child === "function" ? child : () => child,
     );
 
-    // oldNodes = newNodes;
     const length = Math.min(oldNodes.length, newNodes.length);
 
     // Replace existing nodes.

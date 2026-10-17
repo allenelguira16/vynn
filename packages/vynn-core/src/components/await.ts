@@ -1,12 +1,20 @@
 import type { JSX } from "../types/jsx";
-import { $cmpnt } from "../render/$cmpnt";
+import { $cmpnt, markParked, unmarkParked } from "../render/$cmpnt";
 import { createSSRAsync, resolveNode, SSR_NODE } from "../render/resolve-node";
 import { enterAsyncBoundary } from "./boundary";
 import { $state } from "../reactivity/$state";
-import { $effect } from "../reactivity/$effect";
+import { $renderEffect } from "../reactivity/$effect";
 import { getRenderMode } from "../context/render-mode";
-import { getCurrentOwner, runWithOwner } from "../life-cycle/owner";
 import { NotReadyError } from "../reactivity/not-ready-error";
+
+type RenderRange = {
+  start: Comment;
+  end: Comment;
+  nodes: Node[];
+  parkingLot: DocumentFragment;
+};
+
+type PendingPromise = Promise<unknown>;
 
 /**
  * Displays a fallback while the children are initially loading.
@@ -46,72 +54,59 @@ export const Await = $cmpnt(function Suspense(props: {
         pending,
       ) as unknown as JSX.Element;
     }
-
-    // try {
-    //   const fallback = props.fallback;
-    //   const children = props.children;
-    //   // props.children;
-    //   // console.log(pending);
-
-    //   if (!pending.length) {
-    //     return props.children;
-    //   }
-
-    //   // console.log(pending);
-
-    //   // console.log(children);
-    //   return createSSRAsync(
-    //     () => resolveNode(() => fallback) as unknown as SSR_NODE[],
-    //     () => resolveNode(() => children) as unknown as SSR_NODE[],
-    //     pending,
-    //   ) as unknown as JSX.Element;
-    // } catch (error) {
-    //   if (error instanceof NotReadyError) {
-    //     // error.promise.then(() => {
-    //     //   console.log(props.children);
-    //     // });
-    //     return createSSRAsync(
-    //       () => resolveNode(() => props.fallback) as unknown as SSR_NODE[],
-    //       () => resolveNode(() => props.children) as unknown as SSR_NODE[],
-    //       [...pending, error.promise],
-    //     ) as unknown as JSX.Element;
-    //   }
-    // }
-
-    // return;
   }
 
   let resolved = false;
-  // const markerStart = document.createComment("");
-  const markerEnd = document.createComment("");
+  let hasPromise = false;
 
+  const markerEnd = document.createComment("");
   const view = $state<Node[]>([]);
 
   let nodes: Node[] = [];
-  let hasPromise = false;
+  const pending = new Set<Promise<unknown>>();
+
+  const fallback = resolveNode(() => props.fallback);
+  let children: Node[] = [];
 
   enterAsyncBoundary((promise) => {
     hasPromise = true;
+
+    if (pending.has(promise)) {
+      return;
+    }
+
+    pending.add(promise);
+
     if (!resolved) {
       view.value = fallback;
     }
 
-    promise.then(() => {
-      view.value = children;
-      resolved = true;
-    });
+    promise.then(
+      () => {
+        pending.delete(promise);
+
+        if (pending.size === 0) {
+          resolved = true;
+          view.value = children;
+        }
+      },
+      (error) => {
+        pending.delete(promise);
+        console.error("Await child promise rejected:", error);
+      },
+    );
   });
 
-  const fallback = resolveNode(() => props.fallback);
-  const children = resolveNode(() => props.children);
+  children = resolveNode(() => props.children);
 
+  // Keep the reactive view active even when the async work
+  // is discovered later by a nested effect.
   if (!hasPromise) {
-    return children;
+    view.value = children;
   }
 
-  $effect(() => {
+  $renderEffect(() => {
     for (const node of nodes) {
-      // markerEnd.parentNode?.removeChild(node);
       (node as ChildNode).remove();
     }
 

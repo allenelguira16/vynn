@@ -8,28 +8,25 @@ export type Transaction = {
 let currentTransaction: Transaction | undefined;
 
 const effectQueue = new Set<EffectFn>();
+const renderEffectQueue = new Set<EffectFn>();
+
 let isFlushScheduled = false;
 let isFlushing = false;
+let isFlushingRenderEffects = false;
 
 /**
- * Returns the transaction currently being executed.
- *
- * @returns The current transaction, or `undefined` when no transaction is active.
+ * Returns the active transaction.
  */
 export function getCurrentTransaction(): Transaction | undefined {
   return currentTransaction;
 }
 
 /**
- * Runs a callback within a reactive transaction.
+ * Runs a callback inside a reactive transaction.
  *
- * Effects scheduled during the transaction are collected and committed when
- * the outermost transaction completes. Nested transactions merge their
- * scheduled effects into their parent transaction.
- *
- * @template T The return type of the callback.
- * @param callback The function to execute within the transaction.
- * @returns The value returned by the callback.
+ * Nested transactions merge their scheduled effects into their parent.
+ * The outermost transaction commits render effects synchronously and
+ * queues ordinary effects for asynchronous flushing.
  */
 export function transaction<T>(callback: () => T): T {
   const parent = currentTransaction;
@@ -47,27 +44,33 @@ export function transaction<T>(callback: () => T): T {
     currentTransaction = parent;
 
     if (parent) {
-      // Nested transaction:
-      // merge its effects into the parent.
       for (const effect of tx.effects) {
         parent.effects.add(effect);
       }
     } else {
-      // Outermost transaction.
       commitTransaction(tx);
     }
   }
 }
 
 /**
- * Schedules an effect within the current transaction or queues it for
- * asynchronous flushing when no transaction is active.
+ * Schedules an effect in the current transaction.
  *
- * @param effect The effect to schedule.
+ * Render effects run synchronously when the transaction commits.
+ * Ordinary effects run through the asynchronous effect queue.
  */
 export function scheduleEffect(effect: EffectFn): void {
+  if (effect.disposed) {
+    return;
+  }
+
   if (currentTransaction) {
     currentTransaction.effects.add(effect);
+    return;
+  }
+
+  if (effect.phase === "render") {
+    queueRenderEffects([effect]);
     return;
   }
 
@@ -75,24 +78,70 @@ export function scheduleEffect(effect: EffectFn): void {
 }
 
 /**
- * Commits the effects collected by a completed transaction.
- *
- * @param tx The transaction whose effects should be queued.
+ * Commits a completed transaction.
  */
 function commitTransaction(tx: Transaction): void {
+  const renderEffects: EffectFn[] = [];
+
   for (const effect of tx.effects) {
-    queueEffect(effect);
+    if (effect.disposed) {
+      continue;
+    }
+
+    if (effect.phase === "render") {
+      renderEffects.push(effect);
+    } else {
+      queueEffect(effect);
+    }
+  }
+
+  // Run every render effect synchronously before returning.
+  queueRenderEffects(renderEffects);
+}
+
+/**
+ * Adds render effects to a deduplicated queue and flushes them
+ * synchronously. Nested invalidations are processed in subsequent
+ * passes instead of recursively flushing the queue.
+ */
+function queueRenderEffects(effects: Iterable<EffectFn>): void {
+  for (const effect of effects) {
+    if (!effect.disposed) {
+      renderEffectQueue.add(effect);
+    }
+  }
+
+  if (isFlushingRenderEffects || renderEffectQueue.size === 0) {
+    return;
+  }
+
+  isFlushingRenderEffects = true;
+
+  try {
+    while (renderEffectQueue.size > 0) {
+      const pendingEffects = [...renderEffectQueue];
+
+      renderEffectQueue.clear();
+
+      for (const effect of pendingEffects) {
+        if (!effect.disposed) {
+          effect();
+        }
+      }
+    }
+  } finally {
+    isFlushingRenderEffects = false;
   }
 }
 
 /**
- * Adds an effect to the queue and schedules a microtask to flush it.
- *
- * Effects are not flushed while another flush is already in progress.
- *
- * @param effect The effect to queue.
+ * Adds an ordinary effect to the asynchronous queue.
  */
 function queueEffect(effect: EffectFn): void {
+  if (effect.disposed) {
+    return;
+  }
+
   effectQueue.add(effect);
 
   if (isFlushScheduled || isFlushing) {
@@ -104,24 +153,22 @@ function queueEffect(effect: EffectFn): void {
 }
 
 /**
- * Flushes the current effect queue.
- *
- * The queue is snapshotted before execution so effects scheduled while
- * flushing are deferred to a subsequent microtask.
+ * Flushes ordinary effects. Effects scheduled during this flush
+ * are processed in a subsequent microtask.
  */
 function flushEffects(): void {
   isFlushScheduled = false;
   isFlushing = true;
 
   try {
-    // Snapshot the current queue.
-    // Anything scheduled while flushing gets another microtask.
     const effects = [...effectQueue];
 
     effectQueue.clear();
 
     for (const effect of effects) {
-      effect();
+      if (!effect.disposed) {
+        effect();
+      }
     }
   } finally {
     isFlushing = false;

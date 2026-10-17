@@ -14,12 +14,6 @@ const targetToPropertyEffectsMap: WeakMap<
 
 /**
  * Tracks a reactive property access for the currently active effect.
- *
- * The effect is associated with the target property so it can be scheduled
- * when that property changes.
- *
- * @param target The reactive object whose property was accessed.
- * @param key The property key that was accessed.
  */
 export function track(target: object, key: PropertyKey): void {
   const effect = activeEffect;
@@ -58,8 +52,8 @@ export function track(target: object, key: PropertyKey): void {
 /**
  * Schedules every effect that depends on a reactive property.
  *
- * @param target The reactive object whose property changed.
- * @param key The property key that changed.
+ * A snapshot is necessary because a synchronous render effect can
+ * remove and re-register itself while this dependency set is being read.
  */
 export function trigger(target: object, key: PropertyKey): void {
   const propertyEffectsMap = targetToPropertyEffectsMap.get(target);
@@ -74,7 +68,7 @@ export function trigger(target: object, key: PropertyKey): void {
     return;
   }
 
-  for (const effect of effects) {
+  for (const effect of [...effects]) {
     scheduleEffect(effect);
   }
 }
