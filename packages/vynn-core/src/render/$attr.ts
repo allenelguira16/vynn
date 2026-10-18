@@ -67,7 +67,6 @@ export function $attr<E extends HTMLElement>(
   value: AttributeValue | (() => AttributeValue),
 ): void {
   if (getRenderMode()) {
-    // $renderEffect(() => {
     const node = element as unknown as SSR_ELEMENT;
     const key = name.toLowerCase();
     const next = typeof value === "function" ? value() : value;
@@ -84,7 +83,6 @@ export function $attr<E extends HTMLElement>(
       // Keep the raw value here. The serializer escapes it exactly once.
       node.attributes[key] = String(next);
     }
-    // });
     return;
   }
 

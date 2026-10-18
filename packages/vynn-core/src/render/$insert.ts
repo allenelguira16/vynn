@@ -18,15 +18,12 @@ export function $insert<E extends HTMLElement>(
   before: Node | null = null,
 ): void | (() => void) {
   if (getRenderMode()) {
-    const parent = element as unknown as SSR_ELEMENT;
+    const newNodes = resolveSSRChild(
+      typeof child === "function" ? child : () => child,
+    );
 
-    const renderChild = typeof child === "function" ? child : () => child;
-
-    const nodes = resolveSSRChild(renderChild);
-    const reference = before as unknown as SSR_ELEMENT | null;
-
-    for (const node of nodes) {
-      parent.insertBefore(node, reference);
+    for (const node of [newNodes].flat()) {
+      (element as unknown as SSR_ELEMENT).appendChild(node);
     }
 
     return;

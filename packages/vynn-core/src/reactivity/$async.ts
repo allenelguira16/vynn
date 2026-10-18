@@ -2,7 +2,6 @@ import { getAsyncBoundary } from "../components/boundary";
 import { $state } from "./$state";
 import { $effect } from "./$effect";
 import { NotReadyError } from "./not-ready-error";
-import { getRenderMode } from "../context/render-mode";
 
 export type Async<T> = {
   value: T;
@@ -28,8 +27,6 @@ type AsyncRecord<T> =
 const context = new WeakMap<object, () => boolean>();
 
 export function isPending(value: object): boolean {
-  if (getRenderMode()) return false; // Since we already resolve the promise, always assume it is resolved
-
   return context.get(value)?.() ?? false;
 }
 
@@ -93,7 +90,9 @@ export function $async<T>(getter: () => Promise<T>): Async<T> {
       }
 
       if (record.status === "pending") {
-        getAsyncBoundary()?.(record.promise);
+        const boundary = getAsyncBoundary();
+
+        if (boundary) boundary(record.promise);
         throw new NotReadyError(record.promise);
       }
 

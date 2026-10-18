@@ -135,19 +135,15 @@ export const PokeDexAwait = () => {
                     <div class="flex gap-4 justify-center">
                       <button
                         class="btn"
-                        onClick={() => {
-                          changeUrl(pokeDex.value.previous);
-                        }}
+                        onClick={() => changeUrl(pokeDex.value.previous)}
                         disabled={isPending(pokeDex) || !pokeDex.value.previous}
                       >
                         Previous
                       </button>
                       <button
                         class="btn"
-                        onClick={() => {
-                          changeUrl(pokeDex.value.next);
-                        }}
-                        disabled={isPending(pokeDex) || !pokeDex.value.previous}
+                        onClick={() => changeUrl(pokeDex.value.next)}
+                        disabled={isPending(pokeDex) || !pokeDex.value.next}
                       >
                         Next
                       </button>
