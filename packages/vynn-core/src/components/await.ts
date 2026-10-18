@@ -39,7 +39,7 @@ export const Await = $cmpnt(function Suspense(props: {
   if (mode === "sync") {
     return props.fallback;
   }
-  if (mode === "async" || mode === "stream") {
+  if (mode === "async") {
     let pending: Promise<any>[] = [];
 
     enterAsyncBoundary((promise) => {
@@ -57,6 +57,53 @@ export const Await = $cmpnt(function Suspense(props: {
         () => resolveNode(() => props.fallback) as unknown as SSR_NODE[],
         () => resolveNode(() => props.children) as unknown as SSR_NODE[],
         pending,
+      ) as unknown as JSX.Element;
+    }
+  }
+  if (mode === "stream") {
+    const pending: Promise<unknown>[] = [];
+
+    enterAsyncBoundary((promise) => {
+      if (!pending.includes(promise)) {
+        pending.push(promise);
+      }
+    });
+
+    const fallback = () =>
+      resolveNode(() => props.fallback) as unknown as SSR_NODE[];
+
+    try {
+      // Evaluate the children once.
+      const children = props.children;
+
+      // No async work was registered, so return normally.
+      if (pending.length === 0) {
+        return children;
+      }
+
+      // Preserve the SSR nodes and their component-owned state.
+      const cachedChildren = resolveNode(
+        () => children,
+      ) as unknown as SSR_NODE[];
+
+      return createSSRAsync(fallback, () => cachedChildren, [
+        ...pending,
+      ]) as unknown as JSX.Element;
+    } catch (error) {
+      if (!(error instanceof NotReadyError)) {
+        throw error;
+      }
+
+      if (!pending.includes(error.promise)) {
+        pending.push(error.promise);
+      }
+
+      // Retain the existing retry behavior for expressions that
+      // suspend before producing a complete child tree.
+      return createSSRAsync(
+        fallback,
+        () => resolveNode(() => props.children) as unknown as SSR_NODE[],
+        [...pending],
       ) as unknown as JSX.Element;
     }
   }

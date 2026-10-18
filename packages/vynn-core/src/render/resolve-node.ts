@@ -129,17 +129,16 @@ export function createSSRAsync(
  * the expression after the collected promises settle.
  */
 export function resolveSSRChild(child: () => JSX.Element): SSR_NODE[] {
-  // COMMENTED THIS OUT SINCE IT CAUSES PROBLEMS FOR NESTED AWAIT
-  // if (getRenderMode() && isInsideAwaitBoundary()) {
-  //   return resolveNode(child) as unknown as SSR_NODE[];
-  // }
-
+  const parentBoundary = getAsyncBoundary();
   const promises: Promise<unknown>[] = [];
 
   const register = (promise: Promise<unknown>) => {
     if (!promises.includes(promise)) {
       promises.push(promise);
     }
+
+    // Let an enclosing Await know that this child is pending.
+    parentBoundary?.(promise);
   };
 
   let nodes: SSR_NODE[] = [];

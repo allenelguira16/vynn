@@ -1,4 +1,7 @@
-import { getAsyncBoundary } from "../components/boundary";
+import {
+  getAsyncBoundary,
+  isInsideAwaitBoundary,
+} from "../components/boundary";
 import { $state } from "./$state";
 import { $effect, $renderEffect } from "./$effect";
 import { NotReadyError } from "./not-ready-error";
@@ -117,7 +120,8 @@ export function $async<T>(getter: () => Promise<T>): Async<T> {
   };
 
   context.set(derived, () => {
-    derived.value; // Trigger Await boundary
+    if (isInsideAwaitBoundary()) derived.value; // Trigger Await boundary
+
     return result.value?.status === "pending";
   });
 

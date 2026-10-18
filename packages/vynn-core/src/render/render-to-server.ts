@@ -1,4 +1,9 @@
-import { createOwner, disposeOwner, runWithOwner } from "../life-cycle/owner";
+import {
+  createOwner,
+  disposeOwner,
+  getCurrentOwner,
+  runWithOwner,
+} from "../life-cycle/owner";
 import { JSX } from "../types/jsx";
 import { resolveNode, SSR_ELEMENT, SSR_NODE } from "./resolve-node";
 import { setRenderMode } from "../context/render-mode";
@@ -15,16 +20,10 @@ export function renderToServer(
 
     switch (mode) {
       case "sync": {
-        try {
-          return resolveSync(App);
-        } finally {
-          disposeOwner(owner);
-        }
+        return resolveSync(App);
       }
       case "async": {
-        return resolveAsync(App).finally(() => {
-          disposeOwner(owner);
-        });
+        return resolveAsync(App);
       }
       case "stream": {
         return resolveStream(App);
@@ -92,7 +91,12 @@ function resolveSync(App: () => JSX.Element) {
     return html;
   }
 
-  return resolve(App() as unknown as SSR_NODE[]);
+  try {
+    return resolve(resolveNode(App) as unknown as SSR_NODE[]);
+  } finally {
+    const owner = getCurrentOwner();
+    if (owner) disposeOwner(owner);
+  }
 }
 
 async function resolveAsync(App: () => JSX.Element): Promise<string> {
@@ -106,10 +110,11 @@ async function resolveAsync(App: () => JSX.Element): Promise<string> {
       } else if ("value" in node && node.type === "#text") {
         html += escapeHtml(node.value);
       } else if ("children" in node) {
+        const children = await resolve(node.children);
         html += renderNode({
           type: node.type,
           attributes: node.attributes,
-          children: await resolve(node.children),
+          children,
         });
       }
     }
@@ -117,10 +122,16 @@ async function resolveAsync(App: () => JSX.Element): Promise<string> {
     return html;
   }
 
-  return resolve(resolveNode(App) as unknown as SSR_NODE[]);
+  try {
+    return resolve(resolveNode(App) as unknown as SSR_NODE[]);
+  } finally {
+    const owner = getCurrentOwner();
+    if (owner) disposeOwner(owner);
+  }
 }
 
 function resolveStream(App: () => JSX.Element): ReadableStream<Uint8Array> {
+  const owner = getCurrentOwner();
   const encoder = new TextEncoder();
 
   let controller: ReadableStreamDefaultController<Uint8Array>;
@@ -159,6 +170,7 @@ function resolveStream(App: () => JSX.Element): ReadableStream<Uint8Array> {
     if (pending === 0 && initialSent && !closed) {
       closed = true;
       controller.close();
+      if (owner) disposeOwner(owner);
     }
   }
 
@@ -167,36 +179,67 @@ function resolveStream(App: () => JSX.Element): ReadableStream<Uint8Array> {
 <script>
 (function() {
   var id = "${id}";
-  var walker = document.createTreeWalker(
-    document,
-    NodeFilter.SHOW_COMMENT
-  );
-  var start = null;
-  var end = null;
+  var queue = window.__vynnPendingPatches ||
+    (window.__vynnPendingPatches = []);
 
-  while (walker.nextNode()) {
-    var node = walker.currentNode;
+  function applyPatch() {
+    var template = document.querySelector(
+      'template[data-vynn-patch="' + id + '"]'
+    );
 
-    if (node.data === "vynn:" + id + ":start") start = node;
-    if (node.data === "vynn:" + id + ":end") end = node;
+    if (!template) return false;
+
+    var walker = document.createTreeWalker(
+      document,
+      NodeFilter.SHOW_COMMENT
+    );
+
+    var start = null;
+    var end = null;
+
+    while (walker.nextNode()) {
+      var node = walker.currentNode;
+
+      if (node.data === "vynn:" + id + ":start") start = node;
+      if (node.data === "vynn:" + id + ":end") end = node;
+    }
+
+    // An ancestor patch may not have inserted these markers yet.
+    if (!start || !end || !end.parentNode) {
+      return false;
+    }
+
+    var parent = end.parentNode;
+    var current = start.nextSibling;
+
+    while (current && current !== end) {
+      var next = current.nextSibling;
+      current.remove();
+      current = next;
+    }
+
+    parent.insertBefore(template.content, end);
+    template.remove();
+
+    return true;
   }
 
-  var template = document.querySelector(
-    'template[data-vynn-patch="' + id + '"]'
-  );
+  queue.push(applyPatch);
 
-  if (!start || !end || !template) return;
+  // Apply patches whose markers are available. Applying a parent patch
+  // may insert markers needed by a previously queued child patch.
+  var changed = true;
 
-  var current = start.nextSibling;
+  while (changed) {
+    changed = false;
 
-  while (current && current !== end) {
-    var next = current.nextSibling;
-    current.remove();
-    current = next;
+    for (var i = queue.length - 1; i >= 0; i--) {
+      if (queue[i]()) {
+        queue.splice(i, 1);
+        changed = true;
+      }
+    }
   }
-
-  end.parentNode.insertBefore(template.content, end);
-  template.remove();
 })();
 </script>`;
   }
@@ -212,7 +255,6 @@ function resolveStream(App: () => JSX.Element): ReadableStream<Uint8Array> {
 
         // Render the fallback immediately instead of blocking on promises.
         html += await resolve(node.fallback());
-        console.log(html);
 
         html += `<!--vynn:${id}:end-->`;
 
@@ -226,6 +268,8 @@ function resolveStream(App: () => JSX.Element): ReadableStream<Uint8Array> {
             const children = await resolve(node.children());
 
             enqueuePatch(renderPatch(id, children));
+          } catch (error) {
+            console.error("[vynn]: Failed to resolve an SSR boundary", error);
           } finally {
             finishTask();
           }
