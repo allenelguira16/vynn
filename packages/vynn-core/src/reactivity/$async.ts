@@ -1,7 +1,8 @@
 import { getAsyncBoundary } from "../components/boundary";
 import { $state } from "./$state";
-import { $effect } from "./$effect";
+import { $effect, $renderEffect } from "./$effect";
 import { NotReadyError } from "./not-ready-error";
+import { getRenderMode } from "../context/render-mode";
 
 export type Async<T> = {
   value: T;
@@ -34,7 +35,7 @@ export function $async<T>(getter: () => Promise<T>): Async<T> {
   const result = $state<AsyncRecord<T> | undefined>();
   let version = 0;
 
-  $effect(() => {
+  $renderEffect(() => {
     const currentVersion = ++version;
 
     let promise: Promise<T>;
@@ -116,6 +117,7 @@ export function $async<T>(getter: () => Promise<T>): Async<T> {
   };
 
   context.set(derived, () => {
+    derived.value; // Trigger Await boundary
     return result.value?.status === "pending";
   });
 

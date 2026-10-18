@@ -49,37 +49,3 @@ export function withAsyncBoundary<T, R>(
     }
   }
 }
-
-// export class NeedsParentError extends Error {
-//   constructor() {
-//     super();
-//     this.name = "NeedsParentError";
-//   }
-// }
-
-// export type RenderParent = ParentNode;
-
-// export type RenderBoundary = {
-//   parent: RenderParent;
-// };
-
-// let currentBoundary: RenderBoundary | null = null;
-
-// export function getRenderBoundary(): RenderBoundary | null {
-//   return currentBoundary;
-// }
-
-// export function withRenderBoundary<T>(
-//   parent: RenderParent,
-//   callback: () => T,
-// ): T {
-//   const previous = currentBoundary;
-
-//   currentBoundary = { parent };
-
-//   try {
-//     return callback();
-//   } finally {
-//     currentBoundary = previous;
-//   }
-// }

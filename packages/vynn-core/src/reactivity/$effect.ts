@@ -1,3 +1,4 @@
+import { getAsyncBoundary } from "../components/boundary";
 import { getCurrentOwner, runWithOwner } from "../life-cycle/owner";
 import { NotReadyError } from "../reactivity/not-ready-error";
 import { transaction, scheduleEffect } from "./transaction";

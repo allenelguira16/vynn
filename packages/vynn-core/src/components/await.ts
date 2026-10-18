@@ -1,7 +1,12 @@
 import type { JSX } from "../types/jsx";
 import { $cmpnt, markParked, unmarkParked } from "../render/$cmpnt";
-import { createSSRAsync, resolveNode, SSR_NODE } from "../render/resolve-node";
-import { enterAsyncBoundary } from "./boundary";
+import {
+  createSSRAsync,
+  resolveNode,
+  resolveSSRChild,
+  SSR_NODE,
+} from "../render/resolve-node";
+import { enterAsyncBoundary, withAsyncBoundary } from "./boundary";
 import { $state } from "../reactivity/$state";
 import { $renderEffect } from "../reactivity/$effect";
 import { getRenderMode } from "../context/render-mode";
