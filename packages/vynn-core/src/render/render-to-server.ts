@@ -27,9 +27,7 @@ export function renderToServer(
         });
       }
       case "stream": {
-        console.warn(
-          "[vynn]: Stream is not yet supported and might come in the next version, please stay informed!",
-        );
+        return resolveStream(App);
       }
     }
   });
@@ -120,4 +118,162 @@ async function resolveAsync(App: () => JSX.Element): Promise<string> {
   }
 
   return resolve(resolveNode(App) as unknown as SSR_NODE[]);
+}
+
+function resolveStream(App: () => JSX.Element): ReadableStream<Uint8Array> {
+  const encoder = new TextEncoder();
+
+  let controller: ReadableStreamDefaultController<Uint8Array>;
+  let pending = 0;
+  let nextBoundaryId = 0;
+  let initialSent = false;
+  let closed = false;
+
+  const queuedPatches: string[] = [];
+
+  function enqueue(html: string) {
+    if (!closed) {
+      controller.enqueue(encoder.encode(html));
+    }
+  }
+
+  function enqueuePatch(html: string) {
+    if (!initialSent) {
+      queuedPatches.push(html);
+    } else {
+      enqueue(html);
+    }
+  }
+
+  function flushPatches() {
+    initialSent = true;
+
+    for (const patch of queuedPatches.splice(0)) {
+      enqueue(patch);
+    }
+  }
+
+  function finishTask() {
+    pending--;
+
+    if (pending === 0 && initialSent && !closed) {
+      closed = true;
+      controller.close();
+    }
+  }
+
+  function renderPatch(id: number, html: string) {
+    return `<template data-vynn-patch="${id}">${html}</template>
+<script>
+(function() {
+  var id = "${id}";
+  var walker = document.createTreeWalker(
+    document,
+    NodeFilter.SHOW_COMMENT
+  );
+  var start = null;
+  var end = null;
+
+  while (walker.nextNode()) {
+    var node = walker.currentNode;
+
+    if (node.data === "vynn:" + id + ":start") start = node;
+    if (node.data === "vynn:" + id + ":end") end = node;
+  }
+
+  var template = document.querySelector(
+    'template[data-vynn-patch="' + id + '"]'
+  );
+
+  if (!start || !end || !template) return;
+
+  var current = start.nextSibling;
+
+  while (current && current !== end) {
+    var next = current.nextSibling;
+    current.remove();
+    current = next;
+  }
+
+  end.parentNode.insertBefore(template.content, end);
+  template.remove();
+})();
+</script>`;
+  }
+
+  async function resolve(app: SSR_NODE[]): Promise<string> {
+    let html = "";
+
+    for (const node of app.flat(Infinity).filter(Boolean)) {
+      if ("fallback" in node) {
+        const id = nextBoundaryId++;
+
+        html += `<!--vynn:${id}:start-->`;
+
+        // Render the fallback immediately instead of blocking on promises.
+        html += await resolve(node.fallback());
+        console.log(html);
+
+        html += `<!--vynn:${id}:end-->`;
+
+        // Keep rendering the boundary in the background.
+        pending++;
+
+        void (async () => {
+          try {
+            await Promise.all(node.promises);
+
+            const children = await resolve(node.children());
+
+            enqueuePatch(renderPatch(id, children));
+          } finally {
+            finishTask();
+          }
+        })();
+      } else if ("value" in node && node.type === "#text") {
+        html += escapeHtml(node.value);
+      } else if ("children" in node) {
+        html += renderNode({
+          type: node.type,
+          attributes: node.attributes,
+          children: await resolve(node.children),
+        });
+      }
+    }
+
+    return html;
+  }
+
+  return new ReadableStream<Uint8Array>({
+    start(streamController) {
+      controller = streamController;
+
+      // Keep the stream alive while the initial render is in progress.
+      pending++;
+
+      void (async () => {
+        try {
+          const initialHTML = await resolve(
+            resolveNode(App) as unknown as SSR_NODE[],
+          );
+
+          enqueue(initialHTML);
+          flushPatches();
+        } catch (error) {
+          if (!closed) {
+            closed = true;
+            controller.error(error);
+          }
+
+          return;
+        } finally {
+          finishTask();
+        }
+      })();
+    },
+
+    cancel() {
+      closed = true;
+    },
+  });
 }

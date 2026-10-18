@@ -39,7 +39,7 @@ export const Await = $cmpnt(function Suspense(props: {
   if (mode === "sync") {
     return props.fallback;
   }
-  if (mode === "async") {
+  if (mode === "async" || mode === "stream") {
     let pending: Promise<any>[] = [];
 
     enterAsyncBoundary((promise) => {

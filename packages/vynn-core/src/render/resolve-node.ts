@@ -1,7 +1,11 @@
 import { JSX } from "../jsx-runtime";
 import { getRenderMode } from "../context/render-mode";
 import { getCurrentOwner, runWithOwner } from "../life-cycle/owner";
-import { withAsyncBoundary } from "../components/boundary";
+import {
+  getAsyncBoundary,
+  isInsideAwaitBoundary,
+  withAsyncBoundary,
+} from "../components/boundary";
 import { NotReadyError } from "../reactivity/not-ready-error";
 
 export type SSR_NODE = SSR_ELEMENT | SSR_TEXT | SSR_ASYNC | SSR_COMMENT;
@@ -125,6 +129,11 @@ export function createSSRAsync(
  * the expression after the collected promises settle.
  */
 export function resolveSSRChild(child: () => JSX.Element): SSR_NODE[] {
+  // COMMENTED THIS OUT SINCE IT CAUSES PROBLEMS FOR NESTED AWAIT
+  // if (getRenderMode() && isInsideAwaitBoundary()) {
+  //   return resolveNode(child) as unknown as SSR_NODE[];
+  // }
+
   const promises: Promise<unknown>[] = [];
 
   const register = (promise: Promise<unknown>) => {
