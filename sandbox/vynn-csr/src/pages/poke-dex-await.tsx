@@ -33,7 +33,7 @@ export const PokeDexAwait = () => {
     const response = await fetch(url.value);
     const json = (await response.json()) as PokeDexData;
 
-    await sleep(0);
+    await sleep(1000);
 
     return json;
   });
@@ -147,7 +147,7 @@ export const PokeDexAwait = () => {
                         onClick={() => {
                           changeUrl(pokeDex.value.next);
                         }}
-                        disabled={isPending(pokeDex) || !pokeDex.value.previous}
+                        disabled={isPending(pokeDex) || !pokeDex.value.next}
                       >
                         Next
                       </button>

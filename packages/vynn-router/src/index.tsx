@@ -1,12 +1,4 @@
-import {
-  $effect,
-  $state,
-  $store,
-  FC,
-  onDestroy,
-  PropsWithChildren,
-  untrack,
-} from "vynn";
+import { $effect, $state, $store, FC, PropsWithChildren } from "vynn";
 import { $dyn } from "vynn/render";
 
 export type Route = {

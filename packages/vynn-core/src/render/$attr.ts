@@ -1,8 +1,6 @@
-import { $effect, $renderEffect } from "../reactivity/$effect";
-import { escapeHtml } from "../utils/escape-html";
+import { $renderEffect } from "../reactivity/$effect";
 import { getRenderMode } from "../context/render-mode";
 import { SSR_ELEMENT } from "./resolve-node";
-import { NotReadyError } from "../reactivity/not-ready-error";
 
 type AttributeValue = string | number | boolean | null | undefined;
 

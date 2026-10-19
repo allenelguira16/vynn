@@ -1,4 +1,4 @@
-import { $effect, $state, $store, onDestroy, onMount } from "vynn";
+import { $effect, $state, $store } from "vynn";
 
 import { Template } from "../components/template";
 import { name } from "../utils";

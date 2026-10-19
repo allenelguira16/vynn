@@ -1,5 +1,5 @@
 import { Route, Router } from "vynn-router";
-import { lazy, Portal } from "vynn";
+import { Await, Portal } from "vynn";
 import { ButtonPageList } from "./components/button-page-list";
 import { name } from "./utils";
 
@@ -55,9 +55,7 @@ export const routes: Route[] = [
           <Portal mount={document.body}>{name.firstName}</Portal>
           <ButtonPageList />
 
-          {/* <Suspense fallback={<div>Page Is Loading</div>}> */}
-          {props.children}
-          {/* </Suspense> */}
+          <Await fallback={<div>Page Is Loading</div>}>{props.children}</Await>
         </div>
       );
     },

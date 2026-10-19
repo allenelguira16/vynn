@@ -174,74 +174,74 @@ function resolveStream(App: () => JSX.Element): ReadableStream<Uint8Array> {
     }
   }
 
-  function renderPatch(id: number, html: string) {
-    return `<template data-vynn-patch="${id}">${html}</template>
-<script>
-(function() {
-  var id = "${id}";
-  var queue = window.__vynnPendingPatches ||
-    (window.__vynnPendingPatches = []);
+  function vynnPatchRuntime() {
+    var queue = ((window as any).__vynnPendingPatches =
+      (window as any).__vynnPendingPatches || []);
 
-  function applyPatch() {
-    var template = document.querySelector(
-      'template[data-vynn-patch="' + id + '"]'
-    );
+    function applyPatch(id: number) {
+      var template = document.querySelector(
+        'template[data-vynn-patch="' + id + '"]',
+      ) as HTMLTemplateElement | null;
 
-    if (!template) return false;
+      if (!template) return false;
 
-    var walker = document.createTreeWalker(
-      document,
-      NodeFilter.SHOW_COMMENT
-    );
+      var walker = document.createTreeWalker(document, NodeFilter.SHOW_COMMENT);
 
-    var start = null;
-    var end = null;
+      var start: Comment | null = null;
+      var end: Comment | null = null;
 
-    while (walker.nextNode()) {
-      var node = walker.currentNode;
+      while (walker.nextNode()) {
+        var node = walker.currentNode as Comment;
 
-      if (node.data === "vynn:" + id + ":start") start = node;
-      if (node.data === "vynn:" + id + ":end") end = node;
-    }
-
-    // An ancestor patch may not have inserted these markers yet.
-    if (!start || !end || !end.parentNode) {
-      return false;
-    }
-
-    var parent = end.parentNode;
-    var current = start.nextSibling;
-
-    while (current && current !== end) {
-      var next = current.nextSibling;
-      current.remove();
-      current = next;
-    }
-
-    parent.insertBefore(template.content, end);
-    template.remove();
-
-    return true;
-  }
-
-  queue.push(applyPatch);
-
-  // Apply patches whose markers are available. Applying a parent patch
-  // may insert markers needed by a previously queued child patch.
-  var changed = true;
-
-  while (changed) {
-    changed = false;
-
-    for (var i = queue.length - 1; i >= 0; i--) {
-      if (queue[i]()) {
-        queue.splice(i, 1);
-        changed = true;
+        if (node.data === "vynn:" + id + ":start") start = node;
+        if (node.data === "vynn:" + id + ":end") end = node;
       }
+
+      if (!start || !end || !end.parentNode) {
+        return false;
+      }
+
+      var parent = end.parentNode;
+      var current = start.nextSibling;
+
+      while (current && current !== end) {
+        var next = current.nextSibling;
+        current.remove();
+        current = next;
+      }
+
+      parent.insertBefore(template.content, end);
+      template.remove();
+
+      return true;
     }
+
+    (window as any).__vynnApplyPatch = function (id: number) {
+      queue.push(function () {
+        return applyPatch(id);
+      });
+
+      var changed = true;
+
+      while (changed) {
+        changed = false;
+
+        for (var i = queue.length - 1; i >= 0; i--) {
+          if (queue[i]()) {
+            queue.splice(i, 1);
+            changed = true;
+          }
+        }
+      }
+    };
   }
-})();
-</script>`;
+
+  function renderPatchRuntime() {
+    return `<script>(${vynnPatchRuntime.toString()})();document.currentScript.remove();</script>`;
+  }
+
+  function renderPatch(id: number, html: string) {
+    return `<template data-vynn-patch="${id}">${html}</template><script>window.__vynnApplyPatch?.(${id});document.currentScript.remove();</script>`;
   }
 
   async function resolve(app: SSR_NODE[]): Promise<string> {
@@ -301,7 +301,7 @@ function resolveStream(App: () => JSX.Element): ReadableStream<Uint8Array> {
             resolveNode(App) as unknown as SSR_NODE[],
           );
 
-          enqueue(initialHTML);
+          enqueue(renderPatchRuntime() + initialHTML);
           flushPatches();
         } catch (error) {
           if (!closed) {

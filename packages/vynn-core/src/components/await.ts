@@ -1,25 +1,11 @@
 import type { JSX } from "../types/jsx";
-import { $cmpnt, markParked, unmarkParked } from "../render/$cmpnt";
-import {
-  createSSRAsync,
-  resolveNode,
-  resolveSSRChild,
-  SSR_NODE,
-} from "../render/resolve-node";
-import { enterAsyncBoundary, withAsyncBoundary } from "./boundary";
+import { $cmpnt } from "../render/$cmpnt";
+import { createSSRAsync, resolveNode, SSR_NODE } from "../render/resolve-node";
+import { enterAsyncBoundary } from "./boundary";
 import { $state } from "../reactivity/$state";
 import { $renderEffect } from "../reactivity/$effect";
 import { getRenderMode } from "../context/render-mode";
 import { NotReadyError } from "../reactivity/not-ready-error";
-
-type RenderRange = {
-  start: Comment;
-  end: Comment;
-  nodes: Node[];
-  parkingLot: DocumentFragment;
-};
-
-type PendingPromise = Promise<unknown>;
 
 /**
  * Displays a fallback while the children are initially loading.
@@ -37,7 +23,15 @@ export const Await = $cmpnt(function Suspense(props: {
 }): JSX.Element {
   const mode = getRenderMode();
   if (mode === "sync") {
-    return props.fallback;
+    try {
+      return props.children;
+    } catch (error) {
+      if (!(error instanceof NotReadyError)) {
+        throw error;
+      }
+
+      return props.fallback;
+    }
   }
   if (mode === "async") {
     let pending: Promise<any>[] = [];

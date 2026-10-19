@@ -1,7 +1,6 @@
 import type { JSX } from "../types/jsx";
 import { $async } from "../reactivity/$async";
 import { $cmpnt, $dyn } from "../render";
-import { $effect } from "../reactivity/$effect";
 
 type AnyComponent = (props: never) => JSX.Element;
 

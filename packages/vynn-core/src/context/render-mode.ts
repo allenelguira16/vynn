@@ -1,8 +1,4 @@
-import {
-  getCurrentOwner,
-  getOwnerContext,
-  setOwnerContext,
-} from "../life-cycle/owner";
+import { getOwnerContext, setOwnerContext } from "../life-cycle/owner";
 
 export type RenderMode = "sync" | "async" | "stream";
 

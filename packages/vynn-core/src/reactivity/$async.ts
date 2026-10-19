@@ -3,9 +3,8 @@ import {
   isInsideAwaitBoundary,
 } from "../components/boundary";
 import { $state } from "./$state";
-import { $effect, $renderEffect } from "./$effect";
+import { $renderEffect } from "./$effect";
 import { NotReadyError } from "./not-ready-error";
-import { getRenderMode } from "../context/render-mode";
 
 export type Async<T> = {
   value: T;

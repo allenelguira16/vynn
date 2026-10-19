@@ -1,4 +1,5 @@
 import { JSX } from "../jsx-runtime";
+import { createOwner, disposeOwner, runWithOwner } from "../life-cycle/owner";
 import { addUnmountListener } from "./$cmpnt";
 import { resolveNode } from "./resolve-node";
 
@@ -25,12 +26,18 @@ export function renderToDOM(
   }
 
   if (node instanceof HTMLElement || node instanceof DocumentFragment) {
-    const app = resolveNode(App);
-    const nodes = app.map((element) => element);
+    const owner = createOwner();
 
-    node.append(...nodes);
+    runWithOwner(owner, () => {
+      const app = resolveNode(App);
+      const nodes = app.map((element) => element);
 
-    addUnmountListener();
+      node.append(...nodes);
+
+      addUnmountListener();
+    });
+
+    cleanup = () => disposeOwner(owner);
   } else {
     throw new Error("Node must be of type Element");
   }

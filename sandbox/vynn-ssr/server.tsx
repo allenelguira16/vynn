@@ -60,24 +60,38 @@ app.use("*all", async (req: Request, res: Response, next) => {
 
     const [head, tail] = template.split("<!--ssr-outlet-->");
 
-    res.status(200).set({ "Content-Type": "text/html" });
-    res.write(head);
-    // res.write(
-    //   head.replace("<!--hydration-script-->", HydrateStreamScript() as string),
-    // );
+    res.status(200).set({
+      "Content-Type": "text/html; charset=utf-8",
+    });
 
-    for await (const chunk of stream) {
-      // res.write(chunk);
-      await new Promise<void>((resolve) => {
-        if (!res.write(chunk)) {
-          res.once("drain", resolve);
-        } else {
-          resolve();
+    const flush = () => {
+      (
+        res as Response & {
+          flush?: () => void;
         }
-      });
+      ).flush?.();
+    };
+
+    async function writeChunk(chunk: string | Uint8Array) {
+      const canContinue = res.write(chunk);
+
+      // Force the compression middleware to emit buffered output.
+      flush();
+
+      if (!canContinue) {
+        await new Promise<void>((resolve) => {
+          res.once("drain", resolve);
+        });
+      }
     }
 
-    res.write(tail);
+    await writeChunk(head);
+
+    for await (const chunk of stream) {
+      await writeChunk(chunk);
+    }
+
+    await writeChunk(tail);
     res.end();
   } catch (e) {
     if (e instanceof Error && vite) {

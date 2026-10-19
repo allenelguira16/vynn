@@ -1,11 +1,7 @@
 import { JSX } from "../jsx-runtime";
 import { getRenderMode } from "../context/render-mode";
 import { getCurrentOwner, runWithOwner } from "../life-cycle/owner";
-import {
-  getAsyncBoundary,
-  isInsideAwaitBoundary,
-  withAsyncBoundary,
-} from "../components/boundary";
+import { getAsyncBoundary, withAsyncBoundary } from "../components/boundary";
 import { NotReadyError } from "../reactivity/not-ready-error";
 
 export type SSR_NODE = SSR_ELEMENT | SSR_TEXT | SSR_ASYNC | SSR_COMMENT;
@@ -181,7 +177,7 @@ export function resolveNode(child: () => JSX.Element): Node[] {
   return resolveElement(child());
 }
 
-function resolveElement(element: JSX.Element): Node[] {
+export function resolveElement(element: JSX.Element): Node[] {
   if (element === null || element === undefined || element === false) {
     return [document.createTextNode("")];
   }
@@ -201,7 +197,7 @@ function resolveElement(element: JSX.Element): Node[] {
   return element.flatMap(resolveElement);
 }
 
-function resolveElementString(element: JSX.Element): SSR_NODE[] {
+export function resolveElementString(element: JSX.Element): SSR_NODE[] {
   if (element === null || element === undefined || element === false) {
     return [];
   }
