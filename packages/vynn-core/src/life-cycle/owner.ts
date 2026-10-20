@@ -13,7 +13,7 @@ let currentOwner: Owner | null = null;
 /**
  * Returns the owner currently associated with the executing code.
  *
- * @returns The current owner, or `null` when no owner is active.
+ * @returns The current owner, or null when no owner is active.
  */
 export function getCurrentOwner(): Owner | null {
   return currentOwner;
@@ -45,12 +45,12 @@ export function createOwner(parent = currentOwner): Owner {
 /**
  * Runs a function with the specified owner as the current owner.
  *
- * The previous owner is restored after the function completes, including
- * when the function throws an error.
+ * The previous owner is restored after execution, including when the
+ * function throws an error.
  *
- * @param owner The owner to make active while the function runs.
- * @param fn The function to execute with the owner active.
- * @returns The value returned by `fn`.
+ * @param owner The owner to activate.
+ * @param fn The function to execute.
+ * @returns The function's return value.
  */
 export function runWithOwner<T>(owner: Owner | null, fn: () => T): T {
   const previousOwner = currentOwner;
@@ -67,10 +67,7 @@ export function runWithOwner<T>(owner: Owner | null, fn: () => T): T {
 /**
  * Disposes an owner and all of its descendants.
  *
- * Disposal runs child cleanups first, followed by the owner's own cleanups,
- * then detaches the owner from its parent.
- *
- * Calling this function on an already disposed owner has no effect.
+ * Children are disposed before the current owner's cleanups run.
  *
  * @param owner The owner to dispose.
  */
@@ -103,12 +100,13 @@ export function disposeOwner(owner: Owner): void {
 }
 
 /**
- * Sets a value in the context of the current owner.
+ * Sets a context value on the current owner.
  *
- * If no owner is active, the value is ignored.
+ * This always writes to the current owner, creating a local context entry
+ * even if the same key exists on a parent.
  *
  * @param key The context key.
- * @param value The value to store in the current owner's context.
+ * @param value The value to store.
  */
 export function setOwnerContext<T>(key: string | symbol, value: T): void {
   const owner = currentOwner;
@@ -121,20 +119,74 @@ export function setOwnerContext<T>(key: string | symbol, value: T): void {
 }
 
 /**
- * Retrieves a value from the current owner's context hierarchy.
+ * Updates the nearest existing context entry in the owner hierarchy.
  *
- * The current owner is checked first, followed by each parent owner until
- * a matching context value is found.
+ * Unlike setOwnerContext(), this does not create a new entry or shadow
+ * an inherited context value.
  *
  * @param key The context key.
- * @returns The nearest matching context value, or `undefined` when none exists.
+ * @param value The replacement value.
+ * @returns Whether an existing context entry was updated.
+ */
+export function updateOwnerContext<T>(key: string | symbol, value: T): boolean {
+  let owner = currentOwner;
+
+  while (owner) {
+    if (owner.context.has(key)) {
+      owner.context.set(key, value);
+      return true;
+    }
+
+    owner = owner.parent;
+  }
+
+  return false;
+}
+
+/**
+ * Updates an existing context value using an updater function.
+ *
+ * The updater receives the current value and returns its replacement.
+ * The nearest owner containing the key is updated.
+ *
+ * @param key The context key.
+ * @param updater A function that computes the replacement value.
+ * @returns Whether an existing context entry was updated.
+ */
+export function modifyOwnerContext<T>(
+  key: string | symbol,
+  updater: (current: T) => T,
+): boolean {
+  let owner = currentOwner;
+
+  while (owner) {
+    if (owner.context.has(key)) {
+      const current = owner.context.get(key) as T;
+      owner.context.set(key, updater(current));
+
+      return true;
+    }
+
+    owner = owner.parent;
+  }
+
+  return false;
+}
+
+/**
+ * Retrieves a context value from the current owner hierarchy.
+ *
+ * The current owner is checked first, followed by its ancestors.
+ *
+ * @param key The context key.
+ * @returns The nearest matching value, or undefined if none exists.
  */
 export function getOwnerContext<T>(key: string | symbol): T | undefined {
   let owner = currentOwner;
 
   while (owner) {
     if (owner.context.has(key)) {
-      return owner.context.get(key);
+      return owner.context.get(key) as T;
     }
 
     owner = owner.parent;

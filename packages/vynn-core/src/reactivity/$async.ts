@@ -5,6 +5,8 @@ import {
 import { $state } from "./$state";
 import { $renderEffect } from "./$effect";
 import { NotReadyError } from "./not-ready-error";
+import { getOwnerContext, modifyOwnerContext } from "../life-cycle/owner";
+import { getRenderMode } from "../context/render-mode";
 
 export type Async<T> = {
   value: T;
@@ -33,12 +35,35 @@ export function isPending(value: object): boolean {
   return context.get(value)?.() ?? false;
 }
 
+function getServerRenderedData() {
+  let asyncID = getOwnerContext<number>("$async-id");
+  modifyOwnerContext<number>("$async-id", (current) => current + 1);
+
+  // console.log(!getRenderMode() && !!asyncID);
+  // console.log(asyncID, (window as any).__vynnAsyncData);
+  if (!getRenderMode() && asyncID != null) {
+    return (window as any).__vynnAsyncData[asyncID];
+  }
+
+  return undefined;
+}
+
 export function $async<T>(getter: () => Promise<T>): Async<T> {
   const result = $state<AsyncRecord<T> | undefined>();
   let version = 0;
 
   $renderEffect(() => {
     const currentVersion = ++version;
+
+    const ssrData = getServerRenderedData();
+    if (ssrData) {
+      result.value = {
+        status: "resolved",
+        value: ssrData,
+        version: currentVersion,
+      };
+      return;
+    }
 
     let promise: Promise<T>;
 
@@ -59,10 +84,12 @@ export function $async<T>(getter: () => Promise<T>): Async<T> {
       version: currentVersion,
     };
 
+    const $asyncValues = getOwnerContext<any[]>("$async-values");
     // Attach exactly one settlement handler for this operation.
     promise.then(
       (value) => {
         if (currentVersion !== version) return;
+        if ($asyncValues) $asyncValues.push(value);
 
         result.value = {
           status: "resolved",

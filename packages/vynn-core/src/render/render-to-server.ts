@@ -2,6 +2,7 @@ import {
   createOwner,
   disposeOwner,
   getCurrentOwner,
+  getOwnerContext,
   runWithOwner,
 } from "../life-cycle/owner";
 import { JSX } from "../types/jsx";
@@ -14,6 +15,7 @@ export function renderToServer(
   mode: "sync" | "async" | "stream",
 ) {
   const owner = createOwner();
+  owner.context.set("$async-values", []);
 
   return runWithOwner(owner, () => {
     setRenderMode(mode);
@@ -180,7 +182,7 @@ async function resolveAsync(App: () => JSX.Element): Promise<string> {
 }
 
 function resolveStream(App: () => JSX.Element): ReadableStream<Uint8Array> {
-  const owner = getCurrentOwner();
+  const owner = getCurrentOwner()!;
   const encoder = new TextEncoder();
 
   let controller: ReadableStreamDefaultController<Uint8Array>;
@@ -217,9 +219,14 @@ function resolveStream(App: () => JSX.Element): ReadableStream<Uint8Array> {
     pending--;
 
     if (pending === 0 && initialSent && !closed) {
+      enqueue(
+        `<script>window.__vynnAsyncData = ${JSON.stringify(owner.context.get("$async-values"))};document.currentScript.remove();</script>`,
+      );
       closed = true;
+      // console.log();
+
       controller.close();
-      if (owner) disposeOwner(owner);
+      disposeOwner(owner);
     }
   }
 

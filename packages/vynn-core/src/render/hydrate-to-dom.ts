@@ -30,10 +30,13 @@ export function hydrateToDOM(
     const owner = createOwner();
 
     runWithOwner(owner, () => {
-      // withHydration(() => {
-      //   // console.log("hi");
-      //   resolveNode(App);
-      // }, node);
+      owner.context.set("$async-id", 0);
+
+      withHydration(() => {
+        // console.log("hi");
+        resolveNode(App);
+      }, node);
+
       // const app = resolveNode(App);
       // const nodes = app.map((element) => element);
       // node.append(...nodes);
