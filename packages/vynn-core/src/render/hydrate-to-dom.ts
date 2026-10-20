@@ -40,7 +40,7 @@ export function hydrateToDOM(
       // const app = resolveNode(App);
       // const nodes = app.map((element) => element);
       // node.append(...nodes);
-      // addUnmountListener();
+      addUnmountListener();
     });
 
     cleanup = () => disposeOwner(owner);
