@@ -51,7 +51,6 @@ export const routes: Route[] = [
         <div class="p-2 flex flex-col container m-auto">
           {"<div>Hi</div>"}
 
-          <Portal mount={document.body}>{name.firstName}</Portal>
           <ButtonPageList />
 
           {/* <Await fallback={<div>Page Is Loading</div>}> */}

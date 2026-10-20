@@ -12,6 +12,7 @@ import {
   parkedNodes,
   unmarkParked,
 } from "./$cmpnt.util";
+import { runAfterHydration } from "./hydration";
 
 /**
  * Creates a component function with its own reactive owner and lifecycle.
@@ -54,13 +55,15 @@ export function $cmpnt<P>(
 
         return [resolved, marker].flat();
       } finally {
-        for (const mount of owner.mount) {
-          const cleanup = mount();
+        runAfterHydration(() => {
+          for (const mount of owner.mount) {
+            const cleanup = mount();
 
-          if (typeof cleanup === "function") {
-            owner.cleanups.push(cleanup);
+            if (typeof cleanup === "function") {
+              owner.cleanups.push(cleanup);
+            }
           }
-        }
+        });
       }
     });
 

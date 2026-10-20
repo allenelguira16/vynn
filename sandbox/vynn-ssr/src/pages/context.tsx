@@ -1,6 +1,7 @@
 import { $state, $store, createContext, JSX, onDestroy } from "vynn";
 
 import { Template } from "../components/template";
+import { $dyn } from "vynn/render";
 
 export const Contexts = () => {
   return (
@@ -8,11 +9,11 @@ export const Contexts = () => {
       <Form>
         <Input />
       </Form>
-      <Form>
+      {/* <Form>
         <Wrapper>
           <Input />
         </Wrapper>
-      </Form>
+      </Form> */}
     </Template>
   );
 };
@@ -25,10 +26,10 @@ const Form = (props: { children: JSX.Element }) => {
   return <NameProvider value={state}>{props.children}</NameProvider>;
 };
 
-function Wrapper({ children }: { children: JSX.Element }) {
+function Wrapper(props: { children: JSX.Element }) {
   return (
     <>
-      <div>Hi</div> {children}
+      <div>Hi</div> {props.children}
     </>
   );
 }
@@ -48,7 +49,7 @@ const Input = () => {
     clearInterval(cleanup);
   });
 
-  const nameEl = <>Name: {forms.name} Hi </>;
+  const nameEl = () => <>Name: {forms.name} Hi </>;
 
   // console.log("hi");
 
@@ -59,7 +60,7 @@ const Input = () => {
   return (
     <>
       <div>Name: {forms.name}</div>
-      {nameEl}
+      {nameEl()}
       <input
         type="text"
         name="name"

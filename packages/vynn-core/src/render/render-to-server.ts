@@ -32,6 +32,9 @@ export function renderToServer(
   });
 }
 
+// const TEXT_BOUNDARY = "<!--vynn:t-->";
+// const EMPTY_TEXT_MARKER = "<!--vynn:text-->";
+
 const voidElements = new Set([
   "area",
   "base",
@@ -71,24 +74,53 @@ function renderNode(props: {
   }
 }
 
+function joinHTMLElements(html: string[]): string {
+  const result: string[] = [];
+
+  for (let i = 0; i < html.length; i++) {
+    const current = html[i];
+    const next = html[i + 1];
+
+    result.push(current);
+
+    if (current && next && hasNoHTMLTags(current) && hasNoHTMLTags(next)) {
+      result.push("<!--vynn:separator-->");
+    }
+  }
+
+  return result.join("");
+}
+
+function hasNoHTMLTags(str: string) {
+  // Matches anything inside <...>
+  const htmlTagRegex = /<[^>]+>/g;
+  return !htmlTagRegex.test(str);
+}
+
 function resolveSync(App: () => JSX.Element) {
   function resolve(app: SSR_NODE[]): string {
-    let html = "";
+    const html: string[] = [];
+
     for (const node of app.flat(Infinity).filter(Boolean)) {
-      if ("fallback" in node) {
+      if ("promises" in node) {
+        // console.log(node.children());
         // DO NOTHING
       } else if ("value" in node && node.type === "#text") {
-        html += escapeHtml(node.value);
+        html.push(
+          node.value === "" ? "<!--vynn:text-->" : escapeHtml(node.value),
+        );
       } else if ("children" in node) {
-        html += renderNode({
-          type: node.type,
-          attributes: node.attributes,
-          children: resolve(node.children),
-        });
+        html.push(
+          renderNode({
+            type: node.type,
+            attributes: node.attributes,
+            children: resolve(node.children),
+          }),
+        );
       }
     }
 
-    return html;
+    return joinHTMLElements(html);
   }
 
   try {
@@ -101,29 +133,46 @@ function resolveSync(App: () => JSX.Element) {
 
 async function resolveAsync(App: () => JSX.Element): Promise<string> {
   async function resolve(app: SSR_NODE[]): Promise<string> {
-    let html = "";
+    const html: string[] = [];
     for (const node of app.flat(Infinity).filter(Boolean)) {
-      if ("fallback" in node) {
+      if ("promises" in node && node.type === "#async") {
         await Promise.all(node.promises);
 
-        html += await resolve(node.children());
+        html.push(await resolve(node.children()));
+      } else if ("promises" in node && node.type === "#deferred") {
+        await Promise.all(node.promises);
+
+        html.push(await resolve(node.children()));
       } else if ("value" in node && node.type === "#text") {
-        html += escapeHtml(node.value);
+        html.push(
+          node.value === "" ? "<!--vynn:text-->" : escapeHtml(node.value),
+        );
       } else if ("children" in node) {
-        const children = await resolve(node.children);
-        html += renderNode({
-          type: node.type,
-          attributes: node.attributes,
-          children,
-        });
+        // const children = ;
+
+        html.push(
+          renderNode({
+            type: node.type,
+            attributes: node.attributes,
+            children: await resolve(node.children),
+          }),
+        );
       }
     }
 
-    return html;
+    for (const [i] of html.entries()) {
+      if (!!html[i] && !!html[i + 1]) {
+        if (hasNoHTMLTags(html[i]) && hasNoHTMLTags(html[i + 1])) {
+          html.splice(i + 1, 0, "<!--vynn:separator-->");
+        }
+      }
+    }
+
+    return joinHTMLElements(html);
   }
 
   try {
-    return resolve(resolveNode(App) as unknown as SSR_NODE[]);
+    return await resolve(resolveNode(App) as unknown as SSR_NODE[]);
   } finally {
     const owner = getCurrentOwner();
     if (owner) disposeOwner(owner);
@@ -212,6 +261,8 @@ function resolveStream(App: () => JSX.Element): ReadableStream<Uint8Array> {
 
       parent.insertBefore(template.content, end);
       template.remove();
+      start.remove();
+      end.remove();
 
       return true;
     }
@@ -245,18 +296,16 @@ function resolveStream(App: () => JSX.Element): ReadableStream<Uint8Array> {
   }
 
   async function resolve(app: SSR_NODE[]): Promise<string> {
-    let html = "";
+    let html: string[] = [];
 
     for (const node of app.flat(Infinity).filter(Boolean)) {
-      if ("fallback" in node) {
+      if ("promises" in node && node.type === "#async") {
         const id = nextBoundaryId++;
 
-        html += `<!--vynn:${id}:start-->`;
-
         // Render the fallback immediately instead of blocking on promises.
-        html += await resolve(node.fallback());
-
-        html += `<!--vynn:${id}:end-->`;
+        html.push(
+          `<!--vynn:${id}:start-->${await resolve(node.fallback())}<!--vynn:${id}:end-->`,
+        );
 
         // Keep rendering the boundary in the background.
         pending++;
@@ -274,18 +323,26 @@ function resolveStream(App: () => JSX.Element): ReadableStream<Uint8Array> {
             finishTask();
           }
         })();
+      } else if ("promises" in node && node.type === "#deferred") {
+        await Promise.all(node.promises);
+
+        html.push(await resolve(node.children()));
       } else if ("value" in node && node.type === "#text") {
-        html += escapeHtml(node.value);
+        html.push(
+          node.value === "" ? "<!--vynn:text-->" : escapeHtml(node.value),
+        );
       } else if ("children" in node) {
-        html += renderNode({
-          type: node.type,
-          attributes: node.attributes,
-          children: await resolve(node.children),
-        });
+        html.push(
+          renderNode({
+            type: node.type,
+            attributes: node.attributes,
+            children: await resolve(node.children),
+          }),
+        );
       }
     }
 
-    return html;
+    return joinHTMLElements(html);
   }
 
   return new ReadableStream<Uint8Array>({

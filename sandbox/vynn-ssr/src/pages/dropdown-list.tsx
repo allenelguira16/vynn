@@ -111,7 +111,7 @@ type TDropdownListProps = {
   };
 };
 
-const DropdownList = ({ dropdowns }: TDropdownListProps) => {
+const DropdownList = (props: TDropdownListProps) => {
   console.log("DropdownList rerender"); // log twice
   // onMount(async () => {
   //   console.log("DropdownList onMount");
@@ -128,7 +128,7 @@ const DropdownList = ({ dropdowns }: TDropdownListProps) => {
       {/* {loop(dropdowns.numbers).each((number) => (
         <Dropdown number={number} />
       ))} */}
-      {dropdowns.numbers.map((number) => (
+      {props.dropdowns.numbers.map((number) => (
         <Dropdown number={number} />
       ))}
       {/* {$for(
@@ -141,7 +141,7 @@ const DropdownList = ({ dropdowns }: TDropdownListProps) => {
   );
 };
 
-const Dropdown = ({ number }: { number: number }) => {
+const Dropdown = (props: { number: number }) => {
   console.log("rerender"); // log thrice
   const isOpen = $state(false);
 
@@ -162,7 +162,7 @@ const Dropdown = ({ number }: { number: number }) => {
       <div class="lg:w-[12.5%]">
         <details class="dropdown">
           <summary class="btn w-full" onClick={handleToggle}>
-            Open Dropdown {number}
+            Open Dropdown {props.number}
           </summary>
           <ul class="menu dropdown-content bg-base-100 rounded-box z-1 w-52 p-2 shadow-sm">
             <li>

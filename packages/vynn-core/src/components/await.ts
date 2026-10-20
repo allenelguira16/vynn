@@ -6,6 +6,7 @@ import { $state } from "../reactivity/$state";
 import { $renderEffect } from "../reactivity/$effect";
 import { getRenderMode } from "../context/render-mode";
 import { NotReadyError } from "../reactivity/not-ready-error";
+import { $memo } from "../render";
 
 /**
  * Displays a fallback while the children are initially loading.
@@ -111,8 +112,8 @@ export const Await = $cmpnt(function Suspense(props: {
   let nodes: Node[] = [];
   const pending = new Set<Promise<unknown>>();
 
-  const fallback = resolveNode(() => props.fallback);
-  let children: Node[] = [];
+  const fallback = $memo(() => props.fallback);
+  const children = $memo(() => props.children);
 
   enterAsyncBoundary((promise) => {
     hasPromise = true;
@@ -124,7 +125,7 @@ export const Await = $cmpnt(function Suspense(props: {
     pending.add(promise);
 
     if (!resolved) {
-      view.value = fallback;
+      view.value = resolveNode(fallback);
     }
 
     promise.then(
@@ -133,7 +134,7 @@ export const Await = $cmpnt(function Suspense(props: {
 
         if (pending.size === 0) {
           resolved = true;
-          view.value = children;
+          view.value = resolveNode(children);
         }
       },
       (error) => {
@@ -143,12 +144,12 @@ export const Await = $cmpnt(function Suspense(props: {
     );
   });
 
-  children = resolveNode(() => props.children);
+  children();
 
   // Keep the reactive view active even when the async work
   // is discovered later by a nested effect.
   if (!hasPromise) {
-    view.value = children;
+    return resolveNode(children);
   }
 
   $renderEffect(() => {

@@ -3,6 +3,7 @@ import * as t from "@babel/types";
 
 type RuntimeHelperName =
   | "$dyn"
+  | "$text"
   | "$tmpl"
   | "$cmpnt"
   | "$insert"
@@ -250,44 +251,16 @@ export default function reactivePlugin(
           return;
         }
 
-        // Ordinary variables can also contain JSX anywhere in their initializer:
-        //
-        //   const nameEl = <div>Name: {forms.name} Hi</div>;
-        //   const items = [<div>A</div>, <div>B</div>];
-        //   const render = () => <span>{forms.name}</span>;
-        //
-        // These are expression contexts, so createElement() may still use
-        // an IIFE when necessary.
+        // JSX values must be lazy when assigned to a variable. Direct JSX
+        // initializers are rejected below; JSX returned from functions remains
+        // valid and is transformed when its function body is visited.
         const node = path.node as t.VariableDeclarator;
 
         if (!node.init || !t.isExpression(node.init)) {
           return;
         }
 
-        if (t.isJSXFragment(node.init)) {
-          node.init = createNestedFragment(
-            node.init,
-            path,
-            createIdentifierAllocator(path.scope),
-            true,
-          );
-
-          return;
-        }
-
-        if (t.isJSXElement(node.init)) {
-          if (isComponentElement(node.init)) {
-            node.init = createComponentCall(node.init);
-          } else {
-            node.init = createElement(
-              node.init,
-              path,
-              createIdentifierAllocator(path.scope),
-            );
-          }
-
-          return;
-        }
+        assertJSXInitializerIsLazy(node, path);
 
         node.init = transformEmbeddedExpression(
           node.init,
@@ -944,9 +917,46 @@ export default function reactivePlugin(
     statements: t.Statement[],
     dynamicExpressions = false,
   ): t.Expression {
+    const children = collectFragmentChildrenInStatements(
+      fragment,
+      componentPath,
+      allocator,
+      statements,
+      dynamicExpressions,
+    );
+
+    if (children.length === 1) {
+      return children[0];
+    }
+
+    return t.arrayExpression(children);
+  }
+
+  function collectFragmentChildrenInStatements(
+    fragment: t.JSXFragment,
+    componentPath: any,
+    allocator: IdentifierAllocator,
+    statements: t.Statement[],
+    dynamicExpressions: boolean,
+  ): t.Expression[] {
     const children: t.Expression[] = [];
 
     for (const child of fragment.children) {
+      // Flatten syntactically nested JSX fragments.
+      if (t.isJSXFragment(child)) {
+        children.push(
+          ...collectFragmentChildrenInStatements(
+            child,
+            componentPath,
+            allocator,
+            statements,
+            dynamicExpressions,
+          ),
+        );
+
+        continue;
+      }
+
       const expression = transformFragmentChildInStatements(
         child,
         componentPath,
@@ -960,11 +970,7 @@ export default function reactivePlugin(
       }
     }
 
-    if (children.length === 1) {
-      return children[0];
-    }
-
-    return t.arrayExpression(children);
+    return children;
   }
 
   function transformFragmentChildInStatements(
@@ -983,12 +989,10 @@ export default function reactivePlugin(
         return createComponentCall(child);
       }
 
-      return createElementStatements(
-        child,
-        componentPath,
-        statements,
-        allocator,
-      );
+      // Fragment children are entries in an array expression.
+      // Keep native element creation inside each entry so the
+      // array is evaluated in source order during SSR.
+      return createElement(child, componentPath, allocator);
     }
 
     // -------------------------------------------------------------------------
@@ -1002,7 +1006,7 @@ export default function reactivePlugin(
         return null;
       }
 
-      return t.stringLiteral(text);
+      return createTextExpression(text);
     }
 
     // -------------------------------------------------------------------------
@@ -1017,6 +1021,11 @@ export default function reactivePlugin(
       }
 
       if (t.isExpression(expression)) {
+        // Preserve explicit JSX text expressions such as {" "} as text nodes.
+        if (t.isStringLiteral(expression)) {
+          return createTextExpression(expression.value);
+        }
+
         const transformed = transformStandaloneExpression(
           expression,
           componentPath,
@@ -1060,9 +1069,43 @@ export default function reactivePlugin(
     allocator: IdentifierAllocator,
     dynamicExpressions = false,
   ): t.Expression {
+    const children = collectFragmentChildrenForExpression(
+      fragment,
+      componentPath,
+      allocator,
+      dynamicExpressions,
+    );
+
+    if (children.length === 1) {
+      return children[0];
+    }
+
+    return t.arrayExpression(children);
+  }
+
+  function collectFragmentChildrenForExpression(
+    fragment: t.JSXFragment,
+    componentPath: any,
+    allocator: IdentifierAllocator,
+    dynamicExpressions: boolean,
+  ): t.Expression[] {
     const children: t.Expression[] = [];
 
     for (const child of fragment.children) {
+      // Flatten nested JSX fragments, but not arbitrary expression arrays.
+      if (t.isJSXFragment(child)) {
+        children.push(
+          ...collectFragmentChildrenForExpression(
+            child,
+            componentPath,
+            allocator,
+            dynamicExpressions,
+          ),
+        );
+
+        continue;
+      }
+
       const expression = transformFragmentChildForExpression(
         child,
         componentPath,
@@ -1075,11 +1118,7 @@ export default function reactivePlugin(
       }
     }
 
-    if (children.length === 1) {
-      return children[0];
-    }
-
-    return t.arrayExpression(children);
+    return children;
   }
 
   function transformFragmentChildForExpression(
@@ -1103,7 +1142,7 @@ export default function reactivePlugin(
         return null;
       }
 
-      return t.stringLiteral(text);
+      return createTextExpression(text);
     }
 
     if (t.isJSXExpressionContainer(child)) {
@@ -1114,6 +1153,11 @@ export default function reactivePlugin(
       }
 
       if (t.isExpression(expression)) {
+        // Preserve explicit JSX text expressions such as {" "} as text nodes.
+        if (t.isStringLiteral(expression)) {
+          return createTextExpression(expression.value);
+        }
+
         const transformed = transformStandaloneExpression(
           expression,
           componentPath,
@@ -1223,7 +1267,9 @@ export default function reactivePlugin(
         }
 
         statements.push(
-          t.expressionStatement(createInsert(elementId, t.stringLiteral(text))),
+          t.expressionStatement(
+            createInsert(elementId, createTextExpression(text)),
+          ),
         );
 
         continue;
@@ -1244,13 +1290,12 @@ export default function reactivePlugin(
           continue;
         }
 
+        const childExpression = t.isStringLiteral(expression)
+          ? createTextExpression(expression.value)
+          : transformElementExpression(expression, componentPath, allocator);
+
         statements.push(
-          t.expressionStatement(
-            createInsert(
-              elementId,
-              transformElementExpression(expression, componentPath, allocator),
-            ),
-          ),
+          t.expressionStatement(createInsert(elementId, childExpression)),
         );
 
         continue;
@@ -1308,6 +1353,18 @@ export default function reactivePlugin(
   function createDynamicExpression(expression: t.Expression): t.CallExpression {
     return t.callExpression(getRuntimeHelper("$dyn"), [
       t.arrowFunctionExpression([], expression),
+    ]);
+  }
+
+  /**
+   * Creates an explicit text node for static JSX text.
+   *
+   * This includes JSXText nodes and string literals inside JSX expression
+   * containers, such as {" "}.
+   */
+  function createTextExpression(value: string): t.CallExpression {
+    return t.callExpression(getRuntimeHelper("$text"), [
+      t.stringLiteral(value),
     ]);
   }
 
@@ -1398,7 +1455,7 @@ export default function reactivePlugin(
     // -------------------------------------------------------------------------
 
     if (t.isJSXFragment(expression)) {
-      return createNestedFragment(expression, componentPath, allocator, false);
+      return createNestedFragment(expression, componentPath, allocator, true);
     }
 
     // -------------------------------------------------------------------------
@@ -1846,48 +1903,16 @@ export default function reactivePlugin(
 
       if (t.isVariableDeclaration(statement)) {
         for (const declaration of statement.declarations) {
+          // Let the VariableDeclarator visitor transform nested components.
+          if (isArrowComponentDeclaration(declaration)) {
+            continue;
+          }
+
           if (!declaration.init || !t.isExpression(declaration.init)) {
             continue;
           }
 
-          /*
-           * JSX used as a variable value needs the same reactive fragment
-           * lowering as a JSX expression stored by the top-level visitor.
-           *
-           *   const nameEl = <>Name: {forms.name} Hi</>;
-           *
-           * becomes:
-           *
-           *   const nameEl = [
-           *     "Name: ",
-           *     $dyn(() => forms.name),
-           *     " Hi",
-           *   ];
-           */
-          if (t.isJSXFragment(declaration.init)) {
-            declaration.init = createNestedFragment(
-              declaration.init,
-              componentPath,
-              allocator,
-              true,
-            );
-
-            continue;
-          }
-
-          if (t.isJSXElement(declaration.init)) {
-            if (isComponentElement(declaration.init)) {
-              declaration.init = createComponentCall(declaration.init);
-            } else {
-              declaration.init = createElement(
-                declaration.init,
-                componentPath,
-                allocator,
-              );
-            }
-
-            continue;
-          }
+          assertJSXInitializerIsLazy(declaration);
 
           declaration.init = transformEmbeddedExpression(
             declaration.init,
@@ -1946,48 +1971,16 @@ export default function reactivePlugin(
   ): t.Statement {
     if (t.isVariableDeclaration(statement)) {
       for (const declaration of statement.declarations) {
+        // Don't lower a component's JSX before its component transform runs.
+        if (isArrowComponentDeclaration(declaration)) {
+          continue;
+        }
+
         if (!declaration.init || !t.isExpression(declaration.init)) {
           continue;
         }
 
-        /*
-         * JSX fragments assigned to local variables need reactive expression
-         * lowering.
-         *
-         *   const nameEl = <>Name: {forms.name} Hi</>;
-         *
-         * becomes:
-         *
-         *   const nameEl = [
-         *     "Name: ",
-         *     $dyn(() => forms.name),
-         *     " Hi",
-         *   ];
-         */
-        if (t.isJSXFragment(declaration.init)) {
-          declaration.init = createNestedFragment(
-            declaration.init,
-            componentPath,
-            allocator,
-            true,
-          );
-
-          continue;
-        }
-
-        if (t.isJSXElement(declaration.init)) {
-          if (isComponentElement(declaration.init)) {
-            declaration.init = createComponentCall(declaration.init);
-          } else {
-            declaration.init = createElement(
-              declaration.init,
-              componentPath,
-              allocator,
-            );
-          }
-
-          continue;
-        }
+        assertJSXInitializerIsLazy(declaration);
 
         declaration.init = transformEmbeddedExpression(
           declaration.init,
@@ -2100,6 +2093,110 @@ export default function reactivePlugin(
 
   function isComponentName(name: string): boolean {
     return /^[A-Z]/.test(name);
+  }
+
+  function isArrowComponentDeclaration(
+    declaration: t.VariableDeclarator,
+  ): boolean {
+    return (
+      t.isIdentifier(declaration.id) &&
+      isComponentName(declaration.id.name) &&
+      t.isArrowFunctionExpression(declaration.init)
+    );
+  }
+
+  /**
+   * Finds JSX that would be evaluated eagerly by a variable initializer.
+   * Function bodies are skipped because JSX inside a function is evaluated
+   * only when that function is invoked. This keeps render callbacks such as
+   * `items.map((item) => <Row item={item} />)` valid.
+   */
+  function containsEagerJSX(node: t.Node | null | undefined): boolean {
+    if (!node) {
+      return false;
+    }
+
+    if (t.isJSXElement(node) || t.isJSXFragment(node)) {
+      return true;
+    }
+
+    // JSX inside a function body is lazy until the function is called.
+    if (
+      t.isArrowFunctionExpression(node) ||
+      t.isFunctionExpression(node) ||
+      t.isFunctionDeclaration(node) ||
+      t.isObjectMethod(node) ||
+      t.isClassMethod(node) ||
+      t.isClassPrivateMethod(node)
+    ) {
+      return false;
+    }
+
+    const visitorKeys = ((t as any).VISITOR_KEYS?.[node.type] ??
+      []) as string[];
+
+    for (const key of visitorKeys) {
+      const value = (node as any)[key];
+
+      if (Array.isArray(value)) {
+        for (const child of value) {
+          if (child && containsEagerJSX(child)) {
+            return true;
+          }
+        }
+
+        continue;
+      }
+
+      if (value && containsEagerJSX(value)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /**
+   * A JSX value must be wrapped in a function so it is created at the point
+   * where it is rendered, not during the component's local variable setup.
+   *
+   * Allowed:
+   *   const view = () => <>Name: {forms.name}</>;
+   *   const rows = items.map((item) => <Row item={item} />);
+   *
+   * Rejected:
+   *   const view = <>Name: {forms.name}</>;
+   *   const view = condition ? <A /> : <B />;
+   */
+  function assertJSXInitializerIsLazy(
+    declaration: t.VariableDeclarator,
+    errorPath?: any,
+  ): void {
+    const initializer = declaration.init;
+
+    if (!initializer || !containsEagerJSX(initializer)) {
+      return;
+    }
+
+    const variableName = t.isIdentifier(declaration.id)
+      ? `"${declaration.id.name}"`
+      : "this variable";
+
+    const message =
+      `JSX in the initializer for ${variableName} must be wrapped in a function ` +
+      "to preserve SSR hydration order. For example: " +
+      "const view = () => (<>...</>);";
+
+    if (errorPath && typeof errorPath.buildCodeFrameError === "function") {
+      throw errorPath.buildCodeFrameError(message);
+    }
+
+    const location = declaration.loc?.start;
+    const locationSuffix = location
+      ? ` (line ${location.line}, column ${location.column + 1})`
+      : "";
+
+    throw new Error(`${message}${locationSuffix}`);
   }
 
   function createComponentCall(node: t.JSXElement): t.CallExpression {
@@ -2461,7 +2558,7 @@ export default function reactivePlugin(
         const text = normalizeJSXText(child.value);
 
         if (text) {
-          children.push(t.stringLiteral(text));
+          children.push(createTextExpression(text));
         }
 
         continue;
@@ -2479,6 +2576,11 @@ export default function reactivePlugin(
         }
 
         if (t.isExpression(expression)) {
+          if (t.isStringLiteral(expression)) {
+            children.push(createTextExpression(expression.value));
+            continue;
+          }
+
           const transformed = transformStandaloneExpression(
             expression,
             node,
@@ -2503,9 +2605,7 @@ export default function reactivePlugin(
         if (isComponentElement(child)) {
           children.push(createComponentCall(child));
         } else {
-          children.push(
-            createElementStatements(child, node, statements, allocator),
-          );
+          children.push(createElement(child, node, allocator));
         }
 
         continue;
@@ -2880,7 +2980,11 @@ export default function reactivePlugin(
   ): t.CallExpression {
     let child: t.Expression;
 
-    if (isStaticInsertValue(expression) || isForExpression(expression)) {
+    if (
+      isStaticInsertValue(expression) ||
+      isForExpression(expression) ||
+      isTextExpression(expression)
+    ) {
       child = expression;
     } else if (isIIFE(expression)) {
       // Reuse the IIFE's function body directly as the $insert callback.
@@ -2906,6 +3010,10 @@ export default function reactivePlugin(
 
   function isStaticInsertValue(expression: t.Expression): boolean {
     return t.isStringLiteral(expression) || t.isNumericLiteral(expression);
+  }
+
+  function isTextExpression(expression: t.Expression): boolean {
+    return isRuntimeHelperCall(expression, "$text");
   }
 
   function isIIFE(expression: t.Expression): expression is t.CallExpression & {

@@ -3,8 +3,14 @@ import { getRenderMode } from "../context/render-mode";
 import { getCurrentOwner, runWithOwner } from "../life-cycle/owner";
 import { getAsyncBoundary, withAsyncBoundary } from "../components/boundary";
 import { NotReadyError } from "../reactivity/not-ready-error";
+import { claimHydrationText, isHydrating } from "./hydration";
 
-export type SSR_NODE = SSR_ELEMENT | SSR_TEXT | SSR_ASYNC | SSR_COMMENT;
+export type SSR_NODE =
+  | SSR_ELEMENT
+  | SSR_TEXT
+  | SSR_ASYNC
+  | SSR_DEFERRED
+  | SSR_COMMENT;
 
 export type SSR_ELEMENT = {
   type: string;
@@ -118,6 +124,25 @@ export function createSSRAsync(
   };
 }
 
+export type SSR_DEFERRED = {
+  type: "#deferred";
+  promises: Promise<unknown>[];
+  children: () => SSR_NODE[];
+  parent: SSR_ELEMENT | null;
+};
+
+export function createSSRDeferred(
+  children: () => SSR_NODE[],
+  promises: Promise<unknown>[],
+): SSR_DEFERRED {
+  return {
+    type: "#deferred",
+    promises,
+    children,
+    parent: null,
+  };
+}
+
 /**
  * Resolves an SSR child expression and collects pending promises.
  *
@@ -156,10 +181,10 @@ export function resolveSSRChild(child: () => JSX.Element): SSR_NODE[] {
     return nodes;
   }
 
+  const owner = getCurrentOwner();
   return [
-    createSSRAsync(
-      () => [],
-      () => resolveSSRChild(child),
+    createSSRDeferred(
+      () => runWithOwner(owner, () => resolveSSRChild(child)),
       promises,
     ),
   ];
@@ -179,11 +204,14 @@ export function resolveNode(child: () => JSX.Element): Node[] {
 
 export function resolveElement(element: JSX.Element): Node[] {
   if (element === null || element === undefined || element === false) {
-    return [document.createTextNode("")];
+    return [document.createComment("")];
   }
 
   if (typeof element === "string" || typeof element === "number") {
-    return [document.createTextNode(String(element))];
+    // claimHydrationNode();
+    // console.log(String(element), );
+
+    return [claimHydrationText() || document.createTextNode(String(element))];
   }
 
   if (element instanceof Node) {

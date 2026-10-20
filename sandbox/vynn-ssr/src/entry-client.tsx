@@ -1,7 +1,10 @@
 // Hydration
 import "./main.css";
 
-// import { App } from "./app";
-// import { hydrateDom } from "vynn/render";
+import { App } from "./app";
+import { hydrateToDOM } from "vynn/render";
+import { $location } from "vynn-router";
 
-// hydrateDom(App, "#app");
+hydrateToDOM(() => {
+  return App({ url: $location.pathname });
+}, "#app");
