@@ -13,7 +13,6 @@ export function withHydration(callback: () => void, root: Node) {
   serverRenderedElements = serverRenderedNodes[0];
   serverRenderedTexts = serverRenderedNodes[1];
 
-  // console.log(serverRenderedNodes);
   callback();
   isHydrationHydrating = false;
 }

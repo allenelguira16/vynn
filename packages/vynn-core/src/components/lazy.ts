@@ -9,17 +9,14 @@ type ComponentExport<
   K extends keyof M,
 > = M[K] extends AnyComponent ? M[K] : never;
 
+const NativePromise = globalThis.Promise;
+
 /**
- * Lazily loads a component from a dynamically imported module.
+ * Lazily loads a component.
  *
- * The component is not loaded until it is rendered. While the module is
- * loading, the returned component integrates with Suspense through `$async`.
- *
- * @template M The type of the dynamically imported module.
- * @template K The name of the export containing the component.
- * @param loader A function that dynamically imports the component module.
- * @param namedExport The name of the component export to load.
- * @returns A component that loads and renders the requested export lazily.
+ * The module-loading promise is shared across all instances created
+ * from this lazy declaration. Each instance retains its own $async
+ * state so Vynn's existing Await integration remains intact.
  */
 export function lazy<M extends Record<string, unknown>, K extends keyof M>(
   loader: () => Promise<M>,
@@ -39,15 +36,24 @@ export function lazy<
 ): ComponentExport<M, K> {
   type Component = ComponentExport<M, K>;
 
-  let cached: ComponentExport<M, K>;
-  return $cmpnt(function LazyComponent(
-    props: Parameters<Component>[0],
-  ): JSX.Element {
-    const component = $async(async () => {
-      const components = await loader();
-      const component = components[namedExport];
+  let cachedComponent: Component | undefined;
+  let loadPromise: Promise<Component> | undefined;
 
-      // await sleep(1000);
+  function loadComponent(): Promise<Component> {
+    if (loadPromise) {
+      return loadPromise;
+    }
+
+    let modulePromise: Promise<M>;
+
+    try {
+      modulePromise = loader();
+    } catch (error) {
+      modulePromise = NativePromise.reject(error);
+    }
+
+    loadPromise = NativePromise.resolve(modulePromise).then((module) => {
+      const component = module[namedExport];
 
       if (typeof component !== "function") {
         throw new Error(
@@ -58,13 +64,20 @@ export function lazy<
       return component as Component;
     });
 
+    return loadPromise;
+  }
+
+  return $cmpnt(function LazyComponent(
+    props: Parameters<Component>[0],
+  ): JSX.Element {
+    const component = $async(loadComponent);
+
     return $dyn(() => {
-      if (!cached) cached = component.value;
-      return cached(props);
+      if (!cachedComponent) {
+        cachedComponent = component.value;
+      }
+
+      return cachedComponent(props);
     });
   }) as Component;
 }
-
-// const sleep = (ms: number): Promise<void> => {
-//   return new Promise((resolve) => setTimeout(resolve, ms));
-// };
