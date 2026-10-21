@@ -111,18 +111,6 @@ export const PokeDexAwait = () => {
                         </td>
                       </tr>
                     ))}
-                  <tr>
-                    <td colSpan={3}>
-                      <div class="flex gap-4 justify-center">
-                        <button class="btn" disabled={true}>
-                          Previous
-                        </button>
-                        <button class="btn" disabled={true}>
-                          Next
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
                 </>
               }
             >
@@ -130,34 +118,31 @@ export const PokeDexAwait = () => {
                 {pokeDex.value.results.map(({ name, url }, index) => (
                   <Row name={name} url={url} index={index} />
                 ))}
-                <tr>
-                  <td colSpan={3}>
-                    <div class="flex gap-4 justify-center">
-                      <button
-                        class="btn"
-                        onClick={() => {
-                          changeUrl(pokeDex.value.previous);
-                        }}
-                        disabled={isPending(pokeDex) || !pokeDex.value.previous}
-                      >
-                        Previous
-                      </button>
-                      <button
-                        class="btn"
-                        onClick={() => {
-                          changeUrl(pokeDex.value.next);
-                        }}
-                        disabled={isPending(pokeDex) || !pokeDex.value.next}
-                      >
-                        Next
-                      </button>
-                    </div>
-                  </td>
-                </tr>
               </>
             </Await>
           </tbody>
         </table>
+
+        <div class="flex gap-4 justify-center">
+          <button
+            class="btn"
+            onClick={() => {
+              changeUrl(pokeDex.value.previous);
+            }}
+            disabled={isPending(pokeDex) || !pokeDex.value.previous}
+          >
+            Previous {isPending(pokeDex) && "hi"}
+          </button>
+          <button
+            class="btn"
+            onClick={() => {
+              changeUrl(pokeDex.value.next);
+            }}
+            disabled={isPending(pokeDex) || !pokeDex.value.next}
+          >
+            Next
+          </button>
+        </div>
       </div>
     </Template>
   );

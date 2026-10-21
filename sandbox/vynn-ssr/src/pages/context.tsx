@@ -9,11 +9,11 @@ export const Contexts = () => {
       <Form>
         <Input />
       </Form>
-      {/* <Form>
+      <Form>
         <Wrapper>
           <Input />
         </Wrapper>
-      </Form> */}
+      </Form>
     </Template>
   );
 };

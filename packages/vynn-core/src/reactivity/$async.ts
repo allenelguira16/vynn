@@ -7,6 +7,7 @@ import { $renderEffect } from "./$effect";
 import { NotReadyError } from "./not-ready-error";
 import { getOwnerContext, modifyOwnerContext } from "../life-cycle/owner";
 import { getRenderMode } from "../context/render-mode";
+import { transaction } from "./transaction";
 
 export type Async<T> = {
   value: T;
@@ -181,65 +182,69 @@ export function $async<T>(getter: () => Promise<T>): Async<T> {
   let version = 0;
 
   $renderEffect(() => {
-    const currentVersion = ++version;
+    transaction(() => {
+      const currentVersion = ++version;
 
-    const ssrData = getServerRenderedData();
+      const ssrData = getServerRenderedData();
 
-    let promise!: Promise<T>;
+      let promise!: Promise<T>;
 
-    try {
-      if (ssrData) {
-        return withFakeAsyncApis(() => {
-          // promise = Promise.resolve();
-          getter();
-
-          result.value = {
-            status: "resolved",
-            value: ssrData,
-            version: currentVersion,
-          };
-        });
-      } else {
-        promise = Promise.resolve(getter());
-      }
-    } catch (error) {
-      result.value = {
-        status: "rejected",
-        error,
-        version: currentVersion,
-      };
-      return;
-    }
-
-    result.value = {
-      status: "pending",
-      promise,
-      version: currentVersion,
-    };
-
-    const $asyncValues = getOwnerContext<any[]>("$async-values");
-    // Attach exactly one settlement handler for this operation.
-    promise.then(
-      (value) => {
-        if (currentVersion !== version) return;
-        if ($asyncValues) $asyncValues.push(value);
-
-        result.value = {
-          status: "resolved",
-          value,
-          version: currentVersion,
-        };
-      },
-      (error: unknown) => {
-        if (currentVersion !== version) return;
-
+      try {
+        if (ssrData) {
+          withFakeAsyncApis(() => {
+            // promise = Promise.resolve();
+            getter();
+          });
+        } else {
+          promise = Promise.resolve(getter());
+        }
+      } catch (error) {
         result.value = {
           status: "rejected",
           error,
           version: currentVersion,
         };
-      },
-    );
+        return;
+      }
+
+      if (ssrData) {
+        result.value = {
+          status: "resolved",
+          value: ssrData,
+          version: currentVersion,
+        };
+      } else {
+        result.value = {
+          status: "pending",
+          promise,
+          version: currentVersion,
+        };
+
+        const $asyncValues = getOwnerContext<any[]>("$async-values");
+        // Attach exactly one settlement handler for this operation.
+        promise.then(
+          (value) => {
+            if (currentVersion !== version) return;
+            if ($asyncValues) $asyncValues.push(value);
+
+            result.value = {
+              status: "resolved",
+              value,
+              version: currentVersion,
+            };
+          },
+          (error: unknown) => {
+            if (currentVersion !== version) return;
+
+            result.value = {
+              status: "rejected",
+              error,
+              version: currentVersion,
+            };
+          },
+        );
+      }
+    });
   });
 
   const derived: Async<T> = {
@@ -279,8 +284,6 @@ export function $async<T>(getter: () => Promise<T>): Async<T> {
   };
 
   context.set(derived, () => {
-    if (isInsideAwaitBoundary()) derived.value; // Trigger Await boundary
-
     return result.value?.status === "pending";
   });
 
