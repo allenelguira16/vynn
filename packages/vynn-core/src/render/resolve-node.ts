@@ -1,7 +1,11 @@
 import { JSX } from "../jsx-runtime";
 import { getRenderMode } from "../context/render-mode";
 import { getCurrentOwner, runWithOwner } from "../life-cycle/owner";
-import { getAsyncBoundary, withAsyncBoundary } from "../components/boundary";
+import {
+  enterAsyncBoundary,
+  getAsyncBoundary,
+  withAsyncBoundary,
+} from "../components/boundary";
 import { NotReadyError } from "../reactivity/not-ready-error";
 import { claimHydrationText, isHydrating } from "./hydration";
 
@@ -150,44 +154,20 @@ export function createSSRDeferred(
  * the expression after the collected promises settle.
  */
 export function resolveSSRChild(child: () => JSX.Element): SSR_NODE[] {
-  const parentBoundary = getAsyncBoundary();
-  const promises: Promise<unknown>[] = [];
-
-  const register = (promise: Promise<unknown>) => {
-    if (!promises.includes(promise)) {
-      promises.push(promise);
-    }
-
-    // Let an enclosing Await know that this child is pending.
-    parentBoundary?.(promise);
-  };
-
-  let nodes: SSR_NODE[] = [];
+  const owner = getCurrentOwner();
 
   try {
-    nodes = withAsyncBoundary(
-      register,
-      () => resolveNode(child) as unknown as SSR_NODE[],
-    );
+    return resolveNode(child) as unknown as SSR_NODE[];
   } catch (error) {
-    if (!(error instanceof NotReadyError)) {
-      throw error;
-    }
+    if (!(error instanceof NotReadyError)) throw error;
 
-    register(error.promise);
+    return [
+      createSSRDeferred(
+        () => runWithOwner(owner, () => resolveSSRChild(child)),
+        [error.promise],
+      ),
+    ];
   }
-
-  if (promises.length === 0) {
-    return nodes;
-  }
-
-  const owner = getCurrentOwner();
-  return [
-    createSSRDeferred(
-      () => runWithOwner(owner, () => resolveSSRChild(child)),
-      promises,
-    ),
-  ];
 }
 
 /**

@@ -1,5 +1,5 @@
 import { NotReadyError } from "../reactivity/not-ready-error";
-import { getCurrentOwner } from "../life-cycle/owner";
+import { getCurrentOwner, runWithOwner } from "../life-cycle/owner";
 import { getRenderMode } from "../context/render-mode";
 
 type VynnEvent<
@@ -37,15 +37,9 @@ export function $on<E extends HTMLElement, K extends keyof HTMLElementEventMap>(
   }
 
   function handle(event: Event) {
-    try {
+    runWithOwner(owner, () => {
       handler(event as VynnEvent<E, K>);
-    } catch (error) {
-      if (error instanceof NotReadyError) {
-        // DO NOTHING
-      } else {
-        throw error;
-      }
-    }
+    });
   }
 
   element.addEventListener(event, handle);

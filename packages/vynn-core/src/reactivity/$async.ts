@@ -5,7 +5,11 @@ import {
 import { $state } from "./$state";
 import { $renderEffect } from "./$effect";
 import { NotReadyError } from "./not-ready-error";
-import { getOwnerContext, modifyOwnerContext } from "../life-cycle/owner";
+import {
+  getCurrentOwner,
+  getOwnerContext,
+  modifyOwnerContext,
+} from "../life-cycle/owner";
 import { getRenderMode } from "../context/render-mode";
 import { transaction } from "./transaction";
 
@@ -33,6 +37,8 @@ type AsyncRecord<T> =
 const context = new WeakMap<object, () => boolean>();
 
 export function isPending(value: object): boolean {
+  // assertInsideAwait();
+
   return context.get(value)?.() ?? false;
 }
 
@@ -177,6 +183,16 @@ function withFakeAsyncApis<T>(callback: () => T): T {
   }
 }
 
+function assertInsideAwait(): void {
+  if (!isInsideAwaitBoundary()) {
+    throw new Error(
+      "[vynn] $async values must be accessed inside <Await>. " +
+        "Wrap the expression that reads `.value` or calls `isPending()` " +
+        "in <Await fallback={...}>.",
+    );
+  }
+}
+
 export function $async<T>(getter: () => Promise<T>): Async<T> {
   const result = $state<AsyncRecord<T> | undefined>();
   let version = 0;
@@ -192,7 +208,6 @@ export function $async<T>(getter: () => Promise<T>): Async<T> {
       try {
         if (ssrData) {
           withFakeAsyncApis(() => {
-            // promise = Promise.resolve();
             getter();
           });
         } else {
@@ -249,6 +264,8 @@ export function $async<T>(getter: () => Promise<T>): Async<T> {
 
   const derived: Async<T> = {
     get value(): T {
+      // assertInsideAwait();
+
       const record = result.value;
 
       if (!record) {
@@ -284,6 +301,8 @@ export function $async<T>(getter: () => Promise<T>): Async<T> {
   };
 
   context.set(derived, () => {
+    if (getRenderMode()) derived.value; // On SSR, make this be handle by renderSSRChildren and defer it
+
     return result.value?.status === "pending";
   });
 
