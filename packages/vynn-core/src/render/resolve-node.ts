@@ -1,13 +1,9 @@
 import { JSX } from "../jsx-runtime";
 import { getRenderMode } from "../context/render-mode";
 import { getCurrentOwner, runWithOwner } from "../life-cycle/owner";
-import {
-  enterAsyncBoundary,
-  getAsyncBoundary,
-  withAsyncBoundary,
-} from "../components/boundary";
+
 import { NotReadyError } from "../reactivity/not-ready-error";
-import { claimHydrationText, isHydrating } from "./hydration";
+import { claimHydrationText } from "./hydration";
 
 export type SSR_NODE =
   | SSR_ELEMENT
@@ -184,13 +180,10 @@ export function resolveNode(child: () => JSX.Element): Node[] {
 
 export function resolveElement(element: JSX.Element): Node[] {
   if (element === null || element === undefined || element === false) {
-    return [document.createComment("")];
+    return [document.createTextNode("")];
   }
 
   if (typeof element === "string" || typeof element === "number") {
-    // claimHydrationNode();
-    // console.log(String(element), );
-
     return [claimHydrationText() || document.createTextNode(String(element))];
   }
 

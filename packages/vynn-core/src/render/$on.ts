@@ -1,4 +1,3 @@
-import { NotReadyError } from "../reactivity/not-ready-error";
 import { getCurrentOwner, runWithOwner } from "../life-cycle/owner";
 import { getRenderMode } from "../context/render-mode";
 
@@ -33,7 +32,7 @@ export function $on<E extends HTMLElement, K extends keyof HTMLElementEventMap>(
   const owner = getCurrentOwner();
 
   if (!owner) {
-    throw new Error(`Vynn: $on must be used inside component`);
+    throw new Error(`[vynn]: $on must be used inside component`);
   }
 
   function handle(event: Event) {

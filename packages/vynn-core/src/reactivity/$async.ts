@@ -1,17 +1,11 @@
-import {
-  getAsyncBoundary,
-  isInsideAwaitBoundary,
-} from "../components/boundary";
+import { getAsyncBoundary } from "../components/boundary";
 import { $state } from "./$state";
 import { $renderEffect } from "./$effect";
 import { NotReadyError } from "./not-ready-error";
-import {
-  getCurrentOwner,
-  getOwnerContext,
-  modifyOwnerContext,
-} from "../life-cycle/owner";
+import { getOwnerContext, modifyOwnerContext } from "../life-cycle/owner";
 import { getRenderMode } from "../context/render-mode";
 import { transaction } from "./transaction";
+import { isInsideLazy } from "../components/lazy";
 
 export type Async<T> = {
   value: T;
@@ -183,16 +177,6 @@ function withFakeAsyncApis<T>(callback: () => T): T {
   }
 }
 
-function assertInsideAwait(): void {
-  if (!isInsideAwaitBoundary()) {
-    throw new Error(
-      "[vynn] $async values must be accessed inside <Await>. " +
-        "Wrap the expression that reads `.value` or calls `isPending()` " +
-        "in <Await fallback={...}>.",
-    );
-  }
-}
-
 export function $async<T>(getter: () => Promise<T>): Async<T> {
   const result = $state<AsyncRecord<T> | undefined>();
   let version = 0;
@@ -236,11 +220,12 @@ export function $async<T>(getter: () => Promise<T>): Async<T> {
         };
 
         const $asyncValues = getOwnerContext<any[]>("$async-values");
+        const isLazy = isInsideLazy();
         // Attach exactly one settlement handler for this operation.
         promise.then(
           (value) => {
             if (currentVersion !== version) return;
-            if ($asyncValues) $asyncValues.push(value);
+            if ($asyncValues && !isLazy) $asyncValues.push(value);
 
             result.value = {
               status: "resolved",

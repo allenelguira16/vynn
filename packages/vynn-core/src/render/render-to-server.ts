@@ -2,7 +2,6 @@ import {
   createOwner,
   disposeOwner,
   getCurrentOwner,
-  getOwnerContext,
   runWithOwner,
 } from "../life-cycle/owner";
 import { JSX } from "../types/jsx";
@@ -16,6 +15,7 @@ export function renderToServer(
 ) {
   const owner = createOwner();
   owner.context.set("$async-values", []);
+  owner.context.set("$lazy-id", 0);
 
   return runWithOwner(owner, () => {
     setRenderMode(mode);
@@ -134,7 +134,6 @@ function resolveSync(App: () => JSX.Element) {
 }
 
 async function resolveAsync(App: () => JSX.Element): Promise<string> {
-  const owner = getCurrentOwner()!;
   async function resolve(app: SSR_NODE[]): Promise<string> {
     const html: string[] = [];
     for (const node of app.flat(Infinity).filter(Boolean)) {
@@ -175,10 +174,7 @@ async function resolveAsync(App: () => JSX.Element): Promise<string> {
   }
 
   try {
-    return (
-      (await resolve(resolveNode(App) as unknown as SSR_NODE[])) +
-      `<script>window.__vynnAsyncData = ${JSON.stringify(owner.context.get("$async-values"))};document.currentScript.remove();</script>`
-    );
+    return resolve(resolveNode(App) as unknown as SSR_NODE[]);
   } finally {
     const owner = getCurrentOwner();
     if (owner) disposeOwner(owner);

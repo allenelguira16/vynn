@@ -89,8 +89,9 @@ export function $attr<E extends HTMLElement>(
   $renderEffect(() => {
     const next = typeof value === "function" ? value() : value;
 
-    if (properties.has(name)) {
+    if (properties.has(name) && !booleanAttributes.has(name)) {
       (element as any)[name] = next;
+      element.setAttribute(name, String(next));
       return;
     }
 

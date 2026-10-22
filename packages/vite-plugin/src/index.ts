@@ -1,8 +1,9 @@
-import { transformSync } from "@babel/core";
-import babelPluginTS from "@babel/preset-typescript";
-import babelPluginVynn from "@babel/preset-vynn";
+// import { transformSync } from "@babel/core";
+// import babelPluginTS from "@babel/preset-typescript";
+// import babelPluginVynn from "@babel/preset-vynn";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Plugin, ViteDevServer } from "vite";
+import { vynnOxcPlugin } from "./vynn-oxc-plugin.ts";
 
 type VitePluginVynnOptions = {
   ssr?: boolean;
@@ -17,64 +18,66 @@ type VitePluginVynnOptions = {
 export default (options: VitePluginVynnOptions = { ssr: false }): Plugin[] => {
   const plugins: Plugin[] = [];
 
-  plugins.push({
-    name: "vite-plugin-vynn",
-    enforce: "pre",
+  plugins.push(vynnOxcPlugin());
 
-    transform: {
-      filter: {
-        id: /\.[tj]sx?(?:$|\?)/,
-      },
+  // plugins.push({
+  //   name: "vite-plugin-vynn",
+  //   enforce: "pre",
 
-      handler(code, id, transformOptions) {
-        const [filename] = id.split("?", 2);
+  //   transform: {
+  //     filter: {
+  //       id: /\.[tj]sx?(?:$|\?)/,
+  //     },
 
-        const isSSR = transformOptions?.ssr === true;
+  //     handler(code, id, transformOptions) {
+  //       const [filename] = id.split("?", 2);
 
-        // Plugin is client-only.
-        // Don't transform SSR modules if SSR wasn't enabled.
-        if (isSSR && !options.ssr) {
-          return null;
-        }
+  //       const isSSR = transformOptions?.ssr === true;
 
-        const result = transformSync(code, {
-          filename,
-          sourceMaps: true,
+  //       // Plugin is client-only.
+  //       // Don't transform SSR modules if SSR wasn't enabled.
+  //       if (isSSR && !options.ssr) {
+  //         return null;
+  //       }
 
-          presets: [
-            [
-              babelPluginVynn,
-              {
-                ssr: isSSR,
+  //       const result = transformSync(code, {
+  //         filename,
+  //         sourceMaps: true,
 
-                // Vite's module ID is passed to Vynn so the generated
-                // HMR handler can identify the module correctly.
-                //
-                // HMR is only relevant to client transforms.
-                hmrId: isSSR ? undefined : filename,
-              },
-            ],
-            babelPluginTS,
-          ],
+  //         presets: [
+  //           [
+  //             babelPluginVynn,
+  //             {
+  //               ssr: isSSR,
 
-          generatorOpts: {
-            comments: true,
-            shouldPrintComment: (value: string) => /#__PURE__/.test(value),
-          },
-        });
+  //               // Vite's module ID is passed to Vynn so the generated
+  //               // HMR handler can identify the module correctly.
+  //               //
+  //               // HMR is only relevant to client transforms.
+  //               hmrId: isSSR ? undefined : filename,
+  //             },
+  //           ],
+  //           babelPluginTS,
+  //         ],
 
-        if (!result?.code) {
-          return null;
-        }
+  //         generatorOpts: {
+  //           comments: true,
+  //           shouldPrintComment: (value: string) => /#__PURE__/.test(value),
+  //         },
+  //       });
 
-        return {
-          code: result.code,
-          map: result.map ? JSON.stringify(result.map) : undefined,
-          moduleType: "js",
-        };
-      },
-    },
-  });
+  //       if (!result?.code) {
+  //         return null;
+  //       }
+
+  //       return {
+  //         code: result.code,
+  //         map: result.map ? JSON.stringify(result.map) : undefined,
+  //         moduleType: "js",
+  //       };
+  //     },
+  //   },
+  // });
 
   if (options.ssr) {
     const virtualCssPath = "/@virtual:ssr-css.css";

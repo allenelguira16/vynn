@@ -9,9 +9,9 @@ let isHydrationHydrating = false;
 
 export function withHydration(callback: () => void, root: Node) {
   isHydrationHydrating = true;
-  const serverRenderedNodes = getServerRenderedNodes(root);
-  serverRenderedElements = serverRenderedNodes[0];
-  serverRenderedTexts = serverRenderedNodes[1];
+  [serverRenderedElements, serverRenderedTexts] = getServerRenderedNodes(root);
+  // serverRenderedElements = serverRenderedNodes[0];
+  // serverRenderedTexts = serverRenderedNodes[1];
 
   callback();
   isHydrationHydrating = false;

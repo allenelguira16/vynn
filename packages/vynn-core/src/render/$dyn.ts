@@ -14,7 +14,7 @@ export function $dyn(child: () => JSX.Element): JSX.Element {
     return resolveSSRChild(child) as unknown as JSX.Element;
   }
 
-  const marker = document.createComment("dynamic-marker");
+  const marker = document.createTextNode("");
   let nodes: Node[] = [];
 
   $renderEffect(() => {

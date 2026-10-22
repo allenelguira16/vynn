@@ -1,7 +1,7 @@
 // import { IS_SERVER_ENV } from "../utils/is-server-env";
 
 import { getRenderMode } from "../context/render-mode";
-import { claimHydrationElement, isHydrating } from "./hydration";
+import { claimHydrationElement } from "./hydration";
 import { createSSRNode } from "./resolve-node";
 
 /**
@@ -20,7 +20,6 @@ export function $tmpl<T extends keyof HTMLElementTagNameMap>(
   const element =
     claimHydrationElement<HTMLElementTagNameMap[T]>() ||
     document.createElement(key);
-  // console.log(element, );
 
   return element;
 }

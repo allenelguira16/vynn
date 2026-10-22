@@ -11,6 +11,8 @@
   "dependencies": {
     "@babel/core": "^8.0.5",
     "@tailwindcss/vite": "^4.3.3",
+    "esrap": "^2.4.0",
+    "oxc-parser": "^0.155.0",
     "tailwindcss": "^4.3.3",
     "vite-plugin-vynn": "workspace:*",
     "vynn": "workspace:*",

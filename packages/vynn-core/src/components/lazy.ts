@@ -70,14 +70,32 @@ export function lazy<
   return $cmpnt(function LazyComponent(
     props: Parameters<Component>[0],
   ): JSX.Element {
-    const component = $async(loadComponent);
+    return withLazyBoundary(() => {
+      const component = $async(loadComponent);
 
-    return $dyn(() => {
-      if (!cachedComponent) {
-        cachedComponent = component.value;
-      }
+      return $dyn(() => {
+        if (!cachedComponent) {
+          cachedComponent = component.value;
+        }
 
-      return cachedComponent(props);
+        return cachedComponent(props);
+      });
     });
   }) as Component;
+}
+
+let isInsideLazyBoundary = false;
+
+export function isInsideLazy() {
+  return isInsideLazyBoundary;
+}
+
+export function withLazyBoundary<T>(callback: () => T) {
+  isInsideLazyBoundary = true;
+
+  try {
+    return callback();
+  } finally {
+    isInsideLazyBoundary = false;
+  }
 }

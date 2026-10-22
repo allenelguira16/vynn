@@ -16,6 +16,5 @@ export function $text(value: string): JSX.Element {
   }
 
   const element = claimHydrationText() || document.createTextNode(value);
-  // console.log(element);
   return element;
 }

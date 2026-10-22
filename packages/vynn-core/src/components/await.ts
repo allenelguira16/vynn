@@ -7,6 +7,7 @@ import { $renderEffect } from "../reactivity/$effect";
 import { getRenderMode } from "../context/render-mode";
 import { NotReadyError } from "../reactivity/not-ready-error";
 import { $memo } from "../render";
+import { isHydrating } from "../render/hydration";
 
 /**
  * Displays a fallback while the children are initially loading.
@@ -106,7 +107,7 @@ export const Await = $cmpnt(function Suspense(props: {
   let resolved = false;
   let hasPromise = false;
 
-  const markerEnd = document.createComment("");
+  const markerEnd = document.createTextNode("");
   const view = $state<Node[]>([]);
 
   let nodes: Node[] = [];
@@ -124,7 +125,7 @@ export const Await = $cmpnt(function Suspense(props: {
 
     pending.add(promise);
 
-    if (!resolved) {
+    if (!resolved && !isHydrating()) {
       view.value = resolveNode(fallback);
     }
 
