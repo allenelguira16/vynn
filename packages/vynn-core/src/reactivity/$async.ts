@@ -36,14 +36,20 @@ export function isPending(value: object): boolean {
   return context.get(value)?.() ?? false;
 }
 
-function getServerRenderedData() {
-  let asyncID = getOwnerContext<number>("$async-id");
+function getAsyncID() {
+  let asyncID = getOwnerContext<number>("$async-id")!;
   modifyOwnerContext<number>("$async-id", (current) => current + 1);
 
-  // console.log(!getRenderMode() && !!asyncID);
-  // console.log(asyncID, (window as any).__vynnAsyncData);
-  if (!getRenderMode() && asyncID != null) {
-    return (window as any).__vynnAsyncData[asyncID];
+  return asyncID;
+}
+
+function getServerRenderedData(asyncID: number) {
+  if (!getRenderMode()) {
+    try {
+      return (window as any).__vynnAsyncData[asyncID];
+    } finally {
+      delete (window as any).__vynnAsyncData[asyncID];
+    }
   }
 
   return undefined;
@@ -178,14 +184,17 @@ function withFakeAsyncApis<T>(callback: () => T): T {
 }
 
 export function $async<T>(getter: () => Promise<T>): Async<T> {
+  const asyncID = getAsyncID();
   const result = $state<AsyncRecord<T> | undefined>();
   let version = 0;
 
   $renderEffect(() => {
     transaction(() => {
       const currentVersion = ++version;
+      const $asyncValues = getOwnerContext<any[]>("$async-values");
+      const isLazy = isInsideLazy();
 
-      const ssrData = getServerRenderedData();
+      const ssrData = isLazy ? undefined : getServerRenderedData(asyncID);
 
       let promise!: Promise<T>;
 
@@ -219,13 +228,11 @@ export function $async<T>(getter: () => Promise<T>): Async<T> {
           version: currentVersion,
         };
 
-        const $asyncValues = getOwnerContext<any[]>("$async-values");
-        const isLazy = isInsideLazy();
         // Attach exactly one settlement handler for this operation.
         promise.then(
           (value) => {
             if (currentVersion !== version) return;
-            if ($asyncValues && !isLazy) $asyncValues.push(value);
+            if ($asyncValues && !isLazy) $asyncValues[asyncID] = value;
 
             result.value = {
               status: "resolved",

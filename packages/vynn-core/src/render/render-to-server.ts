@@ -15,6 +15,7 @@ export function renderToServer(
 ) {
   const owner = createOwner();
   owner.context.set("$async-values", []);
+  owner.context.set("$async-id", 0);
   owner.context.set("$lazy-id", 0);
 
   return runWithOwner(owner, () => {
@@ -215,7 +216,7 @@ function resolveStream(App: () => JSX.Element): ReadableStream<Uint8Array> {
     }
   }
 
-  function finishTask() {
+  async function finishTask() {
     pending--;
 
     if (pending === 0 && initialSent && !closed) {
@@ -223,7 +224,6 @@ function resolveStream(App: () => JSX.Element): ReadableStream<Uint8Array> {
         `<script>window.__vynnAsyncData = ${JSON.stringify(owner.context.get("$async-values"))};document.currentScript.remove();</script>`,
       );
       closed = true;
-      // console.log();
 
       controller.close();
       disposeOwner(owner);
@@ -327,7 +327,7 @@ function resolveStream(App: () => JSX.Element): ReadableStream<Uint8Array> {
           } catch (error) {
             console.error("[vynn]: Failed to resolve an SSR boundary", error);
           } finally {
-            finishTask();
+            await finishTask();
           }
         })();
       } else if ("promises" in node && node.type === "#deferred") {
@@ -338,6 +338,8 @@ function resolveStream(App: () => JSX.Element): ReadableStream<Uint8Array> {
         html.push(
           node.value === "" ? "<!--vynn:text-->" : escapeHtml(node.value),
         );
+      } else if ("value" in node && node.type === "#comment") {
+        html.push(`<!--${node.value}-->`);
       } else if ("children" in node) {
         html.push(
           renderNode({
@@ -375,7 +377,7 @@ function resolveStream(App: () => JSX.Element): ReadableStream<Uint8Array> {
 
           return;
         } finally {
-          finishTask();
+          await finishTask();
         }
       })();
     },

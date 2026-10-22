@@ -7,7 +7,8 @@ import { $renderEffect } from "../reactivity/$effect";
 import { getRenderMode } from "../context/render-mode";
 import { NotReadyError } from "../reactivity/not-ready-error";
 import { $memo } from "../render";
-import { isHydrating } from "../render/hydration";
+import { isHydrating, runAfterHydration } from "../render/hydration";
+import { isInsideLazy } from "./lazy";
 
 /**
  * Displays a fallback while the children are initially loading.
@@ -125,7 +126,10 @@ export const Await = $cmpnt(function Suspense(props: {
 
     pending.add(promise);
 
-    if (!resolved && !isHydrating()) {
+    // console.log(resolved, isHydrating());
+    // console.log();
+    if (!resolved && !("__lazy" in promise)) {
+      // console.log("running???");
       view.value = resolveNode(fallback);
     }
 
@@ -145,7 +149,9 @@ export const Await = $cmpnt(function Suspense(props: {
     );
   });
 
+  // runAfterHydration(() => {
   children();
+  // });
 
   // Keep the reactive view active even when the async work
   // is discovered later by a nested effect.

@@ -31,6 +31,7 @@ export function hydrateToDOM(
 
     runWithOwner(owner, () => {
       owner.context.set("$async-id", 0);
+      owner.context.set("$lazy-id", 0);
 
       withHydration(() => {
         // console.log("hi");

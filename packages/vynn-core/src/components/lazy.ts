@@ -1,6 +1,16 @@
 import type { JSX } from "../types/jsx";
 import { $async } from "../reactivity/$async";
 import { $cmpnt, $dyn } from "../render";
+import { getRenderMode } from "../context/render-mode";
+import { createSSRComment } from "../render/resolve-node";
+import { getOwnerContext, modifyOwnerContext } from "../life-cycle/owner";
+import {
+  syncServerRenderedLazy,
+  isHydrating,
+  runAfterHydration,
+} from "../render/hydration";
+import { $state } from "../reactivity/$state";
+import { $renderEffect } from "../reactivity/$effect";
 
 type AnyComponent = (props: never) => JSX.Element;
 
@@ -64,6 +74,7 @@ export function lazy<
       return component as Component;
     });
 
+    Object.assign(loadPromise, { __lazy: true });
     return loadPromise;
   }
 
@@ -73,10 +84,47 @@ export function lazy<
     return withLazyBoundary(() => {
       const component = $async(loadComponent);
 
+      const lazyID = getOwnerContext<number>("$lazy-id") ?? 0;
+      modifyOwnerContext<number>("$lazy-id", (currentID) => currentID + 1);
+
+      // The server does not wait for client hydration.
+      const hydrationReady = $state(!!getRenderMode() || !isHydrating());
+
+      // Schedule exactly one transition for this instance.
+      if (!getRenderMode() && !hydrationReady.value) {
+        runAfterHydration(() => {
+          // console.log(getServerRenderedLazy());
+          hydrationReady.value = true;
+        });
+      }
+
+      // getServerRenderedLazy(lazyID);
+
       return $dyn(() => {
+        // Preserve the existing SSR boundary markers.
+        if (getRenderMode()) {
+          if (!cachedComponent) {
+            cachedComponent = component.value;
+          }
+
+          return [
+            createSSRComment(`lazy:${lazyID}`),
+            cachedComponent(props),
+            createSSRComment(`/lazy:${lazyID}`),
+          ] as JSX.Element;
+        }
+
+        // Do not claim any server-rendered nodes during root hydration.
+        if (!hydrationReady.value) {
+          return [];
+        }
+
+        // Wait for the module only after hydration is finished.
         if (!cachedComponent) {
           cachedComponent = component.value;
         }
+
+        syncServerRenderedLazy(lazyID);
 
         return cachedComponent(props);
       });

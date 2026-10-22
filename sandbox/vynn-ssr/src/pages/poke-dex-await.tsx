@@ -33,7 +33,7 @@ export const PokeDexAwait = () => {
     const response = await fetch(url.value);
     const json = (await response.json()) as PokeDexData;
 
-    await sleep(1000);
+    await sleep(0);
 
     return json;
   });

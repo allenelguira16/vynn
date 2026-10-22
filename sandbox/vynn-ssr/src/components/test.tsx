@@ -7,7 +7,7 @@ export const Test = () => {
 
   return (
     <div>
-      <test>Test me sheet</test>
+      <div>Test me sheet</div>
     </div>
   );
 };
