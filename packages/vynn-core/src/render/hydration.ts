@@ -1,3 +1,4 @@
+import { forEachTrailingCommentRange } from "typescript/unstable/ast";
 import { getRenderMode } from "../context/render-mode";
 
 let serverRenderedElements: HTMLElement[] = [];
@@ -7,6 +8,7 @@ let serverRenderedLazy = new Map<number, LazyHydrationNodes>();
 let hydrationElementIndex = 0;
 let hydrationTextIndex = 0;
 let isHydrationHydrating = false;
+let isIgnoreHydration = false;
 
 export function withHydration(callback: () => void, root: Node) {
   isHydrationHydrating = true;
@@ -41,6 +43,8 @@ export function syncServerRenderedLazy(lazyID: number) {
 }
 
 export function claimHydrationText() {
+  if (isIgnoreHydration) return undefined;
+
   try {
     const index = hydrationTextIndex;
     return serverRenderedTexts[index];
@@ -51,6 +55,24 @@ export function claimHydrationText() {
 
 export function isHydrating() {
   return isHydrationHydrating;
+}
+
+export function ignoreHydration<T>(callback: () => T) {
+  isIgnoreHydration = true;
+
+  try {
+    return callback();
+  } finally {
+    isIgnoreHydration = false;
+  }
+}
+
+export function isHydrationIgnored() {
+  return isIgnoreHydration;
+}
+
+export function resumeHydration() {
+  isIgnoreHydration = false;
 }
 
 export function runAfterHydration<T>(callback: () => T) {
@@ -65,54 +87,84 @@ export function runAfterHydration<T>(callback: () => T) {
 const START_RE = /^lazy:(\d+)$/;
 const END_RE = /^\/lazy:(\d+)$/;
 
+const HTML_NAMESPACE = "http://www.w3.org/1999/xhtml";
+
 type LazyHydrationNodes = {
   elements: HTMLElement[];
   texts: Text[];
 };
 
+function isHTMLElement(node: Node): node is HTMLElement {
+  return (
+    node.nodeType === 1 && (node as Element).namespaceURI === HTML_NAMESPACE
+  );
+}
+
+function isTextNode(node: Node): node is Text {
+  return node.nodeType === 3;
+}
+
+function isCommentNode(node: Node): node is Comment {
+  return node.nodeType === 8;
+}
+
 function getServerRenderedNodes(root: Node) {
+  // Nodes outside lazy boundaries.
   const doms: Node[] = [];
+
+  // Nodes belonging to each lazy boundary.
   const lazy = new Map<number, LazyHydrationNodes>();
+
+  // Stack of nested lazy boundary IDs.
   const boundaryStack: number[] = [];
+
+  function getOrCreateLazyNodes(id: number): LazyHydrationNodes {
+    let nodes = lazy.get(id);
+
+    if (!nodes) {
+      nodes = {
+        elements: [],
+        texts: [],
+      };
+
+      lazy.set(id, nodes);
+    }
+
+    return nodes;
+  }
 
   function addNode(node: Node) {
     const id = boundaryStack.at(-1);
 
+    // Nodes inside a lazy boundary must not enter the root pools.
     if (id === undefined) {
-      // Only nodes outside lazy boundaries go into the root pool.
       doms.push(node);
       return;
     }
 
-    let nodes = lazy.get(id);
+    const nodes = getOrCreateLazyNodes(id);
 
-    if (!nodes) {
-      nodes = { elements: [], texts: [] };
-      lazy.set(id, nodes);
-    }
-
-    if (node instanceof HTMLElement) {
+    if (isHTMLElement(node)) {
       nodes.elements.push(node);
-    } else if (node instanceof Text) {
+    } else if (isTextNode(node)) {
       nodes.texts.push(node);
     }
   }
 
   function flattenNode(node: Node) {
-    if (node instanceof Comment) {
-      const value = node.textContent ?? "";
+    if (isCommentNode(node)) {
+      const value = node.data;
 
       const start = START_RE.exec(value);
 
       if (start) {
         const id = Number(start[1]);
 
-        if (!lazy.has(id)) {
-          lazy.set(id, { elements: [], texts: [] });
-        }
+        // Create an entry even when the lazy range is empty.
+        getOrCreateLazyNodes(id);
 
         boundaryStack.push(id);
-        node.remove();
+        node.parentNode?.removeChild(node);
         return;
       }
 
@@ -123,30 +175,36 @@ function getServerRenderedNodes(root: Node) {
         const index = boundaryStack.lastIndexOf(id);
 
         if (index !== -1) {
+          // Close this boundary and any nested entries above it.
           boundaryStack.splice(index);
+        } else {
+          console.warn(`[vynn] Unmatched lazy boundary end marker: ${value}`);
         }
 
-        node.remove();
+        node.parentNode?.removeChild(node);
         return;
       }
 
       if (value === "vynn:text") {
+        // Preserve the empty text node expected by hydration.
         const empty = document.createTextNode("");
-        node.replaceWith(empty);
+
+        node.parentNode?.replaceChild(empty, node);
         addNode(empty);
         return;
       }
 
       if (value === "vynn:separator") {
-        node.remove();
+        node.parentNode?.removeChild(node);
         return;
       }
     }
 
-    if (node instanceof HTMLElement || node instanceof Text) {
+    if (isHTMLElement(node) || isTextNode(node)) {
       addNode(node);
     }
 
+    // Continue through element descendants, including custom elements.
     for (const child of [...node.childNodes]) {
       flattenNode(child);
     }
@@ -156,9 +214,5 @@ function getServerRenderedNodes(root: Node) {
     flattenNode(child);
   }
 
-  return [
-    doms.filter((dom): dom is HTMLElement => dom instanceof HTMLElement),
-    doms.filter((dom): dom is Text => dom instanceof Text),
-    lazy,
-  ] as const;
+  return [doms.filter(isHTMLElement), doms.filter(isTextNode), lazy] as const;
 }

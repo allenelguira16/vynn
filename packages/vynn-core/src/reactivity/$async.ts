@@ -45,6 +45,7 @@ function getAsyncID() {
 
 function getServerRenderedData(asyncID: number) {
   if (!getRenderMode()) {
+    (window as any).__vynnAsyncData ??= [];
     try {
       return (window as any).__vynnAsyncData[asyncID];
     } finally {

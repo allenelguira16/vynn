@@ -2,7 +2,7 @@ import { getOwnerContext, setOwnerContext } from "../life-cycle/owner";
 
 export type RenderMode = "sync" | "async" | "stream";
 
-const RENDER_MODE = Symbol("vynn.render-mode");
+const RENDER_MODE = "$render-mode";
 
 export function getRenderMode(): RenderMode | null {
   return getOwnerContext<RenderMode>(RENDER_MODE) ?? null;

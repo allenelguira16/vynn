@@ -7,8 +7,15 @@ import { $renderEffect } from "../reactivity/$effect";
 import { getRenderMode } from "../context/render-mode";
 import { NotReadyError } from "../reactivity/not-ready-error";
 import { $memo } from "../render";
-import { isHydrating, runAfterHydration } from "../render/hydration";
+import {
+  ignoreHydration,
+  isHydrating,
+  isHydrationIgnored,
+  resumeHydration,
+  runAfterHydration,
+} from "../render/hydration";
 import { isInsideLazy } from "./lazy";
+import { getCurrentOwner, runWithOwner } from "../life-cycle/owner";
 
 /**
  * Displays a fallback while the children are initially loading.
@@ -26,38 +33,49 @@ export const Await = $cmpnt(function Suspense(props: {
 }): JSX.Element {
   const mode = getRenderMode();
   if (mode === "sync") {
-    try {
-      return props.children;
-    } catch (error) {
-      if (!(error instanceof NotReadyError)) {
-        throw error;
-      }
-
-      return props.fallback;
-    }
-  }
-  if (mode === "async") {
-    let pending: Promise<any>[] = [];
-
-    enterAsyncBoundary((promise) => {
-      pending.push(promise);
+    let isHasPromise = false;
+    enterAsyncBoundary(() => {
+      // console.log(promise);
+      isHasPromise = true;
     });
-
+    // try {
+    // return resolveNode(() => );
     try {
+      props.children;
+    } finally {
+      if (isHasPromise) return props.fallback;
       return props.children;
-    } catch (error) {
-      if (!(error instanceof NotReadyError)) {
-        throw error;
-      }
-
-      return createSSRAsync(
-        () => resolveNode(() => props.fallback) as unknown as SSR_NODE[],
-        () => resolveNode(() => props.children) as unknown as SSR_NODE[],
-        pending,
-      ) as unknown as JSX.Element;
     }
+    // } catch (error) {
+    //   if (!(error instanceof NotReadyError)) {
+    //     throw error;
+    //   }
+
+    //   return props.fallback;
+    // }
   }
-  if (mode === "stream") {
+  // if (mode === "async") {
+  //   let pending: Promise<any>[] = [];
+
+  //   enterAsyncBoundary((promise) => {
+  //     pending.push(promise);
+  //   });
+
+  //   try {
+  //     return props.children;
+  //   } catch (error) {
+  //     if (!(error instanceof NotReadyError)) {
+  //       throw error;
+  //     }
+
+  //     return createSSRAsync(
+  //       () => resolveNode(() => props.fallback) as unknown as SSR_NODE[],
+  //       () => resolveNode(() => props.children) as unknown as SSR_NODE[],
+  //       pending,
+  //     ) as unknown as JSX.Element;
+  //   }
+  // }
+  if (mode) {
     const pending: Promise<unknown>[] = [];
 
     enterAsyncBoundary((promise) => {
@@ -105,6 +123,8 @@ export const Await = $cmpnt(function Suspense(props: {
     }
   }
 
+  const owner = getCurrentOwner()!;
+
   let resolved = false;
   let hasPromise = false;
 
@@ -114,8 +134,8 @@ export const Await = $cmpnt(function Suspense(props: {
   let nodes: Node[] = [];
   const pending = new Set<Promise<unknown>>();
 
-  const fallback = $memo(() => props.fallback);
-  const children = $memo(() => props.children);
+  const fallback = $memo(() => runWithOwner(owner, () => props.fallback));
+  const children = $memo(() => runWithOwner(owner, () => props.children));
 
   enterAsyncBoundary((promise) => {
     hasPromise = true;
@@ -126,10 +146,7 @@ export const Await = $cmpnt(function Suspense(props: {
 
     pending.add(promise);
 
-    // console.log(resolved, isHydrating());
-    // console.log();
     if (!resolved && !("__lazy" in promise)) {
-      // console.log("running???");
       view.value = resolveNode(fallback);
     }
 
@@ -149,27 +166,25 @@ export const Await = $cmpnt(function Suspense(props: {
     );
   });
 
-  // runAfterHydration(() => {
-  children();
-  // });
+  try {
+    children();
+  } finally {
+    if (!hasPromise) {
+      return children();
+    }
 
-  // Keep the reactive view active even when the async work
-  // is discovered later by a nested effect.
-  if (!hasPromise) {
-    return resolveNode(children);
+    $renderEffect(() => {
+      for (const node of nodes) {
+        (node as ChildNode).remove();
+      }
+
+      nodes = view.value;
+
+      for (const node of nodes) {
+        markerEnd.parentNode?.insertBefore(node, markerEnd);
+      }
+    });
+
+    return [nodes, markerEnd];
   }
-
-  $renderEffect(() => {
-    for (const node of nodes) {
-      (node as ChildNode).remove();
-    }
-
-    nodes = view.value;
-
-    for (const node of nodes) {
-      markerEnd.parentNode?.insertBefore(node, markerEnd);
-    }
-  });
-
-  return [nodes, markerEnd];
 });

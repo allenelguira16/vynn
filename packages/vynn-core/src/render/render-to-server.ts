@@ -6,12 +6,12 @@ import {
 } from "../life-cycle/owner";
 import { JSX } from "../types/jsx";
 import { resolveNode, SSR_ELEMENT, SSR_NODE } from "./resolve-node";
-import { setRenderMode } from "../context/render-mode";
+import { getRenderMode, setRenderMode } from "../context/render-mode";
 import { escapeHtml } from "../utils/escape-html";
 
 export function renderToServer(
   App: () => JSX.Element,
-  mode: "sync" | "async" | "stream",
+  mode: "async" | "stream",
 ) {
   const owner = createOwner();
   owner.context.set("$async-values", []);
@@ -22,9 +22,10 @@ export function renderToServer(
     setRenderMode(mode);
 
     switch (mode) {
-      case "sync": {
-        return resolveSync(App);
-      }
+      // @DEPRECATED: Sync will no longer be supported in favor of async and stream to fit well with $async
+      // case "sync": {
+      //   return resolveSync(App);
+      // }
       case "async": {
         return resolveAsync(App);
       }
@@ -101,6 +102,8 @@ function hasNoHTMLTags(str: string) {
 }
 
 function resolveSync(App: () => JSX.Element) {
+  const owner = getCurrentOwner()!;
+
   function resolve(app: SSR_NODE[]): string {
     const html: string[] = [];
 
@@ -127,7 +130,10 @@ function resolveSync(App: () => JSX.Element) {
   }
 
   try {
-    return resolve(resolveNode(App) as unknown as SSR_NODE[]);
+    return (
+      resolve(resolveNode(App) as unknown as SSR_NODE[]) +
+      `<script>window.__vynnAsyncData = [];window.__vynnRenderMode="${owner.context.get("$render-mode")}";document.currentScript.remove();</script>`
+    );
   } finally {
     const owner = getCurrentOwner();
     if (owner) disposeOwner(owner);
@@ -135,6 +141,8 @@ function resolveSync(App: () => JSX.Element) {
 }
 
 async function resolveAsync(App: () => JSX.Element): Promise<string> {
+  const owner = getCurrentOwner()!;
+
   async function resolve(app: SSR_NODE[]): Promise<string> {
     const html: string[] = [];
     for (const node of app.flat(Infinity).filter(Boolean)) {
@@ -175,7 +183,10 @@ async function resolveAsync(App: () => JSX.Element): Promise<string> {
   }
 
   try {
-    return resolve(resolveNode(App) as unknown as SSR_NODE[]);
+    return (
+      (await resolve(resolveNode(App) as unknown as SSR_NODE[])) +
+      `<script>window.__vynnAsyncData = ${JSON.stringify(owner.context.get("$async-values"))};window.__vynnRenderMode="${owner.context.get("$render-mode")}";document.currentScript.remove();</script>`
+    );
   } finally {
     const owner = getCurrentOwner();
     if (owner) disposeOwner(owner);
@@ -221,7 +232,7 @@ function resolveStream(App: () => JSX.Element): ReadableStream<Uint8Array> {
 
     if (pending === 0 && initialSent && !closed) {
       enqueue(
-        `<script>window.__vynnAsyncData = ${JSON.stringify(owner.context.get("$async-values"))};document.currentScript.remove();</script>`,
+        `<script>window.__vynnAsyncData = ${JSON.stringify(owner.context.get("$async-values"))};window.__vynnRenderMode="${owner.context.get("$render-mode")}";document.currentScript.remove();</script>`,
       );
       closed = true;
 

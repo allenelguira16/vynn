@@ -103,13 +103,13 @@ export function lazy<
       return $dyn(() => {
         // Preserve the existing SSR boundary markers.
         if (getRenderMode()) {
-          if (!cachedComponent) {
-            cachedComponent = component.value;
-          }
+          // if (!cachedComponent) {
+          //   cachedComponent = component.value;
+          // }
 
           return [
             createSSRComment(`lazy:${lazyID}`),
-            cachedComponent(props),
+            component.value(props),
             createSSRComment(`/lazy:${lazyID}`),
           ] as JSX.Element;
         }
@@ -124,6 +124,7 @@ export function lazy<
           cachedComponent = component.value;
         }
 
+        console.log(lazyID);
         syncServerRenderedLazy(lazyID);
 
         return cachedComponent(props);

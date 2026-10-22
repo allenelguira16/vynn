@@ -1,7 +1,7 @@
 import type { JSX } from "../jsx-runtime";
 import { getRenderMode } from "../context/render-mode";
 import { createSSRText } from "./resolve-node";
-import { claimHydrationText } from "./hydration";
+import { claimHydrationText, isHydrationIgnored } from "./hydration";
 
 /**
  * Creates a text node for static JSX text.
@@ -15,6 +15,11 @@ export function $text(value: string): JSX.Element {
     return createSSRText(value) as unknown as JSX.Element;
   }
 
-  const element = claimHydrationText() || document.createTextNode(value);
+  let element = document.createTextNode(value);
+
+  if (!isHydrationIgnored()) {
+    // element = claimHydrationText() || element;
+    console.log(element, claimHydrationText());
+  }
   return element;
 }

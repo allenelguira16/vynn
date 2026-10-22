@@ -65,7 +65,7 @@ export const routes: Route[] = [
         path: "/",
         component: () => (
           <>
-            <Lazy />
+            {/* <Lazy /> */}
             <Forms />
             <Contexts />
             <Dropdowns />

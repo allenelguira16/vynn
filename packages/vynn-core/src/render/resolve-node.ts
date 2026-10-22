@@ -3,7 +3,7 @@ import { getRenderMode } from "../context/render-mode";
 import { getCurrentOwner, runWithOwner } from "../life-cycle/owner";
 
 import { NotReadyError } from "../reactivity/not-ready-error";
-import { claimHydrationText } from "./hydration";
+import { claimHydrationText, isHydrationIgnored } from "./hydration";
 
 export type SSR_NODE =
   | SSR_ELEMENT
@@ -184,7 +184,12 @@ export function resolveElement(element: JSX.Element): Node[] {
   }
 
   if (typeof element === "string" || typeof element === "number") {
-    return [claimHydrationText() || document.createTextNode(String(element))];
+    element = document.createTextNode(String(element));
+    if (!isHydrationIgnored()) {
+      // element = claimHydrationText() || element;
+      console.log(element, claimHydrationText());
+    }
+    return [element];
   }
 
   if (element instanceof Node) {

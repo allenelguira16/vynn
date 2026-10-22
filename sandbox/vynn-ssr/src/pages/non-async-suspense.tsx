@@ -1,8 +1,12 @@
-import { Await } from "vynn";
+import { Await, onMount } from "vynn";
 
 import { Template } from "../components/template";
 
 export function NonAsyncSuspense() {
+  onMount(() => {
+    console.log("hi");
+  });
+
   return (
     <Template title="Non-Async Suspense">
       <div>
