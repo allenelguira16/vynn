@@ -1,4 +1,4 @@
-import { ErrorBoundary, JSX } from "vynn";
+import { $state, ErrorBoundary, JSX } from "vynn";
 import { Template } from "../components/template";
 
 function ComponentWillThrow(): JSX.Element {
@@ -9,6 +9,20 @@ function ComponentWillThrow(): JSX.Element {
   return (
     <div>
       <div>{willThrow()}</div>
+    </div>
+  );
+}
+
+function ComponentWillThrowLater(): JSX.Element {
+  const count = $state(0);
+  const willThrow = () => {
+    throw new Error("hi");
+  };
+
+  return (
+    <div>
+      <div>{count.value > 5 && willThrow()}</div>
+      <button onClick={() => count.value++}>Add</button>
     </div>
   );
 }
@@ -33,6 +47,24 @@ export function ComponentError() {
         )}
       >
         <ComponentWillThrow />
+      </ErrorBoundary>
+      <ErrorBoundary
+        fallback={(error, reset) => (
+          <div>
+            <p>{String(error)}</p>
+            <button
+              class="btn"
+              onClick={() => {
+                console.log("hi!");
+                reset();
+              }}
+            >
+              Try Again
+            </button>
+          </div>
+        )}
+      >
+        <ComponentWillThrowLater />
       </ErrorBoundary>
     </Template>
   );

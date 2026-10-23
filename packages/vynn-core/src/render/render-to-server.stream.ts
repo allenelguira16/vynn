@@ -146,7 +146,7 @@ function renderPatch(id: number, html: string) {
 }
 
 function renderPatchRuntime() {
-  return `<script>(${((startMarker: string, endMarker: string) => {
+  return `<script>(${(() => {
     var queue = ((window as any).__vynnPendingPatches =
       (window as any).__vynnPendingPatches || []);
 
@@ -165,8 +165,8 @@ function renderPatchRuntime() {
       while (walker.nextNode()) {
         var node = walker.currentNode as Comment;
 
-        if (node.data === `${startMarker}:${id}`) start = node;
-        if (node.data === `${endMarker}:${id}`) end = node;
+        if (node.data === `FALLBACK_START_SSR_MARKER:${id}`) start = node;
+        if (node.data === `FALLBACK_END_SSR_MARKER:${id}`) end = node;
       }
 
       if (!start || !end || !end.parentNode) {
@@ -208,5 +208,11 @@ function renderPatchRuntime() {
         }
       }
     };
-  }).toString()})("${FALLBACK_START_SSR_MARKER}","${FALLBACK_END_SSR_MARKER}");document.currentScript.remove();</script>`;
+  })
+    .toString()
+    .replace("FALLBACK_START_SSR_MARKER", FALLBACK_START_SSR_MARKER)
+    .replace(
+      "FALLBACK_END_SSR_MARKER",
+      FALLBACK_END_SSR_MARKER,
+    )})();document.currentScript.remove();</script>`;
 }
