@@ -1,5 +1,5 @@
 import { $state } from "./$state";
-import { $effect } from "./$effect";
+import { $renderEffect } from "./$effect";
 
 export type Computed<T> = {
   readonly value: T;
@@ -17,7 +17,7 @@ export type Computed<T> = {
 export function $computed<T>(getter: () => T): Computed<T> {
   const result = $state<T>();
 
-  $effect(() => {
+  $renderEffect(() => {
     result.value = getter();
   });
 

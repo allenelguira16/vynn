@@ -1,6 +1,6 @@
 import { getOwnerContext, setOwnerContext } from "../life-cycle/owner";
 
-export type RenderMode = "sync" | "async" | "stream";
+export type RenderMode = "async" | "stream";
 
 const RENDER_MODE = "$render-mode";
 

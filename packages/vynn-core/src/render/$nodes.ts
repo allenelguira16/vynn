@@ -9,7 +9,7 @@ import { resolveNode, resolveSSRChild } from "./resolve-node";
  * On the server, pending expressions are represented by deferred SSR nodes.
  * On the client, the expression remains reactive.
  */
-export function $dyn(child: () => JSX.Element): JSX.Element {
+export function $nodes(child: () => JSX.Element): JSX.Element {
   if (getRenderMode()) {
     return resolveSSRChild(child) as unknown as JSX.Element;
   }

@@ -1,11 +1,5 @@
-// import { IS_SERVER_ENV } from "../utils/is-server-env";
-
 import { getRenderMode } from "../context/render-mode";
-import {
-  claimHydrationElement,
-  isHydrating,
-  isHydrationIgnored,
-} from "./hydration";
+import { claimHydrationElement } from "./hydration";
 import { createSSRNode } from "./resolve-node";
 
 /**
@@ -23,10 +17,8 @@ export function $tmpl<T extends keyof HTMLElementTagNameMap>(
 
   let element = document.createElement(key);
 
-  if (!isHydrationIgnored()) {
-    // element = claimHydrationElement<HTMLElementTagNameMap[T]>() || element;
-    console.log(element, claimHydrationElement<HTMLElementTagNameMap[T]>());
-  }
+  element = claimHydrationElement<HTMLElementTagNameMap[T]>() || element;
+  // console.log(element, claimHydrationElement<HTMLElementTagNameMap[T]>());
 
   return element;
 }

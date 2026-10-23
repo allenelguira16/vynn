@@ -1,7 +1,7 @@
 import type { JSX } from "../jsx-runtime";
 import { getRenderMode } from "../context/render-mode";
 import { createSSRText } from "./resolve-node";
-import { claimHydrationText, isHydrationIgnored } from "./hydration";
+import { claimHydrationText } from "./hydration";
 
 /**
  * Creates a text node for static JSX text.
@@ -10,16 +10,14 @@ import { claimHydrationText, isHydrationIgnored } from "./hydration";
  * can escape and serialize it. The DOM branch creates a real Text node,
  * rather than deferring the string-to-node conversion until tree resolution.
  */
-export function $text(value: string): JSX.Element {
+export function $txt(value: string): JSX.Element {
   if (getRenderMode()) {
     return createSSRText(value) as unknown as JSX.Element;
   }
 
   let element = document.createTextNode(value);
 
-  if (!isHydrationIgnored()) {
-    // element = claimHydrationText() || element;
-    console.log(element, claimHydrationText());
-  }
+  element = claimHydrationText() || element;
+  // console.log(element, claimHydrationText());
   return element;
 }

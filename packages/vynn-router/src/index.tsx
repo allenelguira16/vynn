@@ -1,5 +1,5 @@
 import { $effect, $state, $store, FC, PropsWithChildren } from "vynn";
-import { $dyn } from "vynn/render";
+import { $nodes } from "vynn/render";
 
 export type Route = {
   path: string;
@@ -210,7 +210,7 @@ function RouteOutlet(props: { routes: Route[]; parentPath?: string }) {
    * Because this computation depends only on `current.value`, unrelated
    * pathname changes do not directly recreate the active component.
    */
-  return $dyn(() => {
+  return $nodes(() => {
     const match = current.value;
 
     if (!match) {

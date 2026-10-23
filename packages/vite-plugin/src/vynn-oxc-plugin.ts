@@ -24,8 +24,8 @@ import type { Plugin, Rolldown } from "vite";
 
 type Node = any;
 type RuntimeHelperName =
-  | "$dyn"
-  | "$text"
+  | "$nodes"
+  | "$txt"
   | "$tmpl"
   | "$cmpnt"
   | "$insert"
@@ -973,7 +973,7 @@ class TransformState {
   }
 
   private isTextExpression(expression: Node): boolean {
-    return this.isRuntimeHelperCall(expression, "$text");
+    return this.isRuntimeHelperCall(expression, "$txt");
   }
 
   private containsJSX(node: Node | null | undefined): boolean {
@@ -1370,13 +1370,13 @@ class TransformState {
   }
 
   private createDynamicExpression(expression: Node): Node {
-    return callExpression(this.getRuntimeHelper("$dyn"), [
+    return callExpression(this.getRuntimeHelper("$nodes"), [
       arrowFunctionExpression([], expression),
     ]);
   }
 
   private createTextExpression(value: string): Node {
-    return callExpression(this.getRuntimeHelper("$text"), [
+    return callExpression(this.getRuntimeHelper("$txt"), [
       stringLiteral(value),
     ]);
   }

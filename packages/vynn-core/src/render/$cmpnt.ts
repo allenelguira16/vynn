@@ -55,15 +55,17 @@ export function $cmpnt<P>(
 
         return [resolved, marker].flat();
       } finally {
-        runAfterHydration(() => {
-          for (const mount of owner.mount) {
-            const cleanup = mount();
+        if (!!owner.mount.length) {
+          runAfterHydration(() => {
+            for (const mount of owner.mount) {
+              const cleanup = mount();
 
-            if (typeof cleanup === "function") {
-              owner.cleanups.push(cleanup);
+              if (typeof cleanup === "function") {
+                owner.cleanups.push(cleanup);
+              }
             }
-          }
-        });
+          });
+        }
       }
     });
 

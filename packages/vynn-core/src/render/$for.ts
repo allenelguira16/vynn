@@ -1,6 +1,6 @@
 import { JSX } from "../types/jsx";
 import { $state, State } from "../reactivity/$state";
-import { $dyn } from "./$dyn";
+import { $nodes } from "./$nodes";
 import { untrack } from "../reactivity/untrack";
 import { getRenderMode } from "../context/render-mode";
 import { $computed } from "../reactivity/$computed";
@@ -16,7 +16,7 @@ export function $for<T>(
   each: (item: T, index: State<number>) => JSX.Element,
 ): JSX.Element {
   if (getRenderMode()) {
-    return $dyn(() => items().map((item, i) => each(item, { value: i })));
+    return $nodes(() => items().map((item, i) => each(item, { value: i })));
   }
 
   // const result = $state<JSX.Element[]>([]);
@@ -120,7 +120,7 @@ export function $for<T>(
     return result;
   });
 
-  return $dyn(() => value.value);
+  return $nodes(() => value.value);
 }
 
 export function isEqual(a: unknown, b: unknown): boolean {

@@ -5,16 +5,7 @@ import { enterAsyncBoundary } from "./boundary";
 import { $state } from "../reactivity/$state";
 import { $renderEffect } from "../reactivity/$effect";
 import { getRenderMode } from "../context/render-mode";
-import { NotReadyError } from "../reactivity/not-ready-error";
-import { $memo } from "../render";
-import {
-  ignoreHydration,
-  isHydrating,
-  isHydrationIgnored,
-  resumeHydration,
-  runAfterHydration,
-} from "../render/hydration";
-import { isInsideLazy } from "./lazy";
+import { memo } from "../utils/memo";
 import { getCurrentOwner, runWithOwner } from "../life-cycle/owner";
 
 /**
@@ -32,98 +23,44 @@ export const Await = $cmpnt(function Suspense(props: {
   children: JSX.Element;
 }): JSX.Element {
   const mode = getRenderMode();
-  if (mode === "sync") {
-    let isHasPromise = false;
-    enterAsyncBoundary(() => {
-      // console.log(promise);
-      isHasPromise = true;
-    });
-    // try {
-    // return resolveNode(() => );
-    try {
-      props.children;
-    } finally {
-      if (isHasPromise) return props.fallback;
-      return props.children;
-    }
-    // } catch (error) {
-    //   if (!(error instanceof NotReadyError)) {
-    //     throw error;
-    //   }
+  const owner = getCurrentOwner()!;
 
-    //   return props.fallback;
-    // }
-  }
-  // if (mode === "async") {
-  //   let pending: Promise<any>[] = [];
+  const fallback = memo(() => runWithOwner(owner, () => props.fallback));
+  const children = memo(() => runWithOwner(owner, () => props.children));
 
-  //   enterAsyncBoundary((promise) => {
-  //     pending.push(promise);
+  // if (mode === "sync") {
+  //   let isHasPromise = false;
+  //   enterAsyncBoundary(() => {
+  //     isHasPromise = true;
   //   });
-
   //   try {
+  //     props.children;
+  //   } finally {
+  //     if (isHasPromise) return props.fallback;
   //     return props.children;
-  //   } catch (error) {
-  //     if (!(error instanceof NotReadyError)) {
-  //       throw error;
-  //     }
-
-  //     return createSSRAsync(
-  //       () => resolveNode(() => props.fallback) as unknown as SSR_NODE[],
-  //       () => resolveNode(() => props.children) as unknown as SSR_NODE[],
-  //       pending,
-  //     ) as unknown as JSX.Element;
   //   }
   // }
   if (mode) {
-    const pending: Promise<unknown>[] = [];
+    let pending: Promise<any>[] = [];
 
     enterAsyncBoundary((promise) => {
-      if (!pending.includes(promise)) {
-        pending.push(promise);
-      }
+      pending.push(promise);
     });
 
-    const fallback = () =>
-      resolveNode(() => props.fallback) as unknown as SSR_NODE[];
-
     try {
-      // Evaluate the children once.
-      const children = props.children;
-
-      // No async work was registered, so return normally.
-      if (pending.length === 0) {
-        return children;
+      children();
+    } finally {
+      if (!pending.length) {
+        return children();
       }
 
-      // Preserve the SSR nodes and their component-owned state.
-      const cachedChildren = resolveNode(
-        () => children,
-      ) as unknown as SSR_NODE[];
-
-      return createSSRAsync(fallback, () => cachedChildren, [
-        ...pending,
-      ]) as unknown as JSX.Element;
-    } catch (error) {
-      if (!(error instanceof NotReadyError)) {
-        throw error;
-      }
-
-      if (!pending.includes(error.promise)) {
-        pending.push(error.promise);
-      }
-
-      // Retain the existing retry behavior for expressions that
-      // suspend before producing a complete child tree.
       return createSSRAsync(
-        fallback,
-        () => resolveNode(() => props.children) as unknown as SSR_NODE[],
-        [...pending],
+        () => resolveNode(fallback) as unknown as SSR_NODE[],
+        () => resolveNode(children) as unknown as SSR_NODE[],
+        pending,
       ) as unknown as JSX.Element;
     }
   }
-
-  const owner = getCurrentOwner()!;
 
   let resolved = false;
   let hasPromise = false;
@@ -133,9 +70,6 @@ export const Await = $cmpnt(function Suspense(props: {
 
   let nodes: Node[] = [];
   const pending = new Set<Promise<unknown>>();
-
-  const fallback = $memo(() => runWithOwner(owner, () => props.fallback));
-  const children = $memo(() => runWithOwner(owner, () => props.children));
 
   enterAsyncBoundary((promise) => {
     hasPromise = true;

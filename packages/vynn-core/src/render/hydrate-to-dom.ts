@@ -33,14 +33,8 @@ export function hydrateToDOM(
       owner.context.set("$async-id", 0);
       owner.context.set("$lazy-id", 0);
 
-      withHydration(() => {
-        // console.log("hi");
-        resolveNode(App);
-      }, node);
+      withHydration(() => resolveNode(App), node);
 
-      // const app = resolveNode(App);
-      // const nodes = app.map((element) => element);
-      // node.append(...nodes);
       addUnmountListener();
     });
 

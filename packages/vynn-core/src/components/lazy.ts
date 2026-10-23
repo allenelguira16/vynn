@@ -1,6 +1,6 @@
 import type { JSX } from "../types/jsx";
 import { $async } from "../reactivity/$async";
-import { $cmpnt, $dyn } from "../render";
+import { $cmpnt, $nodes } from "../render";
 import { getRenderMode } from "../context/render-mode";
 import { createSSRComment } from "../render/resolve-node";
 import { getOwnerContext, modifyOwnerContext } from "../life-cycle/owner";
@@ -8,9 +8,9 @@ import {
   syncServerRenderedLazy,
   isHydrating,
   runAfterHydration,
+  finishServerRenderedLazy,
 } from "../render/hydration";
 import { $state } from "../reactivity/$state";
-import { $renderEffect } from "../reactivity/$effect";
 
 type AnyComponent = (props: never) => JSX.Element;
 
@@ -18,8 +18,6 @@ type ComponentExport<
   M extends Record<string, unknown>,
   K extends keyof M,
 > = M[K] extends AnyComponent ? M[K] : never;
-
-const NativePromise = globalThis.Promise;
 
 /**
  * Lazily loads a component.
@@ -32,11 +30,9 @@ export function lazy<M extends Record<string, unknown>, K extends keyof M>(
   loader: () => Promise<M>,
   namedExport: K,
 ): ComponentExport<M, K>;
-
 export function lazy<
   M extends Record<string, unknown> & { default: AnyComponent },
 >(loader: () => Promise<M>): M["default"];
-
 export function lazy<
   M extends Record<string, unknown>,
   K extends keyof M = "default" & keyof M,
@@ -59,22 +55,22 @@ export function lazy<
     try {
       modulePromise = loader();
     } catch (error) {
-      modulePromise = NativePromise.reject(error);
+      modulePromise = Promise.reject(error);
     }
 
-    loadPromise = NativePromise.resolve(modulePromise).then((module) => {
+    loadPromise = Promise.resolve(modulePromise).then((module) => {
       const component = module[namedExport];
 
       if (typeof component !== "function") {
         throw new Error(
-          `lazy(): export "${String(namedExport)}" is not a component.`,
+          `[vynn]: lazy() export "${String(namedExport)}" is not a component.`,
         );
       }
 
       return component as Component;
     });
 
-    Object.assign(loadPromise, { __lazy: true });
+    if (!getRenderMode()) Object.assign(loadPromise, { __lazy: true });
     return loadPromise;
   }
 
@@ -93,20 +89,12 @@ export function lazy<
       // Schedule exactly one transition for this instance.
       if (!getRenderMode() && !hydrationReady.value) {
         runAfterHydration(() => {
-          // console.log(getServerRenderedLazy());
           hydrationReady.value = true;
-        });
+        }, false);
       }
 
-      // getServerRenderedLazy(lazyID);
-
-      return $dyn(() => {
-        // Preserve the existing SSR boundary markers.
+      return $nodes(() => {
         if (getRenderMode()) {
-          // if (!cachedComponent) {
-          //   cachedComponent = component.value;
-          // }
-
           return [
             createSSRComment(`lazy:${lazyID}`),
             component.value(props),
@@ -114,20 +102,21 @@ export function lazy<
           ] as JSX.Element;
         }
 
-        // Do not claim any server-rendered nodes during root hydration.
         if (!hydrationReady.value) {
           return [];
         }
 
-        // Wait for the module only after hydration is finished.
         if (!cachedComponent) {
           cachedComponent = component.value;
         }
 
-        console.log(lazyID);
         syncServerRenderedLazy(lazyID);
 
-        return cachedComponent(props);
+        try {
+          return cachedComponent(props);
+        } finally {
+          finishServerRenderedLazy(lazyID);
+        }
       });
     });
   }) as Component;

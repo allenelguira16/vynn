@@ -1,13 +1,12 @@
 export { $attr } from "./$attr";
 export { $cmpnt } from "./$cmpnt";
-export { $dyn } from "./$dyn";
+export { $nodes } from "./$nodes";
 export { $for } from "./$for";
 export { $insert } from "./$insert";
-export { $memo } from "./$memo";
 export { $mount } from "./$mount";
 export { $on } from "./$on";
 export { $spread } from "./$spread";
-export { $text } from "./$text";
+export { $txt } from "./$txt";
 export { $tmpl } from "./$tmpl";
 
 export { hydrateToDOM } from "./hydrate-to-dom";

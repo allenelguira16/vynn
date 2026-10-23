@@ -1,7 +1,7 @@
 import { $state, $store, createContext, JSX, onDestroy } from "vynn";
 
 import { Template } from "../components/template";
-import { $dyn } from "vynn/render";
+import { $nodes } from "vynn/render";
 
 export const Contexts = () => {
   return (

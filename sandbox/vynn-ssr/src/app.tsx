@@ -1,5 +1,5 @@
 import { Route, Router } from "vynn-router";
-import { Await, Portal } from "vynn";
+import { Portal } from "vynn";
 import { ButtonPageList } from "./components/button-page-list";
 import { name } from "./utils";
 
@@ -45,17 +45,13 @@ export const routes: Route[] = [
   {
     path: "/",
     component: (props) => {
-      // console.log("rerendering app component");
-
-      // console.log();
       return (
         <div class="p-2 flex flex-col container m-auto">
           {"<div>Hi</div>"}
 
-          {/* <Portal mount={document.body}>{name.firstName}</Portal> */}
+          <Portal mount={document.body}>{name.firstName}</Portal>
           <ButtonPageList />
 
-          {/* <Await fallback={<div>Page Is Loading</div>}>{}</Await> */}
           {props.children}
         </div>
       );
@@ -65,7 +61,7 @@ export const routes: Route[] = [
         path: "/",
         component: () => (
           <>
-            {/* <Lazy /> */}
+            <Lazy />
             <Forms />
             <Contexts />
             <Dropdowns />

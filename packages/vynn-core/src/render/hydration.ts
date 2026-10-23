@@ -1,5 +1,5 @@
-import { forEachTrailingCommentRange } from "typescript/unstable/ast";
 import { getRenderMode } from "../context/render-mode";
+import { getCurrentOwner, runWithOwner, type Owner } from "../life-cycle/owner";
 
 let serverRenderedElements: HTMLElement[] = [];
 let serverRenderedTexts: Text[] = [];
@@ -7,81 +7,162 @@ let serverRenderedLazy = new Map<number, LazyHydrationNodes>();
 
 let hydrationElementIndex = 0;
 let hydrationTextIndex = 0;
-let isHydrationHydrating = false;
-let isIgnoreHydration = false;
+
+// Lazy boundaries discovered in the server-rendered HTML.
+let pendingLazyHydration = new Set<number>();
+
+// Prevent the same lazy nodes from being appended more than once.
+let syncedLazyHydration = new Set<number>();
+
+type AfterHydrationTask = {
+  callback: () => unknown;
+  owner: Owner | null;
+  waitForLazy: boolean;
+};
+
+const afterHydrationTasks = new Set<AfterHydrationTask>();
+let hydrationCheckScheduled = false;
 
 export function withHydration(callback: () => void, root: Node) {
-  isHydrationHydrating = true;
   [serverRenderedElements, serverRenderedTexts, serverRenderedLazy] =
     getServerRenderedNodes(root);
 
-  console.log(serverRenderedElements);
+  // Indexes must start fresh for every hydration pass.
+  hydrationElementIndex = 0;
+  hydrationTextIndex = 0;
 
-  callback();
-  isHydrationHydrating = false;
+  pendingLazyHydration = new Set(serverRenderedLazy.keys());
+  syncedLazyHydration = new Set();
+
+  try {
+    callback();
+  } finally {
+    scheduleAfterHydrationCheck();
+  }
+}
+
+function hasUnclaimedHydrationNodes(): boolean {
+  return (
+    hydrationElementIndex < serverRenderedElements.length ||
+    hydrationTextIndex < serverRenderedTexts.length
+  );
+}
+
+/**
+ * Checks whether hydration is still in progress.
+ *
+ * waitForLazy = false:
+ *   Wait only for currently queued DOM nodes to be claimed.
+ *
+ * waitForLazy = true:
+ *   Also wait for every discovered lazy boundary to finish hydration.
+ */
+export function isHydrating(waitForLazy = true): boolean {
+  return (
+    hasUnclaimedHydrationNodes() ||
+    (waitForLazy && pendingLazyHydration.size > 0)
+  );
+}
+
+export function runAfterHydration<T>(
+  callback: () => T,
+  waitForLazy = true,
+): void {
+  if (getRenderMode()) return;
+
+  const owner = getCurrentOwner();
+
+  if (!isHydrating(waitForLazy)) {
+    runWithOwner(owner, callback);
+    return;
+  }
+
+  afterHydrationTasks.add({
+    callback,
+    owner,
+    waitForLazy,
+  });
+
+  scheduleAfterHydrationCheck();
+}
+
+function scheduleAfterHydrationCheck(): void {
+  if (hydrationCheckScheduled || afterHydrationTasks.size === 0) {
+    return;
+  }
+
+  hydrationCheckScheduled = true;
+
+  requestAnimationFrame(() => {
+    hydrationCheckScheduled = false;
+
+    for (const task of [...afterHydrationTasks]) {
+      // A component may have been removed before its mount callback ran.
+      if (task.owner?.disposed) {
+        afterHydrationTasks.delete(task);
+        continue;
+      }
+
+      if (isHydrating(task.waitForLazy)) {
+        continue;
+      }
+
+      afterHydrationTasks.delete(task);
+
+      try {
+        runWithOwner(task.owner, task.callback);
+      } catch (error) {
+        // One failing callback must not prevent other ready callbacks.
+        queueMicrotask(() => {
+          throw error;
+        });
+      }
+    }
+  });
 }
 
 export function claimHydrationElement<T extends HTMLElement>() {
   try {
-    const index = hydrationElementIndex;
-    return serverRenderedElements[index] as T;
+    return serverRenderedElements[hydrationElementIndex] as T;
   } finally {
     hydrationElementIndex++;
+    scheduleAfterHydrationCheck();
+  }
+}
+
+export function claimHydrationText() {
+  try {
+    return serverRenderedTexts[hydrationTextIndex];
+  } finally {
+    hydrationTextIndex++;
+    scheduleAfterHydrationCheck();
   }
 }
 
 export function syncServerRenderedLazy(lazyID: number) {
-  if (getRenderMode()) return;
+  if (getRenderMode() || syncedLazyHydration.has(lazyID)) {
+    return;
+  }
 
-  const { elements, texts } = serverRenderedLazy.get(lazyID) || {
+  syncedLazyHydration.add(lazyID);
+
+  const { elements, texts } = serverRenderedLazy.get(lazyID) ?? {
     elements: [],
     texts: [],
   };
 
   serverRenderedElements.push(...elements);
   serverRenderedTexts.push(...texts);
+
+  scheduleAfterHydrationCheck();
 }
 
-export function claimHydrationText() {
-  if (isIgnoreHydration) return undefined;
-
-  try {
-    const index = hydrationTextIndex;
-    return serverRenderedTexts[index];
-  } finally {
-    hydrationTextIndex++;
-  }
-}
-
-export function isHydrating() {
-  return isHydrationHydrating;
-}
-
-export function ignoreHydration<T>(callback: () => T) {
-  isIgnoreHydration = true;
-
-  try {
-    return callback();
-  } finally {
-    isIgnoreHydration = false;
-  }
-}
-
-export function isHydrationIgnored() {
-  return isIgnoreHydration;
-}
-
-export function resumeHydration() {
-  isIgnoreHydration = false;
-}
-
-export function runAfterHydration<T>(callback: () => T) {
-  if (!isHydrating()) {
-    callback();
-    return;
-  }
-
-  requestAnimationFrame(() => runAfterHydration(callback));
+/**
+ * Called after the lazy component has synchronously claimed its SSR nodes.
+ */
+export function finishServerRenderedLazy(lazyID: number) {
+  pendingLazyHydration.delete(lazyID);
+  scheduleAfterHydrationCheck();
 }
 
 const START_RE = /^lazy:(\d+)$/;
