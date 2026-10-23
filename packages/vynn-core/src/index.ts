@@ -15,7 +15,7 @@ export {
   disposeOwner,
 } from "./life-cycle/owner";
 
-export { createContext } from "./context/context";
+export { createContext } from "./context/provider-context";
 
 export { Await } from "./components/await";
 export { ErrorBoundary } from "./components/error-boundary";

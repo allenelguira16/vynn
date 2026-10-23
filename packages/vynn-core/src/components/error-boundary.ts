@@ -1,7 +1,11 @@
 import {
   enterErrorBoundary,
   getErrorBoundary,
-} from "../context/error-boundary";
+  getErrorBoundaryID,
+  getErrorBoundaryValue,
+  getErrorBoundaryValues,
+} from "../context/error-boundary-context";
+import { getRenderMode } from "../context/render-mode";
 import type { JSX } from "../jsx-runtime";
 import {
   createOwner,
@@ -13,12 +17,24 @@ import type { Owner } from "../life-cycle/owner";
 import { $state } from "../reactivity/$state";
 import { NotReadyError } from "../reactivity/not-ready-error";
 import { $cmpnt, $nodes } from "../render";
+import { runAfterHydration } from "../render/hydration";
+
+export type ErrorBoundarySSRState =
+  | { status: "children" }
+  | {
+      status: "fallback";
+      name: string;
+      message: string;
+    };
 
 export const ErrorBoundary = $cmpnt(function ErrorBoundary(props: {
   fallback?: (error: Error, reset: () => void) => JSX.Element;
   children: JSX.Element;
 }) {
   const owner = getOwner();
+  const errorBoundaryID = getErrorBoundaryID();
+  const ssrData = getErrorBoundaryValue(errorBoundaryID);
+  // console.log(ssrData);
 
   if (!owner) {
     throw new Error("ErrorBoundary requires an owner.");
@@ -67,6 +83,16 @@ export const ErrorBoundary = $cmpnt(function ErrorBoundary(props: {
 
         return props.fallback?.(error, reset);
       });
+      if (getRenderMode()) {
+        const values = getErrorBoundaryValues();
+        if (values) {
+          values[errorBoundaryID] = {
+            status: "fallback",
+            message: error.message,
+            name: error.name,
+          };
+        }
+      }
     } catch (fallbackError) {
       if (viewOwner === fallbackOwner) {
         disposeViewOwner();
@@ -126,6 +152,10 @@ export const ErrorBoundary = $cmpnt(function ErrorBoundary(props: {
 
     try {
       nextView = runWithOwner(nextOwner, () => props.children);
+      if (getRenderMode()) {
+        const values = getErrorBoundaryValues();
+        if (values) values[errorBoundaryID] = { status: "children" };
+      }
     } catch (error) {
       if (viewOwner === nextOwner) {
         disposeViewOwner();
@@ -141,12 +171,21 @@ export const ErrorBoundary = $cmpnt(function ErrorBoundary(props: {
       return;
     }
 
-    view.value = nextView;
+    // An inner render effect may already have handled an error,
+    // disposed this child owner, and rendered the fallback.
+    if (!failed && viewOwner === nextOwner) {
+      view.value = nextView;
+    }
   }
 
   enterErrorBoundary(handleError);
 
-  renderChildren();
+  // console.log();
+  if (ssrData?.status === "fallback") {
+    renderFallback(new Error(ssrData.message));
+  } else {
+    renderChildren();
+  }
 
   // Keep the boundary's own reactive output alive when its child owner
   // is replaced by a fallback or recreated by reset().

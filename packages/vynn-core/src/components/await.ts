@@ -1,7 +1,7 @@
 import type { JSX } from "../types/jsx";
 import { $cmpnt } from "../render/$cmpnt";
 import { createSSRAsync, resolveNode, SSR_NODE } from "../render/resolve-node";
-import { enterAsyncBoundary } from "../context/async-boundary";
+import { enterAsyncBoundary } from "../context/async-context";
 import { $state } from "../reactivity/$state";
 import { $renderEffect } from "../reactivity/$effect";
 import { getRenderMode } from "../context/render-mode";

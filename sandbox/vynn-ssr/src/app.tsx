@@ -11,6 +11,7 @@ import { NonAsyncSuspense } from "./pages/non-async-suspense";
 import { PokeDex } from "./pages/poke-dex";
 import { PokeDexAwait } from "./pages/poke-dex-await";
 import { StackedSuspense } from "./pages/stacked-suspense";
+import { ComponentError } from "./pages/component-error";
 
 // const Contexts = lazy(() => import("./pages/context"), "Contexts");
 // const Dropdowns = lazy(() => import("./pages/dropdown-list"), "Dropdowns");
@@ -41,43 +42,18 @@ export function App(props: { url: string }) {
   );
 }
 
-function ComponentError(): JSX.Element {
-  const willThrow = () => {
-    throw new Error("hi");
-  };
-
-  return (
-    <div>
-      <div>{willThrow()}</div>
-    </div>
-  );
-}
-
 export const routes: Route[] = [
   {
     path: "/",
     component: (props) => {
       return (
         <div class="p-2 flex flex-col container m-auto">
-          {/* {"<div>Hi</div>"}
+          {"<div>Hi</div>"}
 
           <Portal mount={document.body}>{name.firstName}</Portal>
           <ButtonPageList />
 
-          {props.children} */}
-
-          <ErrorBoundary
-            fallback={(error, reset) => (
-              <div>
-                <p>{String(error)}</p>
-                <button class="btn" onClick={reset}>
-                  Try Again
-                </button>
-              </div>
-            )}
-          >
-            <ComponentError />
-          </ErrorBoundary>
+          {props.children}
         </div>
       );
     },
@@ -91,6 +67,7 @@ export const routes: Route[] = [
             <Contexts />
             <Dropdowns />
             <NonAsyncSuspense />
+            <ComponentError />
             <PokeDex />
             <PokeDexAwait />
             <StackedSuspense />

@@ -11,7 +11,7 @@ import {
 } from "../render/hydration";
 import { $state } from "../reactivity/$state";
 import { LAZY_END_SSR_MARKER, LAZY_START_SSR_MARKER } from "../const";
-import { getLazyID } from "../context/lazy-id";
+import { getLazyID } from "../context/lazy-context";
 
 type AnyComponent = (props: never) => JSX.Element;
 

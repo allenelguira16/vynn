@@ -1,4 +1,4 @@
-import { getErrorBoundary } from "../context/error-boundary";
+import { getErrorBoundary } from "../context/error-boundary-context";
 import { getOwner, runWithOwner } from "../life-cycle/owner";
 import { NotReadyError } from "../reactivity/not-ready-error";
 import { transaction, scheduleEffect } from "./transaction";
@@ -114,10 +114,11 @@ function createReactiveEffect(
 
   lastDisposer = disposer;
 
-  // Both APIs preserve Vynn's existing immediate initial execution.
-  wrappedEffect();
-
+  // Register cleanup before initial execution. The initial execution may
+  // trigger an ErrorBoundary that disposes this effect's owner immediately.
   owner?.cleanups.push(disposer);
+
+  wrappedEffect();
 
   return disposer;
 }

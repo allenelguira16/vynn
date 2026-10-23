@@ -1,4 +1,9 @@
-import { getAsyncBoundary } from "../context/async-boundary";
+import {
+  getAsyncBoundary,
+  getAsyncID,
+  getAsyncValue,
+  getAsyncValues,
+} from "../context/async-context";
 import { $state } from "./$state";
 import { $renderEffect } from "./$effect";
 import { NotReadyError } from "./not-ready-error";
@@ -6,8 +11,6 @@ import { getRenderMode } from "../context/render-mode";
 import { transaction } from "./transaction";
 import { isInsideLazy } from "../components/lazy";
 import { withFakeAsyncApis } from "./$async.util";
-import { getAsyncID } from "../context/async-id";
-import { getAsyncValue, getAsyncValues } from "../context/async-values";
 
 export type Async<T> = {
   value: T;

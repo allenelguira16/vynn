@@ -1,6 +1,6 @@
 import { getOwner, getContext, modifyContext } from "../life-cycle/owner";
 
-export function initializeLazyID() {
+export function initializeLazyContext() {
   const owner = getOwner();
 
   if (!owner)

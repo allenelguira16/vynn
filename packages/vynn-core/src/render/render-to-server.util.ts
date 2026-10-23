@@ -1,4 +1,5 @@
 import { EMPTY_TEXT_SSR_MARKER, TEXT_SSR_SEPARATOR } from "../const";
+import { getErrorBoundaryValues } from "../context/error-boundary-context";
 import { Owner } from "../life-cycle/owner";
 import { escapeHtml } from "../utils/escape-html";
 import { SSR_ELEMENT, SSR_TEXT } from "./resolve-node";
@@ -72,5 +73,14 @@ export function hasNoHTMLTags(str: string) {
 }
 
 export function renderAsyncUtilities(owner: Owner) {
-  return `<script>window.__vynnAsyncData = ${JSON.stringify(owner.context.get("$async-values"))};window.__vynnRenderMode="${owner.context.get("$render-mode")}";document.currentScript.remove();</script>`;
+  // console.log("hi", );
+  const values = {
+    async: JSON.stringify(owner.context.get("$async-values")),
+    mode: JSON.stringify(owner.context.get("$render-mode")),
+    error: JSON.stringify(owner.context.get("$error-boundary-values")),
+  };
+  return `<script>window.__vynnAsyncData=${values.async};window.__vynnRenderMode=${values.mode};window.__vynnErrorBoundaryData=${values.error};document.currentScript.remove();</script>`.replaceAll(
+    "\n",
+    "",
+  );
 }

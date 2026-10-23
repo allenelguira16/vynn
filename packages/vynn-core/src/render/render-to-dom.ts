@@ -1,6 +1,6 @@
-import { initializeAsyncID } from "../context/async-id";
-import { initializeAsyncValues } from "../context/async-values";
-import { initializeLazyID } from "../context/lazy-id";
+import { initializeAsyncContext } from "../context/async-context";
+import { initializeErrorBoundaryContext } from "../context/error-boundary-context";
+import { initializeLazyContext } from "../context/lazy-context";
 import { JSX } from "../jsx-runtime";
 import { createOwner, disposeOwner, runWithOwner } from "../life-cycle/owner";
 import { addUnmountListener } from "./$cmpnt";
@@ -32,10 +32,9 @@ export function renderToDOM(
     const owner = createOwner();
 
     runWithOwner(owner, () => {
-      initializeAsyncValues();
-
-      initializeAsyncID();
-      initializeLazyID();
+      initializeLazyContext();
+      initializeAsyncContext();
+      initializeErrorBoundaryContext();
 
       const app = resolveNode(App);
       const nodes = app.map((element) => element);
