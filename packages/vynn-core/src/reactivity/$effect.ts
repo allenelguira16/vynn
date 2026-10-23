@@ -75,6 +75,7 @@ function createReactiveEffect(
             } catch (error) {
               if (error instanceof NotReadyError) {
                 // DO NOTHING
+                return;
               }
 
               const errorBoundary = getErrorBoundary();

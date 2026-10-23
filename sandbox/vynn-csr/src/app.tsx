@@ -40,55 +40,18 @@ export function App() {
   );
 }
 
-function ComponentError(): JSX.Element {
-  const counter = $state(0);
-
-  const willThrow = () => {
-    throw new Error("hi");
-  };
-  console.log("test");
-
-  return (
-    <div>
-      Count: {counter.value}
-      {counter.value > 5 && willThrow()}
-      <button class="btn" onClick={() => counter.value++}>
-        Click Me!
-      </button>
-    </div>
-  );
-}
-
 export const routes: Route[] = [
   {
     path: "/",
     component: (props) => {
       return (
         <div class="p-2 flex flex-col container m-auto">
-          {/* {"<div>Hi</div>"}
+          {"<div>Hi</div>"}
 
           <Portal mount={document.body}>{name.firstName}</Portal>
           <ButtonPageList />
 
-          {props.children} */}
-
-          <ErrorBoundary
-            fallback={(error, reset) => (
-              <div>
-                <p>{String(error)}</p>
-                <button
-                  class="btn"
-                  onClick={() => {
-                    console.log("hello");
-                  }}
-                >
-                  Try Again
-                </button>
-              </div>
-            )}
-          >
-            <ComponentError />
-          </ErrorBoundary>
+          {props.children}
         </div>
       );
     },

@@ -1,3 +1,6 @@
+import { initializeAsyncID } from "../context/async-id";
+import { initializeAsyncValues } from "../context/async-values";
+import { initializeLazyID } from "../context/lazy-id";
 import { JSX } from "../jsx-runtime";
 import { createOwner, disposeOwner, runWithOwner } from "../life-cycle/owner";
 import { addUnmountListener } from "./$cmpnt";
@@ -29,6 +32,11 @@ export function renderToDOM(
     const owner = createOwner();
 
     runWithOwner(owner, () => {
+      initializeAsyncValues();
+
+      initializeAsyncID();
+      initializeLazyID();
+
       const app = resolveNode(App);
       const nodes = app.map((element) => element);
 
