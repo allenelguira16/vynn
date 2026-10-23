@@ -1,7 +1,6 @@
 import { $state, $store, createContext, JSX, onDestroy } from "vynn";
 
 import { Template } from "../components/template";
-import { $nodes } from "vynn/render";
 
 export const Contexts = () => {
   return (
@@ -20,10 +19,10 @@ export const Contexts = () => {
 
 const [NameProvider, useNameContext] = createContext<{ name: string }>();
 
-const Form = (props: { children: JSX.Element }) => {
+const Form = ({ children }: { children: JSX.Element }) => {
   const state = $store<{ name: string }>({ name: "asd" });
 
-  return <NameProvider value={state}>{props.children}</NameProvider>;
+  return <NameProvider value={state}>{children}</NameProvider>;
 };
 
 function Wrapper(props: { children: JSX.Element }) {

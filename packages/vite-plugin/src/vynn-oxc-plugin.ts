@@ -32,7 +32,8 @@ type RuntimeHelperName =
   | "$attr"
   | "$on"
   | "$spread"
-  | "$for";
+  | "$for"
+  | "$cache";
 
 type ReactivePluginOptions = {
   /** Override parser language. Usually inferred from the file extension. */
@@ -41,6 +42,12 @@ type ReactivePluginOptions = {
   sourceType?: "module" | "script" | "unambiguous";
   /** Set false to disable this transform for a matching file. */
   enabled?: boolean;
+};
+
+type ComponentPropAccessStep = {
+  key: Node;
+  computed: boolean;
+  fallback?: Node;
 };
 
 type IdentifierAllocator = {
@@ -766,6 +773,7 @@ class TransformState {
     if (!returnStatement?.argument) return node;
 
     const allocator = this.createIdentifierAllocator();
+    node.body = this.transformComponentPropsParameter(node.params, node.body);
     this.transformComponentBody(node.body, returnStatement, allocator);
 
     const statements: Node[] = [];
@@ -808,6 +816,21 @@ class TransformState {
     const arrow = declaration.init;
     const allocator = this.createIdentifierAllocator();
 
+    // Avoid mutating component parameters when this visitor won't transform the
+    // body (components without a top-level return are currently unsupported).
+    if (
+      isBlockStatement(arrow.body) &&
+      !findArrowReturnStatement(arrow.body)?.argument
+    )
+      return false;
+
+    arrow.body = this.transformComponentPropsParameter(
+      arrow.params,
+      arrow.body,
+    );
+
+    // Props lowering can turn an expression-bodied arrow into a block when it
+    // needs lazy default/rest accessors or local mutable bindings.
     if (isBlockStatement(arrow.body)) {
       const returnStatement = findArrowReturnStatement(arrow.body);
       if (!returnStatement?.argument) return false;
@@ -874,6 +897,1281 @@ class TransformState {
         ? statement
         : this.transformStatement(statement, allocator),
     );
+  }
+
+  /**
+   * Arrays use iterator-based destructuring, so only object patterns are
+   * lowered to property access. Unsupported patterns stay native as a whole.
+   */
+  private isSupportedComponentPropPattern(pattern: Node): boolean {
+    if (isIdentifier(pattern)) return true;
+    if (isAssignmentPattern(pattern))
+      return this.isSupportedComponentPropPattern(pattern.left);
+    if (isRestElement(pattern)) return isIdentifier(pattern.argument);
+    if (!isObjectPattern(pattern)) return false;
+    return (pattern.properties as Node[]).every((property) => {
+      if (isRestElement(property)) return isIdentifier(property.argument);
+      return (
+        isType(property, "Property") &&
+        this.isSupportedComponentPropPattern(property.value)
+      );
+    });
+  }
+
+  /**
+   * Rewrite destructured component props to property access on a single props
+   * parameter. Lazy accessors are generated only where destructuring semantics
+   * need state (defaults, computed keys, and object rest).
+   */
+  private transformComponentPropsParameter(params: Node[], body: Node): Node {
+    const parameter = params[0];
+    if (!parameter) return body;
+
+    const hasDefault = isAssignmentPattern(parameter);
+    const pattern = hasDefault ? parameter.left : parameter;
+    if (
+      !isObjectPattern(pattern) ||
+      !this.isSupportedComponentPropPattern(pattern)
+    )
+      return body;
+
+    // Vynn components receive a single props object. If a function declares
+    // later positional parameters, keep native destructuring so parameter
+    // initializers can still reference the original parameter bindings.
+    if (params.length > 1) return body;
+
+    const propsName = this.usedNames.has("props")
+      ? this.generateUidIdentifier("props").name
+      : "props";
+    this.usedNames.add(propsName);
+
+    const directBindings = new Set<string>();
+    if (isBlockStatement(body))
+      this.collectDirectBlockBindings(body, directBindings);
+    const patternBindings = this.collectBindingNames(pattern);
+    if ([...patternBindings].some((name) => directBindings.has(name))) {
+      // A parameter and a direct lexical declaration with the same name is
+      // invalid JavaScript. Keep the source pattern untouched if Oxc has not
+      // reported that semantic error instead of generating a different scope.
+      return body;
+    }
+
+    const props = identifier(propsName);
+    const replacements = new Map<string, Node>();
+    const prologue: Node[] = [];
+    if (
+      !this.collectComponentPropBindings(pattern, props, replacements, prologue)
+    )
+      return body;
+
+    const functionVars = new Set<string>();
+    if (isBlockStatement(body))
+      this.collectFunctionVarBindings(body, functionVars);
+
+    const shadowed = new Set<string>(directBindings);
+    for (const name of functionVars) shadowed.add(name);
+
+    // Parameter bindings are mutable local bindings in JavaScript. If a prop
+    // binding is written, keep that binding local instead of turning e.g.
+    // `count++` into `props.count++`.
+    const writes = new Set<string>();
+    this.collectWritableComponentPropReferences(
+      body,
+      new Set(replacements.keys()),
+      writes,
+      shadowed,
+    );
+    const localBindings = new Set<string>(writes);
+    for (const name of functionVars) {
+      if (replacements.has(name)) localBindings.add(name);
+    }
+
+    const localDeclarations: Node[] = [];
+    for (const name of localBindings) {
+      const access = replacements.get(name);
+      if (!access) continue;
+      localDeclarations.push(
+        variableDeclaration(functionVars.has(name) ? "var" : "let", [
+          variableDeclarator(identifier(name), cloneNode(access)),
+        ]),
+      );
+      replacements.delete(name);
+    }
+    // Accessor declarations must precede locals that read those accessors.
+    prologue.push(...localDeclarations);
+
+    if (isBlockStatement(body)) {
+      body.body = body.body.map((statement: Node) =>
+        this.rewriteComponentPropReferences(statement, replacements, shadowed),
+      );
+    } else {
+      body = this.rewriteComponentPropReferences(body, replacements, shadowed);
+    }
+
+    // Keep the original TS annotation on the replacement props identifier.
+    for (const key of ["typeAnnotation", "optional", "decorators"]) {
+      const value = pattern[key] ?? parameter[key];
+      if (value !== undefined)
+        props[key] = isNode(value) ? cloneNode(value) : value;
+    }
+
+    params[0] = hasDefault
+      ? inheritSourceLocation(
+          { type: "AssignmentPattern", left: props, right: parameter.right },
+          parameter,
+        )
+      : inheritSourceLocation(props, parameter);
+
+    if (prologue.length === 0) return body;
+
+    if (isBlockStatement(body)) {
+      let insertionIndex = 0;
+      // Directives must stay at the start of a function body.
+      while (insertionIndex < body.body.length) {
+        const statement = body.body[insertionIndex];
+        if (
+          !isExpressionStatement(statement) ||
+          !isType(statement.expression, "Literal") ||
+          typeof statement.expression.value !== "string"
+        )
+          break;
+        insertionIndex++;
+      }
+      body.body.splice(insertionIndex, 0, ...prologue);
+      return body;
+    }
+
+    // An expression-bodied arrow needs a block when generated lazy accessors
+    // or mutable local bindings are required.
+    return blockStatement([...prologue, returnStatement(body)]);
+  }
+
+  /** Build replacement expressions for bindings introduced by a props pattern. */
+  private collectComponentPropBindings(
+    pattern: Node,
+    access: Node,
+    replacements: Map<string, Node>,
+    prologue: Node[],
+  ): boolean {
+    return this.collectComponentPropBindingsAtPath(
+      pattern,
+      access,
+      [],
+      replacements,
+      prologue,
+    );
+  }
+
+  private collectComponentPropBindingsAtPath(
+    pattern: Node,
+    baseAccess: Node,
+    path: ComponentPropAccessStep[],
+    replacements: Map<string, Node>,
+    prologue: Node[],
+  ): boolean {
+    if (isIdentifier(pattern)) {
+      const capitalized =
+        pattern.name.charAt(0).toUpperCase() + pattern.name.slice(1);
+
+      replacements.set(
+        pattern.name,
+        this.createComponentPropPathAccess(
+          baseAccess,
+          path,
+          prologue,
+          `get${capitalized}`,
+        ),
+      );
+
+      return true;
+    }
+
+    if (isAssignmentPattern(pattern)) {
+      if (path.length === 0) return false;
+
+      const fallbackExpression = this.rewriteComponentPropReferences(
+        cloneNode(pattern.right),
+        replacements,
+        new Set(),
+      );
+
+      const fallback = this.createCachedFallbackGetter(
+        fallbackExpression,
+        prologue,
+        "propDefaultFallback",
+      );
+
+      const nextPath = path.slice();
+      const lastIndex = nextPath.length - 1;
+
+      nextPath[lastIndex] = {
+        ...nextPath[lastIndex],
+        fallback,
+      };
+
+      return this.collectComponentPropBindingsAtPath(
+        pattern.left,
+        baseAccess,
+        nextPath,
+        replacements,
+        prologue,
+      );
+    }
+
+    if (isObjectPattern(pattern)) {
+      for (let index = 0; index < pattern.properties.length; index++) {
+        const property = pattern.properties[index] as Node;
+
+        if (isRestElement(property)) {
+          const restSource = this.createComponentPropPathAccess(
+            baseAccess,
+            path,
+            prologue,
+            "getRestSource",
+          );
+
+          const restExpression = this.createComponentObjectRest(
+            restSource,
+            pattern.properties.slice(0, index),
+            replacements,
+          );
+
+          const restAccess = this.createCachedExpressionAccess(
+            restExpression,
+            prologue,
+            "propRest",
+          );
+
+          if (
+            !this.collectComponentPropBindingsAtPath(
+              property.argument,
+              restAccess,
+              [],
+              replacements,
+              prologue,
+            )
+          ) {
+            return false;
+          }
+
+          continue;
+        }
+
+        if (!isType(property, "Property") || !property.value) {
+          return false;
+        }
+
+        let key = cloneNode(property.key);
+        const computed = !!property.computed;
+
+        if (computed && !isType(key, "Literal")) {
+          key = this.rewriteComponentPropReferences(
+            key,
+            replacements,
+            new Set(),
+          );
+
+          const cachedKey = this.generateUidIdentifier("propKey");
+
+          prologue.push(
+            variableDeclaration("const", [
+              variableDeclarator(cloneNode(cachedKey), key),
+            ]),
+          );
+
+          // Keep the cached key available to object-rest exclusions.
+          property.key = cloneNode(cachedKey);
+          key = cachedKey;
+        }
+
+        const nextPath: ComponentPropAccessStep[] = [
+          ...path,
+          {
+            key: cloneNode(key),
+            computed: computed || !isIdentifier(key),
+          },
+        ];
+
+        if (
+          !this.collectComponentPropBindingsAtPath(
+            property.value,
+            baseAccess,
+            nextPath,
+            replacements,
+            prologue,
+          )
+        ) {
+          return false;
+        }
+      }
+
+      return true;
+    }
+
+    // Array patterns retain native iterator-based destructuring semantics.
+    if (isArrayPattern(pattern)) return false;
+
+    return false;
+  }
+
+  /**
+   * Creates a cached fallback factory.
+   *
+   * The fallback expression itself is evaluated only when its value is needed.
+   * Its result is reused by every access to this fallback.
+   */
+  private createCachedFallbackGetter(
+    expression: Node,
+    prologue: Node[],
+    hint: string,
+  ): Node {
+    const getter = this.generateUidIdentifier(hint);
+
+    prologue.push(
+      variableDeclaration("const", [
+        variableDeclarator(
+          cloneNode(getter),
+          callExpression(this.getRuntimeHelper("$cache"), [
+            arrowFunctionExpression([], expression),
+          ]),
+        ),
+      ]),
+    );
+
+    return getter;
+  }
+
+  /**
+   * Builds the complete property path.
+   *
+   * Plain paths become ordinary member expressions. If any path segment has a
+   * default, create one getter that resolves the entire path from left to right.
+   */
+  private createComponentPropPathAccess(
+    baseAccess: Node,
+    path: ComponentPropAccessStep[],
+    prologue: Node[],
+    hint: string,
+  ): Node {
+    const hasFallback = path.some((step) => step.fallback !== undefined);
+
+    if (!hasFallback) {
+      let access = cloneNode(baseAccess);
+
+      for (const step of path) {
+        access = memberExpression(access, cloneNode(step.key), step.computed);
+      }
+
+      return access;
+    }
+
+    const getter = this.generateUidIdentifier(hint);
+    const statements: Node[] = [];
+
+    let current = cloneNode(baseAccess);
+
+    for (const step of path) {
+      const value = this.generateUidIdentifier(`${hint}Value`);
+
+      statements.push(
+        variableDeclaration("const", [
+          variableDeclarator(
+            cloneNode(value),
+            memberExpression(
+              cloneNode(current),
+              cloneNode(step.key),
+              step.computed,
+            ),
+          ),
+        ]),
+      );
+
+      current = cloneNode(value);
+
+      if (step.fallback) {
+        const resolved = this.generateUidIdentifier(`${hint}Resolved`);
+
+        statements.push(
+          variableDeclaration("const", [
+            variableDeclarator(
+              cloneNode(resolved),
+              conditionalExpression(
+                binaryExpression("!==", cloneNode(value), voidZero()),
+                cloneNode(value),
+                callExpression(cloneNode(step.fallback), []),
+              ),
+            ),
+          ]),
+        );
+
+        current = cloneNode(resolved);
+      }
+    }
+
+    statements.push(returnStatement(cloneNode(current)));
+
+    prologue.push(
+      variableDeclaration("const", [
+        variableDeclarator(
+          cloneNode(getter),
+          arrowFunctionExpression([], blockStatement(statements)),
+        ),
+      ]),
+    );
+
+    return callExpression(cloneNode(getter), []);
+  }
+
+  /**
+   * Build a lazy, per-component accessor. When sourceAccess is supplied, the
+   * current prop wins whenever defined and the fallback is cached on first use.
+   * Without it, the computed value itself is cached on first use (object rest).
+   */
+  private createCachedExpressionAccess(
+    expression: Node,
+    prologue: Node[],
+    hint: string,
+  ): Node {
+    const getter = this.generateUidIdentifier(`${hint}Getter`);
+
+    prologue.push(
+      variableDeclaration("const", [
+        variableDeclarator(
+          cloneNode(getter),
+          callExpression(this.getRuntimeHelper("$cache"), [
+            arrowFunctionExpression([], expression),
+          ]),
+        ),
+      ]),
+    );
+
+    return callExpression(cloneNode(getter), []);
+  }
+
+  /** Preserve the object-rest exclusion semantics of the original pattern. */
+  private createComponentObjectRest(
+    access: Node,
+    excludedProperties: Node[],
+    replacements: Map<string, Node>,
+  ): Node {
+    const rest = this.generateUidIdentifier("rest");
+    const properties: Node[] = [];
+
+    for (const property of excludedProperties) {
+      if (!isType(property, "Property")) continue;
+      const key = property.computed
+        ? this.rewriteComponentPropReferences(
+            cloneNode(property.key),
+            replacements,
+            new Set(),
+          )
+        : cloneNode(property.key);
+      properties.push(
+        objectProperty(key, this.generateUidIdentifier("excluded"), {
+          computed: !!property.computed,
+        }),
+      );
+    }
+    properties.push({ type: "RestElement", argument: cloneNode(rest) });
+    const pattern = { type: "ObjectPattern", properties };
+    return callExpression(
+      arrowFunctionExpression(
+        [pattern],
+        blockStatement([returnStatement(cloneNode(rest))]),
+      ),
+      [cloneNode(access)],
+    );
+  }
+
+  private collectDirectBlockBindings(block: Node, names: Set<string>): void {
+    if (!isBlockStatement(block)) return;
+    for (const statement of block.body as Node[]) {
+      if (isVariableDeclaration(statement) && statement.kind !== "var") {
+        for (const declaration of statement.declarations as Node[])
+          this.collectBindingNames(declaration.id, names);
+      } else if (
+        (isFunctionDeclaration(statement) ||
+          isType(statement, "ClassDeclaration")) &&
+        statement.id &&
+        isIdentifier(statement.id)
+      ) {
+        names.add(statement.id.name);
+      }
+    }
+  }
+
+  private collectSwitchBindings(statement: Node, names: Set<string>): void {
+    if (!isType(statement, "SwitchStatement")) return;
+    for (const switchCase of statement.cases as Node[]) {
+      for (const child of switchCase.consequent as Node[]) {
+        if (isVariableDeclaration(child) && child.kind !== "var") {
+          for (const declaration of child.declarations as Node[])
+            this.collectBindingNames(declaration.id, names);
+        } else if (
+          (isFunctionDeclaration(child) || isType(child, "ClassDeclaration")) &&
+          child.id &&
+          isIdentifier(child.id)
+        ) {
+          names.add(child.id.name);
+        }
+      }
+    }
+  }
+
+  private collectFunctionVarBindings(node: Node, names: Set<string>): void {
+    const visit = (current: Node): void => {
+      if (!isNode(current) || isFunctionLike(current)) return;
+      if (isVariableDeclaration(current) && current.kind === "var") {
+        for (const declaration of current.declarations as Node[])
+          this.collectBindingNames(declaration.id, names);
+      }
+      forEachChild(current, visit);
+    };
+    visit(node);
+  }
+
+  private isTypeOnlyPropRewriteKey(key: string): boolean {
+    return (
+      key === "typeAnnotation" ||
+      key === "returnType" ||
+      key === "typeParameters" ||
+      key === "typeArguments" ||
+      key === "superTypeArguments" ||
+      key === "implements" ||
+      key === "predicate" ||
+      key === "constraint" ||
+      key === "defaultType"
+    );
+  }
+
+  private isComponentPropReference(
+    parent: Node | undefined,
+    key: string | undefined,
+  ): boolean {
+    if (!parent || !key) return true;
+    if (isMemberExpression(parent) && key === "property" && !parent.computed)
+      return false;
+    if (isType(parent, "Property") && key === "key" && !parent.computed)
+      return false;
+    if (isType(parent, "MethodDefinition") && key === "key" && !parent.computed)
+      return false;
+    if (
+      (isType(parent, "LabeledStatement") ||
+        isType(parent, "BreakStatement") ||
+        isType(parent, "ContinueStatement")) &&
+      key === "label"
+    )
+      return false;
+    if (
+      isType(parent, "ImportSpecifier") ||
+      isType(parent, "ExportSpecifier") ||
+      isType(parent, "MetaProperty")
+    )
+      return false;
+    return true;
+  }
+
+  /** Rewrite default expressions and computed keys inside a binding pattern. */
+  private rewriteComponentPropPatternExpressions(
+    pattern: Node,
+    replacements: Map<string, Node>,
+    shadowed: Set<string>,
+  ): Node {
+    if (isAssignmentPattern(pattern)) {
+      pattern.left = this.rewriteComponentPropPatternExpressions(
+        pattern.left,
+        replacements,
+        shadowed,
+      );
+      pattern.right = this.rewriteComponentPropReferences(
+        pattern.right,
+        replacements,
+        shadowed,
+      );
+      return pattern;
+    }
+    if (isRestElement(pattern)) {
+      pattern.argument = this.rewriteComponentPropPatternExpressions(
+        pattern.argument,
+        replacements,
+        shadowed,
+      );
+      return pattern;
+    }
+    if (isArrayPattern(pattern)) {
+      pattern.elements = pattern.elements.map((element: Node | null) =>
+        element
+          ? this.rewriteComponentPropPatternExpressions(
+              element,
+              replacements,
+              shadowed,
+            )
+          : null,
+      );
+      return pattern;
+    }
+    if (isObjectPattern(pattern)) {
+      for (const property of pattern.properties as Node[]) {
+        if (isRestElement(property)) {
+          this.rewriteComponentPropPatternExpressions(
+            property,
+            replacements,
+            shadowed,
+          );
+          continue;
+        }
+        if (!isType(property, "Property")) continue;
+        if (property.computed) {
+          property.key = this.rewriteComponentPropReferences(
+            property.key,
+            replacements,
+            shadowed,
+            property,
+            "key",
+          );
+        }
+        property.value = this.rewriteComponentPropPatternExpressions(
+          property.value,
+          replacements,
+          shadowed,
+        );
+      }
+    }
+    return pattern;
+  }
+
+  /** Find writes to prop bindings before rewriting reads to props.property. */
+  private collectWritableComponentPropReferences(
+    node: Node,
+    propNames: Set<string>,
+    writes: Set<string>,
+    shadowed: Set<string>,
+    writeTarget = false,
+  ): void {
+    if (!isNode(node)) return;
+
+    if (isIdentifier(node)) {
+      if (writeTarget && propNames.has(node.name) && !shadowed.has(node.name))
+        writes.add(node.name);
+      return;
+    }
+
+    if (isFunctionLike(node)) {
+      // Parameter initializers execute in the parameter environment, before
+      // body-scoped var bindings are created.
+      const parameterScope = new Set(shadowed);
+      if (node.id && isIdentifier(node.id)) parameterScope.add(node.id.name);
+      for (const parameter of node.params ?? [])
+        this.collectBindingNames(parameter, parameterScope);
+      for (const parameter of node.params ?? [])
+        this.collectWritablePatternExpressions(
+          parameter,
+          propNames,
+          writes,
+          parameterScope,
+        );
+
+      const local = new Set(parameterScope);
+      if (isBlockStatement(node.body)) {
+        this.collectDirectBlockBindings(node.body, local);
+        this.collectFunctionVarBindings(node.body, local);
+      }
+      if (isNode(node.body))
+        this.collectWritableComponentPropReferences(
+          node.body,
+          propNames,
+          writes,
+          local,
+        );
+      return;
+    }
+
+    if (isBlockStatement(node)) {
+      const local = new Set(shadowed);
+      this.collectDirectBlockBindings(node, local);
+      node.body.forEach((statement: Node) =>
+        this.collectWritableComponentPropReferences(
+          statement,
+          propNames,
+          writes,
+          local,
+        ),
+      );
+      return;
+    }
+
+    if (isType(node, "AssignmentExpression")) {
+      this.collectWritableComponentPropReferences(
+        node.left,
+        propNames,
+        writes,
+        shadowed,
+        true,
+      );
+      this.collectWritableComponentPropReferences(
+        node.right,
+        propNames,
+        writes,
+        shadowed,
+      );
+      return;
+    }
+    if (isUpdateExpression(node)) {
+      this.collectWritableComponentPropReferences(
+        node.argument,
+        propNames,
+        writes,
+        shadowed,
+        true,
+      );
+      return;
+    }
+
+    if (
+      isType(node, "ForStatement") ||
+      isType(node, "ForInStatement") ||
+      isType(node, "ForOfStatement")
+    ) {
+      const local = new Set(shadowed);
+      const binding = node.init ?? node.left;
+      const isDeclaration = isVariableDeclaration(binding);
+      if (isDeclaration && binding.kind !== "var") {
+        for (const declaration of binding.declarations as Node[])
+          this.collectBindingNames(declaration.id, local);
+      }
+      for (const key of getVisitorKeys(node)) {
+        const value = node[key];
+        if (key === "left" && isDeclaration) {
+          if (isVariableDeclaration(value)) {
+            for (const declaration of value.declarations as Node[]) {
+              if (declaration.init)
+                this.collectWritableComponentPropReferences(
+                  declaration.init,
+                  propNames,
+                  writes,
+                  local,
+                );
+            }
+          }
+          continue;
+        }
+        if (Array.isArray(value)) {
+          for (const child of value)
+            if (isNode(child))
+              this.collectWritableComponentPropReferences(
+                child,
+                propNames,
+                writes,
+                local,
+                key === "left",
+              );
+        } else if (isNode(value)) {
+          this.collectWritableComponentPropReferences(
+            value,
+            propNames,
+            writes,
+            local,
+            key === "left",
+          );
+        }
+      }
+      return;
+    }
+
+    if (isType(node, "VariableDeclarator")) {
+      if (node.init)
+        this.collectWritableComponentPropReferences(
+          node.init,
+          propNames,
+          writes,
+          shadowed,
+        );
+      return;
+    }
+
+    if (isType(node, "CatchClause")) {
+      const local = new Set(shadowed);
+      if (node.param) this.collectBindingNames(node.param, local);
+      if (node.body)
+        this.collectWritableComponentPropReferences(
+          node.body,
+          propNames,
+          writes,
+          local,
+        );
+      return;
+    }
+
+    if (isType(node, "SwitchStatement")) {
+      // The discriminant runs outside the switch's lexical case scope.
+      this.collectWritableComponentPropReferences(
+        node.discriminant,
+        propNames,
+        writes,
+        shadowed,
+      );
+      const local = new Set(shadowed);
+      this.collectSwitchBindings(node, local);
+      for (const switchCase of node.cases as Node[]) {
+        if (switchCase.test)
+          this.collectWritableComponentPropReferences(
+            switchCase.test,
+            propNames,
+            writes,
+            local,
+          );
+        for (const statement of switchCase.consequent as Node[])
+          this.collectWritableComponentPropReferences(
+            statement,
+            propNames,
+            writes,
+            local,
+          );
+      }
+      return;
+    }
+
+    if (isType(node, "Property")) {
+      if (node.computed)
+        this.collectWritableComponentPropReferences(
+          node.key,
+          propNames,
+          writes,
+          shadowed,
+        );
+      this.collectWritableComponentPropReferences(
+        node.value,
+        propNames,
+        writes,
+        shadowed,
+        writeTarget,
+      );
+      return;
+    }
+    if (isType(node, "MemberExpression") && writeTarget) {
+      // `value.field = x` mutates the referenced object, not the value binding.
+      this.collectWritableComponentPropReferences(
+        node.object,
+        propNames,
+        writes,
+        shadowed,
+      );
+      if (node.computed)
+        this.collectWritableComponentPropReferences(
+          node.property,
+          propNames,
+          writes,
+          shadowed,
+        );
+      return;
+    }
+    if (writeTarget && isType(node, "ObjectPattern")) {
+      for (const property of node.properties as Node[])
+        this.collectWritableComponentPropReferences(
+          property,
+          propNames,
+          writes,
+          shadowed,
+          true,
+        );
+      return;
+    }
+    if (writeTarget && isArrayPattern(node)) {
+      for (const element of node.elements as Array<Node | null>)
+        if (element)
+          this.collectWritableComponentPropReferences(
+            element,
+            propNames,
+            writes,
+            shadowed,
+            true,
+          );
+      return;
+    }
+    if (writeTarget && isRestElement(node)) {
+      this.collectWritableComponentPropReferences(
+        node.argument,
+        propNames,
+        writes,
+        shadowed,
+        true,
+      );
+      return;
+    }
+    if (writeTarget && isAssignmentPattern(node)) {
+      this.collectWritableComponentPropReferences(
+        node.left,
+        propNames,
+        writes,
+        shadowed,
+        true,
+      );
+      this.collectWritableComponentPropReferences(
+        node.right,
+        propNames,
+        writes,
+        shadowed,
+      );
+      return;
+    }
+
+    for (const key of getVisitorKeys(node)) {
+      if (this.isTypeOnlyPropRewriteKey(key)) continue;
+      const value = node[key];
+      if (Array.isArray(value)) {
+        for (const child of value)
+          if (isNode(child))
+            this.collectWritableComponentPropReferences(
+              child,
+              propNames,
+              writes,
+              shadowed,
+            );
+      } else if (isNode(value)) {
+        this.collectWritableComponentPropReferences(
+          value,
+          propNames,
+          writes,
+          shadowed,
+        );
+      }
+    }
+  }
+
+  private collectWritablePatternExpressions(
+    pattern: Node,
+    propNames: Set<string>,
+    writes: Set<string>,
+    shadowed: Set<string>,
+  ): void {
+    if (isAssignmentPattern(pattern)) {
+      this.collectWritableComponentPropReferences(
+        pattern.right,
+        propNames,
+        writes,
+        shadowed,
+      );
+      this.collectWritablePatternExpressions(
+        pattern.left,
+        propNames,
+        writes,
+        shadowed,
+      );
+    } else if (isRestElement(pattern)) {
+      this.collectWritablePatternExpressions(
+        pattern.argument,
+        propNames,
+        writes,
+        shadowed,
+      );
+    } else if (isArrayPattern(pattern)) {
+      for (const element of pattern.elements as Array<Node | null>)
+        if (element)
+          this.collectWritablePatternExpressions(
+            element,
+            propNames,
+            writes,
+            shadowed,
+          );
+    } else if (isObjectPattern(pattern)) {
+      for (const property of pattern.properties as Node[]) {
+        if (isRestElement(property)) {
+          this.collectWritablePatternExpressions(
+            property,
+            propNames,
+            writes,
+            shadowed,
+          );
+        } else if (isType(property, "Property")) {
+          if (property.computed)
+            this.collectWritableComponentPropReferences(
+              property.key,
+              propNames,
+              writes,
+              shadowed,
+            );
+          this.collectWritablePatternExpressions(
+            property.value,
+            propNames,
+            writes,
+            shadowed,
+          );
+        }
+      }
+    }
+  }
+
+  /** Rewrite references only; declaration/binding identifiers stay untouched. */
+  private rewriteComponentPropReferences(
+    node: Node,
+    replacements: Map<string, Node>,
+    shadowed: Set<string>,
+    parent?: Node,
+    parentKey?: string,
+  ): Node {
+    if (!isNode(node)) return node;
+
+    if (isIdentifier(node)) {
+      const replacement = replacements.get(node.name);
+      if (
+        replacement &&
+        !shadowed.has(node.name) &&
+        this.isComponentPropReference(parent, parentKey)
+      ) {
+        if (
+          parent &&
+          isType(parent, "Property") &&
+          parentKey === "value" &&
+          parent.shorthand
+        )
+          parent.shorthand = false;
+        return inheritSourceLocation(cloneNode(replacement), node);
+      }
+      return node;
+    }
+
+    if (isFunctionLike(node)) {
+      const parameterScope = new Set(shadowed);
+      if (node.id && isIdentifier(node.id)) parameterScope.add(node.id.name);
+      for (const parameter of node.params ?? [])
+        this.collectBindingNames(parameter, parameterScope);
+      for (const parameter of node.params ?? [])
+        this.rewriteComponentPropPatternExpressions(
+          parameter,
+          replacements,
+          parameterScope,
+        );
+
+      const local = new Set(parameterScope);
+      if (isBlockStatement(node.body)) {
+        this.collectDirectBlockBindings(node.body, local);
+        this.collectFunctionVarBindings(node.body, local);
+      }
+
+      for (const key of getVisitorKeys(node)) {
+        if (
+          key === "id" ||
+          key === "params" ||
+          this.isTypeOnlyPropRewriteKey(key)
+        )
+          continue;
+        const value = node[key];
+        if (Array.isArray(value)) {
+          node[key] = value.map((child: Node) =>
+            isNode(child)
+              ? this.rewriteComponentPropReferences(
+                  child,
+                  replacements,
+                  local,
+                  node,
+                  key,
+                )
+              : child,
+          );
+        } else if (isNode(value)) {
+          node[key] = this.rewriteComponentPropReferences(
+            value,
+            replacements,
+            local,
+            node,
+            key,
+          );
+        }
+      }
+      return node;
+    }
+
+    if (isType(node, "VariableDeclarator")) {
+      if (isNode(node.init))
+        node.init = this.rewriteComponentPropReferences(
+          node.init,
+          replacements,
+          shadowed,
+          node,
+          "init",
+        );
+      return node;
+    }
+
+    if (isType(node, "Property")) {
+      if (node.computed && isNode(node.key))
+        node.key = this.rewriteComponentPropReferences(
+          node.key,
+          replacements,
+          shadowed,
+          node,
+          "key",
+        );
+      const oldValue = node.value;
+      if (isNode(oldValue))
+        node.value = this.rewriteComponentPropReferences(
+          oldValue,
+          replacements,
+          shadowed,
+          node,
+          "value",
+        );
+      if (node.shorthand && node.value !== oldValue) node.shorthand = false;
+      return node;
+    }
+
+    if (isBlockStatement(node)) {
+      const local = new Set(shadowed);
+      this.collectDirectBlockBindings(node, local);
+      node.body = node.body.map((statement: Node) =>
+        this.rewriteComponentPropReferences(
+          statement,
+          replacements,
+          local,
+          node,
+          "body",
+        ),
+      );
+      return node;
+    }
+
+    if (isType(node, "CatchClause")) {
+      const local = new Set(shadowed);
+      if (node.param) this.collectBindingNames(node.param, local);
+      if (isNode(node.body))
+        node.body = this.rewriteComponentPropReferences(
+          node.body,
+          replacements,
+          local,
+          node,
+          "body",
+        );
+      return node;
+    }
+
+    if (isType(node, "SwitchStatement")) {
+      node.discriminant = this.rewriteComponentPropReferences(
+        node.discriminant,
+        replacements,
+        shadowed,
+        node,
+        "discriminant",
+      );
+      const local = new Set(shadowed);
+      this.collectSwitchBindings(node, local);
+      node.cases = node.cases.map((switchCase: Node) =>
+        this.rewriteComponentPropReferences(
+          switchCase,
+          replacements,
+          local,
+          node,
+          "cases",
+        ),
+      );
+      return node;
+    }
+
+    if (isType(node, "ClassDeclaration") || isType(node, "ClassExpression")) {
+      const local = new Set(shadowed);
+      if (node.id && isIdentifier(node.id)) local.add(node.id.name);
+      for (const key of getVisitorKeys(node)) {
+        if (key === "id" || this.isTypeOnlyPropRewriteKey(key)) continue;
+        const value = node[key];
+        if (Array.isArray(value)) {
+          node[key] = value.map((child: Node) =>
+            isNode(child)
+              ? this.rewriteComponentPropReferences(
+                  child,
+                  replacements,
+                  local,
+                  node,
+                  key,
+                )
+              : child,
+          );
+        } else if (isNode(value)) {
+          node[key] = this.rewriteComponentPropReferences(
+            value,
+            replacements,
+            local,
+            node,
+            key,
+          );
+        }
+      }
+      return node;
+    }
+
+    if (
+      isType(node, "ForStatement") ||
+      isType(node, "ForInStatement") ||
+      isType(node, "ForOfStatement")
+    ) {
+      const local = new Set(shadowed);
+      const binding = node.init ?? node.left;
+      if (isVariableDeclaration(binding) && binding.kind !== "var") {
+        for (const declaration of binding.declarations as Node[])
+          this.collectBindingNames(declaration.id, local);
+      }
+      for (const key of getVisitorKeys(node)) {
+        if (this.isTypeOnlyPropRewriteKey(key)) continue;
+        const value = node[key];
+        if (Array.isArray(value)) {
+          node[key] = value.map((child: Node) =>
+            isNode(child)
+              ? this.rewriteComponentPropReferences(
+                  child,
+                  replacements,
+                  local,
+                  node,
+                  key,
+                )
+              : child,
+          );
+        } else if (isNode(value)) {
+          node[key] = this.rewriteComponentPropReferences(
+            value,
+            replacements,
+            local,
+            node,
+            key,
+          );
+        }
+      }
+      return node;
+    }
+
+    for (const key of getVisitorKeys(node)) {
+      if (
+        this.isTypeOnlyPropRewriteKey(key) ||
+        ((isType(node, "LabeledStatement") ||
+          isType(node, "BreakStatement") ||
+          isType(node, "ContinueStatement")) &&
+          key === "label") ||
+        ((isType(node, "ImportSpecifier") || isType(node, "ExportSpecifier")) &&
+          (key === "local" || key === "imported" || key === "exported"))
+      )
+        continue;
+
+      const value = node[key];
+      if (Array.isArray(value)) {
+        node[key] = value.map((child: Node) =>
+          isNode(child)
+            ? this.rewriteComponentPropReferences(
+                child,
+                replacements,
+                shadowed,
+                node,
+                key,
+              )
+            : child,
+        );
+      } else if (isNode(value)) {
+        node[key] = this.rewriteComponentPropReferences(
+          value,
+          replacements,
+          shadowed,
+          node,
+          key,
+        );
+      }
+    }
+    return node;
   }
 
   private getForIndexName(parameter: Node | null | undefined): string | null {

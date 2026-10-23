@@ -1,9 +1,10 @@
 export { $attr } from "./$attr";
+export { $cache } from "./$cache";
 export { $cmpnt } from "./$cmpnt";
-export { $nodes } from "./$nodes";
 export { $for } from "./$for";
 export { $insert } from "./$insert";
 export { $mount } from "./$mount";
+export { $nodes } from "./$nodes";
 export { $on } from "./$on";
 export { $spread } from "./$spread";
 export { $txt } from "./$txt";
