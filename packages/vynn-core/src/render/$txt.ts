@@ -19,5 +19,6 @@ export function $txt(value: string): JSX.Element {
 
   element = claimHydrationText() || element;
   // console.log(element, claimHydrationText());
+
   return element;
 }

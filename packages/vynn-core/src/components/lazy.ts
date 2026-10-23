@@ -3,7 +3,6 @@ import { $async } from "../reactivity/$async";
 import { $cmpnt, $nodes } from "../render";
 import { getRenderMode } from "../context/render-mode";
 import { createSSRComment } from "../render/resolve-node";
-import { getOwnerContext, modifyOwnerContext } from "../life-cycle/owner";
 import {
   syncServerRenderedLazy,
   isHydrating,
@@ -11,6 +10,8 @@ import {
   finishServerRenderedLazy,
 } from "../render/hydration";
 import { $state } from "../reactivity/$state";
+import { LAZY_END_SSR_MARKER, LAZY_START_SSR_MARKER } from "../const";
+import { getLazyID } from "../context/lazy-id";
 
 type AnyComponent = (props: never) => JSX.Element;
 
@@ -80,8 +81,8 @@ export function lazy<
     return withLazyBoundary(() => {
       const component = $async(loadComponent);
 
-      const lazyID = getOwnerContext<number>("$lazy-id") ?? 0;
-      modifyOwnerContext<number>("$lazy-id", (currentID) => currentID + 1);
+      // console.log(getCurrentOwner());
+      const lazyID = getLazyID();
 
       // The server does not wait for client hydration.
       const hydrationReady = $state(!!getRenderMode() || !isHydrating());
@@ -96,9 +97,9 @@ export function lazy<
       return $nodes(() => {
         if (getRenderMode()) {
           return [
-            createSSRComment(`lazy:${lazyID}`),
+            createSSRComment(`${LAZY_START_SSR_MARKER}:${lazyID}`),
             component.value(props),
-            createSSRComment(`/lazy:${lazyID}`),
+            createSSRComment(`${LAZY_END_SSR_MARKER}:${lazyID}`),
           ] as JSX.Element;
         }
 

@@ -1,5 +1,5 @@
 import { JSX } from "../jsx-runtime";
-import { getCurrentOwner } from "../life-cycle/owner";
+import { getOwner } from "../life-cycle/owner";
 
 export function $mount(Component: () => JSX.Element): JSX.Element;
 export function $mount<P>(
@@ -12,7 +12,7 @@ export function $mount(
 ): JSX.Element {
   // console.log();
 
-  const owner = getCurrentOwner();
+  const owner = getOwner();
 
   if (!owner) throw new Error("Must be inside component");
 

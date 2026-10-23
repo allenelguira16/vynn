@@ -9,7 +9,7 @@ export { $store } from "./reactivity/$store";
 export { untrack } from "./reactivity/untrack";
 
 export {
-  getCurrentOwner,
+  getOwner,
   runWithOwner,
   createOwner,
   disposeOwner,
@@ -17,9 +17,10 @@ export {
 
 export { createContext } from "./context/context";
 
-export { Portal } from "./components/portal";
 export { Await } from "./components/await";
+export { ErrorBoundary } from "./components/error-boundary";
 export { lazy } from "./components/lazy";
+export { Portal } from "./components/portal";
 
 export { type JSX } from "./types/jsx";
 export {

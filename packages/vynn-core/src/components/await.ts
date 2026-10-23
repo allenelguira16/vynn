@@ -1,12 +1,12 @@
 import type { JSX } from "../types/jsx";
 import { $cmpnt } from "../render/$cmpnt";
 import { createSSRAsync, resolveNode, SSR_NODE } from "../render/resolve-node";
-import { enterAsyncBoundary } from "./boundary";
+import { enterAsyncBoundary } from "../context/async-boundary";
 import { $state } from "../reactivity/$state";
 import { $renderEffect } from "../reactivity/$effect";
 import { getRenderMode } from "../context/render-mode";
 import { memo } from "../utils/memo";
-import { getCurrentOwner, runWithOwner } from "../life-cycle/owner";
+import { getOwner, runWithOwner } from "../life-cycle/owner";
 
 /**
  * Displays a fallback while the children are initially loading.
@@ -23,7 +23,7 @@ export const Await = $cmpnt(function Suspense(props: {
   children: JSX.Element;
 }): JSX.Element {
   const mode = getRenderMode();
-  const owner = getCurrentOwner()!;
+  const owner = getOwner()!;
 
   const fallback = memo(() => runWithOwner(owner, () => props.fallback));
   const children = memo(() => runWithOwner(owner, () => props.children));

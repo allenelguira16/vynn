@@ -1,5 +1,7 @@
+import { EMPTY_TEXT_SSR_MARKER, TEXT_SSR_SEPARATOR } from "../const";
+import { Owner } from "../life-cycle/owner";
 import { escapeHtml } from "../utils/escape-html";
-import { SSR_ELEMENT } from "./resolve-node";
+import { SSR_ELEMENT, SSR_TEXT } from "./resolve-node";
 
 const voidElements = new Set([
   "area",
@@ -16,6 +18,12 @@ const voidElements = new Set([
   "track",
   "wbr",
 ]);
+
+export function renderText(node: SSR_TEXT) {
+  return node.value === ""
+    ? `<!--${EMPTY_TEXT_SSR_MARKER}-->`
+    : escapeHtml(node.value);
+}
 
 export function renderNode(props: {
   type: string;
@@ -50,7 +58,7 @@ export function joinHTMLElements(html: string[]): string {
     result.push(current);
 
     if (current && next && hasNoHTMLTags(current) && hasNoHTMLTags(next)) {
-      result.push("<!--vynn:separator-->");
+      result.push(`<!--${TEXT_SSR_SEPARATOR}-->`);
     }
   }
 
@@ -61,4 +69,8 @@ export function hasNoHTMLTags(str: string) {
   // Matches anything inside <...>
   const htmlTagRegex = /<[^>]+>/g;
   return !htmlTagRegex.test(str);
+}
+
+export function renderAsyncUtilities(owner: Owner) {
+  return `<script>window.__vynnAsyncData = ${JSON.stringify(owner.context.get("$async-values"))};window.__vynnRenderMode="${owner.context.get("$render-mode")}";document.currentScript.remove();</script>`;
 }

@@ -15,7 +15,7 @@ let currentOwner: Owner | null = null;
  *
  * @returns The current owner, or null when no owner is active.
  */
-export function getCurrentOwner(): Owner | null {
+export function getOwner(): Owner | null {
   return currentOwner;
 }
 
@@ -108,7 +108,7 @@ export function disposeOwner(owner: Owner): void {
  * @param key The context key.
  * @param value The value to store.
  */
-export function setOwnerContext<T>(key: string | symbol, value: T): void {
+export function setContext<T>(key: string | symbol, value: T): void {
   const owner = currentOwner;
 
   if (!owner) {
@@ -128,7 +128,7 @@ export function setOwnerContext<T>(key: string | symbol, value: T): void {
  * @param value The replacement value.
  * @returns Whether an existing context entry was updated.
  */
-export function updateOwnerContext<T>(key: string | symbol, value: T): boolean {
+export function updateContext<T>(key: string | symbol, value: T): boolean {
   let owner = currentOwner;
 
   while (owner) {
@@ -153,7 +153,7 @@ export function updateOwnerContext<T>(key: string | symbol, value: T): boolean {
  * @param updater A function that computes the replacement value.
  * @returns Whether an existing context entry was updated.
  */
-export function modifyOwnerContext<T>(
+export function modifyContext<T>(
   key: string | symbol,
   updater: (current: T) => T,
 ): boolean {
@@ -181,7 +181,7 @@ export function modifyOwnerContext<T>(
  * @param key The context key.
  * @returns The nearest matching value, or undefined if none exists.
  */
-export function getOwnerContext<T>(key: string | symbol): T | undefined {
+export function getContext<T>(key: string | symbol): T | undefined {
   let owner = currentOwner;
 
   while (owner) {

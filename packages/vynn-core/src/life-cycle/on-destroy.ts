@@ -1,4 +1,4 @@
-import { getCurrentOwner } from "./owner";
+import { getOwner } from "./owner";
 
 export type DestroyFn = () => void;
 
@@ -10,7 +10,7 @@ export type DestroyFn = () => void;
  * @param callback The function to run when the component is destroyed.
  */
 export function onDestroy(callback: DestroyFn): void {
-  const owner = getCurrentOwner();
+  const owner = getOwner();
 
   if (!owner) {
     throw new Error("onDestroy must be called within a component");

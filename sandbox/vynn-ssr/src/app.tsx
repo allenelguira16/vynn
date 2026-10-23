@@ -1,5 +1,5 @@
 import { Route, Router } from "vynn-router";
-import { Portal } from "vynn";
+import { ErrorBoundary, JSX, Portal } from "vynn";
 import { ButtonPageList } from "./components/button-page-list";
 import { name } from "./utils";
 
@@ -41,18 +41,43 @@ export function App(props: { url: string }) {
   );
 }
 
+function ComponentError(): JSX.Element {
+  const willThrow = () => {
+    throw new Error("hi");
+  };
+
+  return (
+    <div>
+      <div>{willThrow()}</div>
+    </div>
+  );
+}
+
 export const routes: Route[] = [
   {
     path: "/",
     component: (props) => {
       return (
         <div class="p-2 flex flex-col container m-auto">
-          {"<div>Hi</div>"}
+          {/* {"<div>Hi</div>"}
 
           <Portal mount={document.body}>{name.firstName}</Portal>
           <ButtonPageList />
 
-          {props.children}
+          {props.children} */}
+
+          <ErrorBoundary
+            fallback={(error, reset) => (
+              <div>
+                <p>{String(error)}</p>
+                <button class="btn" onClick={reset}>
+                  Try Again
+                </button>
+              </div>
+            )}
+          >
+            <ComponentError />
+          </ErrorBoundary>
         </div>
       );
     },

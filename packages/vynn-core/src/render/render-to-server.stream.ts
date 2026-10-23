@@ -1,13 +1,18 @@
-import { disposeOwner, getCurrentOwner } from "../life-cycle/owner";
+import { FALLBACK_END_SSR_MARKER, FALLBACK_START_SSR_MARKER } from "../const";
+import { disposeOwner, getOwner } from "../life-cycle/owner";
 import { JSX } from "../types/jsx";
-import { escapeHtml } from "../utils/escape-html";
-import { joinHTMLElements, renderNode } from "./render-to-server.util";
+import {
+  joinHTMLElements,
+  renderAsyncUtilities,
+  renderNode,
+  renderText,
+} from "./render-to-server.util";
 import { resolveNode, SSR_NODE } from "./resolve-node";
 
 export function resolveStream(
   App: () => JSX.Element,
 ): ReadableStream<Uint8Array> {
-  const owner = getCurrentOwner()!;
+  const owner = getOwner()!;
   const encoder = new TextEncoder();
 
   let controller: ReadableStreamDefaultController<Uint8Array>;
@@ -44,86 +49,12 @@ export function resolveStream(
     pending--;
 
     if (pending === 0 && initialSent && !closed) {
-      enqueue(
-        `<script>window.__vynnAsyncData = ${JSON.stringify(owner.context.get("$async-values"))};window.__vynnRenderMode="${owner.context.get("$render-mode")}";document.currentScript.remove();</script>`,
-      );
+      enqueue(renderAsyncUtilities(owner));
       closed = true;
 
       controller.close();
       disposeOwner(owner);
     }
-  }
-
-  function vynnPatchRuntime() {
-    var queue = ((window as any).__vynnPendingPatches =
-      (window as any).__vynnPendingPatches || []);
-
-    function applyPatch(id: number) {
-      var template = document.querySelector(
-        'template[data-vynn-patch="' + id + '"]',
-      ) as HTMLTemplateElement | null;
-
-      if (!template) return false;
-
-      var walker = document.createTreeWalker(document, NodeFilter.SHOW_COMMENT);
-
-      var start: Comment | null = null;
-      var end: Comment | null = null;
-
-      while (walker.nextNode()) {
-        var node = walker.currentNode as Comment;
-
-        if (node.data === "vynn:" + id + ":start") start = node;
-        if (node.data === "vynn:" + id + ":end") end = node;
-      }
-
-      if (!start || !end || !end.parentNode) {
-        return false;
-      }
-
-      var parent = end.parentNode;
-      var current = start.nextSibling;
-
-      while (current && current !== end) {
-        var next = current.nextSibling;
-        current.remove();
-        current = next;
-      }
-
-      parent.insertBefore(template.content, end);
-      template.remove();
-      start.remove();
-      end.remove();
-
-      return true;
-    }
-
-    (window as any).__vynnApplyPatch = function (id: number) {
-      queue.push(function () {
-        return applyPatch(id);
-      });
-
-      var changed = true;
-
-      while (changed) {
-        changed = false;
-
-        for (var i = queue.length - 1; i >= 0; i--) {
-          if (queue[i]()) {
-            queue.splice(i, 1);
-            changed = true;
-          }
-        }
-      }
-    };
-  }
-
-  function renderPatchRuntime() {
-    return `<script>(${vynnPatchRuntime.toString()})();document.currentScript.remove();</script>`;
-  }
-
-  function renderPatch(id: number, html: string) {
-    return `<template data-vynn-patch="${id}">${html}</template><script>window.__vynnApplyPatch?.(${id});document.currentScript.remove();</script>`;
   }
 
   async function resolve(app: SSR_NODE[]): Promise<string> {
@@ -135,7 +66,7 @@ export function resolveStream(
 
         // Render the fallback immediately instead of blocking on promises.
         html.push(
-          `<!--vynn:${id}:start-->${await resolve(node.fallback())}<!--vynn:${id}:end-->`,
+          `<!--${FALLBACK_START_SSR_MARKER}:${id}-->${await resolve(node.fallback())}<!--${FALLBACK_END_SSR_MARKER}:${id}-->`,
         );
 
         // Keep rendering the boundary in the background.
@@ -159,9 +90,7 @@ export function resolveStream(
 
         html.push(await resolve(node.children()));
       } else if ("value" in node && node.type === "#text") {
-        html.push(
-          node.value === "" ? "<!--vynn:text-->" : escapeHtml(node.value),
-        );
+        html.push(renderText(node));
       } else if ("value" in node && node.type === "#comment") {
         html.push(`<!--${node.value}-->`);
       } else if ("children" in node) {
@@ -210,4 +139,74 @@ export function resolveStream(
       closed = true;
     },
   });
+}
+
+function renderPatch(id: number, html: string) {
+  return `<template data-vynn-patch="${id}">${html}</template><script>window.__vynnApplyPatch?.(${id});document.currentScript.remove();</script>`;
+}
+
+function renderPatchRuntime() {
+  return `<script>(${((startMarker: string, endMarker: string) => {
+    var queue = ((window as any).__vynnPendingPatches =
+      (window as any).__vynnPendingPatches || []);
+
+    function applyPatch(id: number) {
+      var template = document.querySelector(
+        'template[data-vynn-patch="' + id + '"]',
+      ) as HTMLTemplateElement | null;
+
+      if (!template) return false;
+
+      var walker = document.createTreeWalker(document, NodeFilter.SHOW_COMMENT);
+
+      var start: Comment | null = null;
+      var end: Comment | null = null;
+
+      while (walker.nextNode()) {
+        var node = walker.currentNode as Comment;
+
+        if (node.data === `${startMarker}:${id}`) start = node;
+        if (node.data === `${endMarker}:${id}`) end = node;
+      }
+
+      if (!start || !end || !end.parentNode) {
+        return false;
+      }
+
+      var parent = end.parentNode;
+      var current = start.nextSibling;
+
+      while (current && current !== end) {
+        var next = current.nextSibling;
+        current.remove();
+        current = next;
+      }
+
+      parent.insertBefore(template.content, end);
+      template.remove();
+      start.remove();
+      end.remove();
+
+      return true;
+    }
+
+    (window as any).__vynnApplyPatch = function (id: number) {
+      queue.push(function () {
+        return applyPatch(id);
+      });
+
+      var changed = true;
+
+      while (changed) {
+        changed = false;
+
+        for (var i = queue.length - 1; i >= 0; i--) {
+          if (queue[i]()) {
+            queue.splice(i, 1);
+            changed = true;
+          }
+        }
+      }
+    };
+  }).toString()})("${FALLBACK_START_SSR_MARKER}","${FALLBACK_END_SSR_MARKER}");document.currentScript.remove();</script>`;
 }

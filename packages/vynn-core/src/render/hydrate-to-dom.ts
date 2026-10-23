@@ -1,3 +1,6 @@
+import { initializeAsyncID } from "../context/async-id";
+import { initializeAsyncValues } from "../context/async-values";
+import { initializeLazyID } from "../context/lazy-id";
 import { JSX } from "../jsx-runtime";
 import { createOwner, disposeOwner, runWithOwner } from "../life-cycle/owner";
 import { addUnmountListener } from "./$cmpnt";
@@ -30,8 +33,10 @@ export function hydrateToDOM(
     const owner = createOwner();
 
     runWithOwner(owner, () => {
-      owner.context.set("$async-id", 0);
-      owner.context.set("$lazy-id", 0);
+      initializeAsyncValues();
+
+      initializeAsyncID();
+      initializeLazyID();
 
       withHydration(() => resolveNode(App), node);
 

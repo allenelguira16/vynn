@@ -1,5 +1,5 @@
 import { getRenderMode } from "../context/render-mode";
-import { getCurrentOwner } from "./owner";
+import { getOwner } from "./owner";
 
 /**
  * Registers a callback to run when the current component is mounted.
@@ -20,7 +20,7 @@ export function onMount(callback: () => void | (() => void)): void {
     return;
   }
 
-  const owner = getCurrentOwner();
+  const owner = getOwner();
 
   if (!owner) {
     throw new Error("onMount must be called within a component");

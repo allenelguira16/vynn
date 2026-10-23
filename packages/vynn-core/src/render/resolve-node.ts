@@ -1,6 +1,6 @@
 import { JSX } from "../jsx-runtime";
 import { getRenderMode } from "../context/render-mode";
-import { getCurrentOwner, runWithOwner } from "../life-cycle/owner";
+import { getOwner, runWithOwner } from "../life-cycle/owner";
 
 import { NotReadyError } from "../reactivity/not-ready-error";
 import { claimHydrationText } from "./hydration";
@@ -113,7 +113,7 @@ export function createSSRAsync(
   children: () => SSR_NODE[],
   promises: Promise<unknown>[],
 ): SSR_ASYNC {
-  const owner = getCurrentOwner();
+  const owner = getOwner();
 
   return {
     type: "#async",
@@ -150,7 +150,7 @@ export function createSSRDeferred(
  * the expression after the collected promises settle.
  */
 export function resolveSSRChild(child: () => JSX.Element): SSR_NODE[] {
-  const owner = getCurrentOwner();
+  const owner = getOwner();
 
   try {
     return resolveNode(child) as unknown as SSR_NODE[];

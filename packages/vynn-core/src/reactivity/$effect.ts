@@ -1,4 +1,5 @@
-import { getCurrentOwner, runWithOwner } from "../life-cycle/owner";
+import { getErrorBoundary } from "../context/error-boundary";
+import { getOwner, runWithOwner } from "../life-cycle/owner";
 import { NotReadyError } from "../reactivity/not-ready-error";
 import { transaction, scheduleEffect } from "./transaction";
 
@@ -31,7 +32,7 @@ function createReactiveEffect(
   callback: () => void | (() => void),
   phase: EffectPhase,
 ): () => void {
-  const owner = getCurrentOwner();
+  const owner = getOwner();
 
   let wrappedEffect!: EffectFn;
 
@@ -72,10 +73,17 @@ function createReactiveEffect(
                 wrappedEffect.cleanup = result;
               }
             } catch (error) {
-              if (!(error instanceof NotReadyError)) {
-                throw error;
+              if (error instanceof NotReadyError) {
+                // DO NOTHING
               }
 
+              const errorBoundary = getErrorBoundary();
+              if (error instanceof Error && errorBoundary) {
+                errorBoundary(error);
+                return;
+              }
+
+              throw error;
               // Preserve the existing Vynn NotReadyError behavior.
             } finally {
               activeEffect = previousEffect;

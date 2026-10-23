@@ -1,13 +1,13 @@
-import { getOwnerContext, setOwnerContext } from "../life-cycle/owner";
+import { getContext, setContext } from "../life-cycle/owner";
 
 export type RenderMode = "async" | "stream";
 
 const RENDER_MODE = "$render-mode";
 
 export function getRenderMode(): RenderMode | null {
-  return getOwnerContext<RenderMode>(RENDER_MODE) ?? null;
+  return getContext<RenderMode>(RENDER_MODE) ?? null;
 }
 
 export function setRenderMode(mode: RenderMode): void {
-  setOwnerContext(RENDER_MODE, mode);
+  setContext(RENDER_MODE, mode);
 }

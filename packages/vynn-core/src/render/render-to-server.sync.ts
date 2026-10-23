@@ -1,11 +1,14 @@
-import { disposeOwner, getCurrentOwner } from "../life-cycle/owner";
+import { disposeOwner, getOwner } from "../life-cycle/owner";
 import { JSX } from "../types/jsx";
-import { escapeHtml } from "../utils/escape-html";
-import { joinHTMLElements, renderNode } from "./render-to-server.util";
+import {
+  joinHTMLElements,
+  renderNode,
+  renderText,
+} from "./render-to-server.util";
 import { resolveNode, SSR_NODE } from "./resolve-node";
 
 export function resolveSync(App: () => JSX.Element) {
-  const owner = getCurrentOwner()!;
+  const owner = getOwner()!;
 
   function resolve(app: SSR_NODE[]): string {
     const html: string[] = [];
@@ -15,9 +18,9 @@ export function resolveSync(App: () => JSX.Element) {
         // console.log(node.children());
         // DO NOTHING
       } else if ("value" in node && node.type === "#text") {
-        html.push(
-          node.value === "" ? "<!--vynn:text-->" : escapeHtml(node.value),
-        );
+        html.push(renderText(node));
+      } else if ("value" in node && node.type === "#comment") {
+        html.push(`<!--${node.value}-->`);
       } else if ("children" in node) {
         html.push(
           renderNode({
@@ -38,7 +41,7 @@ export function resolveSync(App: () => JSX.Element) {
       `<script>window.__vynnAsyncData = [];window.__vynnRenderMode="${owner.context.get("$render-mode")}";document.currentScript.remove();</script>`
     );
   } finally {
-    const owner = getCurrentOwner();
+    const owner = getOwner();
     if (owner) disposeOwner(owner);
   }
 }

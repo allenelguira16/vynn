@@ -1,5 +1,5 @@
 import { JSX } from "../types/jsx";
-import { getOwnerContext, setOwnerContext } from "../life-cycle/owner";
+import { getContext, setContext } from "../life-cycle/owner";
 
 /**
  * Creates a context provider and its corresponding consumer hook.
@@ -14,12 +14,12 @@ export function createContext<T>() {
   const id = Symbol();
 
   function Provider(props: { value: T; children: JSX.Element }) {
-    setOwnerContext(id, props.value);
+    setContext(id, props.value);
     return props.children;
   }
 
   function useContext() {
-    const value = getOwnerContext<T>(id);
+    const value = getContext<T>(id);
 
     if (value === undefined || value === null) {
       throw new Error("Context used without wrapping it in its Provider");

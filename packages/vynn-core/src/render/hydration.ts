@@ -1,5 +1,11 @@
+import {
+  EMPTY_TEXT_SSR_MARKER,
+  LAZY_END_SSR_MARKER,
+  LAZY_START_SSR_MARKER,
+  TEXT_SSR_SEPARATOR,
+} from "../const";
 import { getRenderMode } from "../context/render-mode";
-import { getCurrentOwner, runWithOwner, type Owner } from "../life-cycle/owner";
+import { getOwner, runWithOwner, type Owner } from "../life-cycle/owner";
 
 let serverRenderedElements: HTMLElement[] = [];
 let serverRenderedTexts: Text[] = [];
@@ -70,7 +76,7 @@ export function runAfterHydration<T>(
 ): void {
   if (getRenderMode()) return;
 
-  const owner = getCurrentOwner();
+  const owner = getOwner();
 
   if (!isHydrating(waitForLazy)) {
     runWithOwner(owner, callback);
@@ -165,8 +171,8 @@ export function finishServerRenderedLazy(lazyID: number) {
   scheduleAfterHydrationCheck();
 }
 
-const START_RE = /^lazy:(\d+)$/;
-const END_RE = /^\/lazy:(\d+)$/;
+const LAZY_START_REGEX = new RegExp(`^${LAZY_START_SSR_MARKER}:(\\d+)$`);
+const LAZY_END_REGEX = new RegExp(`^${LAZY_END_SSR_MARKER}:(\\d+)$`);
 
 const HTML_NAMESPACE = "http://www.w3.org/1999/xhtml";
 
@@ -236,7 +242,7 @@ function getServerRenderedNodes(root: Node) {
     if (isCommentNode(node)) {
       const value = node.data;
 
-      const start = START_RE.exec(value);
+      const start = LAZY_START_REGEX.exec(value);
 
       if (start) {
         const id = Number(start[1]);
@@ -249,7 +255,7 @@ function getServerRenderedNodes(root: Node) {
         return;
       }
 
-      const end = END_RE.exec(value);
+      const end = LAZY_END_REGEX.exec(value);
 
       if (end) {
         const id = Number(end[1]);
@@ -266,7 +272,7 @@ function getServerRenderedNodes(root: Node) {
         return;
       }
 
-      if (value === "vynn:text") {
+      if (value === EMPTY_TEXT_SSR_MARKER) {
         // Preserve the empty text node expected by hydration.
         const empty = document.createTextNode("");
 
@@ -275,7 +281,7 @@ function getServerRenderedNodes(root: Node) {
         return;
       }
 
-      if (value === "vynn:separator") {
+      if (value === TEXT_SSR_SEPARATOR) {
         node.parentNode?.removeChild(node);
         return;
       }

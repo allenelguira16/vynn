@@ -1,12 +1,13 @@
-import { getAsyncBoundary } from "../components/boundary";
+import { getAsyncBoundary } from "../context/async-boundary";
 import { $state } from "./$state";
 import { $renderEffect } from "./$effect";
 import { NotReadyError } from "./not-ready-error";
-import { getOwnerContext, modifyOwnerContext } from "../life-cycle/owner";
 import { getRenderMode } from "../context/render-mode";
 import { transaction } from "./transaction";
 import { isInsideLazy } from "../components/lazy";
 import { withFakeAsyncApis } from "./$async.util";
+import { getAsyncID } from "../context/async-id";
+import { getAsyncValue, getAsyncValues } from "../context/async-values";
 
 export type Async<T> = {
   value: T;
@@ -35,26 +36,6 @@ export function isPending(value: object): boolean {
   return context.get(value)?.() ?? false;
 }
 
-function getAsyncID() {
-  let asyncID = getOwnerContext<number>("$async-id")!;
-  modifyOwnerContext<number>("$async-id", (current) => current + 1);
-
-  return asyncID;
-}
-
-function getServerRenderedData(asyncID: number) {
-  if (!getRenderMode()) {
-    (window as any).__vynnAsyncData ??= [];
-    try {
-      return (window as any).__vynnAsyncData[asyncID];
-    } finally {
-      delete (window as any).__vynnAsyncData[asyncID];
-    }
-  }
-
-  return undefined;
-}
-
 export function $async<T>(getter: () => Promise<T>): Async<T> {
   const asyncID = getAsyncID();
   const result = $state<AsyncRecord<T> | undefined>();
@@ -63,10 +44,10 @@ export function $async<T>(getter: () => Promise<T>): Async<T> {
   $renderEffect(() => {
     transaction(() => {
       const currentVersion = ++version;
-      const $asyncValues = getOwnerContext<any[]>("$async-values");
+      const $asyncValues = getAsyncValues();
       const isLazy = isInsideLazy();
 
-      const ssrData = isLazy ? undefined : getServerRenderedData(asyncID);
+      const ssrData = isLazy ? undefined : getAsyncValue(asyncID);
 
       let promise!: Promise<T>;
 

@@ -1,4 +1,4 @@
-import { getCurrentOwner, runWithOwner } from "../life-cycle/owner";
+import { getOwner, runWithOwner } from "../life-cycle/owner";
 import { getRenderMode } from "../context/render-mode";
 
 type VynnEvent<
@@ -29,7 +29,7 @@ export function $on<E extends HTMLElement, K extends keyof HTMLElementEventMap>(
 ): void {
   if (getRenderMode()) return;
 
-  const owner = getCurrentOwner();
+  const owner = getOwner();
 
   if (!owner) {
     throw new Error(`[vynn]: $on must be used inside component`);
