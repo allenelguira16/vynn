@@ -2,7 +2,7 @@
 import "./main.css";
 
 import { App } from "./app";
-import { hydrateToDOM } from "vynn/render";
+import { hydrateToDOM } from "vynn/client";
 import { $location } from "vynn-router";
 
 hydrateToDOM(() => {

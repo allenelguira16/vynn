@@ -3,7 +3,7 @@ import { getRenderMode } from "../context/render-mode";
 import { getOwner, runWithOwner } from "../life-cycle/owner";
 
 import { NotReadyError } from "../reactivity/not-ready-error";
-import { claimHydrationText } from "./hydration";
+import { claimHydrationText } from "../client/hydration";
 
 export type SSR_NODE =
   | SSR_ELEMENT

@@ -1,7 +1,7 @@
 import type { JSX } from "../jsx-runtime";
 import { getRenderMode } from "../context/render-mode";
 import { createSSRText } from "./resolve-node";
-import { claimHydrationText } from "./hydration";
+import { claimHydrationText } from "../client/hydration";
 
 /**
  * Creates a text node for static JSX text.

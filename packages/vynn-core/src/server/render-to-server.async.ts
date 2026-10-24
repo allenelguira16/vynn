@@ -6,7 +6,7 @@ import {
   renderNode,
   renderText,
 } from "./render-to-server.util";
-import { resolveNode, SSR_NODE } from "./resolve-node";
+import { resolveNode, SSR_NODE } from "../render/resolve-node";
 
 export async function resolveAsync(App: () => JSX.Element): Promise<string> {
   const owner = getOwner()!;

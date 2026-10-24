@@ -3,8 +3,8 @@ import { initializeErrorBoundaryContext } from "../context/error-boundary-contex
 import { initializeLazyContext } from "../context/lazy-context";
 import { JSX } from "../jsx-runtime";
 import { createOwner, disposeOwner, runWithOwner } from "../life-cycle/owner";
-import { addUnmountListener } from "./$cmpnt";
-import { resolveNode } from "./resolve-node";
+import { addUnmountListener } from "../render/$cmpnt";
+import { resolveNode } from "../render/resolve-node";
 
 /**
  * Render the app to the dom

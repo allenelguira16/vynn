@@ -12,7 +12,7 @@ import {
   parkedNodes,
   unmarkParked,
 } from "./$cmpnt.util";
-import { runAfterHydration } from "./hydration";
+import { runAfterHydration } from "../client/hydration";
 
 /**
  * Creates a component function with its own reactive owner and lifecycle.

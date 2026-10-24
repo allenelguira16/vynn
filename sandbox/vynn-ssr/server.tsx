@@ -102,7 +102,7 @@ app.use("*all", async (req: Request, res: Response, next) => {
 });
 
 app.listen(PORT, () => {
-  console.clear();
+  // console.clear();
   const elapsed = Date.now() - start;
 
   console.log(`\n  VYNN v0.0.0  ready in ${elapsed} ms\n`);

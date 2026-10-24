@@ -1,5 +1,5 @@
+import { claimHydrationElement } from "../client/hydration";
 import { getRenderMode } from "../context/render-mode";
-import { claimHydrationElement } from "./hydration";
 import { createSSRNode } from "./resolve-node";
 
 /**

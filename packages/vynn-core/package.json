@@ -14,6 +14,12 @@
     },
     "./render": {
       "import": "./src/render/index.ts"
+    },
+    "./client": {
+      "import": "./src/client/index.ts"
+    },
+    "./server": {
+      "import": "./src/server/index.ts"
     }
   },
   "keywords": [],

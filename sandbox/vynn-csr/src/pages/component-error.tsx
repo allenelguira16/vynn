@@ -3,7 +3,7 @@ import { Template } from "../components/template";
 
 function ComponentWillThrow(): JSX.Element {
   const willThrow = () => {
-    throw new Error("hi");
+    throw new Error("ComponentWIllThrow catched, please retry again");
   };
 
   return (
@@ -16,13 +16,18 @@ function ComponentWillThrow(): JSX.Element {
 function ComponentWillThrowLater(): JSX.Element {
   const count = $state(0);
   const willThrow = () => {
-    throw new Error("hi");
+    throw new Error("ComponentWIllThrowLater catched, please retry again");
   };
 
   return (
     <div>
-      <div>{count.value > 5 && willThrow()}</div>
-      <button onClick={() => count.value++}>Add</button>
+      <div>
+        Count: {count.value}
+        {count.value > 5 && willThrow()}
+      </div>
+      <button class="btn" onClick={() => count.value++}>
+        Add
+      </button>
     </div>
   );
 }

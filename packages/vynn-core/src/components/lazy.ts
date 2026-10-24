@@ -8,7 +8,7 @@ import {
   isHydrating,
   runAfterHydration,
   finishServerRenderedLazy,
-} from "../render/hydration";
+} from "../client/hydration";
 import { $state } from "../reactivity/$state";
 import { LAZY_END_SSR_MARKER, LAZY_START_SSR_MARKER } from "../const";
 import { getLazyID } from "../context/lazy-context";

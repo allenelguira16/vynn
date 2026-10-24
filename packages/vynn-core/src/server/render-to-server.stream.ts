@@ -7,7 +7,7 @@ import {
   renderNode,
   renderText,
 } from "./render-to-server.util";
-import { resolveNode, SSR_NODE } from "./resolve-node";
+import { resolveNode, SSR_NODE } from "../render/resolve-node";
 
 export function resolveStream(
   App: () => JSX.Element,
