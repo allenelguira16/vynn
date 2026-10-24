@@ -1,8 +1,9 @@
 import { EMPTY_TEXT_SSR_MARKER, TEXT_SSR_SEPARATOR } from "../const";
-import { getErrorBoundaryValues } from "../context/error-boundary-context";
-import { Owner } from "../life-cycle/owner";
 import { escapeHtml } from "../utils/escape-html";
-import { SSR_ELEMENT, SSR_TEXT } from "./resolve-node";
+import { SSR_ELEMENT, SSR_TEXT } from "../render/resolve-node";
+import { getAsyncValues } from "../context/async-context";
+import { getRenderMode } from "../context/render-mode";
+import { getErrorBoundaryValues } from "../context/error-boundary-context";
 
 const voidElements = new Set([
   "area",
@@ -72,15 +73,23 @@ export function hasNoHTMLTags(str: string) {
   return !htmlTagRegex.test(str);
 }
 
-export function renderAsyncUtilities(owner: Owner) {
-  // console.log("hi", );
+export function renderAsyncUtilities() {
   const values = {
-    async: JSON.stringify(owner.context.get("$async-values")),
-    mode: JSON.stringify(owner.context.get("$render-mode")),
-    error: JSON.stringify(owner.context.get("$error-boundary-values")),
+    async: serializeForInlineScript(getAsyncValues()),
+    mode: serializeForInlineScript(getRenderMode()),
+    error: serializeForInlineScript(getErrorBoundaryValues()),
   };
   return `<script>window.__vynnAsyncData=${values.async};window.__vynnRenderMode=${values.mode};window.__vynnErrorBoundaryData=${values.error};document.currentScript.remove();</script>`.replaceAll(
     "\n",
     "",
   );
+}
+
+function serializeForInlineScript(value: unknown): string {
+  return (JSON.stringify(value) ?? "null")
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e")
+    .replace(/&/g, "\\u0026")
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029");
 }

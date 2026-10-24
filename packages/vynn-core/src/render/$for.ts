@@ -2,8 +2,8 @@ import { JSX } from "../types/jsx";
 import { $state, State } from "../reactivity/$state";
 import { $nodes } from "./$nodes";
 import { untrack } from "../reactivity/untrack";
-import { getRenderMode } from "../context/render-mode";
 import { $computed } from "../reactivity/$computed";
+import { isServer } from "../context/is-server-context";
 
 type ForEntry<T> = {
   item: T;
@@ -15,7 +15,7 @@ export function $for<T>(
   items: () => T[],
   each: (item: T, index: State<number>) => JSX.Element,
 ): JSX.Element {
-  if (getRenderMode()) {
+  if (isServer()) {
     return $nodes(() => items().map((item, i) => each(item, { value: i })));
   }
 

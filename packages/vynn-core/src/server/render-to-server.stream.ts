@@ -1,5 +1,5 @@
 import { FALLBACK_END_SSR_MARKER, FALLBACK_START_SSR_MARKER } from "../const";
-import { disposeOwner, getOwner } from "../life-cycle/owner";
+import { disposeOwner, getOwner, runWithOwner } from "../life-cycle/owner";
 import { JSX } from "../types/jsx";
 import {
   joinHTMLElements,
@@ -49,7 +49,8 @@ export function resolveStream(
     pending--;
 
     if (pending === 0 && initialSent && !closed) {
-      enqueue(renderAsyncUtilities(owner));
+      enqueue(runWithOwner(owner, renderAsyncUtilities));
+
       closed = true;
 
       controller.close();

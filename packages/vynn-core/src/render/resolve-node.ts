@@ -1,9 +1,9 @@
 import { JSX } from "../jsx-runtime";
-import { getRenderMode } from "../context/render-mode";
 import { getOwner, runWithOwner } from "../life-cycle/owner";
 
 import { NotReadyError } from "../reactivity/not-ready-error";
 import { claimHydrationText } from "../client/hydration";
+import { isServer } from "../context/is-server-context";
 
 export type SSR_NODE =
   | SSR_ELEMENT
@@ -171,7 +171,7 @@ export function resolveSSRChild(child: () => JSX.Element): SSR_NODE[] {
  * The Node[] return type is retained for compatibility with existing callers.
  */
 export function resolveNode(child: () => JSX.Element): Node[] {
-  if (getRenderMode()) {
+  if (isServer()) {
     return resolveElementString(child()) as unknown as Node[];
   }
 

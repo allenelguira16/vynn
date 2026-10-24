@@ -1,4 +1,4 @@
-import { disposeOwner, getOwner } from "../life-cycle/owner";
+import { disposeOwner, getOwner, runWithOwner } from "../life-cycle/owner";
 import { JSX } from "../types/jsx";
 import {
   joinHTMLElements,
@@ -41,10 +41,10 @@ export async function resolveAsync(App: () => JSX.Element): Promise<string> {
   }
 
   try {
-    return (
-      (await resolve(resolveNode(App) as unknown as SSR_NODE[])) +
-      renderAsyncUtilities(owner)
-    );
+    const resolved = await resolve(resolveNode(App) as unknown as SSR_NODE[]);
+    const utilities = runWithOwner(owner, renderAsyncUtilities);
+
+    return resolved + utilities;
   } finally {
     if (owner) disposeOwner(owner);
   }

@@ -1,5 +1,5 @@
 import { getOwner, runWithOwner } from "../life-cycle/owner";
-import { getRenderMode } from "../context/render-mode";
+import { isServer } from "../context/is-server-context";
 
 type VynnEvent<
   E extends HTMLElement,
@@ -27,7 +27,7 @@ export function $on<E extends HTMLElement, K extends keyof HTMLElementEventMap>(
   event: K,
   handler: (event: VynnEvent<E, K>) => void,
 ): void {
-  if (getRenderMode()) return;
+  if (isServer()) return;
 
   const owner = getOwner();
 

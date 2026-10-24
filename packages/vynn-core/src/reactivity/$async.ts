@@ -7,10 +7,10 @@ import {
 import { $state } from "./$state";
 import { $renderEffect } from "./$effect";
 import { NotReadyError } from "./not-ready-error";
-import { getRenderMode } from "../context/render-mode";
 import { transaction } from "./transaction";
 import { isInsideLazy } from "../components/lazy";
 import { withFakeAsyncApis } from "./$async.util";
+import { isServer } from "../context/is-server-context";
 
 export type Async<T> = {
   value: T;
@@ -145,7 +145,7 @@ export function $async<T>(getter: () => Promise<T>): Async<T> {
   };
 
   context.set(derived, () => {
-    if (getRenderMode()) derived.value; // On SSR, make this be handle by renderSSRChildren and defer it
+    if (isServer()) derived.value; // On SSR, make this be handle by renderSSRChildren and defer it
 
     return result.value?.status === "pending";
   });

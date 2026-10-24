@@ -1,8 +1,8 @@
 import { $renderEffect } from "../reactivity/$effect";
 import type { JSX } from "../jsx-runtime";
 import { resolveNode, resolveSSRChild } from "./resolve-node";
-import { getRenderMode } from "../context/render-mode";
 import type { SSR_ELEMENT } from "./resolve-node";
+import { isServer } from "../context/is-server-context";
 
 /**
  * Inserts reactive content into an element.
@@ -17,7 +17,7 @@ export function $insert<E extends HTMLElement>(
   child: (() => JSX.Element) | JSX.Element,
   before: Node | null = null,
 ): void | (() => void) {
-  if (getRenderMode()) {
+  if (isServer()) {
     const parent = element as unknown as SSR_ELEMENT;
 
     const renderChild = typeof child === "function" ? child : () => child;

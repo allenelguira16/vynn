@@ -1,7 +1,6 @@
 import type { JSX } from "../types/jsx";
 import { $async } from "../reactivity/$async";
 import { $cmpnt, $nodes } from "../render";
-import { getRenderMode } from "../context/render-mode";
 import { createSSRComment } from "../render/resolve-node";
 import {
   syncServerRenderedLazy,
@@ -12,6 +11,7 @@ import {
 import { $state } from "../reactivity/$state";
 import { LAZY_END_SSR_MARKER, LAZY_START_SSR_MARKER } from "../const";
 import { getLazyID } from "../context/lazy-context";
+import { isServer } from "../context/is-server-context";
 
 type AnyComponent = (props: never) => JSX.Element;
 
@@ -71,7 +71,7 @@ export function lazy<
       return component as Component;
     });
 
-    if (!getRenderMode()) Object.assign(loadPromise, { __lazy: true });
+    if (!isServer()) Object.assign(loadPromise, { __lazy: true });
     return loadPromise;
   }
 
@@ -85,17 +85,17 @@ export function lazy<
       const lazyID = getLazyID();
 
       // The server does not wait for client hydration.
-      const hydrationReady = $state(!!getRenderMode() || !isHydrating());
+      const hydrationReady = $state(!!isServer() || !isHydrating());
 
       // Schedule exactly one transition for this instance.
-      if (!getRenderMode() && !hydrationReady.value) {
+      if (!isServer() && !hydrationReady.value) {
         runAfterHydration(() => {
           hydrationReady.value = true;
         }, false);
       }
 
       return $nodes(() => {
-        if (getRenderMode()) {
+        if (isServer()) {
           return [
             createSSRComment(`${LAZY_START_SSR_MARKER}:${lazyID}`),
             component.value(props),

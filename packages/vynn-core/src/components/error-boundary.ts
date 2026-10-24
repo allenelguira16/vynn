@@ -5,7 +5,7 @@ import {
   getErrorBoundaryValue,
   getErrorBoundaryValues,
 } from "../context/error-boundary-context";
-import { getRenderMode } from "../context/render-mode";
+import { isServer } from "../context/is-server-context";
 import type { JSX } from "../jsx-runtime";
 import {
   createOwner,
@@ -17,7 +17,6 @@ import type { Owner } from "../life-cycle/owner";
 import { $state } from "../reactivity/$state";
 import { NotReadyError } from "../reactivity/not-ready-error";
 import { $cmpnt, $nodes } from "../render";
-import { runAfterHydration } from "../render/hydration";
 
 export type ErrorBoundarySSRState =
   | { status: "children" }
@@ -83,7 +82,7 @@ export const ErrorBoundary = $cmpnt(function ErrorBoundary(props: {
 
         return props.fallback?.(error, reset);
       });
-      if (getRenderMode()) {
+      if (isServer()) {
         const values = getErrorBoundaryValues();
         if (values) {
           values[errorBoundaryID] = {
@@ -152,7 +151,7 @@ export const ErrorBoundary = $cmpnt(function ErrorBoundary(props: {
 
     try {
       nextView = runWithOwner(nextOwner, () => props.children);
-      if (getRenderMode()) {
+      if (isServer()) {
         const values = getErrorBoundaryValues();
         if (values) values[errorBoundaryID] = { status: "children" };
       }

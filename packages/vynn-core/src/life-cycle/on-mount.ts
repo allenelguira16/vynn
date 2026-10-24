@@ -1,4 +1,4 @@
-import { getRenderMode } from "../context/render-mode";
+import { isServer } from "../context/is-server-context";
 import { getOwner } from "./owner";
 
 /**
@@ -16,7 +16,7 @@ export function onMount(callback: () => void): void;
 export function onMount(callback: () => () => void): void;
 
 export function onMount(callback: () => void | (() => void)): void {
-  if (getRenderMode()) {
+  if (isServer()) {
     return;
   }
 

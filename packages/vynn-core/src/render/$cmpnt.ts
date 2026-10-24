@@ -1,9 +1,6 @@
-import { createOwner, runWithOwner } from "../life-cycle/owner";
-
 import type { JSX } from "../jsx-runtime";
-
+import { createOwner, runWithOwner } from "../life-cycle/owner";
 import { untrack } from "../reactivity/untrack";
-import { getRenderMode } from "../context/render-mode";
 import {
   rootNodes,
   addUnmountListener,
@@ -13,6 +10,7 @@ import {
   unmarkParked,
 } from "./$cmpnt.util";
 import { runAfterHydration } from "../client/hydration";
+import { isServer } from "../context/is-server-context";
 
 /**
  * Creates a component function with its own reactive owner and lifecycle.
@@ -41,7 +39,7 @@ export function $cmpnt<P>(
     // owner.Component = Component;
     let marker: Node | undefined;
 
-    if (!getRenderMode()) {
+    if (!isServer()) {
       marker = document.createTextNode("");
       rootNodes.set(marker, owner);
     }
@@ -51,7 +49,7 @@ export function $cmpnt<P>(
       try {
         const resolved = untrack(() => Component(props));
 
-        if (getRenderMode()) return [resolved].flat();
+        if (isServer()) return [resolved].flat();
 
         return [resolved, marker].flat();
       } finally {

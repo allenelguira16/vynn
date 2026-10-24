@@ -1,7 +1,7 @@
 import type { JSX } from "../jsx-runtime";
-import { getRenderMode } from "../context/render-mode";
 import { createSSRText } from "./resolve-node";
 import { claimHydrationText } from "../client/hydration";
+import { isServer } from "../context/is-server-context";
 
 /**
  * Creates a text node for static JSX text.
@@ -11,7 +11,7 @@ import { claimHydrationText } from "../client/hydration";
  * rather than deferring the string-to-node conversion until tree resolution.
  */
 export function $txt(value: string): JSX.Element {
-  if (getRenderMode()) {
+  if (isServer()) {
     return createSSRText(value) as unknown as JSX.Element;
   }
 

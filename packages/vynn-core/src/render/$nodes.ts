@@ -1,7 +1,7 @@
 import type { JSX } from "../jsx-runtime";
 import { $renderEffect } from "../reactivity/$effect";
-import { getRenderMode } from "../context/render-mode";
 import { resolveNode, resolveSSRChild } from "./resolve-node";
+import { isServer } from "../context/is-server-context";
 
 /**
  * Creates a reactive DOM range from a child expression.
@@ -10,7 +10,7 @@ import { resolveNode, resolveSSRChild } from "./resolve-node";
  * On the client, the expression remains reactive.
  */
 export function $nodes(child: () => JSX.Element): JSX.Element {
-  if (getRenderMode()) {
+  if (isServer()) {
     return resolveSSRChild(child) as unknown as JSX.Element;
   }
 

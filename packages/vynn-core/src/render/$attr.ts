@@ -1,6 +1,6 @@
 import { $renderEffect } from "../reactivity/$effect";
-import { getRenderMode } from "../context/render-mode";
 import { SSR_ELEMENT } from "./resolve-node";
+import { isServer } from "../context/is-server-context";
 
 type AttributeValue = string | number | boolean | null | undefined;
 
@@ -64,7 +64,7 @@ export function $attr<E extends HTMLElement>(
   name: string,
   value: AttributeValue | (() => AttributeValue),
 ): void {
-  if (getRenderMode()) {
+  if (isServer()) {
     const node = element as unknown as SSR_ELEMENT;
     const key = name.toLowerCase();
     const next = typeof value === "function" ? value() : value;

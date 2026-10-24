@@ -1,23 +1,20 @@
-import { getOwner, getContext, modifyContext } from "../life-cycle/owner";
+import { getContext, modifyContext, setContext } from "../life-cycle/owner";
+
+const LAZY_ID = Symbol("vynn.lazy-id");
 
 export function initializeLazyContext() {
-  const owner = getOwner();
-
-  if (!owner)
-    throw new Error("[vynn]: initializeLazyID must be inside owner context");
-
-  owner.context.set("$lazy-id", 0);
+  setContext(LAZY_ID, 0);
 }
 
 export function getLazyID() {
-  const lazyID = getContext<number>("$lazy-id");
+  const lazyID = getContext<number>(LAZY_ID);
 
   if (lazyID == null)
     throw new Error(
-      "[vynn]: initializeLazyID is not yet initialized, run it first before using getLazyID",
+      "[vynn]: initializeLazyContext is not yet initialized, run it first before using getLazyID",
     );
 
-  modifyContext<number>("$lazy-id", (currentID) => currentID + 1);
+  modifyContext<number>(LAZY_ID, (currentID) => currentID + 1);
 
   return lazyID;
 }

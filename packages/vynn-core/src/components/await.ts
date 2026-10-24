@@ -4,9 +4,9 @@ import { createSSRAsync, resolveNode, SSR_NODE } from "../render/resolve-node";
 import { enterAsyncBoundary } from "../context/async-context";
 import { $state } from "../reactivity/$state";
 import { $renderEffect } from "../reactivity/$effect";
-import { getRenderMode } from "../context/render-mode";
 import { memo } from "../utils/memo";
 import { getOwner, runWithOwner } from "../life-cycle/owner";
+import { isServer } from "../context/is-server-context";
 
 /**
  * Displays a fallback while the children are initially loading.
@@ -22,7 +22,6 @@ export const Await = $cmpnt(function Suspense(props: {
   fallback?: JSX.Element;
   children: JSX.Element;
 }): JSX.Element {
-  const mode = getRenderMode();
   const owner = getOwner()!;
 
   const fallback = memo(() => runWithOwner(owner, () => props.fallback));
@@ -40,7 +39,7 @@ export const Await = $cmpnt(function Suspense(props: {
   //     return props.children;
   //   }
   // }
-  if (mode) {
+  if (isServer()) {
     let pending: Promise<any>[] = [];
 
     enterAsyncBoundary((promise) => {

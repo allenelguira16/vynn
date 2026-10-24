@@ -1,15 +1,12 @@
-import {
-  getContext,
-  getOwner,
-  modifyContext,
-  setContext,
-} from "../life-cycle/owner";
-import { getRenderMode } from "./render-mode";
+import { getContext, modifyContext, setContext } from "../life-cycle/owner";
+import { isServer } from "./is-server-context";
 
 export type AsyncBoundary<T = unknown> = (promise: Promise<T>) => void;
 
 const ASYNC_BOUNDARY = Symbol("vynn.async-boundary");
 const AWAIT_BOUNDARY = Symbol("vynn.await-boundary");
+const ASYNC_ID = Symbol("vynn.async-id");
+const ASYNC_VALUES = Symbol("vynn.async-values");
 
 export function isInsideAwaitBoundary(): boolean {
   return getContext<boolean>(AWAIT_BOUNDARY) ?? false;
@@ -29,34 +26,29 @@ export function enterAsyncBoundary<T>(boundary: AsyncBoundary<T>): void {
 }
 
 export function initializeAsyncContext() {
-  const owner = getOwner();
-
-  if (!owner)
-    throw new Error("[vynn]: initializeAsyncID must be inside owner context");
-
-  owner.context.set("$async-id", 0);
-  owner.context.set("$async-values", []);
+  setContext(ASYNC_ID, 0);
+  setContext(ASYNC_VALUES, []);
 }
 
 export function getAsyncID() {
-  let asyncID = getContext<number>("$async-id")!;
+  let asyncID = getContext<number>(ASYNC_ID)!;
 
   if (asyncID == null)
     throw new Error(
-      "[vynn]: initializeAsyncID is not yet initialized, run it first before using getAsyncID",
+      "[vynn]: initializeAsyncContext is not yet initialized, run it first before using getAsyncID",
     );
 
-  modifyContext<number>("$async-id", (current) => current + 1);
+  modifyContext<number>(ASYNC_ID, (current) => current + 1);
 
   return asyncID;
 }
 
 export function getAsyncValues() {
-  return getContext<any[]>("$async-values");
+  return getContext<any[]>(ASYNC_VALUES);
 }
 
 export function getAsyncValue(asyncID: number) {
-  if (!getRenderMode()) {
+  if (!isServer()) {
     (window as any).__vynnAsyncData ??= [];
     try {
       return (window as any).__vynnAsyncData[asyncID];

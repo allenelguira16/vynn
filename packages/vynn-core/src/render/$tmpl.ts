@@ -1,5 +1,5 @@
 import { claimHydrationElement } from "../client/hydration";
-import { getRenderMode } from "../context/render-mode";
+import { isServer } from "../context/is-server-context";
 import { createSSRNode } from "./resolve-node";
 
 /**
@@ -11,7 +11,7 @@ import { createSSRNode } from "./resolve-node";
 export function $tmpl<T extends keyof HTMLElementTagNameMap>(
   key: T,
 ): HTMLElementTagNameMap[T] {
-  if (getRenderMode()) {
+  if (isServer()) {
     return createSSRNode(key) as unknown as HTMLElementTagNameMap[T];
   }
 

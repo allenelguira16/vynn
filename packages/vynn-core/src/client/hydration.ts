@@ -4,7 +4,7 @@ import {
   LAZY_START_SSR_MARKER,
   TEXT_SSR_SEPARATOR,
 } from "../const";
-import { getRenderMode } from "../context/render-mode";
+import { isServer } from "../context/is-server-context";
 import { getOwner, runWithOwner, type Owner } from "../life-cycle/owner";
 
 let serverRenderedElements: HTMLElement[] = [];
@@ -74,7 +74,7 @@ export function runAfterHydration<T>(
   callback: () => T,
   waitForLazy = true,
 ): void {
-  if (getRenderMode()) return;
+  if (isServer()) return;
 
   const owner = getOwner();
 
@@ -146,7 +146,7 @@ export function claimHydrationText() {
 }
 
 export function syncServerRenderedLazy(lazyID: number) {
-  if (getRenderMode() || syncedLazyHydration.has(lazyID)) {
+  if (isServer() || syncedLazyHydration.has(lazyID)) {
     return;
   }
 
