@@ -38,10 +38,16 @@ app.use("*all", async (req: Request, res: Response, next) => {
 
     if (isDev && vite) {
       template = fs.readFileSync("./index.html", "utf-8");
-      template = await vite.transformIndexHtml(url, template);
+      template = (await vite.transformIndexHtml(url, template))
+        .replace(/>\s+</g, "><")
+        .trim();
+
       render = (await vite.ssrLoadModule("/src/entry-server.tsx")).render;
     } else {
-      template = fs.readFileSync("./dist/client/index.html", "utf-8");
+      template = fs
+        .readFileSync("./dist/client/index.html", "utf-8")
+        .replace(/>\s+</g, "><")
+        .trim();
       // @ts-expect-error dist file
       render = (await import("./dist/server/entry-server.js")).render;
     }

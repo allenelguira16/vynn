@@ -45,6 +45,7 @@ export function lazy<
 
   let cachedComponent: Component | undefined;
   let loadPromise: Promise<Component> | undefined;
+  let lazyID: number;
 
   function loadComponent(): Promise<Component> {
     if (loadPromise) {
@@ -59,7 +60,7 @@ export function lazy<
       modulePromise = Promise.reject(error);
     }
 
-    loadPromise = Promise.resolve(modulePromise).then((module) => {
+    loadPromise = Promise.resolve(modulePromise).then(async (module) => {
       const component = module[namedExport];
 
       if (typeof component !== "function") {
@@ -79,10 +80,8 @@ export function lazy<
     props: Parameters<Component>[0],
   ): JSX.Element {
     return withLazyBoundary(() => {
+      lazyID ??= getLazyID();
       const component = $async(loadComponent);
-
-      // console.log(getCurrentOwner());
-      const lazyID = getLazyID();
 
       // The server does not wait for client hydration.
       const hydrationReady = $state(!!isServer() || !isHydrating());

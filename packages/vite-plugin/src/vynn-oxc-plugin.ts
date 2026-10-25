@@ -690,15 +690,17 @@ class TransformState {
   }
 
   private transformTopLevelStatement(statement: Node): Node {
-    // Export wrappers need special handling because a function declaration is
-    // replaced by `const Component = $cmpnt(...)`.
+    // Export wrappers need special handling because a function declaration
+    // is replaced by `const Component = $cmpnt(...)`.
     if (
       isType(statement, "ExportDefaultDeclaration") &&
       isFunctionDeclaration(statement.declaration)
     ) {
       const declaration = statement.declaration;
+
       if (declaration.id && isComponentName(declaration.id.name)) {
         const transformed = this.transformComponentDeclaration(declaration);
+
         if (
           isVariableDeclaration(transformed) &&
           transformed.declarations.length === 1
@@ -712,9 +714,22 @@ class TransformState {
           );
         }
       }
+
       statement.declaration = this.visitNestedDeclarations(declaration);
       return statement;
     }
+
+    // Transform top-level expression statements, including JSX nested
+    // inside function arguments and callbacks.
+    if (isExpressionStatement(statement)) {
+      statement.expression = this.transformEmbeddedExpression(
+        statement.expression,
+        this.createIdentifierAllocator(),
+      );
+
+      return statement;
+    }
+
     return this.visitNestedDeclarations(statement);
   }
 
@@ -727,13 +742,33 @@ class TransformState {
   private visitNestedDeclarations(node: Node): Node {
     if (!isNode(node)) return node;
 
-    if (
-      isFunctionDeclaration(node) &&
-      node.id &&
-      isComponentName(node.id.name)
-    ) {
-      const transformed = this.transformComponentDeclaration(node);
-      if (transformed !== node) return transformed;
+    // Component declarations are transformed into $cmpnt(...) wrappers.
+    if (isFunctionDeclaration(node)) {
+      if (node.id && isComponentName(node.id.name)) {
+        const transformed = this.transformComponentDeclaration(node);
+
+        if (transformed !== node) {
+          return transformed;
+        }
+      }
+
+      // Ordinary functions still need their JSX expressions transformed.
+      // This handles functions such as:
+      //
+      // export function render(url) {
+      //   return renderToServer(() => {
+      //     return <App url={url} />;
+      //   }, "stream");
+      // }
+      //
+      // transformBlockStatement lowers return expressions, callbacks,
+      // variable initializers, and nested JSX expressions.
+      node.body = this.transformBlockStatement(
+        node.body,
+        this.createIdentifierAllocator(),
+      );
+
+      return node;
     }
 
     if (isVariableDeclaration(node)) {
@@ -744,19 +779,23 @@ class TransformState {
         ) {
           continue;
         }
+
         if (declaration.init && isExpression(declaration.init)) {
           this.assertJSXInitializerIsLazy(declaration);
+
           declaration.init = this.transformEmbeddedExpression(
             declaration.init,
             this.createIdentifierAllocator(),
           );
         }
       }
+
       return node;
     }
 
     for (const key of getVisitorKeys(node)) {
       const value = node[key];
+
       if (Array.isArray(value)) {
         node[key] = value.map((child: Node) =>
           isNode(child) ? this.visitNestedDeclarations(child) : child,
@@ -765,6 +804,7 @@ class TransformState {
         node[key] = this.visitNestedDeclarations(value);
       }
     }
+
     return node;
   }
 

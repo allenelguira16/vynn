@@ -6,5 +6,5 @@ import { hydrateToDOM } from "vynn/client";
 import { $location } from "vynn-router";
 
 hydrateToDOM(() => {
-  return App({ url: $location.pathname });
+  return <App url={$location.pathname} />;
 }, "#app");

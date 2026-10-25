@@ -5,5 +5,7 @@ import { App } from "./app";
 import { renderToServer } from "vynn/server";
 
 export function render(url: string) {
-  return renderToServer(() => App({ url }), "stream");
+  return renderToServer(() => {
+    return <App url={url} />;
+  }, "stream");
 }

@@ -15,8 +15,8 @@ type VitePluginVynnOptions = {
  * @param options - Vynn plugin options.
  * @returns The Vite plugins.
  */
-export default (options: VitePluginVynnOptions = { ssr: false }): Plugin[] => {
-  const plugins: Plugin[] = [];
+export default function vynn(options: VitePluginVynnOptions = { ssr: false }) {
+  const plugins: Plugin<any>[] = [];
 
   plugins.push(vynnOxcPlugin());
 
@@ -147,5 +147,5 @@ export default (options: VitePluginVynnOptions = { ssr: false }): Plugin[] => {
     });
   }
 
-  return plugins;
-};
+  return plugins as unknown as Plugin[];
+}

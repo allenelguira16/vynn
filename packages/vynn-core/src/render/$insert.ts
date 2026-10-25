@@ -50,7 +50,7 @@ export function $insert<E extends HTMLElement>(
 
     // Add new nodes.
     for (let i = length; i < newNodes.length; i++) {
-      element.insertBefore(newNodes[i], before);
+      element.insertBefore(newNodes[i], null);
     }
 
     // Remove nodes that no longer exist.

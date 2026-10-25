@@ -1,4 +1,4 @@
-import { $state, $store, createContext, JSX, onDestroy } from "vynn";
+import { $state, $store, createContext, JSX, onDestroy, onMount } from "vynn";
 
 import { Template } from "../components/template";
 
@@ -39,13 +39,14 @@ const Input = () => {
 
   const i = $state(0);
 
-  const cleanup = setInterval(() => {
-    i.value++;
-  }, 1000);
+  onMount(() => {
+    const cleanup = setInterval(() => {
+      i.value++;
+    }, 1000);
 
-  onDestroy(() => {
-    // console.log("cleared tanga");
-    clearInterval(cleanup);
+    return () => {
+      clearInterval(cleanup);
+    };
   });
 
   const nameEl = () => <>Name: {forms.name} Hi </>;

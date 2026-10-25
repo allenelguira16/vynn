@@ -211,6 +211,7 @@ function renderPatchRuntime() {
     };
   })
     .toString()
+    .replace(/\s+/g, " ")
     .replace("FALLBACK_START_SSR_MARKER", FALLBACK_START_SSR_MARKER)
     .replace(
       "FALLBACK_END_SSR_MARKER",
