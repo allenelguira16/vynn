@@ -1,4 +1,5 @@
-import { $effect, $state, $store, FC, PropsWithChildren } from "vynn";
+import { $effect, $state, $store, createContext, onMount } from "vynn";
+import type { FC, PropsWithChildren } from "vynn";
 import { $nodes } from "vynn/render";
 
 export type Route = {
@@ -17,13 +18,18 @@ type MatchedRoute = {
   fullPath: string;
 };
 
-// Guard against SSR.
 const isServer = typeof window === "undefined";
 
+/**
+ * Legacy/default location store. The router uses a per-Router store in context
+ * so multiple concurrent SSR requests never mutate one module-level location.
+ */
 export const $location = $store<Location>({
   pathname: !isServer ? window.location.pathname : "/",
   search: !isServer ? window.location.search : "",
 });
+
+const [LocationProvider, useRouterLocation] = createContext<Location>();
 
 if (!isServer) {
   window.addEventListener("popstate", () => {
@@ -32,89 +38,103 @@ if (!isServer) {
   });
 }
 
+function currentLocation(): Location {
+  try {
+    return useRouterLocation();
+  } catch {
+    // Public helpers can also be used outside a Router. Keep the original
+    // module-level store as a compatibility fallback for those callers.
+    return $location;
+  }
+}
+
+function parseLocation(url?: string): Location {
+  const fallback = !isServer
+    ? `${window.location.pathname}${window.location.search}`
+    : "/";
+  const parsed = new URL(url || fallback, "http://vynn.local");
+  return {
+    pathname: parsed.pathname,
+    search: parsed.search,
+  };
+}
+
+function updateLocation(target: Location, next: Location): void {
+  target.pathname = next.pathname;
+  target.search = next.search;
+}
+
 /**
  * Updates the current URL and reactive location state.
  *
- * In the browser, the history entry is updated without reloading the page.
- * During SSR, only the reactive pathname is updated.
- *
- * @param path The path to navigate to.
+ * When called within a Router, it updates that Router's request-local state.
+ * Calls outside a Router use the legacy `$location` store.
  */
-export function navigate(path: string): void {
-  if (path === $location.pathname) {
+export function navigate(path: string, location = currentLocation()): void {
+  const target = new URL(
+    path,
+    `http://vynn.local${location.pathname}${location.search}`,
+  );
+  const next = {
+    pathname: target.pathname,
+    search: target.search,
+  };
+
+  if (
+    next.pathname === location.pathname &&
+    next.search === location.search &&
+    !target.hash
+  ) {
     return;
   }
 
   if (!isServer) {
-    history.pushState(null, "", path);
+    history.pushState(
+      null,
+      "",
+      `${target.pathname}${target.search}${target.hash}`,
+    );
+    updateLocation(location, {
+      pathname: window.location.pathname,
+      search: window.location.search,
+    });
+    // Keep consumers of the old exported singleton working in browser apps.
     $location.pathname = window.location.pathname;
     $location.search = window.location.search;
   } else {
-    $location.pathname = path;
+    updateLocation(location, next);
   }
 }
 
 /**
  * Normalizes a pathname by collapsing repeated slashes and removing a
- * trailing slash.
- *
- * The root path is always represented as `/`.
- *
- * @param path The path to normalize.
- * @returns The normalized path.
+ * trailing slash. The root path is always represented as `/`.
  */
 function normalizePath(path: string): string {
-  if (!path || path === "/") {
-    return "/";
-  }
-
+  if (!path || path === "/") return "/";
   const normalized = path.replace(/\/+/g, "/").replace(/\/$/, "");
-
   return normalized || "/";
 }
 
-/**
- * Splits a pathname into its non-empty segments.
- *
- * @param path The path to split.
- * @returns The normalized path segments.
- */
+/** Splits a pathname into its non-empty segments. */
 function toSegments(path: string): string[] {
   return normalizePath(path).split("/").filter(Boolean);
 }
 
-/**
- * Checks whether a route path matches the current pathname.
- *
- * Dynamic segments beginning with `:` match any corresponding pathname
- * segment. Exact matches require the same number of segments, while
- * non-exact matches only require the target path to be a prefix.
- *
- * @param targetPath The route path to match.
- * @param exact Whether the pathname must match the route exactly.
- * @returns `true` when the route matches the current pathname.
- */
-function matchRoute(targetPath: string, exact = true): boolean {
-  const pathname = normalizePath($location.pathname);
+/** Checks whether the supplied pathname matches a route path. */
+function matchRoute(
+  targetPath: string,
+  exact = true,
+  location = currentLocation(),
+): boolean {
+  const pathname = normalizePath(location.pathname);
   const target = normalizePath(targetPath);
-
   const pathnameSegments = toSegments(pathname);
   const targetSegments = toSegments(target);
 
-  // Root.
-  if (target === "/") {
-    return exact ? pathname === "/" : true;
-  }
-
-  // Leaf route must match exactly.
-  if (exact && pathnameSegments.length !== targetSegments.length) {
-    return false;
-  }
-
-  // Layout route must at least fit inside the pathname.
-  if (!exact && pathnameSegments.length < targetSegments.length) {
-    return false;
-  }
+  if (target === "/") return exact ? pathname === "/" : true;
+  if (exact && pathnameSegments.length !== targetSegments.length) return false;
+  if (!exact && pathnameSegments.length < targetSegments.length) return false;
 
   return targetSegments.every(
     (segment, index) =>
@@ -122,105 +142,50 @@ function matchRoute(targetPath: string, exact = true): boolean {
   );
 }
 
-/**
- * Combines a parent route path with a child route path.
- *
- * @param parent The parent route path.
- * @param child The child route path.
- * @returns The combined normalized path.
- */
+/** Combines a parent route path with a child route path. */
 function joinPaths(parent: string, child: string): string {
   const normalizedParent = normalizePath(parent);
-
-  if (normalizedParent === "/") {
-    return normalizePath(child);
-  }
-
-  if (!child || child === "/") {
-    return normalizedParent;
-  }
-
+  if (normalizedParent === "/") return normalizePath(child);
+  if (!child || child === "/") return normalizedParent;
   return normalizePath(`${normalizedParent}/${child}`);
 }
 
-/**
- * Finds the route selected by the current outlet.
- *
- * Only the routes provided to this outlet are evaluated. Child routes are
- * resolved by nested outlets rather than recursively by this function.
- *
- * @param routes The routes owned by the current outlet.
- * @param parentPath The path inherited from the parent outlet.
- * @returns The matching route and its full path, or `undefined` when no route matches.
- */
+/** Finds the route selected by the current outlet. */
 function findMatch(routes: Route[], parentPath = ""): MatchedRoute | undefined {
+  const location = currentLocation();
+
   for (const route of routes) {
     const fullPath = joinPaths(parentPath, route.path);
     const hasChildren = !!route.children?.length;
 
-    // Parent/layout routes match by prefix.
-    // Leaf routes match exactly.
-    if (matchRoute(fullPath, !hasChildren)) {
-      return {
-        route,
-        fullPath,
-      };
+    if (matchRoute(fullPath, !hasChildren, location)) {
+      return { route, fullPath };
     }
   }
 
   return undefined;
 }
 
-/**
- * Renders a single reactive routing level.
- *
- * The outlet reacts to changes in the current URL, but only recreates its
- * rendered component when the route selected by this outlet changes.
- *
- * Child routes are rendered through nested `RouteOutlet` instances.
- *
- * @param props The routes owned by this outlet and its parent path.
- * @returns The rendered route component.
- */
+/** Renders one reactive routing level. Child routes use nested outlets. */
 function RouteOutlet(props: { routes: Route[]; parentPath?: string }) {
   const current = $state<MatchedRoute | undefined>();
 
-  /**
-   * Updates the selected route when the reactive pathname changes.
-   *
-   * The current match is only replaced when either the selected route or its
-   * resolved full path changes.
-   */
   $effect(() => {
     const next = findMatch(props.routes, props.parentPath ?? "");
-
     if (
       current.value?.route === next?.route &&
       current.value?.fullPath === next?.fullPath
     ) {
       return;
     }
-
     current.value = next;
   });
 
-  /**
-   * Renders only the currently selected route.
-   *
-   * Because this computation depends only on `current.value`, unrelated
-   * pathname changes do not directly recreate the active component.
-   */
   return $nodes(() => {
     const match = current.value;
-
-    if (!match) {
-      return null;
-    }
+    if (!match) return null;
 
     const { route, fullPath } = match;
-
-    // console.log(match);
-
     return route.component({
       get children() {
         return (
@@ -231,46 +196,46 @@ function RouteOutlet(props: { routes: Route[]; parentPath?: string }) {
   });
 }
 
-/**
- * Creates the root router outlet.
- *
- * When `url` is provided, it initializes the reactive location to that
- * pathname when it differs from the current pathname.
- *
- * @param props The router configuration and optional initial URL.
- * @returns The root route outlet.
- */
+/** Creates a Router with request-local URL state, suitable for SSR. */
 export function Router(props: { url?: string; routes: Route[] }) {
-  if (props.url && props.url !== $location.pathname) {
-    $location.pathname = props.url;
+  const location = $store<Location>(parseLocation(props.url));
+
+  if (!isServer) {
+    // Keep legacy consumers synchronized, but never mutate the module-level
+    // singleton on the server: separate requests have separate Router stores.
+    updateLocation($location, location);
+    onMount(() => {
+      const updateFromBrowser = () => {
+        updateLocation(location, {
+          pathname: window.location.pathname,
+          search: window.location.search,
+        });
+        updateLocation($location, location);
+      };
+      window.addEventListener("popstate", updateFromBrowser);
+      return () => window.removeEventListener("popstate", updateFromBrowser);
+    });
   }
 
-  return <RouteOutlet routes={props.routes} />;
+  return (
+    <LocationProvider value={location}>
+      <RouteOutlet routes={props.routes} />
+    </LocationProvider>
+  );
 }
 
-/**
- * Checks whether a path exactly matches the current pathname.
- *
- * Dynamic route segments beginning with `:` match the corresponding
- * pathname segment.
- *
- * @param targetpath The path to compare with the current pathname.
- * @returns `true` when the target path matches the current pathname.
- */
-export function isActiveRoute(targetpath: string): boolean {
-  const pathname = normalizePath($location.pathname);
-  const target = normalizePath(targetpath);
-
+/** Checks whether a path matches the current pathname. */
+export function isActiveRoute(
+  targetPath: string,
+  location = currentLocation(),
+): boolean {
+  const pathname = normalizePath(location.pathname);
+  const target = normalizePath(targetPath);
   const pathnameSegments = toSegments(pathname);
   const targetSegments = toSegments(target);
 
-  if (target === "/") {
-    return pathname === "/";
-  }
-
-  if (pathnameSegments.length !== targetSegments.length) {
-    return false;
-  }
+  if (target === "/") return pathname === "/";
+  if (pathnameSegments.length !== targetSegments.length) return false;
 
   return targetSegments.every(
     (segment, index) =>
@@ -278,16 +243,7 @@ export function isActiveRoute(targetpath: string): boolean {
   );
 }
 
-/**
- * Renders a navigation link that uses client-side routing.
- *
- * The link receives an active class when its `href` matches the current
- * pathname. In the browser, the default navigation is prevented and
- * `navigate()` is used instead.
- *
- * @param props The link destination, optional classes, and child content.
- * @returns The rendered anchor element.
- */
+/** Renders an anchor that navigates through the active Router. */
 export function Link(
   props: PropsWithChildren<{
     href: string;
@@ -296,18 +252,22 @@ export function Link(
   }>,
 ) {
   props.class ??= "";
+  const location = currentLocation();
 
   return (
     <a
       href={props.href}
       class={(
-        props.class + (isActiveRoute(props.href) ? ` ${props.activeClass}` : "")
+        props.class +
+        (isActiveRoute(props.href, location)
+          ? ` ${props.activeClass ?? ""}`
+          : "")
       ).trim()}
-      onClick={(e) => {
+      onClick={(event) => {
         if (!isServer) {
-          e.preventDefault();
-          e.stopPropagation();
-          navigate(props.href);
+          event.preventDefault();
+          event.stopPropagation();
+          navigate(props.href, location);
         }
       }}
     >

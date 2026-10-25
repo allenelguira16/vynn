@@ -1,151 +1,108 @@
-// import { transformSync } from "@babel/core";
-// import babelPluginTS from "@babel/preset-typescript";
-// import babelPluginVynn from "@babel/preset-vynn";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Plugin, ViteDevServer } from "vite";
 import { vynnOxcPlugin } from "./vynn-oxc-plugin.ts";
+import { vynnStartPlugin, type VynnStartOptions } from "./start/index.ts";
 
 type VitePluginVynnOptions = {
+  /** Enable SSR compiler/runtime integration for manually wired SSR projects or Start mode. */
   ssr?: boolean;
+  /** Own entries, HTML serving, and build orchestration. `true` uses conventions. */
+  start?: boolean | VynnStartOptions;
 };
 
 /**
  * Vite plugin for Vynn.
  *
- * @param options - Vynn plugin options.
- * @returns The Vite plugins.
+ * `start: true` adds Solid-like Start mode. Pair it with `ssr: true` for
+ * streamed SSR, automatic hydration, multi-environment builds, and SSR in
+ * `vite preview`. Without `start`, the existing low-level plugin behavior is
+ * retained.
  */
-export default function vynn(options: VitePluginVynnOptions = { ssr: false }) {
-  const plugins: Plugin<any>[] = [];
+export default function vynn(options: VitePluginVynnOptions = {}) {
+  const plugins: Plugin[] = [vynnOxcPlugin()];
+  const startEnabled = options.start !== undefined && options.start !== false;
 
-  plugins.push(vynnOxcPlugin());
+  // if (options.ssr) {
+  //   const virtualCssPath = "/@virtual:ssr-css.css";
+  //   const collectedStyles = new Map<string, string>();
 
-  // plugins.push({
-  //   name: "vite-plugin-vynn",
-  //   enforce: "pre",
+  //   plugins.push({
+  //     name: "ssr-dev-fouc-fix",
+  //     apply: "serve",
 
-  //   transform: {
-  //     filter: {
-  //       id: /\.[tj]sx?(?:$|\?)/,
+  //     transform(code, id) {
+  //       if (id.includes("node_modules")) return null;
+  //       if (/\.css(?:\?|$)/.test(id)) collectedStyles.set(id, code);
+  //       return null;
   //     },
 
-  //     handler(code, id, transformOptions) {
-  //       const [filename] = id.split("?", 2);
-
-  //       const isSSR = transformOptions?.ssr === true;
-
-  //       // Plugin is client-only.
-  //       // Don't transform SSR modules if SSR wasn't enabled.
-  //       if (isSSR && !options.ssr) {
-  //         return null;
-  //       }
-
-  //       const result = transformSync(code, {
-  //         filename,
-  //         sourceMaps: true,
-
-  //         presets: [
-  //           [
-  //             babelPluginVynn,
-  //             {
-  //               ssr: isSSR,
-
-  //               // Vite's module ID is passed to Vynn so the generated
-  //               // HMR handler can identify the module correctly.
-  //               //
-  //               // HMR is only relevant to client transforms.
-  //               hmrId: isSSR ? undefined : filename,
-  //             },
-  //           ],
-  //           babelPluginTS,
-  //         ],
-
-  //         generatorOpts: {
-  //           comments: true,
-  //           shouldPrintComment: (value: string) => /#__PURE__/.test(value),
-  //         },
+  //     handleHotUpdate(ctx) {
+  //       const { file, read } = ctx;
+  //       if (!/\.css(?:\?|$)/.test(file)) return;
+  //       return Promise.resolve(read()).then((code) => {
+  //         collectedStyles.set(file, code);
   //       });
-
-  //       if (!result?.code) {
-  //         return null;
-  //       }
-
-  //       return {
-  //         code: result.code,
-  //         map: result.map ? JSON.stringify(result.map) : undefined,
-  //         moduleType: "js",
-  //       };
   //     },
-  //   },
-  // });
 
-  if (options.ssr) {
-    const virtualCssPath = "/@virtual:ssr-css.css";
+  //     configureServer(server: ViteDevServer) {
+  //       server.middlewares.use(
+  //         (req: IncomingMessage, res: ServerResponse, next) => {
+  //           const pathname = new URL(req.url ?? "/", "http://vynn.local")
+  //             .pathname;
+  //           const base = server.config.base || "/";
+  //           const basePath = base.startsWith("/")
+  //             ? base.replace(/\/$/, "")
+  //             : "";
+  //           const normalizedPath =
+  //             basePath && pathname.startsWith(`${basePath}/`)
+  //               ? pathname.slice(basePath.length)
+  //               : pathname;
 
-    // Keep styles scoped to this plugin instance.
-    const collectedStyles = new Map<string, string>();
+  //           if (normalizedPath !== virtualCssPath) {
+  //             next();
+  //             return;
+  //           }
 
-    plugins.push({
-      name: "ssr-dev-fouc-fix",
-      apply: "serve",
+  //           res.setHeader("Content-Type", "text/css; charset=utf-8");
+  //           res.statusCode = 200;
+  //           res.end(Array.from(collectedStyles.values()).join("\n"));
+  //         },
+  //       );
+  //     },
 
-      // Gather CSS contents as they are transformed.
-      transform(code, id) {
-        if (id.includes("node_modules")) {
-          return null;
-        }
+  //     // Low-level SSR users still use index.html. Start mode creates its own
+  //     // shell, so it links this endpoint from the generated document instead.
+  //     ...(startEnabled
+  //       ? {}
+  //       : {
+  //           transformIndexHtml: {
+  //             order: "pre" as const,
+  //             handler: () => [
+  //               {
+  //                 tag: "link",
+  //                 injectTo: "head" as const,
+  //                 attrs: {
+  //                   rel: "stylesheet",
+  //                   href: virtualCssPath,
+  //                 },
+  //               },
+  //             ],
+  //           },
+  //         }),
+  //   });
+  // }
 
-        if (/\.css(?:\?|$)/.test(id)) {
-          collectedStyles.set(id, code);
-        }
-
-        return null;
-      },
-
-      // Update collected CSS on HMR.
-      handleHotUpdate(ctx) {
-        const { file, read } = ctx;
-
-        if (/\.css(?:\?|$)/.test(file)) {
-          return Promise.resolve(read()).then((code) => {
-            collectedStyles.set(file, code);
-          });
-        }
-      },
-
-      // Serve a virtual stylesheet containing the collected styles.
-      configureServer(server: ViteDevServer) {
-        server.middlewares.use(
-          (req: IncomingMessage, res: ServerResponse, next) => {
-            if (req.url === virtualCssPath) {
-              res.setHeader("Content-Type", "text/css");
-              res.statusCode = 200;
-              res.end(Array.from(collectedStyles.values()).join("\n"));
-              return;
-            }
-
-            next();
-          },
-        );
-      },
-
-      // Inject one stylesheet link into the HTML head.
-      transformIndexHtml: {
-        order: "pre",
-
-        handler: () => [
-          {
-            tag: "link",
-            injectTo: "head",
-            attrs: {
-              rel: "stylesheet",
-              href: virtualCssPath,
-            },
-          },
-        ],
-      },
-    });
+  if (startEnabled) {
+    plugins.push(
+      vynnStartPlugin({
+        ssr: options.ssr === true,
+        start:
+          options.start === true ? {} : (options.start as VynnStartOptions),
+      }),
+    );
   }
 
-  return plugins as unknown as Plugin[];
+  return plugins;
 }
+
+export type { VynnStartOptions } from "./start/index.ts";
