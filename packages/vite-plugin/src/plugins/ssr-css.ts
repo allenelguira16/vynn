@@ -166,10 +166,41 @@ async function collectCssUrls(
     );
   }
 
-  async function visitModule(initial: ModuleNode): Promise<void> {
+  function getModulePath(module: ModuleNode): string {
+    return (module.file ?? module.id ?? module.url)
+      .split(/[?#]/, 1)[0]
+      .replace(/\\/g, "/");
+  }
+
+  function isScriptModule(module: ModuleNode): boolean {
+    return /\.(?:[cm]?[jt]sx?)$/i.test(getModulePath(module));
+  }
+
+  function isServerEntryModule(module: ModuleNode): boolean {
+    const filename = getModulePath(module).split("/").pop() ?? "";
+
+    return /^(?:server|entry-server)\.[cm]?[jt]sx?$/i.test(filename);
+  }
+
+  async function visitModule(
+    initial: ModuleNode,
+    parentIsCss = false,
+  ): Promise<void> {
     if (isGlobModule(initial) || isOptimizedDependency(initial)) {
       return;
     }
+
+    const initialIsCss = isCssModule(initial);
+
+    // Stylesheet dependencies such as Tailwind's source-scanning files
+    // must not be treated as application JavaScript dependencies.
+    if (parentIsCss && !initialIsCss) return;
+
+    // Never process HTML, assets, or unrelated file types as JS.
+    if (!initialIsCss && !isScriptModule(initial)) return;
+
+    // The Node server and SSR entry aren't browser dependencies.
+    if (isServerEntryModule(initial)) return;
 
     const initialKey = initial.id ?? initial.url;
 
@@ -194,15 +225,44 @@ async function collectCssUrls(
       }
     }
 
-    if (isCssModule(module)) {
+    const cssModule = isCssModule(module);
+
+    if (cssModule) {
       cssUrls.add(module.url.split("?", 1)[0]);
     }
 
-    await Promise.all([...module.importedModules].map(visitModule));
+    const dependencies = [...module.importedModules].filter((dependency) => {
+      if (isGlobModule(dependency) || isOptimizedDependency(dependency)) {
+        return false;
+      }
+
+      if (isServerEntryModule(dependency)) return false;
+
+      if (cssModule) {
+        // CSS can import CSS. Its other graph dependencies may be
+        // watched source files, not stylesheets that need linking.
+        return isCssModule(dependency);
+      }
+
+      // Application modules can import scripts and stylesheets.
+      return isCssModule(dependency) || isScriptModule(dependency);
+    });
+
+    await Promise.all(
+      dependencies.map((dependency) => visitModule(dependency, cssModule)),
+    );
   }
 
   async function visitEntry(url: string): Promise<void> {
-    if (/[*{}]/.test(url)) return;
+    const path = url.split(/[?#]/, 1)[0];
+
+    if (
+      !/\.(?:[cm]?[jt]sx?|css|pcss|postcss|scss|sass|less|styl|stylus)$/i.test(
+        path,
+      )
+    ) {
+      return;
+    }
 
     try {
       // Explicit entries are transformed first so Vite can populate

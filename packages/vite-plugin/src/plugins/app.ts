@@ -137,10 +137,12 @@ export function vynnStartPlugin({ ssr, start, ssrCss }: PluginOptions): Plugin {
         return previewConfig;
       }
 
-      const optimizeEntries = [entries.clientFile, entries.appSpecifier].filter(
-        (entry): entry is string =>
-          !!entry && !entry.startsWith("virtual:") && !entry.startsWith("@/"),
-      );
+      const optimizeEntries = [entries.clientFile, entries.appSpecifier]
+        .filter(
+          (entry): entry is string =>
+            !!entry && isAbsolute(entry) && existsSync(entry),
+        )
+        .map((entry) => relative(projectRoot, entry).replace(/\\/g, "/"));
 
       if (ssr) {
         const ssrConfig: Omit<UserConfig, "plugins"> = {
@@ -174,7 +176,7 @@ export function vynnStartPlugin({ ssr, start, ssrCss }: PluginOptions): Plugin {
           },
         };
 
-        if (env.command === "serve") {
+        if (env.command === "serve" && optimizeEntries.length > 0) {
           ssrConfig.optimizeDeps = {
             entries: optimizeEntries,
           };

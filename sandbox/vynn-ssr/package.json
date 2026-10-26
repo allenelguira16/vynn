@@ -4,10 +4,12 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "start": "vite",
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
+    "dev": "cross-env NODE_ENV=development tsx server.tsx",
+    "start": "cross-env NODE_ENV=production tsx server.tsx",
+    "preview": "cross-env NODE_ENV=production pnpm build && tsx server.tsx",
+    "build": "pnpm build:client && pnpm build:server",
+    "build:client": "cross-env NODE_ENV=production vite build --outDir dist/client",
+    "build:server": "cross-env NODE_ENV=production vite build --outDir dist/server --ssr src/entry-server.js"
   },
   "dependencies": {
     "@babel/core": "^8.0.5",
