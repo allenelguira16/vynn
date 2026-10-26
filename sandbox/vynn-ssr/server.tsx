@@ -34,7 +34,9 @@ app.use("*all", async (req: Request, res: Response, next) => {
 
   try {
     let template: string;
-    let render: (url: string) => Promise<string>;
+    let render: (
+      url: string,
+    ) => Promise<string> | ReadableStream<Uint8Array<ArrayBufferLike>>;
 
     if (isDev && vite) {
       template = fs.readFileSync("./index.html", "utf-8");
