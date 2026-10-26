@@ -42,4 +42,4 @@ export default function vynn(options: VitePluginVynnOptions = {}) {
   return plugins;
 }
 
-export type { VynnStartOptions } from "./app.ts";
+export type { VynnAppOptions } from "./plugins/app.ts";

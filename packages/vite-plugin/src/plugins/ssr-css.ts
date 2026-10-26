@@ -167,7 +167,9 @@ async function collectCssUrls(
   }
 
   async function visitModule(initial: ModuleNode): Promise<void> {
-    if (isGlobModule(initial)) return;
+    if (isGlobModule(initial) || isOptimizedDependency(initial)) {
+      return;
+    }
 
     const initialKey = initial.id ?? initial.url;
 
@@ -176,25 +178,19 @@ async function collectCssUrls(
 
     let module = initial;
 
-    // Transform real modules to populate the dependency graph.
-    // Do not transform Vite's temporary optimized dependencies.
-    if (!isOptimizedDependency(module)) {
-      try {
-        await environment.transformRequest(module.url);
+    try {
+      await environment.transformRequest(module.url);
 
-        module =
-          (await environment.moduleGraph.getModuleByUrl(module.url)) ?? module;
-      } catch (error) {
-        const code = (error as { code?: string })?.code;
+      module =
+        (await environment.moduleGraph.getModuleByUrl(module.url)) ?? module;
+    } catch (error) {
+      const code = (error as { code?: string })?.code;
 
-        // Vite can invalidate a pre-bundled dependency during optimization.
-        // Let Vite handle the reload instead of aborting CSS collection.
-        if (code !== "ERR_OUTDATED_OPTIMIZED_DEP") {
-          console.warn(
-            `[vynn:ssr-css] Could not process module: ${module.url}`,
-            error,
-          );
-        }
+      if (code !== "ERR_OUTDATED_OPTIMIZED_DEP") {
+        console.warn(
+          `[vynn:ssr-css] Could not process module: ${module.url}`,
+          error,
+        );
       }
     }
 
