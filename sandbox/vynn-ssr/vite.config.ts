@@ -4,7 +4,10 @@ import tailwindcss from "@tailwindcss/vite";
 
 export default defineConfig({
   plugins: [
-    vynn({ start: { renderMode: "stream" }, ssr: true }),
+    vynn({
+      app: { renderMode: "stream" },
+      ssr: true,
+    }),
     tailwindcss(),
   ],
 });

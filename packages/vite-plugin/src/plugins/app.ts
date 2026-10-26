@@ -10,8 +10,9 @@ import type {
   UserConfig,
   ViteDevServer,
 } from "vite";
+import { VYNN_SSR_CSS_URL, type VynnSsrCssCollector } from "./ssr-css.ts";
 
-export type VynnStartOptions = {
+export type VynnAppOptions = {
   /** Root component module, relative to the Vite root. Defaults to src/App.* or src/app.*. */
   app?: string;
   /** Optional named App export. Defaults to `default`, then `App`. */
@@ -30,7 +31,8 @@ export type VynnStartOptions = {
 
 type PluginOptions = {
   ssr: boolean;
-  start: VynnStartOptions;
+  start: VynnAppOptions;
+  ssrCss?: VynnSsrCssCollector;
 };
 
 type ResolvedEntries = {
@@ -62,7 +64,7 @@ export const SSR_HANDLER_ID = "virtual:vynn/ssr-handler";
 const RESOLVED_CLIENT_ENTRY_ID = `\0${CLIENT_ENTRY_ID}`;
 const RESOLVED_SERVER_ENTRY_ID = `\0${SERVER_ENTRY_ID}`;
 const RESOLVED_SSR_HANDLER_ID = `\0${SSR_HANDLER_ID}`;
-const DEV_CSS_URL = "/@virtual:ssr-css.css";
+const DEV_CSS_URL = VYNN_SSR_CSS_URL;
 const HTML_OUTLET_ID = "app";
 const ENTRY_EXTENSIONS = [
   ".tsx",
@@ -87,7 +89,7 @@ const SERVER_ENTRY_NAMES = ["entry-server"];
  *
  * Neither mode requires a project-owned index.html or HTTP server file.
  */
-export function vynnStartPlugin({ ssr, start }: PluginOptions): Plugin {
+export function vynnStartPlugin({ ssr, start, ssrCss }: PluginOptions): Plugin {
   const mount = start.mount ?? `#${HTML_OUTLET_ID}`;
   const title = start.title ?? "Vynn App";
 
@@ -105,24 +107,9 @@ export function vynnStartPlugin({ ssr, start }: PluginOptions): Plugin {
   let base = "/";
   let isBuild = false;
   const root = () => resolvedConfig?.root ?? process.cwd();
-  const collectedStyles = new Map<string, string>();
 
   return {
     name: "vite-plugin-vynn-start",
-
-    // Start owns its development stylesheet endpoint. Collect CSS transformed
-    // through Vite and refresh the cache when a stylesheet changes.
-    transform(code, id) {
-      if (isBuild || id.includes("node_modules")) return null;
-      if (/\.css(?:\?|$)/.test(id)) collectedStyles.set(id, code);
-      return null;
-    },
-
-    async handleHotUpdate(ctx) {
-      if (!/\.css(?:\?|$)/.test(ctx.file)) return;
-
-      collectedStyles.set(ctx.file, await ctx.read());
-    },
 
     config(userConfig, env): Omit<UserConfig, "plugins"> {
       const projectRoot = resolve(userConfig.root || process.cwd());
@@ -336,28 +323,30 @@ export function vynnStartPlugin({ ssr, start }: PluginOptions): Plugin {
     },
 
     configureServer(server: ViteDevServer) {
-      // Serve this endpoint before Vite's module/fallback middleware can turn
-      // the unknown virtual URL into an HTML response.
-      server.middlewares.use((req, res, next) => {
-        const pathname = new URL(req.url ?? "/", "http://vynn.local").pathname;
-        const basePath =
-          base.startsWith("/") && base !== "/" ? base.replace(/\/+$/, "") : "";
-        const normalizedPath =
-          basePath &&
-          (pathname === basePath || pathname.startsWith(`${basePath}/`))
-            ? pathname.slice(basePath.length) || "/"
-            : pathname;
+      if (ssr && !isBuild && ssrCss) {
+        if (entries.clientFile) {
+          // An authored client entry imports its own application and styles.
+          ssrCss.registerEntryUrl(toDevUrl(root(), entries.clientFile));
+        } else {
+          // The generated virtual entry imports the root app and global styles.
+          // Register the actual modules instead of relying on the virtual entry URL.
+          if (
+            entries.appSpecifier &&
+            isAbsolute(entries.appSpecifier) &&
+            existsSync(entries.appSpecifier)
+          ) {
+            ssrCss.registerEntryUrl(toDevUrl(root(), entries.appSpecifier));
+          } else {
+            ssrCss.registerEntryUrl(
+              getClientEntryDevUrl(entries, root(), base),
+            );
+          }
 
-        if (normalizedPath !== DEV_CSS_URL) {
-          next();
-          return;
+          for (const style of entries.styleSpecifiers) {
+            ssrCss.registerEntryUrl(toDevUrl(root(), style));
+          }
         }
-
-        res.statusCode = 200;
-        res.setHeader("Content-Type", "text/css; charset=utf-8");
-        res.setHeader("Cache-Control", "no-cache");
-        res.end(Array.from(collectedStyles.values()).join("\n"));
-      });
+      }
 
       // Register the document middleware after Vite's own middlewares so real
       // assets, HMR, and module URLs are given first refusal.
@@ -441,7 +430,10 @@ export function vynnStartPlugin({ ssr, start }: PluginOptions): Plugin {
 
           void (async () => {
             const handlerPath = resolve(serverOutDir, "index.js");
-            handlerPromise ??= import(pathToFileURL(handlerPath).href);
+            handlerPromise ??= import(
+              /* @vite-ignore */
+              pathToFileURL(handlerPath).href
+            );
             const handler = await handlerPromise;
             const requestUrl = addBaseToRequestUrl(base, req.url ?? "/");
             const response = await handler.handleRequest(
@@ -484,7 +476,7 @@ export function vynnStartPlugin({ ssr, start }: PluginOptions): Plugin {
 
 function resolveEntries(
   root: string,
-  options: VynnStartOptions,
+  options: VynnAppOptions,
   ssr: boolean,
 ): ResolvedEntries {
   const clientFile = options.entryClient
@@ -764,11 +756,13 @@ function createClientShell(options: {
   dev: boolean;
 }): string {
   const css = options.dev
-    ? `<link rel="stylesheet" href="${escapeHtml(joinAssetBase(options.base, DEV_CSS_URL))}">`
+    ? ""
     : (options.css ?? [])
         .map(
           (file) =>
-            `<link rel="stylesheet" href="${escapeHtml(joinAssetBase(options.base, `/${file}`))}">`,
+            `<link rel="stylesheet" href="${escapeHtml(
+              joinAssetBase(options.base, `/${file}`),
+            )}">`,
         )
         .join("");
   const viteClient = options.dev
