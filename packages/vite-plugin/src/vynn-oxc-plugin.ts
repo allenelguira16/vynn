@@ -692,9 +692,10 @@ class TransformState {
     // Resolve named JSX-producing map callbacks before lowering mutates the AST.
     this.prepareNamedMapCallbacks();
 
-    this.program.body = (this.program.body as Node[]).map((statement) =>
-      this.transformTopLevelStatement(statement),
-    );
+    this.program.body = (this.program.body as Node[]).flatMap((statement) => {
+      const transformed = this.transformTopLevelStatement(statement);
+      return Array.isArray(transformed) ? transformed : [transformed];
+    });
     this.injectRuntimeImports();
   }
 
@@ -1048,13 +1049,34 @@ class TransformState {
     });
 
     const createVariant = (binding: CallbackBinding): string | null => {
-      // Components are rendered through $cmpnt and must not be treated as
-      // ordinary item callbacks, even when exported from this module.
+      // A default-exported named component can expose its existing $cmpnt
+      // wrapper as the default companion. Other components aren't list callbacks.
+      if (isComponentName(binding.name)) {
+        if (
+          binding.exportNames.includes("default") &&
+          binding.statement &&
+          binding.statementList
+        ) {
+          let byAnchor = insertions.get(binding.statementList);
+          if (!byAnchor) {
+            byAnchor = new Map<Node, Node[]>();
+            insertions.set(binding.statementList, byAnchor);
+          }
+          const added = byAnchor.get(binding.statement) ?? [];
+          if (!added.some((node) => isType(node, "ExportNamedDeclaration"))) {
+            added.push(createCompanionExport(binding.name, ["default"]));
+          }
+          byAnchor.set(binding.statement, added);
+        }
+        return null;
+      }
+
       if (
-        isComponentName(binding.name) ||
         !binding.callback ||
         !binding.statement ||
         !binding.statementList ||
+        binding.callback.async ||
+        binding.callback.generator ||
         (binding.exportNames.length === 0 &&
           !callbackReturnsJSX(binding.callback))
       ) {
@@ -1113,6 +1135,7 @@ class TransformState {
         imported.typeOnly ||
         imported.namespace ||
         !imported.importedName ||
+        isComponentName(imported.importedName) ||
         !isLocalModuleSource(imported.source)
       ) {
         return null;
@@ -1266,7 +1289,8 @@ class TransformState {
             namespace?.imported?.namespace &&
             namespace.imported.source &&
             isLocalModuleSource(namespace.imported.source) &&
-            propertyName
+            propertyName &&
+            !isComponentName(propertyName)
           ) {
             this.namedMapCallbacks.set(
               node,
@@ -1306,7 +1330,7 @@ class TransformState {
     }
   }
 
-  private transformTopLevelStatement(statement: Node): Node {
+  private transformTopLevelStatement(statement: Node): Node | Node[] {
     // Export wrappers need special handling because a function declaration
     // is replaced by `const Component = $cmpnt(...)`.
     if (
@@ -1322,13 +1346,18 @@ class TransformState {
           isVariableDeclaration(transformed) &&
           transformed.declarations.length === 1
         ) {
-          return inheritSourceLocation(
-            {
-              ...statement,
-              declaration: transformed.declarations[0].init,
-            },
-            statement,
-          );
+          // Keep the named component in module scope so a companion export can
+          // reference the already-wrapped $cmpnt function.
+          return [
+            transformed,
+            inheritSourceLocation(
+              {
+                ...statement,
+                declaration: identifier(declaration.id.name),
+              },
+              statement,
+            ),
+          ];
         }
       }
 
