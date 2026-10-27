@@ -719,7 +719,7 @@ function createSsrHandlerCode(options: {
     `import { render } from ${JSON.stringify(SERVER_ENTRY_ID)};`,
     ...(serverFunctions
       ? [
-          `import { handleServerFunctionRequest } from "virtual:vynn/server-functions/server-runtime";`,
+          `import { handleServerFunctionRequest } from "virtual:vynn/server-functions";`,
         ]
       : []),
     `const CLIENT_ENTRY_URL = ${JSON.stringify(clientEntryUrl)};`,

@@ -1,3 +1,5 @@
+/// <reference path="./virtual.d.ts" />
+
 import type { Plugin } from "vite";
 import { vynnOxcPlugin } from "./vynn-oxc-plugin.ts";
 import { vynnStartPlugin, type VynnAppOptions } from "./plugins/app.ts";
