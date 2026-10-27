@@ -860,7 +860,9 @@ class TransformState {
         if (isVariableDeclaration(declaration)) {
           for (const item of declaration.declarations as Node[]) {
             const isFunctionValue =
-              isIdentifier(item.id) && isFunctionLike(item.init);
+              isIdentifier(item.id) &&
+              isFunctionLike(item.init) &&
+              declaration.kind !== "var";
             const isDirectExport = isExportNamed && !statement.source;
             const exportNames =
               isDirectExport && isIdentifier(item.id) && isFunctionValue
@@ -1046,7 +1048,10 @@ class TransformState {
     });
 
     const createVariant = (binding: CallbackBinding): string | null => {
+      // Components are rendered through $cmpnt and must not be treated as
+      // ordinary item callbacks, even when exported from this module.
       if (
+        isComponentName(binding.name) ||
         !binding.callback ||
         !binding.statement ||
         !binding.statementList ||
