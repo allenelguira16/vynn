@@ -30,14 +30,10 @@ import { ComponentError } from "./pages/component-error";
 //   () => import("./pages/stacked-suspense"),
 //   "StackedSuspense",
 // );
-
 export default function App(props: { url: string }) {
   return (
     <>
-      {/* <Suspense fallback={<div>Page Is Loading</div>}> */}
       <Router routes={routes} url={props.url} />
-      {/* <StackedSuspense /> */}
-      {/* </Suspense> */}
     </>
   );
 }

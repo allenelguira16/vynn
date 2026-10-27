@@ -2,12 +2,17 @@ import type { Plugin } from "vite";
 import { vynnOxcPlugin } from "./vynn-oxc-plugin.ts";
 import { vynnStartPlugin, type VynnAppOptions } from "./plugins/app.ts";
 import { createVynnSsrCssPlugin } from "./plugins/ssr-css.ts";
+import {
+  vynnServerFunctionsPlugin,
+  type VynnServerFunctionsOptions,
+} from "./plugins/server-functions.ts";
 
 type VitePluginVynnOptions = {
   /** Enable SSR compiler/runtime integration for manually wired SSR projects or Start mode. */
   ssr?: boolean;
   /** Own entries, HTML serving, and build orchestration. `true` uses conventions. */
   app?: boolean | VynnAppOptions;
+  serverFunctions?: boolean | VynnServerFunctionsOptions;
 };
 
 /**
@@ -24,6 +29,14 @@ export default function vynn(options: VitePluginVynnOptions = {}) {
   const startEnabled = options.app !== undefined && options.app !== false;
 
   const ssrCss = options.ssr ? createVynnSsrCssPlugin() : undefined;
+
+  if (options.serverFunctions) {
+    plugins.push(
+      vynnServerFunctionsPlugin(
+        options.serverFunctions === true ? {} : options.serverFunctions,
+      ),
+    );
+  }
 
   if (ssrCss) {
     plugins.push(ssrCss.plugin);
