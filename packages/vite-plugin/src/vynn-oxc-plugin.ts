@@ -889,7 +889,10 @@ class TransformState {
     };
 
     const createVariant = (binding: CallbackBinding): string | null => {
+      // Uppercase declarations are Vynn components, not ordinary list callbacks.
+      // They must keep their $cmpnt/owner semantics and remain on the normal path.
       if (
+        isComponentName(binding.name) ||
         !binding.callback ||
         !binding.statement ||
         !binding.statementList ||
