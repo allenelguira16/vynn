@@ -718,6 +718,16 @@ class TransformState {
    * variable initializers; unresolved callbacks retain normal .map() behavior.
    */
   private prepareNamedMapCallbacks(): void {
+    type ImportedBinding = {
+      source: string;
+      importedName: string | null;
+      namespace: boolean;
+      statement: Node;
+      specifier: Node;
+      typeOnly: boolean;
+      companionLocal?: Node;
+    };
+
     type CallbackBinding = {
       name: string;
       callback: Node | null;
@@ -725,6 +735,8 @@ class TransformState {
       statementList: Node[] | null;
       declarationKind?: string;
       variantName?: string;
+      exportNames: string[];
+      imported?: ImportedBinding;
     };
 
     type Scope = {
@@ -734,6 +746,8 @@ class TransformState {
     };
 
     const insertions = new Map<Node[], Map<Node, Node[]>>();
+    const exportCandidates = new Set<CallbackBinding>();
+    const extraImports: Node[] = [];
 
     const createScope = (
       parent: Scope | null,
@@ -757,14 +771,23 @@ class TransformState {
       statement: Node | null = null,
       statementList: Node[] | null = null,
       declarationKind?: string,
-    ): void => {
-      scope.bindings.set(name, {
+      exportNames: string[] = [],
+      imported?: ImportedBinding,
+    ): CallbackBinding => {
+      const binding: CallbackBinding = {
         name,
         callback,
         statement,
         statementList,
         declarationKind,
-      });
+        exportNames,
+        imported,
+      };
+      scope.bindings.set(name, binding);
+      if (binding.callback && binding.exportNames.length > 0) {
+        exportCandidates.add(binding);
+      }
+      return binding;
     };
 
     const bindPattern = (
@@ -774,6 +797,8 @@ class TransformState {
       statement: Node | null,
       statementList: Node[] | null,
       declarationKind?: string,
+      exportNames: string[] = [],
+      imported?: ImportedBinding,
     ): void => {
       const names = this.collectBindingNames(pattern);
       for (const name of names) {
@@ -785,27 +810,49 @@ class TransformState {
           statement,
           statementList,
           declarationKind,
+          simple ? exportNames : [],
+          imported,
         );
       }
     };
 
+    const getName = (node: Node | null | undefined): string | null => {
+      if (isIdentifier(node)) return node.name;
+      if (isLiteralString(node)) return node.value;
+      return null;
+    };
+
+    const isValueExport = (statement: Node): boolean =>
+      statement.exportKind !== "type";
+
     const collectStatements = (statements: Node[], scope: Scope): void => {
+      // First collect declarations so local export aliases can point forward.
       for (const statement of statements) {
+        const isExportNamed =
+          isType(statement, "ExportNamedDeclaration") &&
+          isValueExport(statement);
+        const isExportDefault =
+          isType(statement, "ExportDefaultDeclaration");
         const declaration =
-          (isType(statement, "ExportNamedDeclaration") ||
-            isType(statement, "ExportDefaultDeclaration")) &&
-          isNode(statement.declaration)
+          (isExportNamed || isExportDefault) && isNode(statement.declaration)
             ? statement.declaration
             : statement;
 
-        if (isFunctionDeclaration(declaration) && declaration.id) {
+        if (isFunctionDeclaration(declaration)) {
+          const localName = declaration.id?.name ?? "default";
+          const exportNames = isExportDefault
+            ? ["default"]
+            : isExportNamed && declaration.id
+              ? [declaration.id.name]
+              : [];
           bind(
             scope,
-            declaration.id.name,
+            localName,
             declaration,
             statement,
             statements,
             "function",
+            exportNames,
           );
           continue;
         }
@@ -813,9 +860,12 @@ class TransformState {
         if (isVariableDeclaration(declaration)) {
           for (const item of declaration.declarations as Node[]) {
             const isFunctionValue =
-              isIdentifier(item.id) &&
-              isFunctionLike(item.init) &&
-              declaration.kind !== "var";
+              isIdentifier(item.id) && isFunctionLike(item.init);
+            const isDirectExport = isExportNamed && !statement.source;
+            const exportNames =
+              isDirectExport && isIdentifier(item.id) && isFunctionValue
+                ? [item.id.name]
+                : [];
             const target =
               declaration.kind === "var" ? scope.functionScope : scope;
             bindPattern(
@@ -825,6 +875,7 @@ class TransformState {
               statement,
               statements,
               declaration.kind,
+              exportNames,
             );
           }
           continue;
@@ -832,9 +883,42 @@ class TransformState {
 
         if (isImportDeclaration(statement)) {
           for (const specifier of statement.specifiers ?? []) {
-            if (specifier.local && isIdentifier(specifier.local)) {
-              bind(scope, specifier.local.name);
-            }
+            if (!specifier.local || !isIdentifier(specifier.local)) continue;
+
+            const isNamespace = isType(specifier, "ImportNamespaceSpecifier");
+            const isDefault = isType(specifier, "ImportDefaultSpecifier");
+            const isNamed = isImportSpecifier(specifier);
+            const importedName = isNamespace
+              ? null
+              : isDefault
+                ? "default"
+                : isNamed
+                  ? getName(specifier.imported)
+                  : null;
+            const typeOnly =
+              statement.importKind === "type" ||
+              specifier.importKind === "type" ||
+              (!importedName && !isNamespace);
+
+            const imported: ImportedBinding = {
+              source: statement.source?.value ?? "",
+              importedName,
+              namespace: isNamespace,
+              statement,
+              specifier,
+              typeOnly,
+            };
+
+            bind(
+              scope,
+              specifier.local.name,
+              null,
+              statement,
+              statements,
+              "import",
+              [],
+              imported,
+            );
           }
           continue;
         }
@@ -847,10 +931,50 @@ class TransformState {
           bind(scope, declaration.id.name);
         }
       }
+
+      // Handle export aliases declared separately from their local bindings.
+      for (const statement of statements) {
+        if (
+          isType(statement, "ExportNamedDeclaration") &&
+          !statement.declaration &&
+          !statement.source &&
+          isValueExport(statement)
+        ) {
+          for (const specifier of statement.specifiers ?? []) {
+            if (!isType(specifier, "ExportSpecifier")) continue;
+            const localName = getName(specifier.local);
+            const exportedName = getName(specifier.exported);
+            if (!localName || !exportedName) continue;
+            const binding = scope.bindings.get(localName);
+            if (!binding?.callback) continue;
+            if (!binding.exportNames.includes(exportedName)) {
+              binding.exportNames.push(exportedName);
+            }
+            exportCandidates.add(binding);
+          }
+          continue;
+        }
+
+        // export default localCallback
+        if (
+          isType(statement, "ExportDefaultDeclaration") &&
+          isIdentifier(statement.declaration)
+        ) {
+          const binding = scope.bindings.get(statement.declaration.name);
+          if (binding?.callback && !binding.exportNames.includes("default")) {
+            binding.exportNames.push("default");
+            exportCandidates.add(binding);
+          }
+        }
+      }
     };
 
     const resolve = (scope: Scope, name: string): CallbackBinding | null => {
-      for (let current: Scope | null = scope; current; current = current.parent) {
+      for (
+        let current: Scope | null = scope;
+        current;
+        current = current.parent
+      ) {
         const binding = current.bindings.get(name);
         if (binding) return binding;
       }
@@ -888,22 +1012,52 @@ class TransformState {
       return this.containsJSX(callback.body);
     };
 
+    const isLocalModuleSource = (specifier: string): boolean =>
+      specifier.startsWith(".") ||
+      specifier.startsWith("/") ||
+      specifier.startsWith("@/") ||
+      specifier.startsWith("~/");
+
+    const companionName = (exportName: string): string =>
+      "__vynn_for_" + exportName;
+
+    const createExportSpecifier = (
+      localName: string,
+      exportedName: string,
+    ): Node => ({
+      type: "ExportSpecifier",
+      local: identifier(localName),
+      exported: identifier(exportedName),
+      exportKind: "value",
+    });
+
+    const createCompanionExport = (
+      localName: string,
+      exportNames: string[],
+    ): Node => ({
+      type: "ExportNamedDeclaration",
+      declaration: null,
+      specifiers: exportNames.map((name) =>
+        createExportSpecifier(localName, companionName(name)),
+      ),
+      source: null,
+      exportKind: "value",
+      attributes: [],
+    });
+
     const createVariant = (binding: CallbackBinding): string | null => {
-      // Uppercase declarations are Vynn components, not ordinary list callbacks.
-      // They must keep their $cmpnt/owner semantics and remain on the normal path.
       if (
-        isComponentName(binding.name) ||
         !binding.callback ||
         !binding.statement ||
         !binding.statementList ||
-        !callbackReturnsJSX(binding.callback)
+        (binding.exportNames.length === 0 &&
+          !callbackReturnsJSX(binding.callback))
       ) {
         return null;
       }
 
-      // Reuse the variant if this declaration is referenced by multiple lists.
-      const existing = (binding as any).variantName as string | undefined;
-      if (existing) return existing;
+      // Use one specialized variant for local maps and every exported alias.
+      if (binding.variantName) return binding.variantName;
 
       const variantId = this.generateUidIdentifier(binding.name + "For");
       const variantName = variantId.name;
@@ -917,92 +1071,84 @@ class TransformState {
       } else {
         this.specializedForCallbacks.add(clonedCallback);
         variantStatement = variableDeclaration(
-          binding.declarationKind === "let" ? "let" : "const",
+          "const",
           [variableDeclarator(cloneNode(variantId), clonedCallback)],
         );
       }
 
-      (binding as any).variantName = variantName;
+      binding.variantName = variantName;
 
       let byAnchor = insertions.get(binding.statementList);
       if (!byAnchor) {
         byAnchor = new Map<Node, Node[]>();
         insertions.set(binding.statementList, byAnchor);
       }
-      const siblings = byAnchor.get(binding.statement) ?? [];
-      siblings.push(variantStatement);
-      byAnchor.set(binding.statement, siblings);
+
+      const added = byAnchor.get(binding.statement) ?? [];
+      added.push(variantStatement);
+      if (binding.exportNames.length > 0) {
+        added.push(
+          createCompanionExport(
+            variantName,
+            [...new Set(binding.exportNames)],
+          ),
+        );
+      }
+      byAnchor.set(binding.statement, added);
 
       return variantName;
     };
 
-    const collectFunctionScopedVars = (
-      node: Node,
-      functionScope: Scope,
-    ): void => {
-      const visit = (current: Node): void => {
-        if (!isNode(current) || isFunctionLike(current)) return;
-        if (isVariableDeclaration(current) && current.kind === "var") {
-          for (const declaration of current.declarations as Node[]) {
-            bindPattern(
-              functionScope,
-              declaration.id,
-              null,
-              null,
-              null,
-              "var",
-            );
-          }
-        }
-        forEachChild(current, visit);
+    const getImportedCompanion = (
+      binding: CallbackBinding,
+    ): Node | null => {
+      const imported = binding.imported;
+      if (
+        !imported ||
+        imported.typeOnly ||
+        imported.namespace ||
+        !imported.importedName ||
+        !isLocalModuleSource(imported.source)
+      ) {
+        return null;
+      }
+
+      if (imported.companionLocal) {
+        return cloneNode(imported.companionLocal);
+      }
+
+      const local = this.generateUidIdentifier(binding.name + "For");
+      const addedSpecifier = {
+        type: "ImportSpecifier",
+        imported: identifier(companionName(imported.importedName)),
+        local: cloneNode(local),
+        importKind: "value",
       };
-      visit(node);
-    };
 
-    const visitNode = (node: Node, scope: Scope): void => {
-      if (!isNode(node)) return;
+      const hasNamespaceSpecifier = (imported.statement.specifiers ?? []).some(
+        (specifier: Node) =>
+          isType(specifier, "ImportNamespaceSpecifier"),
+      );
+      const canAppend =
+        imported.statement.importKind !== "type" &&
+        imported.specifier.importKind !== "type" &&
+        !hasNamespaceSpecifier;
 
-      if (isType(node, "Program")) {
-        visitStatements(node.body as Node[], null, true);
-        return;
+      if (canAppend) {
+        imported.statement.specifiers.push(addedSpecifier);
+      } else {
+        extraImports.push({
+          type: "ImportDeclaration",
+          specifiers: [addedSpecifier],
+          source: stringLiteral(imported.source),
+          importKind: "value",
+          assertions: [],
+          attributes: [],
+        });
       }
 
-      if (isBlockStatement(node)) {
-        visitStatements(node.body as Node[], scope);
-        return;
-      }
-
-      if (isFunctionLike(node)) {
-        const functionScope = createScope(scope, true);
-        if (node.id && isIdentifier(node.id)) {
-          bind(functionScope, node.id.name);
-        }
-        for (const parameter of node.params ?? []) {
-          for (const name of this.collectBindingNames(parameter)) {
-            bind(functionScope, name);
-          }
-        }
-        if (node.body) {
-          collectFunctionScopedVars(node.body, functionScope);
-          visitNode(node.body, functionScope);
-        }
-        return;
-      }
-
-      if (isMapCall(node)) {
-        const callbackArgument = node.arguments[0];
-        if (isIdentifier(callbackArgument)) {
-          const binding = resolve(scope, callbackArgument.name);
-          if (binding?.callback && callbackReturnsJSX(binding.callback)) {
-            const variantName = createVariant(binding);
-            if (variantName) {
-              this.namedMapCallbacks.set(node, identifier(variantName));
-            }
-          }
-        }
-      }
-
-      forEachChild(node, (child) => visitNode(child, scope));
+      imported.companionLocal = local;
+      return cloneNode(local);
     };
 
     const visitStatements = (
@@ -1013,14 +1159,133 @@ class TransformState {
       const scope = createScope(parent, isRoot || !parent);
       collectStatements(statements, scope);
       for (const statement of statements) {
-        visitNode(statement, scope);
+        visitNode(statement, scope, false);
       }
     };
 
-    visitNode(this.program, createScope(null, true));
+    const visitNode = (
+      node: Node,
+      scope: Scope,
+      renderChild: boolean,
+    ): void => {
+      if (!isNode(node)) return;
 
-    // Insert variants after their original declarations, in the same lexical
-    // statement list. Never move a callback body across its closure boundary.
+      // Only an expression in JSX output can trigger imported callback
+      // specialization. Keep ordinary data processing such as items.map(format)
+      // unchanged when the return behavior of the imported function is unknown.
+      if (isJSXElement(node)) {
+        visitNode(node.openingElement, scope, false);
+        for (const child of node.children as Node[]) {
+          visitNode(child, scope, true);
+        }
+        return;
+      }
+
+      if (isJSXFragment(node)) {
+        for (const child of node.children as Node[]) {
+          visitNode(child, scope, true);
+        }
+        return;
+      }
+
+      if (isJSXExpressionContainer(node)) {
+        visitNode(node.expression, scope, renderChild);
+        return;
+      }
+
+      if (isFunctionLike(node)) {
+        const functionScope = createScope(scope, true);
+        if (node.id && isIdentifier(node.id)) bind(functionScope, node.id.name);
+        for (const parameter of node.params ?? []) {
+          for (const name of this.collectBindingNames(parameter)) {
+            bind(functionScope, name);
+          }
+        }
+        if (node.body) {
+          const collectFunctionScopedVars = (current: Node): void => {
+            if (!isNode(current) || isFunctionLike(current)) return;
+            if (isVariableDeclaration(current) && current.kind === "var") {
+              for (const declaration of current.declarations as Node[]) {
+                bindPattern(
+                  functionScope,
+                  declaration.id,
+                  null,
+                  null,
+                  null,
+                  "var",
+                );
+              }
+            }
+            forEachChild(current, collectFunctionScopedVars);
+          };
+          collectFunctionScopedVars(node.body);
+          visitNode(node.body, functionScope, false);
+        }
+        return;
+      }
+
+      if (isBlockStatement(node)) {
+        visitStatements(node.body as Node[], scope);
+        return;
+      }
+
+      if (isMapCall(node)) {
+        const callbackArgument = node.arguments[0];
+
+        if (isIdentifier(callbackArgument)) {
+          const binding = resolve(scope, callbackArgument.name);
+          if (binding?.callback) {
+            const variantName = createVariant(binding);
+            if (variantName) {
+              this.namedMapCallbacks.set(node, identifier(variantName));
+            }
+          } else if (renderChild && binding?.imported) {
+            const importedCallback = getImportedCompanion(binding);
+            if (importedCallback) {
+              this.namedMapCallbacks.set(node, importedCallback);
+            }
+          }
+        } else if (
+          renderChild &&
+          isMemberExpression(callbackArgument) &&
+          isIdentifier(callbackArgument.object)
+        ) {
+          const namespace = resolve(scope, callbackArgument.object.name);
+          const propertyName = callbackArgument.computed
+            ? getName(callbackArgument.property)
+            : isIdentifier(callbackArgument.property)
+              ? callbackArgument.property.name
+              : null;
+
+          if (
+            namespace?.imported?.namespace &&
+            namespace.imported.source &&
+            isLocalModuleSource(namespace.imported.source) &&
+            propertyName
+          ) {
+            this.namedMapCallbacks.set(
+              node,
+              memberExpression(
+                identifier(callbackArgument.object.name),
+                identifier(companionName(propertyName)),
+              ),
+            );
+          }
+        }
+      }
+
+      forEachChild(node, (child) => visitNode(child, scope, renderChild));
+    };
+
+    visitStatements(this.program.body as Node[], null, true);
+
+    // Exported function callbacks need companions even when this module does
+    // not use them in a list; their consumers compile independently.
+    for (const binding of exportCandidates) {
+      createVariant(binding);
+    }
+
+    // Insert each variant and its companion export beside the source declaration.
     for (const [statements, byAnchor] of insertions) {
       const rebuilt: Node[] = [];
       for (const statement of statements) {
@@ -1029,6 +1294,10 @@ class TransformState {
         if (added) rebuilt.push(...added);
       }
       statements.splice(0, statements.length, ...rebuilt);
+    }
+
+    if (extraImports.length > 0) {
+      (this.program.body as Node[]).unshift(...extraImports);
     }
   }
 
