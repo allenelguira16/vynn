@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { Readable } from "node:stream";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -11,6 +12,7 @@ import type {
   ViteDevServer,
 } from "vite";
 import { VYNN_SSR_CSS_URL, type VynnSsrCssCollector } from "./ssr-css.ts";
+import type { VynnServerFunctionsOptions } from "./server-functions.ts";
 
 export type VynnAppOptions = {
   /** Root component module, relative to the Vite root. Defaults to src/App.* or src/app.*. */
@@ -33,6 +35,7 @@ type PluginOptions = {
   ssr: boolean;
   start: VynnAppOptions;
   ssrCss?: VynnSsrCssCollector;
+  serverFunctions?: VynnServerFunctionsOptions;
 };
 
 type ResolvedEntries = {
@@ -89,7 +92,12 @@ const SERVER_ENTRY_NAMES = ["entry-server"];
  *
  * Neither mode requires a project-owned index.html or HTTP server file.
  */
-export function vynnStartPlugin({ ssr, start, ssrCss }: PluginOptions): Plugin {
+export function vynnStartPlugin({
+  ssr,
+  start,
+  ssrCss,
+  serverFunctions,
+}: PluginOptions): Plugin {
   const mount = start.mount ?? `#${HTML_OUTLET_ID}`;
   const title = start.title ?? "Vynn App";
 
@@ -106,6 +114,7 @@ export function vynnStartPlugin({ ssr, start, ssrCss }: PluginOptions): Plugin {
   let serverOutDir = resolve(process.cwd(), "dist/server");
   let base = "/";
   let isBuild = false;
+  let serverFunctionEndpoint = "/__vynn/server-function";
   const root = () => resolvedConfig?.root ?? process.cwd();
 
   return {
@@ -237,6 +246,17 @@ export function vynnStartPlugin({ ssr, start, ssrCss }: PluginOptions): Plugin {
       resolvedConfig = config;
       base = config.base || "/";
       isBuild = config.command === "build";
+      const rawServerFunctionEndpoint =
+        serverFunctions?.endpoint ?? "/__vynn/server-function";
+      const basePrefix =
+        base === "/" || base === "./"
+          ? ""
+          : base.startsWith("/")
+            ? base.replace(/\/+$/, "")
+            : "";
+      serverFunctionEndpoint = basePrefix
+        ? `${basePrefix}${rawServerFunctionEndpoint}`
+        : rawServerFunctionEndpoint;
 
       const environments = (
         config as ResolvedConfig & {
@@ -318,6 +338,8 @@ export function vynnStartPlugin({ ssr, start, ssrCss }: PluginOptions): Plugin {
           title,
           mountId,
           dev: !isBuild,
+          serverFunctions:
+            serverFunctions !== undefined && serverFunctions.enabled !== false,
         });
       }
 
@@ -425,7 +447,15 @@ export function vynnStartPlugin({ ssr, start, ssrCss }: PluginOptions): Plugin {
           | undefined;
 
         server.middlewares.use((req, res, next) => {
-          if (!isHtmlNavigation(req) || isFrameworkRequest(req.url ?? "/")) {
+          const pathname = new URL(req.url ?? "/", "http://vynn.local")
+            .pathname;
+          const isServerFunctionRequest =
+            serverFunctions !== undefined &&
+            pathname === serverFunctionEndpoint;
+          if (
+            (!isHtmlNavigation(req) && !isServerFunctionRequest) ||
+            isFrameworkRequest(req.url ?? "/")
+          ) {
             next();
             return;
           }
@@ -680,11 +710,18 @@ function createSsrHandlerCode(options: {
   title: string;
   mountId: string;
   dev: boolean;
+  serverFunctions: boolean;
 }): string {
-  const { clientEntryUrl, css, base, title, mountId, dev } = options;
+  const { clientEntryUrl, css, base, title, mountId, dev, serverFunctions } =
+    options;
 
   return [
     `import { render } from ${JSON.stringify(SERVER_ENTRY_ID)};`,
+    ...(serverFunctions
+      ? [
+          `import { handleServerFunctionRequest } from "virtual:vynn/server-functions/server-runtime";`,
+        ]
+      : []),
     `const CLIENT_ENTRY_URL = ${JSON.stringify(clientEntryUrl)};`,
     `const CSS_ASSETS = ${JSON.stringify(css)};`,
     `const BASE = ${JSON.stringify(base)};`,
@@ -734,6 +771,12 @@ function createSsrHandlerCode(options: {
     `  });`,
     `}`,
     `export async function handleRequest(request) {`,
+    ...(serverFunctions
+      ? [
+          `  const serverFunctionResponse = await handleServerFunctionRequest(request);`,
+          `  if (serverFunctionResponse) return serverFunctionResponse;`,
+        ]
+      : []),
     `  if (request.method !== "GET" && request.method !== "HEAD") {`,
     `    return new Response("Method Not Allowed", { status: 405, headers: { Allow: "GET, HEAD" } });`,
     `  }`,
@@ -861,10 +904,13 @@ function createWebRequest(req: IncomingMessage, requestUrl: string): Request {
       headers.set(key, value);
     }
   }
-  return new Request(new URL(requestUrl, origin), {
-    method: req.method ?? "GET",
-    headers,
-  });
+  const method = req.method ?? "GET";
+  const init: RequestInit & { duplex?: "half" } = { method, headers };
+  if (method !== "GET" && method !== "HEAD") {
+    init.body = Readable.toWeb(req) as ReadableStream<Uint8Array>;
+    init.duplex = "half";
+  }
+  return new Request(new URL(requestUrl, origin), init);
 }
 
 async function writeResponse(

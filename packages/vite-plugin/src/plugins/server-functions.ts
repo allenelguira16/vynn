@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { isAbsolute, relative, resolve } from "node:path";
+import { dirname, isAbsolute, relative, resolve } from "node:path";
 import { parseSync, visitorKeys } from "oxc-parser";
 import type { Plugin, ViteDevServer } from "vite";
 
@@ -13,10 +13,16 @@ type ServerFunctionReference = {
 };
 
 export type VynnServerFunctionsOptions = {
-  /** HTTP endpoint called by client-side server references. */
+  /** HTTP endpoint called by client-side server references. Must be an absolute pathname. */
   endpoint?: string;
   /** Disable the transform while keeping the plugin registered. */
   enabled?: boolean;
+  /** Maximum request body size in bytes. Defaults to 1 MiB. */
+  maxRequestBytes?: number;
+  /** Additional trusted browser origins, for apps behind a reverse proxy. Exact origins only. */
+  allowedOrigins?: string[];
+  /** Include thrown error messages in RPC responses. Defaults to true in dev and false in builds. */
+  exposeErrors?: boolean;
 };
 
 type VynnServerFunctionsPlugin = Plugin & {
@@ -39,10 +45,27 @@ const CLIENT_RUNTIME_ID = "virtual:vynn/server-functions/client-runtime";
 const SERVER_RUNTIME_ID = "virtual:vynn/server-functions/server-runtime";
 const RESOLVED_CLIENT_RUNTIME_ID = `\0${CLIENT_RUNTIME_ID}`;
 const RESOLVED_SERVER_RUNTIME_ID = `\0${SERVER_RUNTIME_ID}`;
+const SERVER_FUNCTION_IMPL_PREFIX = "virtual:vynn/server-functions/implementation/";
+const RESOLVED_SERVER_FUNCTION_IMPL_PREFIX = `\0${SERVER_FUNCTION_IMPL_PREFIX}`;
+const SERVER_FUNCTION_MANIFEST_SENTINEL = "__VYNN_SERVER_FUNCTION_MANIFEST__";
 const CREATE_SERVER_REFERENCE = "__vynnCreateServerReference";
 const SCRIPT_EXTENSION_RE = /\.(?:[cm]?[jt]sx?)$/i;
 const DEFAULT_ENDPOINT = "/__vynn/server-function";
 const MAX_REQUEST_BYTES = 1024 * 1024;
+
+function applyBaseToEndpoint(base: string, endpoint: string): string {
+  if (base === "/" || base === "./") return endpoint;
+  const prefix = base.startsWith("/") ? base.replace(/\/+$/, "") : "";
+  return prefix ? `${prefix}${endpoint}` : endpoint;
+}
+
+function normalizeAllowedOrigin(value: string): string {
+  let parsed: URL;
+  try { parsed = new URL(value); }
+  catch { throw new Error("[Vynn use server] Invalid allowed origin: " + value); }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") throw new Error("[Vynn use server] Allowed origins must use http or https: " + value);
+  return parsed.origin;
+}
 
 const isNode = (value: unknown): value is Node =>
   !!value &&
@@ -187,11 +210,129 @@ export function createServerReference(id) {
 `;
 }
 
-function makeServerRuntime(): string {
-  return `export function createServerReference(implementation) {
-  return (...args) => implementation(...args);
-}
-`;
+function makeServerRuntime(
+  endpoint: string,
+  options: { maxRequestBytes: number; allowedOrigins: string[]; exposeErrors: boolean; manifestSentinel: string },
+): string {
+  const runtime = `
+  import { runWithServerFunctionContext } from "vynn/server";
+  const endpoint = __ENDPOINT__;
+  const endpointPath = new URL(endpoint, "http://vynn.local").pathname;
+  const maxRequestBytes = __MAX_REQUEST_BYTES__;
+  const allowedOrigins = new Set(__ALLOWED_ORIGINS__);
+  const exposeErrors = __EXPOSE_ERRORS__;
+  const deploymentManifestJson = "__VYNN_SERVER_FUNCTION_MANIFEST__";
+  let deploymentManifest = {};
+  try { deploymentManifest = JSON.parse(deploymentManifestJson); } catch {}
+  const implementations = new Map();
+  function jsonResponse(status, body) {
+    return new Response(JSON.stringify(body), {
+      status,
+      headers: {
+        "content-type": "application/json; charset=utf-8",
+        "cache-control": "no-store",
+        "x-content-type-options": "nosniff"
+      }
+    });
+  }
+  function makeError(message, statusCode) { const error = new Error(message); error.statusCode = statusCode; return error; }
+  function isAllowedOrigin(origin, requestUrl) {
+    if (!origin) return false;
+    try {
+      const parsed = new URL(origin);
+      if (parsed.origin !== origin) return false;
+      return parsed.origin === new URL(requestUrl).origin || allowedOrigins.has(parsed.origin);
+    } catch { return false; }
+  }
+  async function readRequestBody(request) {
+    const size = Number(request.headers.get("content-length") ?? 0);
+    if (Number.isFinite(size) && size > maxRequestBytes) throw makeError("Request body too large.", 413);
+    if (!request.body) return "";
+    const reader = request.body.getReader();
+    const chunks = [];
+    let total = 0;
+    try {
+      while (true) {
+        const result = await reader.read();
+        if (result.done) break;
+        total += result.value.byteLength;
+        if (total > maxRequestBytes) {
+          await reader.cancel().catch(() => {});
+          throw makeError("Request body too large.", 413);
+        }
+        chunks.push(result.value);
+      }
+    } finally { try { reader.releaseLock(); } catch {} }
+    const bytes = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  }
+  export function createServerReference(implementation, id) {
+    if (typeof implementation !== "function" || typeof id !== "string") throw new TypeError("Invalid Vynn server-function reference.");
+    implementations.set(id, implementation);
+    return (...args) => implementation(...args);
+  }
+  async function loadImplementation(id) {
+    const path = deploymentManifest[id];
+    if (typeof path !== "string") return undefined;
+    const mod = await import(new URL(path, import.meta.url).href);
+    if (typeof mod.default !== "function") throw new Error("Invalid Vynn server-function entry chunk.");
+    implementations.set(id, mod.default);
+    return mod.default;
+  }
+  export async function invokeServerFunction(id, args, request, directImplementation) {
+    const implementation = directImplementation ?? await loadImplementation(id);
+    if (typeof implementation !== "function") throw makeError("Unknown Vynn server function.", 404);
+    return await runWithServerFunctionContext({ request, functionId: id }, () => implementation(...args));
+  }
+  export async function handleServerFunctionRequest(request) {
+    let url;
+    try { url = new URL(request.url); } catch { return null; }
+    if (url.pathname !== endpointPath) return null;
+    if (request.method !== "POST") {
+      return new Response(JSON.stringify({ ok: false, error: "Method Not Allowed" }), {
+        status: 405,
+        headers: { allow: "POST", "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" }
+      });
+    }
+    if (!isAllowedOrigin(request.headers.get("origin"), request.url)) return jsonResponse(403, { ok: false, error: "Cross-origin request rejected." });
+    const type = (request.headers.get("content-type") ?? "").split(";", 1)[0].trim().toLowerCase();
+    if (type !== "application/json") return jsonResponse(415, { ok: false, error: "Expected application/json." });
+    const requestForContext = request.clone();
+    let payload;
+    try { payload = JSON.parse(await readRequestBody(request)); }
+    catch (error) {
+      const large = error && error.statusCode === 413;
+      return jsonResponse(large ? 413 : 400, { ok: false, error: large ? "Request body too large." : "Invalid JSON request body." });
+    }
+    if (!payload || typeof payload !== "object" || typeof payload.id !== "string" || !/^vynn_[a-f0-9]{20}$/.test(payload.id) || !Array.isArray(payload.args) || payload.args.length > 100) {
+      return jsonResponse(400, { ok: false, error: "Invalid server-function request." });
+    }
+    if (typeof deploymentManifest[payload.id] !== "string") return jsonResponse(404, { ok: false, error: "Unknown Vynn server function." });
+    let value;
+    try { value = await invokeServerFunction(payload.id, payload.args, requestForContext); }
+    catch (error) {
+      const message = exposeErrors && error instanceof Error ? error.message : "Server function failed.";
+      return jsonResponse(500, { ok: false, error: message });
+    }
+    let body;
+    try { body = JSON.stringify({ ok: true, value }); }
+    catch { return jsonResponse(500, { ok: false, error: "Server function returned a non-serializable value." }); }
+    return new Response(body ?? JSON.stringify({ ok: true }), {
+      status: 200,
+      headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" }
+    });
+  }
+  export function getRegisteredServerFunctionIds() { return [...implementations.keys()];
+  }
+  
+  `;
+  return runtime.replace("__ENDPOINT__", JSON.stringify(endpoint))
+    .replace("__MAX_REQUEST_BYTES__", String(options.maxRequestBytes))
+    .replace("__ALLOWED_ORIGINS__", JSON.stringify(options.allowedOrigins))
+    .replace("__EXPOSE_ERRORS__", JSON.stringify(options.exposeErrors))
+    .replace("__VYNN_SERVER_FUNCTION_MANIFEST__", options.manifestSentinel);
 }
 
 function getParamsSource(source: string, fn: Node): string {
@@ -339,9 +480,9 @@ function containsNestedMarkedBoundary(
   return false;
 }
 
-async function readLimitedBody(request: IncomingMessage): Promise<string> {
+async function readLimitedBody(request: IncomingMessage, maxBytes = MAX_REQUEST_BYTES): Promise<string> {
   const contentLength = Number(request.headers["content-length"] ?? 0);
-  if (Number.isFinite(contentLength) && contentLength > MAX_REQUEST_BYTES) {
+  if (Number.isFinite(contentLength) && contentLength > maxBytes) {
     const error = new Error("Request body too large.");
     (error as Error & { statusCode?: number }).statusCode = 413;
     throw error;
@@ -352,7 +493,7 @@ async function readLimitedBody(request: IncomingMessage): Promise<string> {
   for await (const chunk of request) {
     const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
     total += buffer.byteLength;
-    if (total > MAX_REQUEST_BYTES) {
+    if (total > maxBytes) {
       const error = new Error("Request body too large.");
       (error as Error & { statusCode?: number }).statusCode = 413;
       throw error;
@@ -362,6 +503,18 @@ async function readLimitedBody(request: IncomingMessage): Promise<string> {
   return Buffer.concat(chunks).toString("utf8");
 }
 
+function createServerFunctionRequest(request: IncomingMessage, body: string): Request {
+  const encrypted = Boolean((request.socket as { encrypted?: boolean }).encrypted);
+  const origin = `${encrypted ? "https" : "http"}://${request.headers.host ?? "localhost"}`;
+  const url = new URL(request.url ?? "/", origin);
+  const headers = new Headers();
+  for (const [key, value] of Object.entries(request.headers)) {
+    if (key.toLowerCase() === "content-length" || key.toLowerCase() === "transfer-encoding") continue;
+    if (Array.isArray(value)) { for (const item of value) headers.append(key, item); }
+    else if (value !== undefined) headers.set(key, value);
+  }
+  return new Request(url, { method: "POST", headers, body });
+}
 function sendJson(
   response: ServerResponse,
   statusCode: number,
@@ -370,6 +523,7 @@ function sendJson(
   response.statusCode = statusCode;
   response.setHeader("content-type", "application/json; charset=utf-8");
   response.setHeader("cache-control", "no-store");
+  response.setHeader("x-content-type-options", "nosniff");
   response.end(JSON.stringify(body));
 }
 
@@ -388,16 +542,25 @@ function sendJson(
  * serialize captured lexical variables; use function arguments for values the
  * server function needs.
  *
- * RPC is wired into Vite dev middleware. Production runtimes should consume
- * getServerFunctions() and dispatch the same IDs from their server handler.
+ * RPC is wired into Vite dev middleware and the generated Vynn Start SSR
+ * handler. Production builds emit per-function implementation chunks and a
+ * dispatch manifest. Function closures are not serialized.
  */
 export function vynnServerFunctionsPlugin(
   options: VynnServerFunctionsOptions = {},
 ): VynnServerFunctionsPlugin {
   const endpoint = options.endpoint ?? DEFAULT_ENDPOINT;
+  if (!endpoint.startsWith("/") || endpoint.startsWith("//") || endpoint.includes("?") || endpoint.includes("#")) throw new Error("[Vynn use server] endpoint must be an absolute pathname without a query or hash.");
+  const maxRequestBytes = options.maxRequestBytes ?? MAX_REQUEST_BYTES;
+  if (!Number.isSafeInteger(maxRequestBytes) || maxRequestBytes < 1 || maxRequestBytes > 25 * 1024 * 1024) throw new Error("[Vynn use server] maxRequestBytes must be a safe integer between 1 and 26214400.");
+  const allowedOrigins = (options.allowedOrigins ?? []).map(normalizeAllowedOrigin);
+  let isDevelopment = false;
+  let isBuild = false;
   let projectRoot = process.cwd();
+  let resolvedEndpoint = endpoint;
   const refsByModule = new Map<string, ServerFunctionReference[]>();
   const refsById = new Map<string, ServerFunctionReference>();
+  const implementationChunkRefs = new Map<string, string>();
 
   const replaceModuleRefs = (
     moduleId: string,
@@ -420,17 +583,31 @@ export function vynnServerFunctionsPlugin(
 
     configResolved(config) {
       projectRoot = config.root;
+      isDevelopment = config.command === "serve";
+      isBuild = config.command === "build";
+      resolvedEndpoint = applyBaseToEndpoint(config.base || "/", endpoint);
     },
 
     resolveId(id) {
       if (id === CLIENT_RUNTIME_ID) return RESOLVED_CLIENT_RUNTIME_ID;
       if (id === SERVER_RUNTIME_ID) return RESOLVED_SERVER_RUNTIME_ID;
+      if (id.startsWith(SERVER_FUNCTION_IMPL_PREFIX)) return `${RESOLVED_SERVER_FUNCTION_IMPL_PREFIX}${id.slice(SERVER_FUNCTION_IMPL_PREFIX.length)}`;
       return null;
     },
 
     load(id) {
-      if (id === RESOLVED_CLIENT_RUNTIME_ID) return makeClientRuntime(endpoint);
-      if (id === RESOLVED_SERVER_RUNTIME_ID) return makeServerRuntime();
+      if (id === RESOLVED_CLIENT_RUNTIME_ID) return makeClientRuntime(resolvedEndpoint);
+      if (id === RESOLVED_SERVER_RUNTIME_ID) return makeServerRuntime(resolvedEndpoint, { maxRequestBytes, allowedOrigins, exposeErrors: options.exposeErrors ?? isDevelopment, manifestSentinel: SERVER_FUNCTION_MANIFEST_SENTINEL });
+      if (id.startsWith(RESOLVED_SERVER_FUNCTION_IMPL_PREFIX)) {
+        const functionId = id.slice(RESOLVED_SERVER_FUNCTION_IMPL_PREFIX.length);
+        const reference = refsById.get(functionId);
+        if (!reference) this.error(`[Vynn use server] Missing implementation metadata for ${functionId}.`);
+        const moduleId = reference.moduleId.replace(/\\/g, "/");
+        return [
+          `import { ${reference.exportName} as implementation } from ${JSON.stringify(moduleId)};`,
+          "export default implementation;",
+        ].join("\n");
+      }
       return null;
     },
 
@@ -485,17 +662,21 @@ export function vynnServerFunctionsPlugin(
         this.error(error instanceof Error ? error.message : String(error));
       }
 
-      if (!marked || marked.length === 0) {
-        const moduleDirective = (program.body as Node[]).find(
-          (statement) => getDirectiveValue(statement) === "use server",
-        );
-        if (moduleDirective) {
-          this.error(
-            `[Vynn use server] File-level "use server" is not supported yet. Put the directive inside a function body (${cleanId}).`,
-          );
+      let moduleDirective: Node | undefined;
+      for (const statement of program.body as Node[]) {
+        const value = getDirectiveValue(statement);
+        if (value === "use server") {
+          moduleDirective = statement;
+          break;
         }
-        return null;
+        if (value === undefined) break;
       }
+      if (moduleDirective) {
+        this.error(
+          `[Vynn use server] File-level "use server" is not supported yet. Put the directive inside a function body (${cleanId}).`,
+        );
+      }
+      if (!marked || marked.length === 0) return null;
 
       if (containsNestedMarkedBoundary(marked, program)) {
         this.error(
@@ -518,6 +699,15 @@ export function vynnServerFunctionsPlugin(
       }));
       replaceModuleRefs(moduleId, references);
 
+      if (isServer && isBuild) {
+        for (const reference of references) {
+          if (!implementationChunkRefs.has(reference.id)) {
+            const fileReference = this.emitFile({ type: "chunk", id: `${SERVER_FUNCTION_IMPL_PREFIX}${reference.id}`, name: `vynn-server-function-${reference.id}` });
+            implementationChunkRefs.set(reference.id, fileReference);
+          }
+        }
+      }
+
       const edits = marked.map((item) => makeReplacement(item, isServer));
       let output = applyEdits(source, edits);
 
@@ -538,11 +728,29 @@ export function vynnServerFunctionsPlugin(
       };
     },
 
+    generateBundle(_outputOptions, bundle) {
+      const consumer = (this as unknown as { environment?: { config?: { consumer?: string } } }).environment?.config?.consumer;
+      if (!isBuild || consumer !== "server") return;
+      for (const output of Object.values(bundle)) {
+        if (output.type !== "chunk" || !output.code.includes(SERVER_FUNCTION_MANIFEST_SENTINEL)) continue;
+        const manifest: Record<string, string> = {};
+        for (const [functionId, fileReference] of implementationChunkRefs) {
+          let path = relative(dirname(output.fileName), this.getFileName(fileReference)).replace(/\\/g, "/");
+          if (!path.startsWith(".")) path = `./${path}`;
+          manifest[functionId] = path;
+        }
+        const marker = JSON.stringify(SERVER_FUNCTION_MANIFEST_SENTINEL);
+        const markerIndex = output.code.indexOf(marker);
+        if (markerIndex < 0) this.error("[Vynn use server] Could not inject the production function manifest.");
+        output.code = output.code.slice(0, markerIndex) + JSON.stringify(JSON.stringify(manifest)) + output.code.slice(markerIndex + marker.length);
+      }
+    },
+
     configureServer(server: ViteDevServer) {
       server.middlewares.use((request, response, next) => {
         const pathname = new URL(request.url ?? "/", "http://vynn.local")
           .pathname;
-        if (pathname !== endpoint) {
+        if (pathname !== resolvedEndpoint) {
           next();
           return;
         }
@@ -554,8 +762,8 @@ export function vynnServerFunctionsPlugin(
             return;
           }
 
-          const contentType = request.headers["content-type"] ?? "";
-          if (!contentType.toLowerCase().startsWith("application/json")) {
+          const contentType = (request.headers["content-type"] ?? "").split(";", 1)[0].trim().toLowerCase();
+          if (contentType !== "application/json") {
             sendJson(response, 415, {
               ok: false,
               error: "Expected application/json.",
@@ -564,23 +772,23 @@ export function vynnServerFunctionsPlugin(
           }
 
           const origin = request.headers.origin;
-          if (origin) {
-            const encrypted = Boolean(
-              (request.socket as { encrypted?: boolean }).encrypted,
-            );
-            const expectedOrigin = `${encrypted ? "https" : "http"}://${request.headers.host ?? "localhost"}`;
-            if (origin !== expectedOrigin) {
-              sendJson(response, 403, {
-                ok: false,
-                error: "Cross-origin request rejected.",
-              });
-              return;
-            }
+          const encrypted = Boolean(
+            (request.socket as { encrypted?: boolean }).encrypted,
+          );
+          const expectedOrigin = `${encrypted ? "https" : "http"}://${request.headers.host ?? "localhost"}`;
+          if (!origin || (origin !== expectedOrigin && !allowedOrigins.includes(origin))) {
+            sendJson(response, 403, {
+              ok: false,
+              error: "Cross-origin request rejected.",
+            });
+            return;
           }
 
           let payload: unknown;
+          let requestBody = "";
           try {
-            payload = JSON.parse(await readLimitedBody(request));
+            requestBody = await readLimitedBody(request, maxRequestBytes);
+            payload = JSON.parse(requestBody);
           } catch (error) {
             const statusCode =
               (error as Error & { statusCode?: number }).statusCode ?? 400;
@@ -598,7 +806,9 @@ export function vynnServerFunctionsPlugin(
             !payload ||
             typeof payload !== "object" ||
             typeof (payload as { id?: unknown }).id !== "string" ||
-            !Array.isArray((payload as { args?: unknown }).args)
+            !/^vynn_[a-f0-9]{20}$/.test((payload as { id: string }).id) ||
+            !Array.isArray((payload as { args?: unknown }).args) ||
+            (payload as { args: unknown[] }).args.length > 100
           ) {
             sendJson(response, 400, {
               ok: false,
@@ -637,47 +847,29 @@ export function vynnServerFunctionsPlugin(
             const ssrEnvironment = environments?.ssr;
             const moduleExports = ssrEnvironment?.runner
               ? await ssrEnvironment.runner.import(reference.moduleId)
-              : await (
-                  server as unknown as {
-                    ssrLoadModule: (
-                      id: string,
-                    ) => Promise<Record<string, unknown>>;
-                  }
-                ).ssrLoadModule(reference.moduleId);
-
+              : await (server as unknown as { ssrLoadModule: (id: string) => Promise<Record<string, unknown>> }).ssrLoadModule(reference.moduleId);
             const implementation = moduleExports[reference.exportName];
-            if (typeof implementation !== "function") {
-              throw new Error(
-                `Server implementation ${reference.exportName} was not exported by ${reference.moduleId}.`,
-              );
-            }
-
-            const value = await (
-              implementation as (...args: unknown[]) => unknown
-            )(...args);
+            if (typeof implementation !== "function") throw new Error("Vynn server implementation is not exported.");
+            const runtimeModule = ssrEnvironment?.runner
+              ? await ssrEnvironment.runner.import(SERVER_RUNTIME_ID)
+              : await (server as unknown as { ssrLoadModule: (id: string) => Promise<Record<string, unknown>> }).ssrLoadModule(SERVER_RUNTIME_ID);
+            const invoke = runtimeModule.invokeServerFunction;
+            if (typeof invoke !== "function") throw new Error("Vynn server-function runtime is not available.");
+            const contextRequest = createServerFunctionRequest(request, requestBody);
+            const value = await (invoke as (id: string, args: unknown[], request: Request, implementation: (...args: unknown[]) => unknown) => Promise<unknown>)(functionId, args, contextRequest, implementation as (...args: unknown[]) => unknown);
             let serialized: string;
-            try {
-              serialized = JSON.stringify({ ok: true, value });
-            } catch {
-              sendJson(response, 500, {
-                ok: false,
-                error: "Server function returned a non-serializable value.",
-              });
-              return;
-            }
-
+            try { serialized = JSON.stringify({ ok: true, value }); }
+            catch { sendJson(response, 500, { ok: false, error: "Server function returned a non-serializable value." }); return; }
             response.statusCode = 200;
-            response.setHeader(
-              "content-type",
-              "application/json; charset=utf-8",
-            );
+            response.setHeader("content-type", "application/json; charset=utf-8");
             response.setHeader("cache-control", "no-store");
+            response.setHeader("x-content-type-options", "nosniff");
             response.end(serialized ?? JSON.stringify({ ok: true }));
           } catch (error) {
             sendJson(response, 500, {
               ok: false,
               error:
-                error instanceof Error
+                (options.exposeErrors ?? isDevelopment) && error instanceof Error
                   ? error.message
                   : "Server function failed.",
             });
@@ -690,7 +882,7 @@ export function vynnServerFunctionsPlugin(
           sendJson(response, 500, {
             ok: false,
             error:
-              error instanceof Error
+              (options.exposeErrors ?? isDevelopment) && error instanceof Error
                 ? error.message
                 : "Server function request failed.",
           });

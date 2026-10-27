@@ -29,13 +29,19 @@ export default function vynn(options: VitePluginVynnOptions = {}) {
   const startEnabled = options.app !== undefined && options.app !== false;
 
   const ssrCss = options.ssr ? createVynnSsrCssPlugin() : undefined;
+  const serverFunctionsOptions =
+    options.serverFunctions === true
+      ? {}
+      : options.serverFunctions || undefined;
+
+  if (options.serverFunctions && !options.ssr) {
+    throw new Error(
+      "[Vynn] serverFunctions requires ssr: true. Server functions execute on the server and cannot be enabled in a client-only build.",
+    );
+  }
 
   if (options.serverFunctions) {
-    plugins.push(
-      vynnServerFunctionsPlugin(
-        options.serverFunctions === true ? {} : options.serverFunctions,
-      ),
-    );
+    plugins.push(vynnServerFunctionsPlugin(serverFunctionsOptions));
   }
 
   if (ssrCss) {
@@ -48,6 +54,10 @@ export default function vynn(options: VitePluginVynnOptions = {}) {
         ssr: options.ssr === true,
         start: options.app === true ? {} : (options.app as VynnAppOptions),
         ssrCss,
+        serverFunctions:
+          options.serverFunctions && serverFunctionsOptions?.enabled !== false
+            ? serverFunctionsOptions
+            : undefined,
       }),
     );
   }
@@ -55,4 +65,4 @@ export default function vynn(options: VitePluginVynnOptions = {}) {
   return plugins;
 }
 
-export type { VynnAppOptions };
+export type { VynnAppOptions, VynnServerFunctionsOptions };
