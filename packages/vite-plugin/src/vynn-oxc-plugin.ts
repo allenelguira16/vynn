@@ -566,6 +566,12 @@ class TransformState {
   private readonly runtimeHelpers = new Map<RuntimeHelperName, Node>();
   private readonly generatedForExpressions = new WeakSet<object>();
   private readonly generatedForIndexReferences = new WeakSet<object>();
+  /**
+   * Named .map() calls that must use a callback variant with a reactive index.
+   */
+  private readonly namedMapCallbacks = new WeakMap<object, Node>();
+  /** Function nodes cloned specifically for a named Vynn list callback. */
+  private readonly specializedForCallbacks = new WeakSet<object>();
   private activeForIndexNames: string[] = [];
   private readonly usedNames = new Set<string>();
 
@@ -683,10 +689,344 @@ class TransformState {
   }
 
   transformProgram(): void {
+    // Resolve named JSX-producing map callbacks before lowering mutates the AST.
+    this.prepareNamedMapCallbacks();
+
     this.program.body = (this.program.body as Node[]).map((statement) =>
       this.transformTopLevelStatement(statement),
     );
     this.injectRuntimeImports();
+  }
+
+  /**
+   * Resolve local named callbacks passed to JSX-producing .map() calls.
+   *
+   * Example:
+   *   function renderItem(item, index) {
+   *     return <span>{index}</span>;
+   *   }
+   *   items.map(renderItem)
+   *
+   * The original callback keeps ordinary JavaScript semantics. A cloned
+   * variant is inserted next to its declaration, and only the relevant list
+   * expression points to that variant. The clone is later compiled with
+   * withForCallback(), so references to its second parameter read .value.
+   *
+   * Resolution follows lexical scopes and stops when a parameter, import, or
+   * other local binding shadows a candidate function. This pass intentionally
+   * specializes local function declarations and direct function-valued
+   * variable initializers; unresolved callbacks retain normal .map() behavior.
+   */
+  private prepareNamedMapCallbacks(): void {
+    type CallbackBinding = {
+      name: string;
+      callback: Node | null;
+      statement: Node | null;
+      statementList: Node[] | null;
+      declarationKind?: string;
+      variantName?: string;
+    };
+
+    type Scope = {
+      parent: Scope | null;
+      bindings: Map<string, CallbackBinding>;
+      functionScope: Scope;
+    };
+
+    const insertions = new Map<Node[], Map<Node, Node[]>>();
+
+    const createScope = (
+      parent: Scope | null,
+      isFunctionScope = false,
+    ): Scope => {
+      const scope = {
+        parent,
+        bindings: new Map<string, CallbackBinding>(),
+        functionScope: null as unknown as Scope,
+      };
+      scope.functionScope = isFunctionScope
+        ? scope
+        : parent?.functionScope ?? scope;
+      return scope;
+    };
+
+    const bind = (
+      scope: Scope,
+      name: string,
+      callback: Node | null = null,
+      statement: Node | null = null,
+      statementList: Node[] | null = null,
+      declarationKind?: string,
+    ): void => {
+      scope.bindings.set(name, {
+        name,
+        callback,
+        statement,
+        statementList,
+        declarationKind,
+      });
+    };
+
+    const bindPattern = (
+      scope: Scope,
+      pattern: Node,
+      callback: Node | null,
+      statement: Node | null,
+      statementList: Node[] | null,
+      declarationKind?: string,
+    ): void => {
+      const names = this.collectBindingNames(pattern);
+      for (const name of names) {
+        const simple = isIdentifier(pattern) && pattern.name === name;
+        bind(
+          scope,
+          name,
+          simple ? callback : null,
+          statement,
+          statementList,
+          declarationKind,
+        );
+      }
+    };
+
+    const collectStatements = (statements: Node[], scope: Scope): void => {
+      for (const statement of statements) {
+        const declaration =
+          (isType(statement, "ExportNamedDeclaration") ||
+            isType(statement, "ExportDefaultDeclaration")) &&
+          isNode(statement.declaration)
+            ? statement.declaration
+            : statement;
+
+        if (isFunctionDeclaration(declaration) && declaration.id) {
+          bind(
+            scope,
+            declaration.id.name,
+            declaration,
+            statement,
+            statements,
+            "function",
+          );
+          continue;
+        }
+
+        if (isVariableDeclaration(declaration)) {
+          for (const item of declaration.declarations as Node[]) {
+            const isFunctionValue =
+              isIdentifier(item.id) &&
+              isFunctionLike(item.init) &&
+              declaration.kind !== "var";
+            const target =
+              declaration.kind === "var" ? scope.functionScope : scope;
+            bindPattern(
+              target,
+              item.id,
+              isFunctionValue ? item.init : null,
+              statement,
+              statements,
+              declaration.kind,
+            );
+          }
+          continue;
+        }
+
+        if (isImportDeclaration(statement)) {
+          for (const specifier of statement.specifiers ?? []) {
+            if (specifier.local && isIdentifier(specifier.local)) {
+              bind(scope, specifier.local.name);
+            }
+          }
+          continue;
+        }
+
+        if (
+          isType(declaration, "ClassDeclaration") &&
+          declaration.id &&
+          isIdentifier(declaration.id)
+        ) {
+          bind(scope, declaration.id.name);
+        }
+      }
+    };
+
+    const resolve = (scope: Scope, name: string): CallbackBinding | null => {
+      for (let current: Scope | null = scope; current; current = current.parent) {
+        const binding = current.bindings.get(name);
+        if (binding) return binding;
+      }
+      return null;
+    };
+
+    const isMapCall = (node: Node): boolean => {
+      if (!isCallExpression(node) || node.arguments.length !== 1) return false;
+      const callee = node.callee;
+      if (!isMemberExpression(callee)) return false;
+      if (callee.computed) {
+        return isLiteralString(callee.property) && callee.property.value === "map";
+      }
+      return isIdentifier(callee.property) && callee.property.name === "map";
+    };
+
+    const callbackReturnsJSX = (callback: Node): boolean => {
+      if (
+        !isFunctionLike(callback) ||
+        callback.async ||
+        callback.generator ||
+        !callback.body
+      ) {
+        return false;
+      }
+
+      if (isBlockStatement(callback.body)) {
+        return (callback.body.body as Node[]).some(
+          (statement) =>
+            isReturnStatement(statement) &&
+            statement.argument &&
+            this.containsJSX(statement.argument),
+        );
+      }
+      return this.containsJSX(callback.body);
+    };
+
+    const createVariant = (binding: CallbackBinding): string | null => {
+      if (
+        !binding.callback ||
+        !binding.statement ||
+        !binding.statementList ||
+        !callbackReturnsJSX(binding.callback)
+      ) {
+        return null;
+      }
+
+      // Reuse the variant if this declaration is referenced by multiple lists.
+      const existing = (binding as any).variantName as string | undefined;
+      if (existing) return existing;
+
+      const variantId = this.generateUidIdentifier(binding.name + "For");
+      const variantName = variantId.name;
+      const clonedCallback = cloneNode(binding.callback);
+      let variantStatement: Node;
+
+      if (isFunctionDeclaration(clonedCallback)) {
+        clonedCallback.id = cloneNode(variantId);
+        this.specializedForCallbacks.add(clonedCallback);
+        variantStatement = clonedCallback;
+      } else {
+        this.specializedForCallbacks.add(clonedCallback);
+        variantStatement = variableDeclaration(
+          binding.declarationKind === "let" ? "let" : "const",
+          [variableDeclarator(cloneNode(variantId), clonedCallback)],
+        );
+      }
+
+      (binding as any).variantName = variantName;
+
+      let byAnchor = insertions.get(binding.statementList);
+      if (!byAnchor) {
+        byAnchor = new Map<Node, Node[]>();
+        insertions.set(binding.statementList, byAnchor);
+      }
+      const siblings = byAnchor.get(binding.statement) ?? [];
+      siblings.push(variantStatement);
+      byAnchor.set(binding.statement, siblings);
+
+      return variantName;
+    };
+
+    const collectFunctionScopedVars = (
+      node: Node,
+      functionScope: Scope,
+    ): void => {
+      const visit = (current: Node): void => {
+        if (!isNode(current) || isFunctionLike(current)) return;
+        if (isVariableDeclaration(current) && current.kind === "var") {
+          for (const declaration of current.declarations as Node[]) {
+            bindPattern(
+              functionScope,
+              declaration.id,
+              null,
+              null,
+              null,
+              "var",
+            );
+          }
+        }
+        forEachChild(current, visit);
+      };
+      visit(node);
+    };
+
+    const visitNode = (node: Node, scope: Scope): void => {
+      if (!isNode(node)) return;
+
+      if (isType(node, "Program")) {
+        visitStatements(node.body as Node[], null, true);
+        return;
+      }
+
+      if (isBlockStatement(node)) {
+        visitStatements(node.body as Node[], scope);
+        return;
+      }
+
+      if (isFunctionLike(node)) {
+        const functionScope = createScope(scope, true);
+        if (node.id && isIdentifier(node.id)) {
+          bind(functionScope, node.id.name);
+        }
+        for (const parameter of node.params ?? []) {
+          for (const name of this.collectBindingNames(parameter)) {
+            bind(functionScope, name);
+          }
+        }
+        if (node.body) {
+          collectFunctionScopedVars(node.body, functionScope);
+          visitNode(node.body, functionScope);
+        }
+        return;
+      }
+
+      if (isMapCall(node)) {
+        const callbackArgument = node.arguments[0];
+        if (isIdentifier(callbackArgument)) {
+          const binding = resolve(scope, callbackArgument.name);
+          if (binding?.callback && callbackReturnsJSX(binding.callback)) {
+            const variantName = createVariant(binding);
+            if (variantName) {
+              this.namedMapCallbacks.set(node, identifier(variantName));
+            }
+          }
+        }
+      }
+
+      forEachChild(node, (child) => visitNode(child, scope));
+    };
+
+    const visitStatements = (
+      statements: Node[],
+      parent: Scope | null,
+      isRoot = false,
+    ): void => {
+      const scope = createScope(parent, isRoot || !parent);
+      collectStatements(statements, scope);
+      for (const statement of statements) {
+        visitNode(statement, scope);
+      }
+    };
+
+    visitNode(this.program, createScope(null, true));
+
+    // Insert variants after their original declarations, in the same lexical
+    // statement list. Never move a callback body across its closure boundary.
+    for (const [statements, byAnchor] of insertions) {
+      const rebuilt: Node[] = [];
+      for (const statement of statements) {
+        rebuilt.push(statement);
+        const added = byAnchor.get(statement);
+        if (added) rebuilt.push(...added);
+      }
+      statements.splice(0, statements.length, ...rebuilt);
+    }
   }
 
   private transformTopLevelStatement(statement: Node): Node {
@@ -763,10 +1103,12 @@ class TransformState {
       //
       // transformBlockStatement lowers return expressions, callbacks,
       // variable initializers, and nested JSX expressions.
-      node.body = this.transformBlockStatement(
-        node.body,
-        this.createIdentifierAllocator(),
-      );
+      const allocator = this.createIdentifierAllocator();
+      node.body = this.specializedForCallbacks.has(node)
+        ? this.withForCallback(node.params ?? [], () =>
+            this.transformBlockStatement(node.body, allocator),
+          )
+        : this.transformBlockStatement(node.body, allocator);
 
       return node;
     }
@@ -2365,6 +2707,8 @@ class TransformState {
     ) {
       return false;
     }
+    if (this.namedMapCallbacks.has(expression)) return true;
+
     const callback = expression.arguments[0];
     return isExpression(callback) && this.mapCallbackReturnsJSX(callback);
   }
@@ -2389,34 +2733,45 @@ class TransformState {
       throw new Error("Vynn `$for` map source must be an expression.");
     if (!isExpression(callback))
       throw new Error("Vynn `$for` requires a map callback expression.");
-    if (
-      !isArrowFunctionExpression(callback) &&
-      !isFunctionExpression(callback)
-    ) {
-      throw new Error("Vynn `$for` requires a function callback.");
-    }
 
     const transformedSource = this.transformEmbeddedExpression(
       source,
       allocator,
     );
-    const transformedCallback = this.withForCallback(callback.params, () => {
-      if (isArrowFunctionExpression(callback)) {
-        if (isBlockStatement(callback.body))
-          callback.body = this.transformBlockStatement(
-            callback.body,
-            allocator,
-          );
-        else
-          callback.body = this.transformEmbeddedExpression(
-            callback.body,
-            allocator,
-          );
-      } else {
-        callback.body = this.transformBlockStatement(callback.body, allocator);
+
+    // Named callbacks use a specialized sibling so ordinary calls to the
+    // original function continue receiving ordinary numeric map indices.
+    const namedCallback = this.namedMapCallbacks.get(expression);
+    let transformedCallback: Node;
+
+    if (namedCallback) {
+      transformedCallback = cloneNode(namedCallback);
+    } else {
+      if (
+        !isArrowFunctionExpression(callback) &&
+        !isFunctionExpression(callback)
+      ) {
+        throw new Error("Vynn `$for` requires a function callback.");
       }
-      return callback;
-    });
+
+      transformedCallback = this.withForCallback(callback.params, () => {
+        if (isArrowFunctionExpression(callback)) {
+          if (isBlockStatement(callback.body))
+            callback.body = this.transformBlockStatement(
+              callback.body,
+              allocator,
+            );
+          else
+            callback.body = this.transformEmbeddedExpression(
+              callback.body,
+              allocator,
+            );
+        } else {
+          callback.body = this.transformBlockStatement(callback.body, allocator);
+        }
+        return callback;
+      });
+    }
 
     const result = callExpression(this.getRuntimeHelper("$for"), [
       arrowFunctionExpression([], transformedSource),
@@ -2819,7 +3174,7 @@ class TransformState {
       return expression;
     }
     if (isArrowFunctionExpression(expression)) {
-      return this.withShadowedForIndices(expression.params, () => {
+      const transformBody = () => {
         if (isBlockStatement(expression.body))
           expression.body = this.transformBlockStatement(
             expression.body,
@@ -2831,16 +3186,24 @@ class TransformState {
             allocator,
           );
         return expression;
-      });
+      };
+
+      return this.specializedForCallbacks.has(expression)
+        ? this.withForCallback(expression.params, transformBody)
+        : this.withShadowedForIndices(expression.params, transformBody);
     }
     if (isFunctionExpression(expression)) {
-      return this.withShadowedForIndices(expression.params, () => {
+      const transformBody = () => {
         expression.body = this.transformBlockStatement(
           expression.body,
           allocator,
         );
         return expression;
-      });
+      };
+
+      return this.specializedForCallbacks.has(expression)
+        ? this.withForCallback(expression.params, transformBody)
+        : this.withShadowedForIndices(expression.params, transformBody);
     }
     if (isArrayExpression(expression)) {
       expression.elements = expression.elements.map((element: Node | null) => {
