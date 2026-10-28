@@ -4,11 +4,11 @@ import { $cmpnt, $nodes } from "../render";
 import { createSSRComment } from "../render/resolve-node";
 import {
   syncServerRenderedLazy,
-  isHydrating,
-  runAfterHydration,
+  // isHydrating,
+  // runAfterHydration,
   finishServerRenderedLazy,
 } from "../client/hydration";
-import { $state } from "../reactivity/$state";
+// import { $state } from "../reactivity/$state";
 import { LAZY_END_SSR_MARKER, LAZY_START_SSR_MARKER } from "../const";
 import { getLazyID } from "../context/lazy-context";
 import { isServer } from "../context/is-server-context";
@@ -83,15 +83,15 @@ export function lazy<
       lazyID ??= getLazyID();
       const component = $async(loadComponent);
 
-      // The server does not wait for client hydration.
-      const hydrationReady = $state(!!isServer() || !isHydrating());
+      // // The server does not wait for client hydration.
+      // const hydrationReady = $state(!!isServer() || !isHydrating());
 
-      // Schedule exactly one transition for this instance.
-      if (!isServer() && !hydrationReady.value) {
-        runAfterHydration(() => {
-          hydrationReady.value = true;
-        }, false);
-      }
+      // // Schedule exactly one transition for this instance.
+      // if (!isServer() && !hydrationReady.value) {
+      //   runAfterHydration(() => {
+      //     hydrationReady.value = true;
+      //   }, false);
+      // }
 
       return $nodes(() => {
         if (isServer()) {
@@ -102,9 +102,9 @@ export function lazy<
           ] as JSX.Element;
         }
 
-        if (!hydrationReady.value) {
-          return [];
-        }
+        // if (!hydrationReady.value) {
+        //   return [];
+        // }
 
         if (!cachedComponent) {
           cachedComponent = component.value;

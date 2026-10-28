@@ -54,7 +54,7 @@ type PluginOptions = {
 };
 
 /**
- * Adds Solid-like Start mode to the Vynn Vite plugin.
+ * App mode plugin
  *
  * - `ssr: true`: Vite owns development SSR, the client/server build, and SSR
  *   dispatch in `vite preview`. The built `virtual:vynn/ssr-handler` exports

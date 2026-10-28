@@ -16,6 +16,13 @@ type PokeDexData = {
 type SortKey = keyof PokeDexData["results"][number];
 type SortDirection = "asc" | "desc";
 
+async function getPokedex(url: string) {
+  "use server";
+
+  const response = await fetch(url);
+  return (await response.json()) as PokeDexData;
+}
+
 export const PokeDex = () => {
   const pokeDex = $store({
     isLoading: true,
@@ -24,13 +31,15 @@ export const PokeDex = () => {
     nextLink: "" as PokeDexData["next"],
     sortDirection: "asc" as SortDirection,
 
-    async fetchData(url: string | null, controller?: AbortController) {
+    async fetchData(url: string | null, _controller?: AbortController) {
       if (!url) return;
 
       this.isLoading = true;
 
-      const response = await fetch(url, { signal: controller?.signal });
-      const json = (await response.json()) as PokeDexData;
+      // const response = await fetch(url, { signal: controller?.signal });
+      // const json = (await response.json()) as PokeDexData;
+
+      const json = await getPokedex(url);
 
       await sleep(0);
 
@@ -90,7 +99,7 @@ export const PokeDex = () => {
           </tr>
         </thead>
         <tbody>
-          {pokeDex.isLoading ? (
+          {pokeDex.isLoading && (
             <>
               {/* {loop(Array.from({ length: 20 }).map((_, i) => i + 1)).each((number) => (
                 <tr>
@@ -109,7 +118,8 @@ export const PokeDex = () => {
                   </tr>
                 ))}
             </>
-          ) : (
+          )}
+          {!pokeDex.isLoading && (
             <>
               {/* {loop(pokeDex.pokeDexList).each(({ name, url }, index) => (
                 <tr>

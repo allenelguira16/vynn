@@ -57,11 +57,11 @@ import { registerServerFunctionDevMiddleware } from "./server-functions/dev-midd
  *
  * RPC is wired into Vite dev middleware. The virtual module
  * `virtual:vynn/server-functions` exposes `handleServerFunctionRequest` for
- * production custom SSR servers, and Vynn Start integrates it automatically.
+ * production custom SSR servers, and Vynn app mode integrates it automatically.
  * Production SSR builds emit implementation chunks and a dispatch manifest.
  * Function closures are not serialized.
  */
-export function vynnServerFunctionsPlugin(
+export function serverFunctionsPlugin(
   options: VynnServerFunctionsOptions = {},
 ): VynnServerFunctionsPlugin {
   const endpoint = options.endpoint ?? DEFAULT_ENDPOINT;

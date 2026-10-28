@@ -5,7 +5,7 @@ import { vynnOxcPlugin } from "./plugins/jsx-transpiler.ts";
 import { vynnStartPlugin, type VynnAppOptions } from "./plugins/app.ts";
 import { createVynnSsrCssPlugin } from "./plugins/ssr-css.ts";
 import {
-  vynnServerFunctionsPlugin,
+  serverFunctionsPlugin,
   type VynnServerFunctionsOptions,
 } from "./plugins/server-functions.ts";
 
@@ -43,7 +43,7 @@ export default function vynn(options: VitePluginVynnOptions = {}) {
   }
 
   if (options.serverFunctions) {
-    plugins.push(vynnServerFunctionsPlugin(serverFunctionsOptions));
+    plugins.push(serverFunctionsPlugin(serverFunctionsOptions));
   }
 
   if (ssrCss) {
