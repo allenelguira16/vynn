@@ -16,11 +16,102 @@
  * should be treated as a production compiler.
  */
 
-import { parseSync, visitorKeys } from "oxc-parser";
+import { parseSync } from "oxc-parser";
 import { decodeHTML } from "entities";
 import { print } from "esrap";
 import tsx from "esrap/languages/tsx";
 import type { Plugin, Rolldown } from "vite";
+import {
+  isNode,
+  isType,
+  isIdentifier,
+  isJSXIdentifier,
+  isExpression,
+  isFunctionLike,
+  isLiteralString,
+  isNumericLiteral,
+  isStringLiteral,
+  isJSXElement,
+  isJSXFragment,
+  isJSXText,
+  isJSXExpressionContainer,
+  isJSXEmptyExpression,
+  isJSXAttribute,
+  isJSXSpreadAttribute,
+  isJSXMemberExpression,
+  isCallExpression,
+  isMemberExpression,
+  isArrowFunctionExpression,
+  isFunctionExpression,
+  isFunctionDeclaration,
+  isBlockStatement,
+  isReturnStatement,
+  isVariableDeclaration,
+  isExpressionStatement,
+  isObjectExpression,
+  isObjectProperty,
+  isObjectMethod,
+  isSpreadElement,
+  isArrayExpression,
+  isRestElement,
+  isAssignmentPattern,
+  isObjectPattern,
+  isArrayPattern,
+  isIfStatement,
+  isLogicalExpression,
+  isConditionalExpression,
+  isUnaryExpression,
+  isAwaitExpression,
+  isUpdateExpression,
+  isAssignmentExpression,
+  isBinaryExpression,
+  isTemplateLiteral,
+  isSequenceExpression,
+  isTSAsExpression,
+  isTSNonNullExpression,
+  isImportDeclaration,
+  isImportSpecifier,
+  identifier,
+  stringLiteral,
+  booleanLiteral,
+  voidZero,
+  cloneNode,
+  memberExpression,
+  callExpression,
+  arrowFunctionExpression,
+  functionExpression,
+  blockStatement,
+  returnStatement,
+  expressionStatement,
+  variableDeclarator,
+  variableDeclaration,
+  arrayExpression,
+  objectExpression,
+  spreadElement,
+  unaryExpression,
+  binaryExpression,
+  conditionalExpression,
+  assignmentExpression,
+  propertyKey,
+  objectProperty,
+  objectMethod,
+  importSpecifier,
+  importDeclaration,
+  getVisitorKeys,
+  forEachChild,
+  isComponentName,
+  getJSXIdentifierName,
+  isComponentElement,
+  isArrowComponentDeclaration,
+  findReturnStatement,
+  findArrowReturnStatement,
+  normalizeJSXText,
+  inferLang,
+  createPositionLookup,
+  addSourceLocations,
+  programContainsJSX,
+  inheritSourceLocation,
+} from "./jsx-transpiler/ast.ts";
 
 type Node = any;
 type RuntimeHelperName =
@@ -56,442 +147,8 @@ type IdentifierAllocator = {
 };
 
 const runtimeImportSource = "vynn/render";
-const expressionTypes = new Set<string>([
-  "ArrayExpression",
-  "ArrowFunctionExpression",
-  "AssignmentExpression",
-  "AwaitExpression",
-  "BinaryExpression",
-  "CallExpression",
-  "ChainExpression",
-  "ClassExpression",
-  "ConditionalExpression",
-  "FunctionExpression",
-  "Identifier",
-  "ImportExpression",
-  "JSXElement",
-  "JSXFragment",
-  "Literal",
-  "LogicalExpression",
-  "MemberExpression",
-  "MetaProperty",
-  "NewExpression",
-  "ObjectExpression",
-  "SequenceExpression",
-  "TaggedTemplateExpression",
-  "TemplateLiteral",
-  "ThisExpression",
-  "UnaryExpression",
-  "UpdateExpression",
-  "YieldExpression",
-  "TSAsExpression",
-  "TSNonNullExpression",
-  "TSTypeAssertion",
-  "TSInstantiationExpression",
-  "PrivateIdentifier",
-]);
 
-const isNode = (node: unknown): node is Node =>
-  !!node && typeof node === "object" && typeof (node as Node).type === "string";
-const isType = (node: Node, type: string): boolean =>
-  !!node && node.type === type;
-const isIdentifier = (node: Node): boolean => isType(node, "Identifier");
-const isJSXIdentifier = (node: Node): boolean => isType(node, "JSXIdentifier");
-const isExpression = (node: Node): boolean =>
-  !!node && expressionTypes.has(node.type);
-const isFunctionLike = (node: Node): boolean =>
-  isType(node, "ArrowFunctionExpression") ||
-  isType(node, "FunctionExpression") ||
-  isType(node, "FunctionDeclaration");
-const isLiteralString = (node: Node): boolean =>
-  isType(node, "Literal") && typeof node.value === "string";
-const isNumericLiteral = (node: Node): boolean =>
-  isType(node, "Literal") && typeof node.value === "number";
-const isStringLiteral = isLiteralString;
-const isJSXElement = (node: Node): boolean => isType(node, "JSXElement");
-const isJSXFragment = (node: Node): boolean => isType(node, "JSXFragment");
-const isJSXText = (node: Node): boolean => isType(node, "JSXText");
-const isJSXExpressionContainer = (node: Node): boolean =>
-  isType(node, "JSXExpressionContainer");
-const isJSXEmptyExpression = (node: Node): boolean =>
-  isType(node, "JSXEmptyExpression");
-const isJSXAttribute = (node: Node): boolean => isType(node, "JSXAttribute");
-const isJSXSpreadAttribute = (node: Node): boolean =>
-  isType(node, "JSXSpreadAttribute");
-const isJSXMemberExpression = (node: Node): boolean =>
-  isType(node, "JSXMemberExpression");
-const isCallExpression = (node: Node): boolean =>
-  isType(node, "CallExpression");
-const isMemberExpression = (node: Node): boolean =>
-  isType(node, "MemberExpression");
-const isArrowFunctionExpression = (node: Node): boolean =>
-  isType(node, "ArrowFunctionExpression");
-const isFunctionExpression = (node: Node): boolean =>
-  isType(node, "FunctionExpression");
-const isFunctionDeclaration = (node: Node): boolean =>
-  isType(node, "FunctionDeclaration");
-const isBlockStatement = (node: Node): boolean =>
-  isType(node, "BlockStatement");
-const isReturnStatement = (node: Node): boolean =>
-  isType(node, "ReturnStatement");
-const isVariableDeclaration = (node: Node): boolean =>
-  isType(node, "VariableDeclaration");
-const isExpressionStatement = (node: Node): boolean =>
-  isType(node, "ExpressionStatement");
-const isObjectExpression = (node: Node): boolean =>
-  isType(node, "ObjectExpression");
-const isObjectProperty = (node: Node): boolean =>
-  isType(node, "Property") && !node.method && node.kind === "init";
-const isObjectMethod = (node: Node): boolean =>
-  isType(node, "Property") &&
-  (node.method || node.kind === "get" || node.kind === "set");
-const isSpreadElement = (node: Node): boolean => isType(node, "SpreadElement");
-const isArrayExpression = (node: Node): boolean =>
-  isType(node, "ArrayExpression");
-const isRestElement = (node: Node): boolean => isType(node, "RestElement");
-const isAssignmentPattern = (node: Node): boolean =>
-  isType(node, "AssignmentPattern");
-const isObjectPattern = (node: Node): boolean => isType(node, "ObjectPattern");
-const isArrayPattern = (node: Node): boolean => isType(node, "ArrayPattern");
-const isIfStatement = (node: Node): boolean => isType(node, "IfStatement");
-const isLogicalExpression = (node: Node): boolean =>
-  isType(node, "LogicalExpression");
-const isConditionalExpression = (node: Node): boolean =>
-  isType(node, "ConditionalExpression");
-const isUnaryExpression = (node: Node): boolean =>
-  isType(node, "UnaryExpression");
-const isAwaitExpression = (node: Node): boolean =>
-  isType(node, "AwaitExpression");
-const isUpdateExpression = (node: Node): boolean =>
-  isType(node, "UpdateExpression");
-const isAssignmentExpression = (node: Node): boolean =>
-  isType(node, "AssignmentExpression");
-const isBinaryExpression = (node: Node): boolean =>
-  isType(node, "BinaryExpression");
-const isTemplateLiteral = (node: Node): boolean =>
-  isType(node, "TemplateLiteral");
-const isSequenceExpression = (node: Node): boolean =>
-  isType(node, "SequenceExpression");
-const isTSAsExpression = (node: Node): boolean =>
-  isType(node, "TSAsExpression");
-const isTSNonNullExpression = (node: Node): boolean =>
-  isType(node, "TSNonNullExpression");
-const isImportDeclaration = (node: Node): boolean =>
-  isType(node, "ImportDeclaration");
-const isImportSpecifier = (node: Node): boolean =>
-  isType(node, "ImportSpecifier");
 
-function identifier(name: string): Node {
-  return { type: "Identifier", name };
-}
-function literal(value: string | number | boolean | null): Node {
-  return {
-    type: "Literal",
-    value,
-    raw: typeof value === "string" ? JSON.stringify(value) : String(value),
-  };
-}
-function stringLiteral(value: string): Node {
-  return literal(value);
-}
-function numericLiteral(value: number): Node {
-  return literal(value);
-}
-function booleanLiteral(value: boolean): Node {
-  return literal(value);
-}
-function voidZero(): Node {
-  return {
-    type: "UnaryExpression",
-    operator: "void",
-    prefix: true,
-    argument: numericLiteral(0),
-  };
-}
-function cloneNode<T extends Node>(node: T): T {
-  return structuredClone(node);
-}
-function memberExpression(
-  object: Node,
-  property: Node,
-  computed = false,
-): Node {
-  return {
-    type: "MemberExpression",
-    object,
-    property,
-    computed,
-    optional: false,
-  };
-}
-function callExpression(callee: Node, args: Node[]): Node {
-  return { type: "CallExpression", callee, arguments: args, optional: false };
-}
-function arrowFunctionExpression(params: Node[], body: Node): Node {
-  return {
-    type: "ArrowFunctionExpression",
-    id: null,
-    params,
-    body,
-    generator: false,
-    async: false,
-    expression: !isBlockStatement(body),
-  };
-}
-function functionExpression(
-  id: Node | null,
-  params: Node[],
-  body: Node,
-  generator = false,
-  async = false,
-): Node {
-  return {
-    type: "FunctionExpression",
-    id,
-    params,
-    body,
-    generator,
-    async,
-    expression: false,
-  };
-}
-function blockStatement(body: Node[]): Node {
-  return { type: "BlockStatement", body };
-}
-function returnStatement(argument: Node | null): Node {
-  return { type: "ReturnStatement", argument };
-}
-function expressionStatement(expression: Node): Node {
-  return { type: "ExpressionStatement", expression };
-}
-function variableDeclarator(id: Node, init: Node | null): Node {
-  return { type: "VariableDeclarator", id, init, definite: false };
-}
-function variableDeclaration(
-  kind: "const" | "let" | "var",
-  declarations: Node[],
-): Node {
-  return { type: "VariableDeclaration", kind, declarations };
-}
-function arrayExpression(elements: Array<Node | null>): Node {
-  return { type: "ArrayExpression", elements };
-}
-function objectExpression(properties: Node[]): Node {
-  return { type: "ObjectExpression", properties };
-}
-function spreadElement(argument: Node): Node {
-  return { type: "SpreadElement", argument };
-}
-function unaryExpression(operator: string, argument: Node): Node {
-  return { type: "UnaryExpression", operator, argument, prefix: true };
-}
-function binaryExpression(operator: string, left: Node, right: Node): Node {
-  return { type: "BinaryExpression", operator, left, right };
-}
-function conditionalExpression(
-  test: Node,
-  consequent: Node,
-  alternate: Node,
-): Node {
-  return { type: "ConditionalExpression", test, consequent, alternate };
-}
-function assignmentExpression(operator: string, left: Node, right: Node): Node {
-  return { type: "AssignmentExpression", operator, left, right };
-}
-function propertyKey(name: string): Node {
-  return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name)
-    ? identifier(name)
-    : stringLiteral(name);
-}
-function objectProperty(
-  key: Node,
-  value: Node,
-  options: Partial<Node> = {},
-): Node {
-  return {
-    type: "Property",
-    key,
-    value,
-    kind: options.kind ?? "init",
-    method: options.method ?? false,
-    shorthand: options.shorthand ?? false,
-    computed: options.computed ?? false,
-  };
-}
-function objectMethod(
-  kind: "method" | "get" | "set",
-  key: Node,
-  params: Node[],
-  body: Node,
-): Node {
-  const fn = functionExpression(null, params, body);
-  return objectProperty(key, fn, {
-    kind: kind === "method" ? "init" : kind,
-    method: kind === "method",
-  });
-}
-function importSpecifier(local: Node, imported: Node): Node {
-  return { type: "ImportSpecifier", imported, local, importKind: "value" };
-}
-function importDeclaration(specifiers: Node[], source: string): Node {
-  return {
-    type: "ImportDeclaration",
-    specifiers,
-    source: stringLiteral(source),
-    importKind: "value",
-    assertions: [],
-    attributes: [],
-  };
-}
-
-function getVisitorKeys(node: Node): string[] {
-  const keys = (visitorKeys as Record<string, string[]>)[node.type];
-  if (keys) return keys;
-  return [];
-}
-
-function forEachChild(node: Node, callback: (child: Node) => void): void {
-  for (const key of getVisitorKeys(node)) {
-    const value = node[key];
-    if (Array.isArray(value)) {
-      for (const child of value) if (isNode(child)) callback(child);
-    } else if (isNode(value)) {
-      callback(value);
-    }
-  }
-}
-
-function isComponentName(name: string): boolean {
-  return /^[A-Z]/.test(name);
-}
-
-function getJSXIdentifierName(name: Node): string {
-  if (isJSXIdentifier(name)) return name.name;
-  throw new Error(
-    "Vynn currently only supports simple JSX identifiers for native elements.",
-  );
-}
-
-function isComponentElement(node: Node): boolean {
-  const name = node.openingElement.name;
-  if (isJSXIdentifier(name)) return isComponentName(name.name);
-  return isJSXMemberExpression(name);
-}
-
-function isArrowComponentDeclaration(declaration: Node): boolean {
-  return (
-    isIdentifier(declaration.id) &&
-    isComponentName(declaration.id.name) &&
-    isArrowFunctionExpression(declaration.init)
-  );
-}
-
-function findReturnStatement(node: Node): Node | undefined {
-  if (!isBlockStatement(node.body)) return undefined;
-  return node.body.body.find((statement: Node) => isReturnStatement(statement));
-}
-
-function findArrowReturnStatement(body: Node): Node | undefined {
-  if (!isBlockStatement(body)) return undefined;
-  return body.body.find((statement: Node) => isReturnStatement(statement));
-}
-
-function normalizeJSXText(value: string): string {
-  // JSX text supports HTML character references. Decode only JSXText nodes,
-  // not ordinary JavaScript string literals such as {"&nbsp;"}.
-  // Normalize source indentation first so references such as &NewLine; are
-  // decoded after the raw JSX whitespace rules have been applied.
-  if (!value.includes("\n") && !value.includes("\r")) {
-    return decodeHTML(value);
-  }
-
-  const lines = value.replace(/\r\n?/g, "\n").split("\n");
-  const normalized: string[] = [];
-
-  for (let i = 0; i < lines.length; i++) {
-    let line = lines[i].replace(/\t/g, " ").trimStart();
-    if (i !== lines.length - 1) line = line.trimEnd();
-    if (!line.trim()) continue;
-    normalized.push(line);
-  }
-
-  return decodeHTML(normalized.join(" "));
-}
-
-function inferLang(filename: string): "js" | "jsx" | "ts" | "tsx" {
-  if (/\.tsx$/i.test(filename)) return "tsx";
-  if (
-    /\.ts$/i.test(filename) ||
-    /\.mts$/i.test(filename) ||
-    /\.cts$/i.test(filename)
-  )
-    return "ts";
-  // .js files often contain JSX in Vynn applications, so use the JSX parser.
-  return "jsx";
-}
-
-function createPositionLookup(
-  source: string,
-): (offset: number) => { line: number; column: number } {
-  const lineStarts = [0];
-  for (let i = 0; i < source.length; i++) {
-    if (source.charCodeAt(i) === 10) lineStarts.push(i + 1);
-  }
-  return (offset: number) => {
-    let low = 0;
-    let high = lineStarts.length - 1;
-    while (low <= high) {
-      const mid = (low + high) >>> 1;
-      if (lineStarts[mid] <= offset) low = mid + 1;
-      else high = mid - 1;
-    }
-    const index = Math.max(0, high);
-    return { line: index + 1, column: offset - lineStarts[index] };
-  };
-}
-
-function addSourceLocations(program: Node, source: string): void {
-  const positionAt = createPositionLookup(source);
-  const visit = (node: Node): void => {
-    if (!isNode(node)) return;
-    if (
-      typeof node.start === "number" &&
-      typeof node.end === "number" &&
-      !node.loc
-    ) {
-      node.loc = { start: positionAt(node.start), end: positionAt(node.end) };
-    }
-    forEachChild(node, visit);
-  };
-  visit(program);
-}
-
-function programContainsJSX(program: Node): boolean {
-  if (!isNode(program)) return false;
-  if (isJSXElement(program) || isJSXFragment(program)) return true;
-  for (const key of getVisitorKeys(program)) {
-    const value = program[key];
-    if (Array.isArray(value)) {
-      for (const child of value) {
-        if (isNode(child) && programContainsJSX(child)) return true;
-      }
-    } else if (isNode(value) && programContainsJSX(value)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-function inheritSourceLocation<T extends Node>(target: T, source: Node): T {
-  const mutableTarget: Node = target;
-  if (typeof source?.start === "number") mutableTarget.start = source.start;
-  if (typeof source?.end === "number") mutableTarget.end = source.end;
-  if (source?.loc) mutableTarget.loc = source.loc;
-  if (source?.range) mutableTarget.range = source.range;
-  return target;
-}
-
-/** Transform one source module with Oxc's ESTree-compatible parser. */
 export function transformVynnOxc(
   source: string,
   filename = "module.tsx",
