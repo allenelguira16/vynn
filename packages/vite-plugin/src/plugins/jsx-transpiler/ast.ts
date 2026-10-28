@@ -1,9 +1,10 @@
+import type { TSESTree } from "@typescript-eslint/types";
 import { decodeHTML } from "entities";
 import { visitorKeys } from "oxc-parser";
 
-type Node = any;
+type SourcePosition = { line: number; column: number };
 
-const expressionTypes = new Set<string>([
+const expressionTypeNames = [
   "ArrayExpression",
   "ArrowFunctionExpression",
   "AssignmentExpression",
@@ -32,136 +33,255 @@ const expressionTypes = new Set<string>([
   "UpdateExpression",
   "YieldExpression",
   "TSAsExpression",
+  "TSSatisfiesExpression",
   "TSNonNullExpression",
   "TSTypeAssertion",
   "TSInstantiationExpression",
-  "PrivateIdentifier",
-]);
+] as const;
 
-export const isNode = (node: unknown): node is Node =>
-  !!node && typeof node === "object" && typeof (node as Node).type === "string";
-export const isType = (node: Node, type: string): boolean =>
-  !!node && node.type === type;
-export const isIdentifier = (node: Node): boolean => isType(node, "Identifier");
-export const isJSXIdentifier = (node: Node): boolean =>
+const expressionTypes = new Set<string>(expressionTypeNames);
+
+type SourceLocation = { start: SourcePosition; end: SourcePosition };
+
+type NodeMetadata = {
+  start?: number;
+  end?: number;
+  loc?: SourceLocation | null;
+  range?: [number, number];
+  parent?: Node;
+};
+
+type CompilerSpecificNode = {
+  /** Legacy ESTree/Babel node label handled defensively by the JSX visitor. */
+  type: "ObjectMethod";
+};
+
+/** Index the published ESTree union by its string-valued discriminant. */
+type NodeMap = {
+  [Current in TSESTree.Node as `${Current["type"]}`]: Current & NodeMetadata;
+};
+
+export type Node = TSESTree.Node & NodeMetadata | (CompilerSpecificNode & NodeMetadata);
+
+export type NodeOfType<Type extends string> =
+  Type extends keyof NodeMap
+    ? NodeMap[Type]
+    : Type extends CompilerSpecificNode["type"]
+      ? CompilerSpecificNode & NodeMetadata
+      : never;
+
+export type ExpressionNode = TSESTree.Expression & NodeMetadata;
+
+export function generatedNode<const Current extends { type: string }>(
+  value: Current,
+): NodeOfType<Current["type"]> & Current {
+  // Generated nodes carry the concrete string tag and the matching node fields.
+  return value as unknown as NodeOfType<Current["type"]> & Current;
+}
+
+export function getNodeProperty(node: Node, key: string): unknown {
+  return (node as unknown as Record<string, unknown>)[key];
+}
+
+export function setNodeProperty(node: Node, key: string, value: unknown): void {
+  (node as unknown as Record<string, unknown>)[key] = value;
+}
+
+export function isNodeArray(value: unknown): value is Array<Node | null> {
+  if (!Array.isArray(value)) return false;
+  const items: unknown[] = value;
+  return items.every((item) => item === null || isNode(item));
+}
+
+export const isNode = (value: unknown): value is Node => {
+  if (!value || typeof value !== "object" || !("type" in value)) return false;
+  return typeof value.type === "string";
+};
+
+export const isType = <Type extends string>(
+  value: unknown,
+  type: Type,
+): value is NodeOfType<Type> => isNode(value) && value.type === type;
+
+export const isIdentifier = (node: unknown): node is NodeOfType<"Identifier"> =>
+  isType(node, "Identifier");
+export const isJSXIdentifier = (node: unknown): node is NodeOfType<"JSXIdentifier"> =>
   isType(node, "JSXIdentifier");
-export const isExpression = (node: Node): boolean =>
-  !!node && expressionTypes.has(node.type);
-export const isFunctionLike = (node: Node): boolean =>
+export const isExpression = (node: unknown): node is ExpressionNode =>
+  isNode(node) && expressionTypes.has(node.type);
+export const isFunctionLike = (
+  node: unknown,
+): node is NodeOfType<"ArrowFunctionExpression" | "FunctionExpression" | "FunctionDeclaration"> =>
   isType(node, "ArrowFunctionExpression") ||
   isType(node, "FunctionExpression") ||
   isType(node, "FunctionDeclaration");
-export const isLiteralString = (node: Node): boolean =>
+export const isLiteralString = (
+  node: unknown,
+): node is NodeOfType<"Literal"> & { value: string } =>
   isType(node, "Literal") && typeof node.value === "string";
-export const isNumericLiteral = (node: Node): boolean =>
+export const isNumericLiteral = (
+  node: unknown,
+): node is NodeOfType<"Literal"> & { value: number } =>
   isType(node, "Literal") && typeof node.value === "number";
 export const isStringLiteral = isLiteralString;
-export const isJSXElement = (node: Node): boolean => isType(node, "JSXElement");
-export const isJSXFragment = (node: Node): boolean =>
+export const isJSXElement = (node: unknown): node is NodeOfType<"JSXElement"> =>
+  isType(node, "JSXElement");
+export const isJSXFragment = (node: unknown): node is NodeOfType<"JSXFragment"> =>
   isType(node, "JSXFragment");
-export const isJSXText = (node: Node): boolean => isType(node, "JSXText");
-export const isJSXExpressionContainer = (node: Node): boolean =>
+export const isJSXText = (node: unknown): node is NodeOfType<"JSXText"> =>
+  isType(node, "JSXText");
+export const isJSXExpressionContainer = (
+  node: unknown,
+): node is NodeOfType<"JSXExpressionContainer"> =>
   isType(node, "JSXExpressionContainer");
-export const isJSXEmptyExpression = (node: Node): boolean =>
+export const isJSXEmptyExpression = (
+  node: unknown,
+): node is NodeOfType<"JSXEmptyExpression"> =>
   isType(node, "JSXEmptyExpression");
-export const isJSXAttribute = (node: Node): boolean =>
+export const isJSXAttribute = (node: unknown): node is NodeOfType<"JSXAttribute"> =>
   isType(node, "JSXAttribute");
-export const isJSXSpreadAttribute = (node: Node): boolean =>
+export const isJSXSpreadAttribute = (
+  node: unknown,
+): node is NodeOfType<"JSXSpreadAttribute"> =>
   isType(node, "JSXSpreadAttribute");
-export const isJSXMemberExpression = (node: Node): boolean =>
+export const isJSXMemberExpression = (
+  node: unknown,
+): node is NodeOfType<"JSXMemberExpression"> =>
   isType(node, "JSXMemberExpression");
-export const isCallExpression = (node: Node): boolean =>
+export const isCallExpression = (node: unknown): node is NodeOfType<"CallExpression"> =>
   isType(node, "CallExpression");
-export const isMemberExpression = (node: Node): boolean =>
+export const isMemberExpression = (
+  node: unknown,
+): node is NodeOfType<"MemberExpression"> =>
   isType(node, "MemberExpression");
-export const isArrowFunctionExpression = (node: Node): boolean =>
+export const isArrowFunctionExpression = (
+  node: unknown,
+): node is NodeOfType<"ArrowFunctionExpression"> =>
   isType(node, "ArrowFunctionExpression");
-export const isFunctionExpression = (node: Node): boolean =>
+export const isFunctionExpression = (
+  node: unknown,
+): node is NodeOfType<"FunctionExpression"> =>
   isType(node, "FunctionExpression");
-export const isFunctionDeclaration = (node: Node): boolean =>
+export const isFunctionDeclaration = (
+  node: unknown,
+): node is NodeOfType<"FunctionDeclaration"> =>
   isType(node, "FunctionDeclaration");
-export const isBlockStatement = (node: Node): boolean =>
+export const isBlockStatement = (
+  node: unknown,
+): node is NodeOfType<"BlockStatement"> =>
   isType(node, "BlockStatement");
-export const isReturnStatement = (node: Node): boolean =>
+export const isReturnStatement = (
+  node: unknown,
+): node is NodeOfType<"ReturnStatement"> =>
   isType(node, "ReturnStatement");
-export const isVariableDeclaration = (node: Node): boolean =>
+export const isVariableDeclaration = (
+  node: unknown,
+): node is NodeOfType<"VariableDeclaration"> =>
   isType(node, "VariableDeclaration");
-export const isExpressionStatement = (node: Node): boolean =>
+export const isExpressionStatement = (
+  node: unknown,
+): node is NodeOfType<"ExpressionStatement"> =>
   isType(node, "ExpressionStatement");
-export const isObjectExpression = (node: Node): boolean =>
+export const isObjectExpression = (
+  node: unknown,
+): node is NodeOfType<"ObjectExpression"> =>
   isType(node, "ObjectExpression");
-export const isObjectProperty = (node: Node): boolean =>
+export const isObjectProperty = (node: unknown): node is NodeOfType<"Property"> =>
   isType(node, "Property") && !node.method && node.kind === "init";
-export const isObjectMethod = (node: Node): boolean =>
+export const isObjectMethod = (node: unknown): node is NodeOfType<"Property"> =>
   isType(node, "Property") &&
   (node.method || node.kind === "get" || node.kind === "set");
-export const isSpreadElement = (node: Node): boolean =>
+export const isSpreadElement = (node: unknown): node is NodeOfType<"SpreadElement"> =>
   isType(node, "SpreadElement");
-export const isArrayExpression = (node: Node): boolean =>
+export const isArrayExpression = (node: unknown): node is NodeOfType<"ArrayExpression"> =>
   isType(node, "ArrayExpression");
-export const isRestElement = (node: Node): boolean =>
+export const isRestElement = (node: unknown): node is NodeOfType<"RestElement"> =>
   isType(node, "RestElement");
-export const isAssignmentPattern = (node: Node): boolean =>
+export const isAssignmentPattern = (
+  node: unknown,
+): node is NodeOfType<"AssignmentPattern"> =>
   isType(node, "AssignmentPattern");
-export const isObjectPattern = (node: Node): boolean =>
+export const isObjectPattern = (node: unknown): node is NodeOfType<"ObjectPattern"> =>
   isType(node, "ObjectPattern");
-export const isArrayPattern = (node: Node): boolean =>
+export const isArrayPattern = (node: unknown): node is NodeOfType<"ArrayPattern"> =>
   isType(node, "ArrayPattern");
-export const isIfStatement = (node: Node): boolean =>
+export const isIfStatement = (node: unknown): node is NodeOfType<"IfStatement"> =>
   isType(node, "IfStatement");
-export const isLogicalExpression = (node: Node): boolean =>
+export const isLogicalExpression = (
+  node: unknown,
+): node is NodeOfType<"LogicalExpression"> =>
   isType(node, "LogicalExpression");
-export const isConditionalExpression = (node: Node): boolean =>
+export const isConditionalExpression = (
+  node: unknown,
+): node is NodeOfType<"ConditionalExpression"> =>
   isType(node, "ConditionalExpression");
-export const isUnaryExpression = (node: Node): boolean =>
+export const isUnaryExpression = (
+  node: unknown,
+): node is NodeOfType<"UnaryExpression"> =>
   isType(node, "UnaryExpression");
-export const isAwaitExpression = (node: Node): boolean =>
+export const isAwaitExpression = (node: unknown): node is NodeOfType<"AwaitExpression"> =>
   isType(node, "AwaitExpression");
-export const isUpdateExpression = (node: Node): boolean =>
+export const isUpdateExpression = (node: unknown): node is NodeOfType<"UpdateExpression"> =>
   isType(node, "UpdateExpression");
-export const isAssignmentExpression = (node: Node): boolean =>
+export const isAssignmentExpression = (
+  node: unknown,
+): node is NodeOfType<"AssignmentExpression"> =>
   isType(node, "AssignmentExpression");
-export const isBinaryExpression = (node: Node): boolean =>
+export const isBinaryExpression = (node: unknown): node is NodeOfType<"BinaryExpression"> =>
   isType(node, "BinaryExpression");
-export const isTemplateLiteral = (node: Node): boolean =>
+export const isTemplateLiteral = (
+  node: unknown,
+): node is NodeOfType<"TemplateLiteral"> =>
   isType(node, "TemplateLiteral");
-export const isSequenceExpression = (node: Node): boolean =>
+export const isSequenceExpression = (
+  node: unknown,
+): node is NodeOfType<"SequenceExpression"> =>
   isType(node, "SequenceExpression");
-export const isTSAsExpression = (node: Node): boolean =>
+export const isTSAsExpression = (node: unknown): node is NodeOfType<"TSAsExpression"> =>
   isType(node, "TSAsExpression");
-export const isTSNonNullExpression = (node: Node): boolean =>
+export const isTSNonNullExpression = (
+  node: unknown,
+): node is NodeOfType<"TSNonNullExpression"> =>
   isType(node, "TSNonNullExpression");
-export const isImportDeclaration = (node: Node): boolean =>
+export const isImportDeclaration = (
+  node: unknown,
+): node is NodeOfType<"ImportDeclaration"> =>
   isType(node, "ImportDeclaration");
-export const isImportSpecifier = (node: Node): boolean =>
+export const isImportSpecifier = (
+  node: unknown,
+): node is NodeOfType<"ImportSpecifier"> =>
   isType(node, "ImportSpecifier");
 
-export function identifier(name: string): Node {
-  return { type: "Identifier", name };
+export function identifier(name: string): NodeOfType<"Identifier"> {
+  return generatedNode({ type: "Identifier", name });
 }
-export function literal(value: string | number | boolean | null): Node {
-  return {
+
+export function literal<Value extends string | number | boolean | null>(
+  value: Value,
+): NodeOfType<"Literal"> & { value: Value } {
+  return generatedNode({
     type: "Literal",
     value,
     raw: typeof value === "string" ? JSON.stringify(value) : String(value),
-  };
+  });
 }
-export function stringLiteral(value: string): Node {
+
+export function stringLiteral(value: string): NodeOfType<"Literal"> & { value: string } {
   return literal(value);
 }
-export function numericLiteral(value: number): Node {
+export function numericLiteral(value: number): NodeOfType<"Literal"> & { value: number } {
   return literal(value);
 }
-export function booleanLiteral(value: boolean): Node {
+export function booleanLiteral(value: boolean): NodeOfType<"Literal"> & { value: boolean } {
   return literal(value);
 }
-export function voidZero(): Node {
-  return {
+export function voidZero(): NodeOfType<"UnaryExpression"> {
+  return generatedNode({
     type: "UnaryExpression",
     operator: "void",
     prefix: true,
     argument: numericLiteral(0),
-  };
+  });
 }
 export function cloneNode<T extends Node>(node: T): T {
   return structuredClone(node);
@@ -170,20 +290,29 @@ export function memberExpression(
   object: Node,
   property: Node,
   computed = false,
-): Node {
-  return {
+): NodeOfType<"MemberExpression"> {
+  return generatedNode({
     type: "MemberExpression",
     object,
     property,
     computed,
     optional: false,
-  };
+  });
 }
-export function callExpression(callee: Node, args: Node[]): Node {
-  return { type: "CallExpression", callee, arguments: args, optional: false };
+export function callExpression(callee: Node, args: Node[]): NodeOfType<"CallExpression"> {
+  return generatedNode({
+    type: "CallExpression",
+    callee,
+    arguments: args,
+    optional: false,
+  });
 }
-export function arrowFunctionExpression(params: Node[], body: Node): Node {
-  return {
+
+export function arrowFunctionExpression(
+  params: Node[],
+  body: Node,
+): NodeOfType<"ArrowFunctionExpression"> {
+  return generatedNode({
     type: "ArrowFunctionExpression",
     id: null,
     params,
@@ -191,16 +320,17 @@ export function arrowFunctionExpression(params: Node[], body: Node): Node {
     generator: false,
     async: false,
     expression: !isBlockStatement(body),
-  };
+  });
 }
+
 export function functionExpression(
   id: Node | null,
   params: Node[],
   body: Node,
   generator = false,
   async = false,
-): Node {
-  return {
+): NodeOfType<"FunctionExpression"> {
+  return generatedNode({
     type: "FunctionExpression",
     id,
     params,
@@ -208,60 +338,69 @@ export function functionExpression(
     generator,
     async,
     expression: false,
-  };
+  });
 }
-export function blockStatement(body: Node[]): Node {
-  return { type: "BlockStatement", body };
+export function blockStatement(body: Node[]): NodeOfType<"BlockStatement"> {
+  return generatedNode({ type: "BlockStatement", body });
 }
-export function returnStatement(argument: Node | null): Node {
-  return { type: "ReturnStatement", argument };
+
+export function returnStatement(argument: Node | null): NodeOfType<"ReturnStatement"> {
+  return generatedNode({ type: "ReturnStatement", argument });
 }
-export function expressionStatement(expression: Node): Node {
-  return { type: "ExpressionStatement", expression };
+export function expressionStatement(expression: Node): NodeOfType<"ExpressionStatement"> {
+  return generatedNode({ type: "ExpressionStatement", expression });
 }
-export function variableDeclarator(id: Node, init: Node | null): Node {
-  return { type: "VariableDeclarator", id, init, definite: false };
+export function variableDeclarator(
+  id: Node,
+  init: Node | null,
+): NodeOfType<"VariableDeclarator"> {
+  return generatedNode({ type: "VariableDeclarator", id, init, definite: false });
 }
 export function variableDeclaration(
   kind: "const" | "let" | "var",
   declarations: Node[],
-): Node {
-  return { type: "VariableDeclaration", kind, declarations };
+): NodeOfType<"VariableDeclaration"> {
+  return generatedNode({ type: "VariableDeclaration", kind, declarations });
 }
-export function arrayExpression(elements: Array<Node | null>): Node {
-  return { type: "ArrayExpression", elements };
+export function arrayExpression(
+  elements: Array<Node | null>,
+): NodeOfType<"ArrayExpression"> {
+  return generatedNode({ type: "ArrayExpression", elements });
 }
-export function objectExpression(properties: Node[]): Node {
-  return { type: "ObjectExpression", properties };
+export function objectExpression(properties: Node[]): NodeOfType<"ObjectExpression"> {
+  return generatedNode({ type: "ObjectExpression", properties });
 }
-export function spreadElement(argument: Node): Node {
-  return { type: "SpreadElement", argument };
+export function spreadElement(argument: Node): NodeOfType<"SpreadElement"> {
+  return generatedNode({ type: "SpreadElement", argument });
 }
-export function unaryExpression(operator: string, argument: Node): Node {
-  return { type: "UnaryExpression", operator, argument, prefix: true };
+export function unaryExpression(
+  operator: string,
+  argument: Node,
+): NodeOfType<"UnaryExpression"> {
+  return generatedNode({ type: "UnaryExpression", operator, argument, prefix: true });
 }
 export function binaryExpression(
   operator: string,
   left: Node,
   right: Node,
-): Node {
-  return { type: "BinaryExpression", operator, left, right };
+): NodeOfType<"BinaryExpression"> {
+  return generatedNode({ type: "BinaryExpression", operator, left, right });
 }
 export function conditionalExpression(
   test: Node,
   consequent: Node,
   alternate: Node,
-): Node {
-  return { type: "ConditionalExpression", test, consequent, alternate };
+): NodeOfType<"ConditionalExpression"> {
+  return generatedNode({ type: "ConditionalExpression", test, consequent, alternate });
 }
 export function assignmentExpression(
   operator: string,
   left: Node,
   right: Node,
-): Node {
-  return { type: "AssignmentExpression", operator, left, right };
+): NodeOfType<"AssignmentExpression"> {
+  return generatedNode({ type: "AssignmentExpression", operator, left, right });
 }
-export function propertyKey(name: string): Node {
+export function propertyKey(name: string): NodeOfType<"Identifier"> | (NodeOfType<"Literal"> & { value: string }) {
   return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name)
     ? identifier(name)
     : stringLiteral(name);
@@ -269,9 +408,14 @@ export function propertyKey(name: string): Node {
 export function objectProperty(
   key: Node,
   value: Node,
-  options: Partial<Node> = {},
-): Node {
-  return {
+  options: {
+    kind?: "init" | "get" | "set";
+    method?: boolean;
+    shorthand?: boolean;
+    computed?: boolean;
+  } = {},
+): NodeOfType<"Property"> {
+  return generatedNode({
     type: "Property",
     key,
     value,
@@ -279,32 +423,40 @@ export function objectProperty(
     method: options.method ?? false,
     shorthand: options.shorthand ?? false,
     computed: options.computed ?? false,
-  };
+  });
 }
+
 export function objectMethod(
   kind: "method" | "get" | "set",
   key: Node,
   params: Node[],
   body: Node,
-): Node {
+): NodeOfType<"Property"> {
   const fn = functionExpression(null, params, body);
   return objectProperty(key, fn, {
     kind: kind === "method" ? "init" : kind,
     method: kind === "method",
   });
 }
-export function importSpecifier(local: Node, imported: Node): Node {
-  return { type: "ImportSpecifier", imported, local, importKind: "value" };
+export function importSpecifier(
+  local: Node,
+  imported: Node,
+): NodeOfType<"ImportSpecifier"> {
+  return generatedNode({ type: "ImportSpecifier", imported, local, importKind: "value" });
 }
-export function importDeclaration(specifiers: Node[], source: string): Node {
-  return {
+
+export function importDeclaration(
+  specifiers: Node[],
+  source: string,
+): NodeOfType<"ImportDeclaration"> {
+  return generatedNode({
     type: "ImportDeclaration",
     specifiers,
     source: stringLiteral(source),
     importKind: "value",
     assertions: [],
     attributes: [],
-  };
+  });
 }
 
 export function getVisitorKeys(node: Node): string[] {
@@ -318,9 +470,9 @@ export function forEachChild(
   callback: (child: Node) => void,
 ): void {
   for (const key of getVisitorKeys(node)) {
-    const value = node[key];
-    if (Array.isArray(value)) {
-      for (const child of value) if (isNode(child)) callback(child);
+    const value = getNodeProperty(node, key);
+    if (isNodeArray(value)) {
+      for (const child of value) if (child) callback(child);
     } else if (isNode(value)) {
       callback(value);
     }
@@ -338,28 +490,44 @@ export function getJSXIdentifierName(name: Node): string {
   );
 }
 
-export function isComponentElement(node: Node): boolean {
+export function isComponentElement(
+  node: unknown,
+): node is NodeOfType<"JSXElement"> {
+  if (!isJSXElement(node)) return false;
   const name = node.openingElement.name;
   if (isJSXIdentifier(name)) return isComponentName(name.name);
   return isJSXMemberExpression(name);
 }
 
-export function isArrowComponentDeclaration(declaration: Node): boolean {
+export type ArrowComponentDeclaration = NodeOfType<"VariableDeclarator"> & {
+  id: NodeOfType<"Identifier">;
+  init: NodeOfType<"ArrowFunctionExpression">;
+};
+
+export function isArrowComponentDeclaration(
+  declaration: unknown,
+): declaration is ArrowComponentDeclaration {
   return (
+    isType(declaration, "VariableDeclarator") &&
     isIdentifier(declaration.id) &&
     isComponentName(declaration.id.name) &&
     isArrowFunctionExpression(declaration.init)
   );
 }
 
-export function findReturnStatement(node: Node): Node | undefined {
-  if (!isBlockStatement(node.body)) return undefined;
-  return node.body.body.find((statement: Node) => isReturnStatement(statement));
+export function findReturnStatement(
+  node: Node,
+): NodeOfType<"ReturnStatement"> | undefined {
+  const body = getNodeProperty(node, "body");
+  if (!isBlockStatement(body)) return undefined;
+  return body.body.find((statement) => isReturnStatement(statement));
 }
 
-export function findArrowReturnStatement(body: Node): Node | undefined {
+export function findArrowReturnStatement(
+  body: Node,
+): NodeOfType<"ReturnStatement"> | undefined {
   if (!isBlockStatement(body)) return undefined;
-  return body.body.find((statement: Node) => isReturnStatement(statement));
+  return body.body.find((statement) => isReturnStatement(statement));
 }
 
 export function normalizeJSXText(value: string): string {
@@ -419,7 +587,6 @@ export function createPositionLookup(
 export function addSourceLocations(program: Node, source: string): void {
   const positionAt = createPositionLookup(source);
   const visit = (node: Node): void => {
-    if (!isNode(node)) return;
     if (
       typeof node.start === "number" &&
       typeof node.end === "number" &&
@@ -433,13 +600,12 @@ export function addSourceLocations(program: Node, source: string): void {
 }
 
 export function programContainsJSX(program: Node): boolean {
-  if (!isNode(program)) return false;
   if (isJSXElement(program) || isJSXFragment(program)) return true;
   for (const key of getVisitorKeys(program)) {
-    const value = program[key];
-    if (Array.isArray(value)) {
+    const value = getNodeProperty(program, key);
+    if (isNodeArray(value)) {
       for (const child of value) {
-        if (isNode(child) && programContainsJSX(child)) return true;
+        if (child && programContainsJSX(child)) return true;
       }
     } else if (isNode(value) && programContainsJSX(value)) {
       return true;

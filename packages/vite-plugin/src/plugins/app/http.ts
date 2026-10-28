@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { isAbsolute, relative, sep } from "node:path";
 import { CLIENT_ENTRY_ID, type ResolvedEntries } from "./shared.ts";
-import { DEV_CSS_URL } from "./documents.ts";
+import { VYNN_SSR_CSS_URL } from "../ssr-css.ts";
 import { Readable } from "node:stream";
 
 export function getClientEntryDevUrl(
@@ -60,7 +60,7 @@ export function isFrameworkRequest(url: string): boolean {
   const pathname = new URL(url, "http://vynn.local").pathname;
   return (
     pathname.startsWith("/@") ||
-    pathname === DEV_CSS_URL ||
+    pathname === VYNN_SSR_CSS_URL ||
     pathname === "/favicon.ico"
   );
 }

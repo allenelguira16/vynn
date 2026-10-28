@@ -237,6 +237,9 @@ importers:
       '@babel/preset-vynn':
         specifier: workspace:*
         version: link:../babel-preset
+      '@typescript-eslint/types':
+        specifier: ^8.72.0
+        version: 8.72.0
       '@types/node':
         specifier: ^26.6.3
         version: 26.6.3
@@ -1339,6 +1342,10 @@ packages:
 
   '@types/serve-static@2.2.0':
     resolution: {integrity: sha512-8mam4H1NHLtu7nmtalF7eyBH14QyOASmcxHhSfEoRyr0nP/YdoesEtU+uSRvMe96TW/HPTtkoKqQLl53N7UXMQ==}
+
+  '@typescript-eslint/types@8.72.0':
+    resolution: {integrity: sha512-Adfoy59kxNEjT5E5fnyrp7GpHYuWs8ONbdohu4ez6IU46qDq8LltG90tLmkucZB2uhYL8mqBjtXqGd8yhfjXqQ==}
+    engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
 
   '@typescript/typescript-aix-ppc64@7.0.2':
     resolution: {integrity: sha512-MTKKkWB7p/0E9xi1d1tHtZ5PiLkGEMIq88pK2CubZjOsLtYTLqhgIgi6zepFa+9GHZ6h05NMCkQxGKiPXMxXtQ==}
@@ -3351,6 +3358,8 @@ snapshots:
     dependencies:
       '@types/http-errors': 2.0.5
       '@types/node': 26.6.3
+
+  '@typescript-eslint/types@8.72.0': {}
 
   '@typescript/typescript-aix-ppc64@7.0.2':
     optional: true

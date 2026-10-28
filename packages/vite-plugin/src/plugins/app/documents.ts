@@ -11,7 +11,7 @@ type ManifestEntry = {
   name?: string;
 };
 
-export const DEV_CSS_URL = VYNN_SSR_CSS_URL;
+const DEV_CSS_URL = VYNN_SSR_CSS_URL;
 
 export function createClientEntry(
   appSpecifier: string,
