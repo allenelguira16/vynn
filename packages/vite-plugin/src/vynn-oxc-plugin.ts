@@ -2968,6 +2968,79 @@ class TransformState {
     return this.isRuntimeHelperCall(expression, "$nodes");
   }
 
+  /**
+   * Returns true only when the AST itself guarantees a boolean result.
+   *
+   * The Oxc transform does not have TypeScript type information, so an
+   * arbitrary member expression cannot safely be assumed boolean by name.
+   */
+  private isBooleanExpression(expression: Node): boolean {
+    if (!isNode(expression)) return false;
+
+    if (isType(expression, "Literal")) {
+      return typeof expression.value === "boolean";
+    }
+
+    if (isUnaryExpression(expression)) {
+      return expression.operator === "!";
+    }
+
+    if (isMemberExpression(expression)) {
+      // Without a TypeScript checker, recognize conventional boolean
+      // predicate properties such as isLoading, hasData, or canSubmit.
+      // Do not infer booleans from arbitrary property names.
+      const property = expression.computed
+        ? isType(expression.property, "Literal") &&
+          typeof expression.property.value === "string"
+          ? expression.property.value
+          : ""
+        : isIdentifier(expression.property)
+          ? expression.property.name
+          : "";
+
+      return /^(?:is|has|can|should|was|were|did|does|will|must|may|might|needs)[A-Z_$]/.test(
+        property,
+      );
+    }
+
+    if (isBinaryExpression(expression)) {
+      return [
+        "==",
+        "!=",
+        "===",
+        "!==",
+        "<",
+        "<=",
+        ">",
+        ">=",
+        "in",
+        "instanceof",
+      ].includes(expression.operator);
+    }
+
+    if (isLogicalExpression(expression)) {
+      return (
+        this.isBooleanExpression(expression.left) &&
+        this.isBooleanExpression(expression.right)
+      );
+    }
+
+    if (
+      isTSAsExpression(expression) ||
+      isTSNonNullExpression(expression) ||
+      isType(expression, "TSTypeAssertion")
+    ) {
+      if (this.isBooleanExpression(expression.expression)) return true;
+      const annotation = expression.typeAnnotation;
+      return (
+        annotation?.type === "TSBooleanKeyword" ||
+        annotation?.typeAnnotation?.type === "TSBooleanKeyword"
+      );
+    }
+
+    return false;
+  }
+
   private isTextExpression(expression: Node): boolean {
     return this.isRuntimeHelperCall(expression, "$txt");
   }
@@ -3403,26 +3476,60 @@ class TransformState {
   private createIfExpression(
     test: Node,
     consequent: Node,
-    alternate: Node,
+    alternate: Node | null = null,
+    consequentSource: Node = consequent,
+    alternateSource: Node = alternate ?? voidZero(),
   ): Node {
-    const createBranch = (expression: Node): Node => {
+    const createBranch = (expression: Node, source: Node): Node => {
       if (
         this.isForExpression(expression) ||
         this.isIfExpression(expression) ||
         this.isNodesExpression(expression) ||
-        this.isTextExpression(expression)
+        this.isTextExpression(expression) ||
+        this.containsJSX(source)
       ) {
+        // JSX, lists, conditionals and existing dynamic ranges already
+        // produce renderable nodes; another $nodes wrapper is redundant.
         return expression;
       }
 
+      if (isType(source, "Literal")) {
+        if (typeof source.value === "string" || typeof source.value === "number") {
+          // Static primitives should be text nodes, not reactive ranges.
+          return this.createTextExpression(String(source.value));
+        }
+
+        if (typeof source.value === "boolean") {
+          // Both booleans render no JSX content. Normalize true to false so
+          // resolveNode never receives the unsupported JSX.Element value true.
+          return booleanLiteral(false);
+        }
+
+        if (source.value === null) {
+          // A static null branch cannot change reactively.
+          return expression;
+        }
+      }
+
+      // Unknown scalar expressions may depend on reactive state, so keep
+      // them inside a dynamic range when their branch is active.
       return this.createDynamicExpression(expression);
     };
 
-    const result = callExpression(this.getRuntimeHelper("$if"), [
+    const args = [
       arrowFunctionExpression([], test),
-      arrowFunctionExpression([], createBranch(consequent)),
-      arrowFunctionExpression([], createBranch(alternate)),
-    ]);
+      arrowFunctionExpression([], createBranch(consequent, consequentSource)),
+    ];
+
+    // $if defaults the alternate to undefined. Omit the callback entirely
+    // when this logical expression's false branch renders nothing.
+    if (alternate !== null) {
+      args.push(
+        arrowFunctionExpression([], createBranch(alternate, alternateSource)),
+      );
+    }
+
+    const result = callExpression(this.getRuntimeHelper("$if"), args);
 
     this.generatedIfExpressions.add(result);
     return result;
@@ -3498,31 +3605,57 @@ class TransformState {
     }
 
     if (isLogicalExpression(expression)) {
+      const sourceLeft = expression.left;
+      const sourceRight = expression.right;
       const hasJSX =
-        this.containsJSX(expression.left) ||
-        this.containsJSX(expression.right);
+        this.containsJSX(sourceLeft) ||
+        this.containsJSX(sourceRight);
+      const leftIsBoolean = this.isBooleanExpression(sourceLeft);
 
       const left = this.transformEmbeddedExpression(
-        expression.left,
+        sourceLeft,
         allocator,
       );
       const right = this.transformEmbeddedExpression(
-        expression.right,
+        sourceRight,
         allocator,
       );
 
       if (hasJSX) {
-        // Preserve JavaScript's logical-expression return value.
+        // Preserve logical-expression values when the left operand isn't
+        // syntactically known to be boolean. Boolean values render empty,
+        // so don't manufacture a reactive range just to return one.
         if (expression.operator === "&&") {
+          // A boolean false branch renders nothing, which is already the
+          // runtime default. Keep an alternate only when the left operand
+          // might evaluate to a renderable falsy value such as 0 or "".
+          const alternate = leftIsBoolean ? null : cloneNode(left);
+
           return inheritSourceLocation(
-            this.createIfExpression(left, right, cloneNode(left)),
+            this.createIfExpression(
+              left,
+              right,
+              alternate,
+              sourceRight,
+              sourceLeft,
+            ),
             expression,
           );
         }
 
         if (expression.operator === "||") {
+          const consequent = leftIsBoolean
+            ? booleanLiteral(false)
+            : cloneNode(left);
+
           return inheritSourceLocation(
-            this.createIfExpression(left, cloneNode(left), right),
+            this.createIfExpression(
+              left,
+              consequent,
+              right,
+              leftIsBoolean ? consequent : sourceLeft,
+              sourceRight,
+            ),
             expression,
           );
         }
@@ -3535,8 +3668,18 @@ class TransformState {
             right: binaryExpression("!==", cloneNode(left), voidZero()),
           };
 
+          const consequent = leftIsBoolean
+            ? booleanLiteral(false)
+            : cloneNode(left);
+
           return inheritSourceLocation(
-            this.createIfExpression(test, cloneNode(left), right),
+            this.createIfExpression(
+              test,
+              consequent,
+              right,
+              leftIsBoolean ? consequent : sourceLeft,
+              sourceRight,
+            ),
             expression,
           );
         }
@@ -3547,29 +3690,37 @@ class TransformState {
       return expression;
     }
     if (isConditionalExpression(expression)) {
-      // Only introduce a cached conditional boundary when either branch
-      // produces JSX. Ordinary scalar ternaries remain normal expressions,
-      // which is important for conditional attributes and values.
+      // Keep the original branches available for deciding whether the
+      // transformed result already produces JSX nodes. Transforming
+      // <Fallback /> to Fallback(props) erases the JSX syntax itself.
+      const consequentSource = expression.consequent;
+      const alternateSource = expression.alternate;
       const hasJSX =
-        this.containsJSX(expression.consequent) ||
-        this.containsJSX(expression.alternate);
+        this.containsJSX(consequentSource) ||
+        this.containsJSX(alternateSource);
 
       const test = this.transformEmbeddedExpression(
         expression.test,
         allocator,
       );
       const consequent = this.transformEmbeddedExpression(
-        expression.consequent,
+        consequentSource,
         allocator,
       );
       const alternate = this.transformEmbeddedExpression(
-        expression.alternate,
+        alternateSource,
         allocator,
       );
 
       if (hasJSX) {
         return inheritSourceLocation(
-          this.createIfExpression(test, consequent, alternate),
+          this.createIfExpression(
+            test,
+            consequent,
+            alternate,
+            consequentSource,
+            alternateSource,
+          ),
           expression,
         );
       }

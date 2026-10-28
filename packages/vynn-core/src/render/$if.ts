@@ -3,6 +3,7 @@ import { isServer } from "../context/is-server-context";
 import { $renderEffect } from "../reactivity/$effect";
 import { resolveNode, resolveSSRChild } from "./resolve-node";
 import { isRootNode, markParked, unmarkParked } from "./$cmpnt.util";
+import { untrack } from "../reactivity/untrack";
 
 type IfBranch = {
   start: Comment;
@@ -94,7 +95,7 @@ export function $if(
     parent.insertBefore(branch.fragment, marker);
   }
 
-  const initialKey = !!condition();
+  const initialKey = untrack(() => !!condition());
 
   let activeKey = initialKey;
   let activeBranch = createBranch(initialKey);
