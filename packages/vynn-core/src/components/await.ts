@@ -7,6 +7,7 @@ import { $renderEffect } from "../reactivity/$effect";
 import { memo } from "../utils/memo";
 import { getOwner, runWithOwner } from "../life-cycle/owner";
 import { isServer } from "../context/is-server-context";
+import { $if } from "../render/$if";
 
 /**
  * Displays a fallback while the children are initially loading.
@@ -61,63 +62,26 @@ export const Await = $cmpnt(function Suspense(props: {
     }
   }
 
-  let resolved = false;
-  let hasPromise = false;
-
-  const markerEnd = document.createTextNode("");
-  const view = $state<Node[]>([]);
-
-  let nodes: Node[] = [];
-  const pending = new Set<Promise<unknown>>();
+  let isResolved = false;
+  const isPending = $state(false);
 
   enterAsyncBoundary((promise) => {
-    hasPromise = true;
-
-    if (pending.has(promise)) {
-      return;
+    if (!isResolved && !("__lazy" in promise)) {
+      isPending.value = true;
     }
 
-    pending.add(promise);
-
-    if (!resolved && !("__lazy" in promise)) {
-      view.value = resolveNode(fallback);
-    }
-
-    promise.then(
-      () => {
-        pending.delete(promise);
-
-        if (pending.size === 0) {
-          resolved = true;
-          view.value = resolveNode(children);
-        }
-      },
-      (error) => {
-        pending.delete(promise);
-        console.error("Await child promise rejected:", error);
-      },
-    );
+    promise.then(() => {
+      isPending.value = false;
+    });
   });
 
   try {
-    children();
+    return $if(
+      () => isPending.value,
+      () => props.fallback,
+      () => props.children,
+    );
   } finally {
-    if (!hasPromise) {
-      return children();
-    }
-
-    $renderEffect(() => {
-      for (const node of nodes) {
-        (node as ChildNode).remove();
-      }
-
-      nodes = view.value;
-
-      for (const node of nodes) {
-        markerEnd.parentNode?.insertBefore(node, markerEnd);
-      }
-    });
-
-    return [nodes, markerEnd];
+    isResolved = true;
   }
 });

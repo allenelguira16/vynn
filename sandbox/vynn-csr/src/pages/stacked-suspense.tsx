@@ -1,4 +1,4 @@
-import { $async, onDestroy, onMount, Await as Suspense } from "vynn";
+import { $async, onDestroy, onMount, Await } from "vynn";
 
 import { Template } from "../components/template";
 import { sleep } from "../utils";
@@ -19,7 +19,7 @@ export const StackedSuspense = () => {
   return (
     <Template title="Stacked Suspense">
       <div class="p-2 flex flex-col container m-auto">
-        <Suspense fallback="Lick my ass">
+        <Await fallback="Lick my ass">
           <input
             class="input w-full"
             onInput={(event) => {
@@ -27,13 +27,13 @@ export const StackedSuspense = () => {
             }}
             value={msg2.value}
           ></input>
-        </Suspense>
-        <Suspense fallback="Ngee">{msg3.value}</Suspense>
-        <Suspense fallback={<div>loading 1...</div>}>
+        </Await>
+        <Await fallback="Ngee">{msg3.value}</Await>
+        <Await fallback={<div>loading 1...</div>}>
           <div>hi</div>
           <Component />
-          <Suspense fallback={<div>loading 2...</div>}>{msg2.value}</Suspense>
-        </Suspense>
+          <Await fallback={<div>loading 2...</div>}>{msg2.value}</Await>
+        </Await>
       </div>
     </Template>
   );

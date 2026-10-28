@@ -1,5 +1,5 @@
 import { Route, Router } from "vynn-router";
-import { ErrorBoundary, JSX, Portal } from "vynn";
+import { Portal } from "vynn";
 import { ButtonPageList } from "./components/button-page-list";
 import { name } from "./utils";
 
@@ -29,6 +29,10 @@ import { ComponentError } from "./pages/component-error";
 // const StackedSuspense = lazy(
 //   () => import("./pages/stacked-suspense"),
 //   "StackedSuspense",
+// );
+// const ComponentError = lazy(
+//   () => import("./pages/component-error"),
+//   "ComponentError",
 // );
 
 export function App() {
