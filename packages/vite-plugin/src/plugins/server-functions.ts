@@ -632,7 +632,7 @@ export function vynnServerFunctionsPlugin(
   };
 
   const plugin: VynnServerFunctionsPlugin = {
-    name: "vynn:server-functions",
+    name: "vynn-server-functions",
     enforce: "pre",
 
     configResolved(config) {

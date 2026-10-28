@@ -36,13 +36,7 @@ import { ComponentError } from "./pages/component-error";
 // );
 
 export function App() {
-  return (
-    <>
-      {/* <Await fallback={<div>Page Is Loading</div>}> */}
-      <Router routes={routes} />
-      {/* </Await> */}
-    </>
-  );
+  return <Router routes={routes} />;
 }
 
 export const routes: Route[] = [

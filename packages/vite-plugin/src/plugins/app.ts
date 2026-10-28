@@ -118,7 +118,7 @@ export function vynnStartPlugin({
   const root = () => resolvedConfig?.root ?? process.cwd();
 
   return {
-    name: "vite-plugin-vynn-start",
+    name: "vynn-app-mode",
 
     config(userConfig, env): Omit<UserConfig, "plugins"> {
       const projectRoot = resolve(userConfig.root || process.cwd());

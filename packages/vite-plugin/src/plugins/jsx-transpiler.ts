@@ -763,7 +763,7 @@ class TransformState {
       };
       scope.functionScope = isFunctionScope
         ? scope
-        : parent?.functionScope ?? scope;
+        : (parent?.functionScope ?? scope);
       return scope;
     };
 
@@ -834,8 +834,7 @@ class TransformState {
         const isExportNamed =
           isType(statement, "ExportNamedDeclaration") &&
           isValueExport(statement);
-        const isExportDefault =
-          isType(statement, "ExportDefaultDeclaration");
+        const isExportDefault = isType(statement, "ExportDefaultDeclaration");
         const declaration =
           (isExportNamed || isExportDefault) && isNode(statement.declaration)
             ? statement.declaration
@@ -991,7 +990,9 @@ class TransformState {
       const callee = node.callee;
       if (!isMemberExpression(callee)) return false;
       if (callee.computed) {
-        return isLiteralString(callee.property) && callee.property.value === "map";
+        return (
+          isLiteralString(callee.property) && callee.property.value === "map"
+        );
       }
       return isIdentifier(callee.property) && callee.property.name === "map";
     };
@@ -1099,10 +1100,9 @@ class TransformState {
         variantStatement = clonedCallback;
       } else {
         this.specializedForCallbacks.add(clonedCallback);
-        variantStatement = variableDeclaration(
-          "const",
-          [variableDeclarator(cloneNode(variantId), clonedCallback)],
-        );
+        variantStatement = variableDeclaration("const", [
+          variableDeclarator(cloneNode(variantId), clonedCallback),
+        ]);
       }
 
       binding.variantName = variantName;
@@ -1117,10 +1117,7 @@ class TransformState {
       added.push(variantStatement);
       if (binding.exportNames.length > 0) {
         added.push(
-          createCompanionExport(
-            variantName,
-            [...new Set(binding.exportNames)],
-          ),
+          createCompanionExport(variantName, [...new Set(binding.exportNames)]),
         );
       }
       byAnchor.set(binding.statement, added);
@@ -1128,9 +1125,7 @@ class TransformState {
       return variantName;
     };
 
-    const getImportedCompanion = (
-      binding: CallbackBinding,
-    ): Node | null => {
+    const getImportedCompanion = (binding: CallbackBinding): Node | null => {
       const imported = binding.imported;
       if (
         !imported ||
@@ -1156,8 +1151,7 @@ class TransformState {
       };
 
       const hasNamespaceSpecifier = (imported.statement.specifiers ?? []).some(
-        (specifier: Node) =>
-          isType(specifier, "ImportNamespaceSpecifier"),
+        (specifier: Node) => isType(specifier, "ImportNamespaceSpecifier"),
       );
       const canAppend =
         imported.statement.importKind !== "type" &&
@@ -2968,79 +2962,6 @@ class TransformState {
     return this.isRuntimeHelperCall(expression, "$nodes");
   }
 
-  /**
-   * Returns true only when the AST itself guarantees a boolean result.
-   *
-   * The Oxc transform does not have TypeScript type information, so an
-   * arbitrary member expression cannot safely be assumed boolean by name.
-   */
-  private isBooleanExpression(expression: Node): boolean {
-    if (!isNode(expression)) return false;
-
-    if (isType(expression, "Literal")) {
-      return typeof expression.value === "boolean";
-    }
-
-    if (isUnaryExpression(expression)) {
-      return expression.operator === "!";
-    }
-
-    if (isMemberExpression(expression)) {
-      // Without a TypeScript checker, recognize conventional boolean
-      // predicate properties such as isLoading, hasData, or canSubmit.
-      // Do not infer booleans from arbitrary property names.
-      const property = expression.computed
-        ? isType(expression.property, "Literal") &&
-          typeof expression.property.value === "string"
-          ? expression.property.value
-          : ""
-        : isIdentifier(expression.property)
-          ? expression.property.name
-          : "";
-
-      return /^(?:is|has|can|should|was|were|did|does|will|must|may|might|needs)[A-Z_$]/.test(
-        property,
-      );
-    }
-
-    if (isBinaryExpression(expression)) {
-      return [
-        "==",
-        "!=",
-        "===",
-        "!==",
-        "<",
-        "<=",
-        ">",
-        ">=",
-        "in",
-        "instanceof",
-      ].includes(expression.operator);
-    }
-
-    if (isLogicalExpression(expression)) {
-      return (
-        this.isBooleanExpression(expression.left) &&
-        this.isBooleanExpression(expression.right)
-      );
-    }
-
-    if (
-      isTSAsExpression(expression) ||
-      isTSNonNullExpression(expression) ||
-      isType(expression, "TSTypeAssertion")
-    ) {
-      if (this.isBooleanExpression(expression.expression)) return true;
-      const annotation = expression.typeAnnotation;
-      return (
-        annotation?.type === "TSBooleanKeyword" ||
-        annotation?.typeAnnotation?.type === "TSBooleanKeyword"
-      );
-    }
-
-    return false;
-  }
-
   private isTextExpression(expression: Node): boolean {
     return this.isRuntimeHelperCall(expression, "$txt");
   }
@@ -3156,7 +3077,10 @@ class TransformState {
               allocator,
             );
         } else {
-          callback.body = this.transformBlockStatement(callback.body, allocator);
+          callback.body = this.transformBlockStatement(
+            callback.body,
+            allocator,
+          );
         }
         return callback;
       });
@@ -3265,7 +3189,8 @@ class TransformState {
         if (
           dynamicExpressions &&
           !this.isForExpression(transformed) &&
-          !this.isIfExpression(transformed)
+          !this.isIfExpression(transformed) &&
+          !this.isNodesExpression(transformed)
         )
           return this.createDynamicExpression(transformed);
         return transformed;
@@ -3350,7 +3275,8 @@ class TransformState {
         if (
           dynamicExpressions &&
           !this.isForExpression(transformed) &&
-          !this.isIfExpression(transformed)
+          !this.isIfExpression(transformed) &&
+          !this.isNodesExpression(transformed)
         )
           return this.createDynamicExpression(transformed);
         return transformed;
@@ -3465,6 +3391,28 @@ class TransformState {
     ]);
   }
 
+  private createRenderableDynamicExpression(expression: Node): Node {
+    const value = this.generateUidIdentifier("logicalValue");
+    const body = blockStatement([
+      variableDeclaration("const", [variableDeclarator(value, expression)]),
+      returnStatement(
+        conditionalExpression(
+          binaryExpression(
+            "===",
+            unaryExpression("typeof", cloneNode(value)),
+            stringLiteral("boolean"),
+          ),
+          voidZero(),
+          cloneNode(value),
+        ),
+      ),
+    ]);
+
+    return callExpression(this.getRuntimeHelper("$nodes"), [
+      arrowFunctionExpression([], body),
+    ]);
+  }
+
   /**
    * Creates a compiler-managed conditional boundary.
    *
@@ -3494,7 +3442,10 @@ class TransformState {
       }
 
       if (isType(source, "Literal")) {
-        if (typeof source.value === "string" || typeof source.value === "number") {
+        if (
+          typeof source.value === "string" ||
+          typeof source.value === "number"
+        ) {
           // Static primitives should be text nodes, not reactive ranges.
           return this.createTextExpression(String(source.value));
         }
@@ -3608,81 +3559,31 @@ class TransformState {
       const sourceLeft = expression.left;
       const sourceRight = expression.right;
       const hasJSX =
-        this.containsJSX(sourceLeft) ||
-        this.containsJSX(sourceRight);
-      const leftIsBoolean = this.isBooleanExpression(sourceLeft);
+        this.containsJSX(sourceLeft) || this.containsJSX(sourceRight);
 
-      const left = this.transformEmbeddedExpression(
-        sourceLeft,
-        allocator,
-      );
-      const right = this.transformEmbeddedExpression(
-        sourceRight,
-        allocator,
-      );
+      const left = this.transformEmbeddedExpression(sourceLeft, allocator);
+      const right = this.transformEmbeddedExpression(sourceRight, allocator);
+
+      if (hasJSX && expression.operator === "&&") {
+        // A two-argument $if preserves the short-circuit result: the runtime
+        // renders a falsy, non-boolean left operand when no alternate is
+        // supplied, while boolean false produces no content.
+        return inheritSourceLocation(
+          this.createIfExpression(left, right, null, sourceRight, sourceLeft),
+          expression,
+        );
+      }
 
       if (hasJSX) {
-        // Preserve logical-expression values when the left operand isn't
-        // syntactically known to be boolean. Boolean values render empty,
-        // so don't manufacture a reactive range just to return one.
-        if (expression.operator === "&&") {
-          // A boolean false branch renders nothing, which is already the
-          // runtime default. Keep an alternate only when the left operand
-          // might evaluate to a renderable falsy value such as 0 or "".
-          const alternate = leftIsBoolean ? null : cloneNode(left);
-
-          return inheritSourceLocation(
-            this.createIfExpression(
-              left,
-              right,
-              alternate,
-              sourceRight,
-              sourceLeft,
-            ),
-            expression,
-          );
-        }
-
-        if (expression.operator === "||") {
-          const consequent = leftIsBoolean
-            ? booleanLiteral(false)
-            : cloneNode(left);
-
-          return inheritSourceLocation(
-            this.createIfExpression(
-              left,
-              consequent,
-              right,
-              leftIsBoolean ? consequent : sourceLeft,
-              sourceRight,
-            ),
-            expression,
-          );
-        }
-
-        if (expression.operator === "??") {
-          const test = {
-            type: "LogicalExpression",
-            operator: "&&",
-            left: binaryExpression("!==", cloneNode(left), literal(null)),
-            right: binaryExpression("!==", cloneNode(left), voidZero()),
-          };
-
-          const consequent = leftIsBoolean
-            ? booleanLiteral(false)
-            : cloneNode(left);
-
-          return inheritSourceLocation(
-            this.createIfExpression(
-              test,
-              consequent,
-              right,
-              leftIsBoolean ? consequent : sourceLeft,
-              sourceRight,
-            ),
-            expression,
-          );
-        }
+        // || and ?? can return either operand. Preserve their native JavaScript
+        // result inside a dynamic range rather than adding an alternate branch
+        // to $if for a logical expression.
+        expression.left = left;
+        expression.right = right;
+        return inheritSourceLocation(
+          this.createRenderableDynamicExpression(expression),
+          expression,
+        );
       }
 
       expression.left = left;
@@ -3696,13 +3597,9 @@ class TransformState {
       const consequentSource = expression.consequent;
       const alternateSource = expression.alternate;
       const hasJSX =
-        this.containsJSX(consequentSource) ||
-        this.containsJSX(alternateSource);
+        this.containsJSX(consequentSource) || this.containsJSX(alternateSource);
 
-      const test = this.transformEmbeddedExpression(
-        expression.test,
-        allocator,
-      );
+      const test = this.transformEmbeddedExpression(expression.test, allocator);
       const consequent = this.transformEmbeddedExpression(
         consequentSource,
         allocator,
@@ -4265,7 +4162,8 @@ class TransformState {
           );
           children.push(
             this.isForExpression(transformed) ||
-              this.isIfExpression(transformed)
+              this.isIfExpression(transformed) ||
+              this.isNodesExpression(transformed)
               ? transformed
               : this.createDynamicExpression(transformed),
           );
@@ -4475,6 +4373,7 @@ class TransformState {
       isNumericLiteral(expression) ||
       this.isForExpression(expression) ||
       this.isIfExpression(expression) ||
+      this.isNodesExpression(expression) ||
       this.isTextExpression(expression)
     ) {
       child = expression;
@@ -4497,7 +4396,7 @@ class TransformState {
  */
 export function vynnOxcPlugin(options: ReactivePluginOptions = {}): Plugin {
   return {
-    name: "vynn-oxc-jsx",
+    name: "vynn-jsx-transpiler",
     enforce: "pre",
     transform(source, id) {
       if (options.enabled === false) return null;

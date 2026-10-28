@@ -90,7 +90,7 @@ export const PokeDex = () => {
           </tr>
         </thead>
         <tbody>
-          {pokeDex.isLoading && (
+          {pokeDex.isLoading ? (
             <>
               {/* {loop(Array.from({ length: 20 }).map((_, i) => i + 1)).each((number) => (
                 <tr>
@@ -109,8 +109,7 @@ export const PokeDex = () => {
                   </tr>
                 ))}
             </>
-          )}
-          {!pokeDex.isLoading && (
+          ) : (
             <>
               {/* {loop(pokeDex.pokeDexList).each(({ name, url }, index) => (
                 <tr>

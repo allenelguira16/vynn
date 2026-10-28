@@ -3,7 +3,6 @@ import { $cmpnt } from "../render/$cmpnt";
 import { createSSRAsync, resolveNode, SSR_NODE } from "../render/resolve-node";
 import { enterAsyncBoundary } from "../context/async-context";
 import { $state } from "../reactivity/$state";
-import { $renderEffect } from "../reactivity/$effect";
 import { memo } from "../utils/memo";
 import { getOwner, runWithOwner } from "../life-cycle/owner";
 import { isServer } from "../context/is-server-context";
