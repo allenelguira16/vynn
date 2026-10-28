@@ -33,6 +33,7 @@ type RuntimeHelperName =
   | "$on"
   | "$spread"
   | "$for"
+  | "$if"
   | "$cache";
 
 type ReactivePluginOptions = {
@@ -565,6 +566,7 @@ class TransformState {
   private readonly filename: string;
   private readonly runtimeHelpers = new Map<RuntimeHelperName, Node>();
   private readonly generatedForExpressions = new WeakSet<object>();
+  private readonly generatedIfExpressions = new WeakSet<object>();
   private readonly generatedForIndexReferences = new WeakSet<object>();
   /**
    * Named .map() calls that must use a callback variant with a reactive index.
@@ -2958,6 +2960,14 @@ class TransformState {
     return this.isRuntimeHelperCall(expression, "$for");
   }
 
+  private isIfExpression(expression: Node): boolean {
+    return this.isRuntimeHelperCall(expression, "$if");
+  }
+
+  private isNodesExpression(expression: Node): boolean {
+    return this.isRuntimeHelperCall(expression, "$nodes");
+  }
+
   private isTextExpression(expression: Node): boolean {
     return this.isRuntimeHelperCall(expression, "$txt");
   }
@@ -3179,7 +3189,11 @@ class TransformState {
           expression,
           allocator,
         );
-        if (dynamicExpressions && !this.isForExpression(transformed))
+        if (
+          dynamicExpressions &&
+          !this.isForExpression(transformed) &&
+          !this.isIfExpression(transformed)
+        )
           return this.createDynamicExpression(transformed);
         return transformed;
       }
@@ -3260,7 +3274,11 @@ class TransformState {
           expression,
           allocator,
         );
-        if (dynamicExpressions && !this.isForExpression(transformed))
+        if (
+          dynamicExpressions &&
+          !this.isForExpression(transformed) &&
+          !this.isIfExpression(transformed)
+        )
           return this.createDynamicExpression(transformed);
         return transformed;
       }
@@ -3374,6 +3392,42 @@ class TransformState {
     ]);
   }
 
+  /**
+   * Creates a compiler-managed conditional boundary.
+   *
+   * Branches stay lazy. Scalar branches need their own dynamic range so
+   * reactive values keep updating while that branch is active. Existing
+   * control-flow helpers retain their own lifecycle and must not be wrapped
+   * by another $nodes call.
+   */
+  private createIfExpression(
+    test: Node,
+    consequent: Node,
+    alternate: Node,
+  ): Node {
+    const createBranch = (expression: Node): Node => {
+      if (
+        this.isForExpression(expression) ||
+        this.isIfExpression(expression) ||
+        this.isNodesExpression(expression) ||
+        this.isTextExpression(expression)
+      ) {
+        return expression;
+      }
+
+      return this.createDynamicExpression(expression);
+    };
+
+    const result = callExpression(this.getRuntimeHelper("$if"), [
+      arrowFunctionExpression([], test),
+      arrowFunctionExpression([], createBranch(consequent)),
+      arrowFunctionExpression([], createBranch(alternate)),
+    ]);
+
+    this.generatedIfExpressions.add(result);
+    return result;
+  }
+
   private createTextExpression(value: string): Node {
     return callExpression(this.getRuntimeHelper("$txt"), [
       stringLiteral(value),
@@ -3388,6 +3442,11 @@ class TransformState {
     if (
       isCallExpression(expression) &&
       this.generatedForExpressions.has(expression)
+    )
+      return expression;
+    if (
+      isCallExpression(expression) &&
+      this.generatedIfExpressions.has(expression)
     )
       return expression;
     if (
@@ -3439,29 +3498,85 @@ class TransformState {
     }
 
     if (isLogicalExpression(expression)) {
-      expression.left = this.transformEmbeddedExpression(
+      const hasJSX =
+        this.containsJSX(expression.left) ||
+        this.containsJSX(expression.right);
+
+      const left = this.transformEmbeddedExpression(
         expression.left,
         allocator,
       );
-      expression.right = this.transformEmbeddedExpression(
+      const right = this.transformEmbeddedExpression(
         expression.right,
         allocator,
       );
+
+      if (hasJSX) {
+        // Preserve JavaScript's logical-expression return value.
+        if (expression.operator === "&&") {
+          return inheritSourceLocation(
+            this.createIfExpression(left, right, cloneNode(left)),
+            expression,
+          );
+        }
+
+        if (expression.operator === "||") {
+          return inheritSourceLocation(
+            this.createIfExpression(left, cloneNode(left), right),
+            expression,
+          );
+        }
+
+        if (expression.operator === "??") {
+          const test = {
+            type: "LogicalExpression",
+            operator: "&&",
+            left: binaryExpression("!==", cloneNode(left), literal(null)),
+            right: binaryExpression("!==", cloneNode(left), voidZero()),
+          };
+
+          return inheritSourceLocation(
+            this.createIfExpression(test, cloneNode(left), right),
+            expression,
+          );
+        }
+      }
+
+      expression.left = left;
+      expression.right = right;
       return expression;
     }
     if (isConditionalExpression(expression)) {
-      expression.test = this.transformEmbeddedExpression(
+      // Only introduce a cached conditional boundary when either branch
+      // produces JSX. Ordinary scalar ternaries remain normal expressions,
+      // which is important for conditional attributes and values.
+      const hasJSX =
+        this.containsJSX(expression.consequent) ||
+        this.containsJSX(expression.alternate);
+
+      const test = this.transformEmbeddedExpression(
         expression.test,
         allocator,
       );
-      expression.consequent = this.transformEmbeddedExpression(
+      const consequent = this.transformEmbeddedExpression(
         expression.consequent,
         allocator,
       );
-      expression.alternate = this.transformEmbeddedExpression(
+      const alternate = this.transformEmbeddedExpression(
         expression.alternate,
         allocator,
       );
+
+      if (hasJSX) {
+        return inheritSourceLocation(
+          this.createIfExpression(test, consequent, alternate),
+          expression,
+        );
+      }
+
+      expression.test = test;
+      expression.consequent = consequent;
+      expression.alternate = alternate;
       return expression;
     }
     if (isCallExpression(expression)) {
@@ -3998,7 +4113,8 @@ class TransformState {
             allocator,
           );
           children.push(
-            this.isForExpression(transformed)
+            this.isForExpression(transformed) ||
+              this.isIfExpression(transformed)
               ? transformed
               : this.createDynamicExpression(transformed),
           );
@@ -4207,6 +4323,7 @@ class TransformState {
       isLiteralString(expression) ||
       isNumericLiteral(expression) ||
       this.isForExpression(expression) ||
+      this.isIfExpression(expression) ||
       this.isTextExpression(expression)
     ) {
       child = expression;

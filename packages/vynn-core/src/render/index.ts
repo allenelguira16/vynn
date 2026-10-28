@@ -2,6 +2,7 @@ export { $attr } from "./$attr";
 export { $cache } from "./$cache";
 export { $cmpnt } from "./$cmpnt";
 export { $for } from "./$for";
+export { $if } from "./$if";
 export { $insert } from "./$insert";
 export { $mount } from "./$mount";
 export { $nodes } from "./$nodes";
