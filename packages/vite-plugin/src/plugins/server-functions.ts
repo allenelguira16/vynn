@@ -1,6 +1,15 @@
-import { dirname, relative, resolve } from "node:path";
+import { existsSync } from "node:fs";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { basename, dirname, relative, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+import {
+  build,
+  type PreviewServer,
+  type ResolvedConfig,
+  type ViteDevServer,
+} from "vite";
 import { parseSync } from "oxc-parser";
-import type { ViteDevServer } from "vite";
+import { createWebRequest, writeResponse } from "./app/http.ts";
 import {
   applyBaseToEndpoint,
   normalizeAllowedOrigin,
@@ -55,14 +64,15 @@ import { registerServerFunctionDevMiddleware } from "./server-functions/dev-midd
  * serialize captured lexical variables; use function arguments for values the
  * server function needs.
  *
- * RPC is wired into Vite dev middleware. The virtual module
- * `virtual:vynn/server-functions` exposes `handleServerFunctionRequest` for
- * production custom SSR servers, and Vynn app mode integrates it automatically.
- * Production SSR builds emit implementation chunks and a dispatch manifest.
+ * RPC is wired into Vite dev middleware, even when Vynn app mode and SSR are
+ * disabled. In standalone mode, the client build also creates a separate
+ * server-functions bundle, and Vite preview mounts its handler automatically.
+ * Vynn app mode continues to integrate the handler into its own SSR server.
  * Function closures are not serialized.
  */
 export function serverFunctionsPlugin(
   options: VynnServerFunctionsOptions = {},
+  { standalone = true }: { standalone?: boolean } = {},
 ): VynnServerFunctionsPlugin {
   const endpoint = options.endpoint ?? DEFAULT_ENDPOINT;
   if (
@@ -90,9 +100,17 @@ export function serverFunctionsPlugin(
   let isBuild = false;
   let projectRoot = process.cwd();
   let resolvedEndpoint = endpoint;
+  let resolvedConfig: ResolvedConfig | undefined;
+  let isSsrBuild = false;
+  let serverFunctionsOutDir = resolve(projectRoot, "dist", "server");
   const refsByModule = new Map<string, ServerFunctionReference[]>();
   const refsById = new Map<string, ServerFunctionReference>();
   const implementationChunkRefs = new Map<string, string>();
+  // Vite's standalone `build --ssr` path may not expose an Environment
+  // consumer named "server", unlike Vynn Start's explicit SSR environment.
+  // Remember the server transform so the emitted implementation manifest is
+  // still injected into the standalone server-functions handler bundle.
+  let hasServerBuildTransform = false;
 
   const replaceModuleRefs = (
     moduleId: string,
@@ -113,11 +131,38 @@ export function serverFunctionsPlugin(
     name: "vynn-server-functions",
     enforce: "pre",
 
+    config(config, env) {
+      // Match the standard full-stack output layout even when Vynn app mode
+      // and SSR rendering are disabled. Vite preview then serves the client
+      // from <outDir>/client while the RPC implementation stays in <outDir>/server.
+      if (!standalone || env.isSsrBuild) return null;
+
+      const configuredOutDir = config.build?.outDir || "dist";
+      const clientOutDir =
+        basename(configuredOutDir) === "client"
+          ? configuredOutDir
+          : resolve(configuredOutDir, "client");
+
+      return {
+        build: {
+          outDir: clientOutDir,
+          manifest: true,
+        },
+      };
+    },
+
     configResolved(config) {
+      resolvedConfig = config;
       projectRoot = config.root;
       isDevelopment = config.command === "serve";
       isBuild = config.command === "build";
+      isSsrBuild = Boolean(config.build.ssr);
       resolvedEndpoint = applyBaseToEndpoint(config.base || "/", endpoint);
+
+      // Keep the backend outside the public client output, following the
+      // conventional <outDir>/client + <outDir>/server layout.
+      const clientOutDir = resolve(config.root, config.build.outDir || "dist");
+      serverFunctionsOutDir = resolve(dirname(clientOutDir), "server");
     },
 
     resolveId(id) {
@@ -239,7 +284,10 @@ export function serverFunctionsPlugin(
       ).environment?.config?.consumer;
       const isServer =
         environmentConsumer === "server" ||
+        isSsrBuild ||
         (transformOptions as { ssr?: boolean } | undefined)?.ssr === true;
+
+      if (isBuild && isServer) hasServerBuildTransform = true;
 
       const moduleKey = getModuleKey(projectRoot, moduleId);
       const references = marked.map(({ id: functionId, exportName }) => ({
@@ -282,11 +330,82 @@ export function serverFunctionsPlugin(
       };
     },
 
+    async closeBundle() {
+      // A normal client build only produces browser assets. Build a separate
+      // server bundle from the modules containing server functions so preview
+      // has a real RPC handler. The SSR build's own closeBundle is skipped to
+      // prevent recursive builds.
+      if (
+        !standalone ||
+        !isBuild ||
+        isSsrBuild ||
+        !resolvedConfig ||
+        refsByModule.size === 0
+      ) {
+        return;
+      }
+
+      const tempDirectory = await mkdtemp(
+        resolve(projectRoot, ".vynn-server-functions-"),
+      );
+      const entryPath = resolve(tempDirectory, "entry.ts");
+      const imports = [...refsByModule.keys()].map((moduleId) => {
+        const relativeModuleId = relative(tempDirectory, moduleId).replace(
+          /\\/g,
+          "/",
+        );
+        const specifier = relativeModuleId.startsWith(".")
+          ? relativeModuleId
+          : `./${relativeModuleId}`;
+        return `import ${JSON.stringify(specifier)};`;
+      });
+
+      try {
+        await writeFile(
+          entryPath,
+          [
+            ...imports,
+            `export { handleServerFunctionRequest } from ${JSON.stringify(SERVER_FUNCTIONS_API_ID)};`,
+            "",
+          ].join("\n"),
+          "utf8",
+        );
+
+        await build({
+          configFile: resolvedConfig.configFile || false,
+          root: projectRoot,
+          mode: resolvedConfig.mode,
+          logLevel: resolvedConfig.logLevel,
+          build: {
+            ssr: entryPath,
+            outDir: serverFunctionsOutDir,
+            emptyOutDir: true,
+            rollupOptions: {
+              output: {
+                entryFileNames: "server.js",
+              },
+            },
+          },
+        });
+
+        // The generated bundle is ESM even if the host app package uses
+        // CommonJS (or has no package.json declaring a module type).
+        await writeFile(
+          resolve(serverFunctionsOutDir, "package.json"),
+          JSON.stringify({ type: "module" }, null, 2) + "\n",
+          "utf8",
+        );
+      } finally {
+        await rm(tempDirectory, { recursive: true, force: true });
+      }
+    },
+
     generateBundle(_outputOptions, bundle) {
       const consumer = (
         this as unknown as { environment?: { config?: { consumer?: string } } }
       ).environment?.config?.consumer;
-      if (!isBuild || consumer !== "server") return;
+      if (!isBuild || (consumer !== "server" && !hasServerBuildTransform))
+        return;
       for (const output of Object.values(bundle)) {
         if (
           output.type !== "chunk" ||
@@ -324,6 +443,58 @@ export function serverFunctionsPlugin(
         isDevelopment,
         refsById,
       });
+    },
+
+    configurePreviewServer(server: PreviewServer) {
+      if (!standalone) return;
+
+      let handlerPromise:
+        | Promise<{
+            handleServerFunctionRequest: (
+              request: Request,
+            ) => Promise<Response | null>;
+          }>
+        | undefined;
+
+      // Register after Vite's static middleware so ordinary assets are still
+      // handled by preview, and unmatched paths can fall through normally.
+      return () => {
+        server.middlewares.use((req, res, next) => {
+          const pathname = new URL(req.url ?? "/", "http://vynn.local").pathname;
+          if (pathname !== resolvedEndpoint) {
+            next();
+            return;
+          }
+
+          void (async () => {
+            const handlerPath = resolve(serverFunctionsOutDir, "server.js");
+            if (!existsSync(handlerPath)) {
+              throw new Error(
+                `[Vynn use server] The standalone server-functions bundle was not found at ${handlerPath}. Run \`vite build\` before \`vite preview\`.`,
+              );
+            }
+
+            handlerPromise ??= import(
+              /* @vite-ignore */
+              pathToFileURL(handlerPath).href
+            );
+            const handler = await handlerPromise;
+            const request = createWebRequest(req, req.url ?? "/");
+            const response = await handler.handleServerFunctionRequest(request);
+            if (!response) {
+              next();
+              return;
+            }
+            await writeResponse(res, response);
+          })().catch((error: unknown) => {
+            if (res.headersSent) {
+              res.destroy(error instanceof Error ? error : undefined);
+              return;
+            }
+            next(error instanceof Error ? error : new Error(String(error)));
+          });
+        });
+      };
     },
 
     getServerFunctions() {

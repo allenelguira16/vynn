@@ -24,6 +24,9 @@
     },
     "./server": {
       "import": "./src/server/index.ts"
+    },
+    "./server/node": {
+      "import": "./src/server/node.ts"
     }
   },
   "keywords": [],

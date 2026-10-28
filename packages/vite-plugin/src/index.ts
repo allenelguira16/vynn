@@ -14,16 +14,19 @@ type VitePluginVynnOptions = {
   ssr?: boolean;
   /** Own entries, HTML serving, and build orchestration. `true` uses conventions. */
   app?: boolean | VynnAppOptions;
+  /** Enable `"use server"` RPC independently of Vynn app mode and SSR rendering. */
   serverFunctions?: boolean | VynnServerFunctionsOptions;
 };
 
 /**
  * Vite plugin for Vynn.
  *
- * `start: true` adds Solid-like Start mode. Pair it with `ssr: true` for
- * streamed SSR, automatic hydration, multi-environment builds, and SSR in
- * `vite preview`. Without `start`, the existing low-level plugin behavior is
- * retained.
+ * `app` enables Vynn Start mode. Pair it with `ssr: true` for streamed SSR,
+ * automatic hydration, multi-environment builds, and SSR in `vite preview`.
+ * `serverFunctions` can also be used on its own with a regular Vite app:
+ * Vite dev middleware handles RPC requests, and a regular build emits
+ * `dist/client` plus a separate `dist/server/server.js` handler bundle that
+ * Vite preview can mount automatically.
  */
 export default function vynn(options: VitePluginVynnOptions = {}) {
   const plugins: Plugin[] = [vynnOxcPlugin()];
@@ -36,14 +39,16 @@ export default function vynn(options: VitePluginVynnOptions = {}) {
       ? {}
       : options.serverFunctions || undefined;
 
-  if (options.serverFunctions && !options.ssr) {
-    throw new Error(
-      "[Vynn] serverFunctions requires ssr: true. Server functions execute on the server and cannot be enabled in a client-only build.",
-    );
-  }
-
   if (options.serverFunctions) {
-    plugins.push(serverFunctionsPlugin(serverFunctionsOptions));
+    plugins.push(
+      serverFunctionsPlugin(serverFunctionsOptions, {
+        // SSR builds include the handler in the SSR entry itself.
+        // Only client-only builds need a separate standalone server bundle.
+        standalone:
+          options.ssr !== true &&
+          serverFunctionsOptions?.enabled !== false,
+      }),
+    );
   }
 
   if (ssrCss) {

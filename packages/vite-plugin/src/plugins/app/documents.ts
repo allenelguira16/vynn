@@ -1,5 +1,5 @@
-import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { readdir, readFile } from "node:fs/promises";
+import { relative, resolve } from "node:path";
 import { VYNN_SSR_CSS_URL } from "../ssr-css.ts";
 import { SERVER_ENTRY_ID, type ClientAssets } from "./shared.ts";
 import { joinAssetBase } from "./http.ts";
@@ -101,10 +101,43 @@ export async function readClientAssets(outDir: string): Promise<ClientAssets> {
     );
   }
 
+  // Prefer the CSS associated with the selected entry. When CSS code
+  // splitting is disabled (or a bundler emits CSS as a standalone manifest
+  // asset), the JS entry's css list may be empty even though CSS was emitted.
+  const css = new Set(entry[1].css ?? []);
+  if (css.size === 0) {
+    for (const item of Object.values(manifest)) {
+      if (/\.css$/i.test(item.file)) css.add(item.file);
+      for (const stylesheet of item.css ?? []) css.add(stylesheet);
+    }
+  }
+  if (css.size === 0) {
+    for (const stylesheet of await findCssAssets(outDir)) css.add(stylesheet);
+  }
+
   return {
     file: entry[1].file,
-    css: entry[1].css ?? [],
+    css: [...css],
   };
+}
+
+async function findCssAssets(
+  outDir: string,
+  directory = outDir,
+): Promise<string[]> {
+  const entries = await readdir(directory, { withFileTypes: true });
+  const stylesheets: string[] = [];
+
+  for (const entry of entries) {
+    const path = resolve(directory, entry.name);
+    if (entry.isDirectory()) {
+      stylesheets.push(...(await findCssAssets(outDir, path)));
+    } else if (entry.isFile() && /\.css$/i.test(entry.name)) {
+      stylesheets.push(relative(outDir, path).replace(/\\/g, "/"));
+    }
+  }
+
+  return stylesheets;
 }
 
 export function createSsrHandlerCode(options: {
