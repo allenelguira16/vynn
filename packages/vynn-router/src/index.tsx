@@ -1,4 +1,13 @@
-import { $effect, $state, $store, createContext, onMount } from "vynn";
+import {
+  $async,
+  $computed,
+  $effect,
+  $state,
+  $store,
+  createContext,
+  onMount,
+  untrack,
+} from "vynn";
 import type { FC, PropsWithChildren } from "vynn";
 import { $nodes } from "vynn/render";
 
@@ -168,32 +177,44 @@ function findMatch(routes: Route[], parentPath = ""): MatchedRoute | undefined {
 
 /** Renders one reactive routing level. Child routes use nested outlets. */
 function RouteOutlet(props: { routes: Route[]; parentPath?: string }) {
-  const current = $state<MatchedRoute | undefined>();
+  let previousMatch: MatchedRoute | undefined;
+  let previousView: ReturnType<Route["component"]> | null = null;
 
-  $effect(() => {
+  const view = $computed(() => {
     const next = findMatch(props.routes, props.parentPath ?? "");
+
+    // Keep the existing component tree when this outlet's route is unchanged.
     if (
-      current.value?.route === next?.route &&
-      current.value?.fullPath === next?.fullPath
+      previousMatch?.route === next?.route &&
+      previousMatch?.fullPath === next?.fullPath
     ) {
-      return;
+      return previousView;
     }
-    current.value = next;
+
+    let nextView: ReturnType<Route["component"]> | null = null;
+
+    if (next) {
+      const { route, fullPath } = next;
+      const childRoutes = route.children ?? [];
+
+      const Component = route.component;
+      nextView = (
+        <Component>
+          {!!childRoutes.length && (
+            <RouteOutlet routes={childRoutes} parentPath={fullPath} />
+          )}
+        </Component>
+      );
+    }
+
+    // Cache both the match and its rendered component tree.
+    previousMatch = next;
+    previousView = nextView;
+
+    return nextView;
   });
 
-  return $nodes(() => {
-    const match = current.value;
-    if (!match) return null;
-
-    const { route, fullPath } = match;
-    return route.component({
-      get children() {
-        return (
-          <RouteOutlet routes={route.children || []} parentPath={fullPath} />
-        );
-      },
-    });
-  });
+  return <>{view.value}</>;
 }
 
 /** Creates a Router with request-local URL state, suitable for SSR. */

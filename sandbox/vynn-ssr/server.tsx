@@ -47,7 +47,7 @@ function getWriteChunk(res: Response) {
     chunk: Uint8Array<ArrayBufferLike> | string,
   ) {
     const canContinue = res.write(chunk);
-    res.flush();
+    res.flush?.();
 
     if (!canContinue) {
       await new Promise<void>((resolve) => {

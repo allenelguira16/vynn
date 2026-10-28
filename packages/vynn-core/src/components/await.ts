@@ -7,6 +7,8 @@ import { memo } from "../utils/memo";
 import { getOwner, runWithOwner } from "../life-cycle/owner";
 import { isServer } from "../context/is-server-context";
 import { $if } from "../render/$if";
+import { untrack } from "../reactivity/untrack";
+import { $effect } from "../reactivity/$effect";
 
 /**
  * Displays a fallback while the children are initially loading.
@@ -61,26 +63,28 @@ export const Await = $cmpnt(function Suspense(props: {
     }
   }
 
-  let isResolved = false;
-  const isPending = $state(false);
+  return untrack(() => {
+    let isResolved = false;
+    const isPending = $state(false);
 
-  enterAsyncBoundary((promise) => {
-    if (!isResolved && !("__lazy" in promise)) {
-      isPending.value = true;
-    }
+    enterAsyncBoundary((promise) => {
+      if (!isResolved && !("__lazy" in promise)) {
+        isPending.value = true;
+      }
 
-    promise.then(() => {
-      isPending.value = false;
+      promise.then(() => {
+        isPending.value = false;
+      });
     });
-  });
 
-  try {
-    return $if(
-      () => isPending.value,
-      () => props.fallback,
-      () => props.children,
-    );
-  } finally {
-    isResolved = true;
-  }
+    try {
+      return $if(
+        () => isPending.value,
+        () => fallback(),
+        () => children(),
+      );
+    } finally {
+      isResolved = true;
+    }
+  });
 });

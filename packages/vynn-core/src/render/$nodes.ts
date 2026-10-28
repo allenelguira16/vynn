@@ -3,12 +3,20 @@ import { $renderEffect } from "../reactivity/$effect";
 import { resolveNode, resolveSSRChild } from "./resolve-node";
 import { isServer } from "../context/is-server-context";
 
+// Associates each region's start marker with its end marker.
+// This allows an outer region to clean up nodes inserted later by nested regions.
+const rangeEndByStart = new WeakMap<Node, Node>();
+
 export function $nodes(child: () => JSX.Element): JSX.Element {
   if (isServer()) {
     return resolveSSRChild(child) as unknown as JSX.Element;
   }
 
-  const marker = document.createTextNode("");
+  const start = document.createTextNode("");
+  const end = document.createTextNode("");
+
+  rangeEndByStart.set(start, end);
+
   let nodes: Node[] = [];
   let revision = 0;
 
@@ -27,32 +35,69 @@ export function $nodes(child: () => JSX.Element): JSX.Element {
         return;
       }
 
-      const parent = marker.parentNode;
+      const parent = end.parentNode;
 
-      if (!parent) {
+      if (!parent || start.parentNode !== parent) {
         return;
       }
 
-      // Remove only nodes that are no longer part of this range.
+      const nextSet = new Set(nextNodes);
+
+      // Remove obsolete nodes, including the complete live ranges
+      // of nested $nodes regions that were inserted asynchronously.
       for (const node of previousNodes) {
-        if (!nextNodes.includes(node)) {
+        if (nextSet.has(node) || node.parentNode !== parent) {
+          continue;
+        }
+
+        const rangeEnd = rangeEndByStart.get(node);
+
+        if (rangeEnd && rangeEnd.parentNode === parent) {
+          // Confirm that the end marker is reachable from the start.
+          let cursor: Node | null = node;
+
+          while (cursor && cursor !== rangeEnd) {
+            cursor = cursor.nextSibling;
+          }
+
+          if (cursor === rangeEnd) {
+            // Remove the live range, not just the originally tracked nodes.
+            let current: Node | null = node;
+
+            while (current) {
+              const next: Node | null = current.nextSibling;
+              parent.removeChild(current);
+
+              if (current === rangeEnd) {
+                break;
+              }
+
+              current = next;
+            }
+
+            continue;
+          }
+        }
+
+        // Ordinary node, or a range whose markers are no longer together.
+        if (node.parentNode === parent) {
           parent.removeChild(node);
         }
       }
 
-      // Reconcile the range immediately before its end marker.
+      // Reconcile the new output immediately before the end marker.
       for (const node of nextNodes) {
-        parent.insertBefore(node, marker);
+        parent.insertBefore(node, end);
       }
     };
 
-    if (marker.parentNode) {
+    if (end.parentNode) {
       commit();
     } else {
-      // Initial evaluation can happen before the parent inserts the marker.
+      // Initial evaluation can happen before the parent inserts the markers.
       queueMicrotask(commit);
     }
   });
 
-  return [...nodes, marker];
+  return [start, ...nodes, end];
 }

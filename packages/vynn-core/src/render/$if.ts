@@ -2,7 +2,7 @@ import type { JSX } from "../jsx-runtime";
 import { isServer } from "../context/is-server-context";
 import { $renderEffect } from "../reactivity/$effect";
 import { resolveNode, resolveSSRChild } from "./resolve-node";
-import { isRootNode, markParked, unmarkParked } from "./$cmpnt.util";
+import { markParked, unmarkParked } from "./$cmpnt.util";
 import { untrack } from "../reactivity/untrack";
 
 type IfBranch = {
@@ -58,9 +58,7 @@ export function $if(
     const shortCircuitText =
       !key && !alternate && isShortCircuitText(value)
         ? claimInitialText
-          ? (resolveNode(
-              () => renderShortCircuitValue(value),
-            )[0] as Text)
+          ? (resolveNode(() => renderShortCircuitValue(value))[0] as Text)
           : document.createTextNode(renderShortCircuitValue(value))
         : undefined;
 
@@ -90,10 +88,7 @@ export function $if(
     return branch;
   }
 
-  function updateShortCircuitValue(
-    branch: IfBranch,
-    value: unknown,
-  ): void {
+  function updateShortCircuitValue(branch: IfBranch, value: unknown): void {
     const shouldRenderText = isShortCircuitText(value);
     const currentText = branch.shortCircuitText;
 
@@ -145,9 +140,7 @@ export function $if(
     while (node) {
       const next: Node | null = node.nextSibling;
 
-      if (isRootNode(node)) {
-        markParked(node);
-      }
+      markParked(node);
 
       branch.fragment.appendChild(node);
 
@@ -174,9 +167,7 @@ export function $if(
     }
 
     for (const node of [...branch.fragment.childNodes]) {
-      if (isRootNode(node)) {
-        unmarkParked(node);
-      }
+      unmarkParked(node);
     }
 
     parent.insertBefore(branch.fragment, marker);

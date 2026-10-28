@@ -1,35 +1,40 @@
 import { Route, Router } from "vynn-router";
-import { ErrorBoundary, JSX, Portal } from "vynn";
+import { Await, lazy, Portal } from "vynn";
 import { ButtonPageList } from "./components/button-page-list";
 import { name } from "./utils";
 
-import { Lazy } from "./pages/lazy";
-import { Forms } from "./pages/forms";
-import { Contexts } from "./pages/context";
-import { Dropdowns } from "./pages/dropdown-list";
-import { NonAsyncSuspense } from "./pages/non-async-suspense";
-import { PokeDex } from "./pages/poke-dex";
-import { PokeDexAwait } from "./pages/poke-dex-await";
-import { StackedSuspense } from "./pages/stacked-suspense";
-import { ComponentError } from "./pages/component-error";
+// import { Lazy } from "./pages/lazy";
+// import { Forms } from "./pages/forms";
+// import { Contexts } from "./pages/context";
+// import { Dropdowns } from "./pages/dropdown-list";
+// import { NonAsyncSuspense } from "./pages/non-async-suspense";
+// import { PokeDex } from "./pages/poke-dex";
+// import { PokeDexAwait } from "./pages/poke-dex-await";
+// import { StackedSuspense } from "./pages/stacked-suspense";
+// import { ComponentError } from "./pages/component-error";
 
-// const Contexts = lazy(() => import("./pages/context"), "Contexts");
-// const Dropdowns = lazy(() => import("./pages/dropdown-list"), "Dropdowns");
-// const Forms = lazy(() => import("./pages/forms"), "Forms");
-// const Lazy = lazy(() => import("./pages/lazy"), "Lazy");
-// const NonAsyncSuspense = lazy(
-//   () => import("./pages/non-async-suspense"),
-//   "NonAsyncSuspense",
-// );
-// const PokeDex = lazy(() => import("./pages/poke-dex"), "PokeDex");
-// const PokeDexAwait = lazy(
-//   () => import("./pages/poke-dex-await"),
-//   "PokeDexAwait",
-// );
-// const StackedSuspense = lazy(
-//   () => import("./pages/stacked-suspense"),
-//   "StackedSuspense",
-// );
+const Contexts = lazy(() => import("./pages/context"), "Contexts");
+const Dropdowns = lazy(() => import("./pages/dropdown-list"), "Dropdowns");
+const Forms = lazy(() => import("./pages/forms"), "Forms");
+const Lazy = lazy(() => import("./pages/lazy"), "Lazy");
+const NonAsyncSuspense = lazy(
+  () => import("./pages/non-async-suspense"),
+  "NonAsyncSuspense",
+);
+const PokeDex = lazy(() => import("./pages/poke-dex"), "PokeDex");
+const PokeDexAwait = lazy(
+  () => import("./pages/poke-dex-await"),
+  "PokeDexAwait",
+);
+const StackedSuspense = lazy(
+  () => import("./pages/stacked-suspense"),
+  "StackedSuspense",
+);
+const ComponentError = lazy(
+  () => import("./pages/component-error"),
+  "ComponentError",
+);
+
 export default function App(props: { url: string }) {
   return (
     <>
@@ -49,7 +54,7 @@ export const routes: Route[] = [
           <Portal mount={document.body}>{name.firstName}</Portal>
           <ButtonPageList />
 
-          {props.children}
+          <Await fallback="Page Is Loading">{props.children}</Await>
         </div>
       );
     },

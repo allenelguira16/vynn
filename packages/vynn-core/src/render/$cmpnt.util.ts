@@ -19,29 +19,48 @@ export function isRootNode(node: Node): boolean {
   return rootNodes.has(node);
 }
 
+function visitNodeTree(node: Node, callback: (node: Node) => void): void {
+  const stack: Node[] = [node];
+
+  while (stack.length > 0) {
+    const current = stack.pop()!;
+
+    callback(current);
+
+    for (const child of current.childNodes) {
+      stack.push(child);
+    }
+  }
+}
+
 export function markParked(node: Node): void {
-  parkedNodes.add(node);
+  visitNodeTree(node, (current) => {
+    if (rootNodes.has(current)) {
+      parkedNodes.add(current);
+    }
+  });
 }
 
 export function unmarkParked(node: Node): void {
-  parkedNodes.delete(node);
+  visitNodeTree(node, (current) => {
+    if (rootNodes.has(current)) {
+      parkedNodes.delete(current);
+    }
+  });
 }
 
 export function addUnmountListener() {
-  /**
-   * Disposes component owners when their DOM markers are removed.
-   *
-   * The observer watches the document subtree so components are cleaned up
-   * automatically when their markers leave the DOM.
-   */
   const pendingDisposals = new Set<Node>();
 
   new MutationObserver((mutations) => {
     for (const mutation of mutations) {
-      for (const node of mutation.removedNodes) {
-        if (rootNodes.has(node)) {
-          pendingDisposals.add(node);
-        }
+      for (const removedNode of mutation.removedNodes) {
+        // A removed element may contain many nested component markers.
+        visitNodeTree(removedNode, (node) => {
+          if (rootNodes.has(node)) {
+            pendingDisposals.add(node);
+          }
+        });
       }
     }
 
@@ -49,24 +68,20 @@ export function addUnmountListener() {
       for (const node of pendingDisposals) {
         pendingDisposals.delete(node);
 
-        /*
-         * The node was intentionally moved into a parking lot.
-         * It is still mounted.
-         */
+        // The component is intentionally parked by $if.
         if (parkedNodes.has(node)) {
           continue;
         }
 
-        /*
-         * It was removed and has not been reinserted.
-         */
-        if (!node.isConnected) {
-          const owner = rootNodes.get(node);
+        // The component was reinserted before disposal.
+        if (node.isConnected) {
+          continue;
+        }
 
-          // console.log(node);
-          if (owner) {
-            disposeOwner(owner);
-          }
+        const owner = rootNodes.get(node);
+
+        if (owner) {
+          disposeOwner(owner);
         }
       }
     });
