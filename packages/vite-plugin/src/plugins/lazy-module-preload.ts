@@ -194,12 +194,23 @@ export function createLazyModulePreloadScanner(): LazyModulePreloadScanner {
         const moduleId = relative(root, target).replace(/\\/g, "/");
         if (!moduleId || moduleId.startsWith("../")) continue;
 
+        // A trailing comma is already present in multiline calls such as
+        // lazy(
+        //   () => import("./Page"),
+        //   "Page",
+        // );
+        // Do not add a second comma, or the next Oxc parse will fail.
+        const hasTrailingComma = source
+          .slice(0, site.end - 1)
+          .trimEnd()
+          .endsWith(",");
+
         insertions.push({
           offset: site.end - 1,
           text:
             site.argumentCount === 1
-              ? `, undefined, ${JSON.stringify(moduleId)}`
-              : `, ${JSON.stringify(moduleId)}`,
+              ? `${hasTrailingComma ? "" : ", "}undefined, ${JSON.stringify(moduleId)}`
+              : `${hasTrailingComma ? " " : ", "}${JSON.stringify(moduleId)}`,
         });
       }
 
