@@ -12,6 +12,41 @@ import { isServer } from "../context/is-server-context";
  *
  * On the client, children are synchronized reactively.
  */
+function insertInitialNodes(element: HTMLElement, nodes: Node[]): void {
+  let previous: Node | null = null;
+
+  for (let i = 0; i < nodes.length; i++) {
+    const node = nodes[i];
+
+    // Hydration may return nodes that are already in this parent. Keep them
+    // exactly where the server placed them; insert only newly-created nodes.
+    if (node.parentNode === element) {
+      previous = node;
+      continue;
+    }
+
+    if (previous?.parentNode === element) {
+      // Place new markers/nodes immediately after the preceding rendered node.
+      element.insertBefore(node, previous.nextSibling);
+    } else {
+      // There is no preceding rendered node yet. Anchor before the next
+      // existing node, if any, rather than appending ahead of hydrated content.
+      let nextExisting: Node | null = null;
+
+      for (let j = i + 1; j < nodes.length; j++) {
+        if (nodes[j].parentNode === element) {
+          nextExisting = nodes[j];
+          break;
+        }
+      }
+
+      element.insertBefore(node, nextExisting);
+    }
+
+    previous = node;
+  }
+}
+
 export function $insert<E extends HTMLElement>(
   element: E,
   child: (() => JSX.Element) | JSX.Element,
@@ -39,23 +74,27 @@ export function $insert<E extends HTMLElement>(
       typeof child === "function" ? child : () => child,
     );
 
-    const length = Math.min(oldNodes.length, newNodes.length);
+    if (oldNodes.length === 0) {
+      insertInitialNodes(element, newNodes);
+    } else {
+      const length = Math.min(oldNodes.length, newNodes.length);
 
-    // Replace existing nodes.
-    for (let i = 0; i < length; i++) {
-      if (oldNodes[i] !== newNodes[i]) {
-        element.replaceChild(newNodes[i], oldNodes[i]);
+      // Replace existing nodes.
+      for (let i = 0; i < length; i++) {
+        if (oldNodes[i] !== newNodes[i]) {
+          element.replaceChild(newNodes[i], oldNodes[i]);
+        }
       }
-    }
 
-    // Add new nodes.
-    for (let i = length; i < newNodes.length; i++) {
-      element.insertBefore(newNodes[i], null);
-    }
+      // Add new nodes.
+      for (let i = length; i < newNodes.length; i++) {
+        element.insertBefore(newNodes[i], null);
+      }
 
-    // Remove nodes that no longer exist.
-    for (let i = newNodes.length; i < oldNodes.length; i++) {
-      element.removeChild(oldNodes[i]);
+      // Remove nodes that no longer exist.
+      for (let i = newNodes.length; i < oldNodes.length; i++) {
+        element.removeChild(oldNodes[i]);
+      }
     }
 
     oldNodes = newNodes;
