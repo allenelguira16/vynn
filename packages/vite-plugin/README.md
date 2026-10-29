@@ -42,20 +42,26 @@ production HTTP server, import `handleServerFunctionRequest` from
 
 ## Custom SSR server integration
 
-When you own the HTTP server and build an SSR entry yourself, import the
-virtual handler in that entry and export it alongside your renderer:
+When you own the HTTP server and build an SSR entry yourself, keep the entry
+focused on rendering:
 
 ```tsx
 // src/entry-server.tsx
-import { handleServerFunctionRequest } from "virtual:vynn/server-functions";
+import App from "./app";
+import { renderToServer } from "vynn/server";
 
-export { handleServerFunctionRequest };
-
-// Keep your existing render(url) export here.
+export function render(request: Request) {
+  return renderToServer(() => <App url={request.url} />, "stream");
+}
 ```
 
-Use `vynn({ ssr: true, serverFunctions: true })` in your Vite config. The
-SSR build extracts the server implementations and embeds their dispatch
+With `vynn({ ssr: true, serverFunctions: true })`, the plugin automatically
+exposes `handleServerFunctionRequest` from the configured SSR entry during
+the SSR build. You do not need to import or re-export the virtual
+`virtual:vynn/server-functions` module in application code. The generated
+production entry exposes both `render` and `handleServerFunctionRequest`.
+
+The SSR build extracts the server implementations and embeds their dispatch
 manifest into the same server entry graph, so you do not need to produce or
 load a second standalone server-functions bundle.
 

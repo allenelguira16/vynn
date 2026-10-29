@@ -103,6 +103,25 @@ export function serverFunctionsPlugin(
   let resolvedConfig: ResolvedConfig | undefined;
   let isSsrBuild = false;
   let serverFunctionsOutDir = resolve(projectRoot, "dist", "server");
+  const ssrEntryIds = new Set<string>();
+  const registerSsrEntries = (input: unknown): void => {
+    if (typeof input === "string") {
+      if (!input || input.startsWith("\0") || input.startsWith("virtual:"))
+        return;
+      ssrEntryIds.add(resolve(projectRoot, input).replace(/\\/g, "/"));
+      return;
+    }
+
+    if (Array.isArray(input)) {
+      for (const entry of input) registerSsrEntries(entry);
+      return;
+    }
+
+    if (input && typeof input === "object") {
+      for (const entry of Object.values(input as Record<string, unknown>))
+        registerSsrEntries(entry);
+    }
+  };
   const refsByModule = new Map<string, ServerFunctionReference[]>();
   const refsById = new Map<string, ServerFunctionReference>();
   const implementationChunkRefs = new Map<string, string>();
@@ -157,6 +176,12 @@ export function serverFunctionsPlugin(
       isDevelopment = config.command === "serve";
       isBuild = config.command === "build";
       isSsrBuild = Boolean(config.build.ssr);
+      ssrEntryIds.clear();
+      if (typeof config.build.ssr === "string") {
+        registerSsrEntries(config.build.ssr);
+      } else if (config.build.ssr === true) {
+        registerSsrEntries(config.build.rollupOptions.input);
+      }
       resolvedEndpoint = applyBaseToEndpoint(config.base || "/", endpoint);
 
       // Keep the backend outside the public client output, following the
@@ -217,7 +242,52 @@ export function serverFunctionsPlugin(
       const moduleId = resolve(cleanId);
       // Clear the old HMR manifest even if the edited file removed its directive.
       replaceModuleRefs(moduleId, []);
-      if (!source.includes("use server")) return null;
+
+      // Custom SSR builds expose the RPC handler from the same emitted entry
+      // as render(). Inject it here so application source needn't import the
+      // virtual server-functions API.
+      let injectedHandlerExport = false;
+      const normalizedModuleId = resolve(projectRoot, cleanId).replace(
+        /\\/g,
+        "/",
+      );
+      if (isSsrBuild && ssrEntryIds.has(normalizedModuleId)) {
+        const alreadyExportsHandler =
+          /\bexport\s*\{[^}]*\bhandleServerFunctionRequest\b[^}]*\}/s.test(
+            source,
+          );
+
+        if (!alreadyExportsHandler) {
+          const importsHandler =
+            /\bimport\s*\{[^}]*\bhandleServerFunctionRequest\b[^}]*\}\s*from\s*["']virtual:vynn\/server-functions["']/.test(
+              source,
+            );
+          const declaresHandler =
+            /\b(?:const|let|var|function|class)\s+handleServerFunctionRequest\b/.test(
+              source,
+            );
+
+          if (declaresHandler && !importsHandler) {
+            this.error(
+              "[Vynn use server] The SSR entry declares handleServerFunctionRequest. Remove that declaration so Vynn can expose its generated handler automatically.",
+            );
+          }
+
+          if (importsHandler) {
+            source += "\nexport { handleServerFunctionRequest };\n";
+          } else {
+            source +=
+              "\nexport { handleServerFunctionRequest } from " +
+              JSON.stringify(SERVER_FUNCTIONS_API_ID) +
+              ";\n";
+          }
+          injectedHandlerExport = true;
+        }
+      }
+
+      if (!source.includes("use server")) {
+        return injectedHandlerExport ? { code: source, map: null } : null;
+      }
 
       let parsed: any;
       try {
@@ -271,7 +341,9 @@ export function serverFunctionsPlugin(
           `[Vynn use server] File-level "use server" is not supported yet. Put the directive inside a function body (${cleanId}).`,
         );
       }
-      if (!marked || marked.length === 0) return null;
+      if (!marked || marked.length === 0) {
+        return injectedHandlerExport ? { code: source, map: null } : null;
+      }
 
       if (containsNestedMarkedBoundary(marked, program)) {
         this.error(
