@@ -10,7 +10,11 @@ import {
 } from "../client/hydration";
 // import { $state } from "../reactivity/$state";
 import { LAZY_END_SSR_MARKER, LAZY_START_SSR_MARKER } from "../const";
-import { getLazyID } from "../context/lazy-context";
+import {
+  getLazyID,
+  registerPromiseFromLazy,
+  regsterAsyncGetterFromLazy,
+} from "../context/lazy-context";
 import { isServer } from "../context/is-server-context";
 
 type AnyComponent = (props: never) => JSX.Element;
@@ -45,7 +49,6 @@ export function lazy<
 
   let cachedComponent: Component | undefined;
   let loadPromise: Promise<Component> | undefined;
-  let lazyID: number;
 
   function loadComponent(): Promise<Component> {
     if (loadPromise) {
@@ -72,68 +75,77 @@ export function lazy<
       return component as Component;
     });
 
-    if (!isServer()) Object.assign(loadPromise, { __lazy: true });
+    if (!isServer()) registerPromiseFromLazy(loadPromise);
+
     return loadPromise;
   }
 
   return $cmpnt(function LazyComponent(
     props: Parameters<Component>[0],
   ): JSX.Element {
-    return withLazyBoundary(() => {
-      lazyID ??= getLazyID();
-      const component = $async(loadComponent);
+    // The ID belongs to this component instance, not the lazy declaration.
+    const lazyID = getLazyID();
 
-      // // The server does not wait for client hydration.
-      // const hydrationReady = $state(!!isServer() || !isHydrating());
+    // return withLazyBoundary(() => {
+    regsterAsyncGetterFromLazy(loadComponent);
+    const component = $async(loadComponent);
 
-      // // Schedule exactly one transition for this instance.
-      // if (!isServer() && !hydrationReady.value) {
-      //   runAfterHydration(() => {
-      //     hydrationReady.value = true;
-      //   }, false);
+    // // The server does not wait for client hydration.
+    // const hydrationReady = $state(!!isServer() || !isHydrating());
+
+    // // Schedule exactly one transition for this instance.
+    // if (!isServer() && !hydrationReady.value) {
+    //   runAfterHydration(() => {
+    //     hydrationReady.value = true;
+    //   }, false);
+    // }
+
+    return $nodes(() => {
+      if (isServer()) {
+        return [
+          createSSRComment(`${LAZY_START_SSR_MARKER}:${lazyID}`),
+          component.value(props),
+          createSSRComment(`${LAZY_END_SSR_MARKER}:${lazyID}`),
+        ] as JSX.Element;
+      }
+
+      // if (!hydrationReady.value) {
+      //   return [];
       // }
 
-      return $nodes(() => {
-        if (isServer()) {
-          return [
-            createSSRComment(`${LAZY_START_SSR_MARKER}:${lazyID}`),
-            component.value(props),
-            createSSRComment(`${LAZY_END_SSR_MARKER}:${lazyID}`),
-          ] as JSX.Element;
-        }
+      if (!cachedComponent) {
+        cachedComponent = component.value;
+      }
 
-        // if (!hydrationReady.value) {
-        //   return [];
-        // }
+      syncServerRenderedLazy(lazyID);
 
-        if (!cachedComponent) {
-          cachedComponent = component.value;
-        }
-
-        syncServerRenderedLazy(lazyID);
-
-        try {
-          return cachedComponent(props);
-        } finally {
-          finishServerRenderedLazy(lazyID);
-        }
-      });
+      try {
+        return cachedComponent(props);
+      } finally {
+        finishServerRenderedLazy(lazyID);
+      }
     });
+    // });
   }) as Component;
 }
 
-let isInsideLazyBoundary = false;
+// const LAZY_BOUNDARY = Symbol("vynn.lazy-boundary");
 
-export function isInsideLazy() {
-  return isInsideLazyBoundary;
-}
+// export function isInsideLazy() {
+//   return getContext<boolean>(LAZY_BOUNDARY) ?? false;
+// }
 
-export function withLazyBoundary<T>(callback: () => T) {
-  isInsideLazyBoundary = true;
+// /**
+//  * Marks the current component owner as a lazy boundary.
+//  *
+//  * Unlike a module-level flag, owner context survives deferred SSR retries
+//  * and async reactive effects, without leaking into sibling component trees.
+//  */
+// export function withLazyBoundary<T>(callback: () => T) {
+//   if (!getOwner()) {
+//     throw new Error("[vynn]: A lazy boundary requires an active component owner.");
+//   }
 
-  try {
-    return callback();
-  } finally {
-    isInsideLazyBoundary = false;
-  }
-}
+//   setContext(LAZY_BOUNDARY, true);
+//   return callback();
+// }

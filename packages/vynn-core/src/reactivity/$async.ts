@@ -8,9 +8,10 @@ import { $state } from "./$state";
 import { $renderEffect } from "./$effect";
 import { NotReadyError } from "./not-ready-error";
 import { transaction } from "./transaction";
-import { isInsideLazy } from "../components/lazy";
+// import { isInsideLazy } from "../components/lazy";
 import { withFakeAsyncApis } from "./$async.util";
 import { isServer } from "../context/is-server-context";
+import { isAsyncGetterFromLazy } from "../context/lazy-context";
 
 export type Async<T> = {
   value: T;
@@ -40,7 +41,8 @@ export function isPending(value: object): boolean {
 }
 
 export function $async<T>(getter: () => Promise<T>): Async<T> {
-  const asyncID = getAsyncID();
+  const isLazy = isAsyncGetterFromLazy(getter);
+  const asyncID = isLazy ? undefined : getAsyncID();
   const result = $state<AsyncRecord<T> | undefined>();
   let version = 0;
 
@@ -48,9 +50,8 @@ export function $async<T>(getter: () => Promise<T>): Async<T> {
     transaction(() => {
       const currentVersion = ++version;
       const $asyncValues = getAsyncValues();
-      const isLazy = isInsideLazy();
-
-      const ssrData = isLazy ? undefined : getAsyncValue(asyncID);
+      const ssrData =
+        isLazy || asyncID === undefined ? undefined : getAsyncValue(asyncID);
 
       let promise!: Promise<T>;
 
@@ -86,7 +87,9 @@ export function $async<T>(getter: () => Promise<T>): Async<T> {
         promise.then(
           (value) => {
             if (currentVersion !== version) return;
-            if ($asyncValues && !isLazy) $asyncValues[asyncID] = value;
+            if ($asyncValues && asyncID !== undefined) {
+              $asyncValues[asyncID] = value;
+            }
 
             result.value = {
               status: "resolved",

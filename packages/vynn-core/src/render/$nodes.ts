@@ -2,22 +2,27 @@ import type { JSX } from "../jsx-runtime";
 import { $renderEffect } from "../reactivity/$effect";
 import { resolveNode, resolveSSRChild } from "./resolve-node";
 import { isServer } from "../context/is-server-context";
+import type { ServerRenderedLazyRange } from "../client/hydration";
 
 // Associates each region's start marker with its end marker.
 // This allows an outer region to clean up nodes inserted later by nested regions.
 const rangeEndByStart = new WeakMap<Node, Node>();
 
-export function $nodes(child: () => JSX.Element): JSX.Element {
+export function $nodes(
+  child: () => JSX.Element,
+  existingRange?: ServerRenderedLazyRange,
+): JSX.Element {
   if (isServer()) {
     return resolveSSRChild(child) as unknown as JSX.Element;
   }
 
-  const start = document.createTextNode("");
-  const end = document.createTextNode("");
+  const start = existingRange?.start ?? document.createTextNode("");
+  const end = existingRange?.end ?? document.createTextNode("");
 
   rangeEndByStart.set(start, end);
 
-  let nodes: Node[] = [];
+  // Existing SSR content stays between its original markers while the lazy module loads.
+  let nodes: Node[] = existingRange?.nodes ?? [];
   let revision = 0;
 
   $renderEffect(() => {
@@ -85,9 +90,24 @@ export function $nodes(child: () => JSX.Element): JSX.Element {
         }
       }
 
-      // Reconcile the new output immediately before the end marker.
+      // Walk the live range and keep nodes that are already in the right order in place.
+      // This is important during hydration: moving claimed SSR nodes can cause visible jitter.
+      let cursor: Node | null = start.nextSibling;
+
       for (const node of nextNodes) {
-        parent.insertBefore(node, end);
+        if (node === cursor) {
+          cursor = cursor.nextSibling;
+          continue;
+        }
+
+        parent.insertBefore(node, cursor && cursor !== end ? cursor : end);
+      }
+
+      // Remove any untracked leftovers still inside this region.
+      while (cursor && cursor !== end) {
+        const next: Node | null = cursor.nextSibling;
+        parent.removeChild(cursor);
+        cursor = next;
       }
     };
 

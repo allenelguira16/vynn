@@ -8,7 +8,7 @@ import { getOwner, runWithOwner } from "../life-cycle/owner";
 import { isServer } from "../context/is-server-context";
 import { $if } from "../render/$if";
 import { untrack } from "../reactivity/untrack";
-import { $effect } from "../reactivity/$effect";
+import { isPromiseFromLazy } from "../context/lazy-context";
 
 /**
  * Displays a fallback while the children are initially loading.
@@ -68,7 +68,7 @@ export const Await = $cmpnt(function Suspense(props: {
     const isPending = $state(false);
 
     enterAsyncBoundary((promise) => {
-      if (!isResolved && !("__lazy" in promise)) {
+      if (!isResolved && !isPromiseFromLazy(promise)) {
         isPending.value = true;
       }
 

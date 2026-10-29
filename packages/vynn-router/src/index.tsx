@@ -1,15 +1,5 @@
-import {
-  $async,
-  $computed,
-  $effect,
-  $state,
-  $store,
-  createContext,
-  onMount,
-  untrack,
-} from "vynn";
+import { $computed, $store, createContext, onMount } from "vynn";
 import type { FC, PropsWithChildren } from "vynn";
-import { $nodes } from "vynn/render";
 
 export type Route = {
   path: string;
