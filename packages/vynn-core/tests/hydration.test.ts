@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from "vitest";
+import type { JSX } from "../src/jsx-runtime";
 
 import {
   getServerRenderedLazyRange,
@@ -21,7 +22,7 @@ describe("hydration DOM preservation", () => {
 
     $insert(
       root,
-      () => [start, hydrated, end] as unknown as import("../src/jsx-runtime").JSX.Element,
+      () => [start, hydrated, end] as unknown as JSX.Element,
     );
 
     expect([...root.childNodes]).toEqual([start, hydrated, end]);
@@ -33,7 +34,7 @@ describe("hydration DOM preservation", () => {
     root.innerHTML =
       '<!--l:7--><span id="hydrated">already rendered</span><!--/l:7--><i id="after"></i>';
 
-    let range: ReturnType<typeof getServerRenderedLazyRange>;
+    let range: ReturnType<typeof getServerRenderedLazyRange> = undefined;
 
     withHydration(() => {
       range = getServerRenderedLazyRange(7);
@@ -47,7 +48,7 @@ describe("hydration DOM preservation", () => {
     const insertBefore = vi.spyOn(root, "insertBefore");
 
     const result = $nodes(
-      () => [hydrated, added] as unknown as import("../src/jsx-runtime").JSX.Element,
+      () => [hydrated, added] as unknown as JSX.Element,
       range,
     );
 
