@@ -9,7 +9,7 @@ import type {
   UserConfig,
   ViteDevServer,
 } from "vite";
-import type { VynnSsrCssCollector } from "./ssr-css.ts";
+import type { VynnSsrCssCollector, VynnSsrCssLink } from "./ssr-css.ts";
 import type { VynnServerFunctionsOptions } from "./server-functions.ts";
 import {
   CLIENT_ENTRY_ID,
@@ -385,12 +385,16 @@ export function vynnStartPlugin({
             const handler = (await ssrEnvironment.runner.import(
               SSR_HANDLER_ID,
             )) as {
-              handleRequest: (request: Request) => Promise<Response>;
+              handleRequest: (
+                request: Request,
+                cssLinks?: VynnSsrCssLink[],
+              ) => Promise<Response>;
             };
 
             const requestUrl = addBaseToRequestUrl(base, req.url ?? "/");
             const request = createWebRequest(req, requestUrl);
-            const response = await handler.handleRequest(request);
+            const cssLinks = ssrCss ? await ssrCss.getCssLinks(server) : [];
+            const response = await handler.handleRequest(request, cssLinks);
             await writeResponse(res, response);
           })().catch((error: unknown) => {
             if (res.headersSent) {

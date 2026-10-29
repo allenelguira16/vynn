@@ -1,6 +1,5 @@
 import { readdir, readFile } from "node:fs/promises";
 import { relative, resolve } from "node:path";
-import { VYNN_SSR_CSS_URL } from "../ssr-css.ts";
 import { SERVER_ENTRY_ID, type ClientAssets } from "./shared.ts";
 import { joinAssetBase } from "./http.ts";
 
@@ -11,7 +10,6 @@ type ManifestEntry = {
   name?: string;
 };
 
-const DEV_CSS_URL = VYNN_SSR_CSS_URL;
 
 export function createClientEntry(
   appSpecifier: string,
@@ -165,7 +163,6 @@ export function createSsrHandlerCode(options: {
     `const TITLE = ${JSON.stringify(title)};`,
     `const MOUNT_ID = ${JSON.stringify(mountId)};`,
     `const IS_DEV = ${JSON.stringify(dev)};`,
-    `const DEV_CSS_URL = ${JSON.stringify(DEV_CSS_URL)};`,
     `function escapeAttribute(value) { return String(value).replace(/&/g, "&amp;").replace(/\"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }`,
     `function assetUrl(path) {`,
     `  const value = String(path).replace(/^\\/+/, "");`,
@@ -174,9 +171,9 @@ export function createSsrHandlerCode(options: {
     `  const prefix = BASE === "/" ? "" : BASE.replace(/\\/$/, "");`,
     `  return prefix + "/" + value;`,
     `}`,
-    `function documentPrefix() {`,
+    `function documentPrefix(devCssLinks = []) {`,
     `  const css = IS_DEV`,
-    `    ? '<link rel="stylesheet" href="' + assetUrl(DEV_CSS_URL) + '">'`,
+    `    ? devCssLinks.map(({ url, id }) => '<link rel="stylesheet" data-vite-dev-id="' + escapeAttribute(id) + '" href="' + escapeAttribute(assetUrl(url + "?direct")) + '">').join("")`,
     `    : CSS_ASSETS.map((file) => '<link rel="stylesheet" href="' + escapeAttribute(assetUrl(file)) + '">').join("");`,
     `  const viteClient = IS_DEV ? '<script type="module" src="' + escapeAttribute(assetUrl("/@vite/client")) + '"></script>' : "";`,
     `  return '<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>' + TITLE.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") + '</title>' + css + viteClient + '</head><body><div id="' + escapeAttribute(MOUNT_ID) + '">';`,
@@ -187,12 +184,12 @@ export function createSsrHandlerCode(options: {
     `  if (value instanceof Uint8Array) return new Response(value).body;`,
     `  throw new TypeError("[Vynn Start] The server entry render() must return a string, Uint8Array, or ReadableStream.");`,
     `}`,
-    `function withDocument(body) {`,
+    `function withDocument(body, devCssLinks) {`,
     `  const reader = body.getReader();`,
     `  const encoder = new TextEncoder();`,
     `  return new ReadableStream({`,
     `    async start(controller) {`,
-    `      controller.enqueue(encoder.encode(documentPrefix()));`,
+    `      controller.enqueue(encoder.encode(documentPrefix(devCssLinks)));`,
     `      try {`,
     `        while (true) {`,
     `          const result = await reader.read();`,
@@ -207,7 +204,7 @@ export function createSsrHandlerCode(options: {
     `    cancel(reason) { return reader.cancel(reason); },`,
     `  });`,
     `}`,
-    `export async function handleRequest(request) {`,
+    `export async function handleRequest(request, devCssLinks = []) {`,
     ...(serverFunctions
       ? [
           `  const serverFunctionResponse = await handleServerFunctionRequest(request);`,
@@ -222,7 +219,7 @@ export function createSsrHandlerCode(options: {
     `  if (request.method === "HEAD") return new Response(null, { status: 200, headers });`,
     `  const result = await render(url.pathname + url.search);`,
     `  if (result instanceof Response) return result;`,
-    `  return new Response(withDocument(asReadableStream(result)), { status: 200, headers });`,
+    `  return new Response(withDocument(asReadableStream(result), devCssLinks), { status: 200, headers });`,
     `}`,
     `export default { fetch(request) { return handleRequest(request); } };`,
     "",

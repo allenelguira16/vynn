@@ -17,14 +17,21 @@ type ClientEnvironment = {
   };
 };
 
+export type VynnSsrCssLink = {
+  url: string;
+  id: string;
+};
+
 export type VynnSsrCssCollector = {
   plugin: Plugin;
   registerEntryUrl(url: string): void;
+  getCssLinks(server: ViteDevServer): Promise<VynnSsrCssLink[]>;
 };
 
 export function createVynnSsrCssPlugin(): VynnSsrCssCollector {
   let base = "/";
   let isServe = false;
+  let devServer: ViteDevServer | undefined;
 
   const entryUrls = new Set<string>();
 
@@ -59,7 +66,7 @@ export function createVynnSsrCssPlugin(): VynnSsrCssCollector {
     transformIndexHtml: {
       order: "pre",
 
-      handler(html) {
+      async handler(html) {
         if (!isServe) return;
 
         const scriptRE = /<script\b[^>]*\bsrc\s*=\s*(["'])(.*?)\1[^>]*>/gi;
@@ -78,20 +85,25 @@ export function createVynnSsrCssPlugin(): VynnSsrCssCollector {
           registerEntryUrl(src);
         }
 
-        return [
-          {
-            tag: "link",
-            injectTo: "head",
-            attrs: {
-              rel: "stylesheet",
-              href: joinBase(base, VYNN_SSR_CSS_URL),
-            },
+        const links = devServer
+          ? await collectCssLinks(devServer, entryUrls)
+          : [];
+
+        return links.map(({ url, id }) => ({
+          tag: "link" as const,
+          injectTo: "head" as const,
+          attrs: {
+            rel: "stylesheet",
+            href: joinBase(base, `${url}?direct`),
+            "data-vite-dev-id": id,
           },
-        ];
+        }));
       },
     },
 
     configureServer(server: ViteDevServer) {
+      devServer = server;
+
       server.middlewares.use((req, res, next) => {
         const pathname = new URL(req.url ?? "/", "http://vynn.local").pathname;
 
@@ -100,11 +112,11 @@ export function createVynnSsrCssPlugin(): VynnSsrCssCollector {
           return;
         }
 
-        void collectCssUrls(server, entryUrls)
-          .then((urls) => {
-            const css = urls
+        void collectCssLinks(server, entryUrls)
+          .then((links) => {
+            const css = links
               .map(
-                (url) =>
+                ({ url }) =>
                   `@import url(${JSON.stringify(
                     joinBase(base, `${url.split("?", 1)[0]}?direct`),
                   )});`,
@@ -124,18 +136,21 @@ export function createVynnSsrCssPlugin(): VynnSsrCssCollector {
   return {
     plugin,
     registerEntryUrl,
+    getCssLinks(server) {
+      return collectCssLinks(server, entryUrls);
+    },
   };
 }
 
-async function collectCssUrls(
+async function collectCssLinks(
   server: ViteDevServer,
   entryUrls: Set<string>,
-): Promise<string[]> {
+): Promise<VynnSsrCssLink[]> {
   const environment = server.environments
     .client as unknown as ClientEnvironment;
 
   const visited = new Set<string>();
-  const cssUrls = new Set<string>();
+  const cssUrls = new Map<string, string>();
 
   function isGlobModule(module: ModuleNode): boolean {
     const id = module.id ?? module.file ?? module.url;
@@ -228,7 +243,11 @@ async function collectCssUrls(
     const cssModule = isCssModule(module);
 
     if (cssModule) {
-      cssUrls.add(module.url.split("?", 1)[0]);
+      const url = module.url.split("?", 1)[0];
+      const id = (module.id ?? module.file ?? module.url)
+        .split("?", 1)[0]
+        .replace(/\\/g, "/");
+      cssUrls.set(url, id);
     }
 
     const dependencies = [...module.importedModules].filter((dependency) => {
@@ -248,9 +267,9 @@ async function collectCssUrls(
       return isCssModule(dependency) || isScriptModule(dependency);
     });
 
-    await Promise.all(
-      dependencies.map((dependency) => visitModule(dependency, cssModule)),
-    );
+    for (const dependency of dependencies) {
+      await visitModule(dependency, cssModule);
+    }
   }
 
   async function visitEntry(url: string): Promise<void> {
@@ -285,7 +304,7 @@ async function collectCssUrls(
 
   await Promise.all([...entryUrls].map(visitEntry));
 
-  return [...cssUrls];
+  return [...cssUrls].map(([url, id]) => ({ url, id }));
 }
 
 function normalizeEntryUrl(src: string, base: string): string {
