@@ -15,6 +15,7 @@ import {
   getLazyID,
   registerPromiseFromLazy,
   regsterAsyncGetterFromLazy,
+  registerUsedLazyModule,
 } from "../context/lazy-context";
 import { isServer } from "../context/is-server-context";
 
@@ -26,26 +27,40 @@ type ComponentExport<
 > = M[K] extends AnyComponent ? M[K] : never;
 
 /**
+ * A component returned by lazy(). Calling preload() starts its module import
+ * without rendering the component.
+ */
+export type LazyComponent<C> = C & {
+  preload: () => Promise<C>;
+};
+
+/**
  * Lazily loads a component.
  *
  * The module-loading promise is shared across all instances created
  * from this lazy declaration. Each instance retains its own $async
  * state so Vynn's existing Await integration remains intact.
+ *
+ * Call the returned component's preload() method before it is needed to start
+ * its dynamic import early. This loads and evaluates the module, but does not
+ * invoke the component function.
  */
 export function lazy<M extends Record<string, unknown>, K extends keyof M>(
   loader: () => Promise<M>,
   namedExport: K,
-): ComponentExport<M, K>;
+): LazyComponent<ComponentExport<M, K>>;
 export function lazy<
   M extends Record<string, unknown> & { default: AnyComponent },
->(loader: () => Promise<M>): M["default"];
+>(loader: () => Promise<M>): LazyComponent<M["default"]>;
 export function lazy<
   M extends Record<string, unknown>,
   K extends keyof M = "default" & keyof M,
 >(
   loader: () => Promise<M>,
   namedExport = "default" as K,
-): ComponentExport<M, K> {
+  // Vite injects this internal ID so SSR can preload only rendered client chunks.
+  moduleId?: string,
+): LazyComponent<ComponentExport<M, K>> {
   type Component = ComponentExport<M, K>;
 
   let cachedComponent: Component | undefined;
@@ -81,11 +96,12 @@ export function lazy<
     return loadPromise;
   }
 
-  return $cmpnt(function LazyComponent(
+  const LazyComponent = $cmpnt(function LazyComponent(
     props: Parameters<Component>[0],
   ): JSX.Element {
     // The ID belongs to this component instance, not the lazy declaration.
     const lazyID = getLazyID();
+    if (isServer()) registerUsedLazyModule(moduleId);
 
     // return withLazyBoundary(() => {
     regsterAsyncGetterFromLazy(loadComponent);
@@ -131,6 +147,8 @@ export function lazy<
     }, existingRange);
     // });
   }) as Component;
+
+  return Object.assign(LazyComponent, { preload: loadComponent });
 }
 
 // const LAZY_BOUNDARY = Symbol("vynn.lazy-boundary");

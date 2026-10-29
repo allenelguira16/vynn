@@ -1,4 +1,4 @@
-export { renderToServer } from "./render-to-server";
+export { renderToServer, getServerRenderLazyModules } from "./render-to-server";
 
 export {
   getServerFunctionContext,

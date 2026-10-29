@@ -19,7 +19,7 @@ export { createContext } from "./context/provider-context";
 
 export { Await } from "./components/await";
 export { ErrorBoundary } from "./components/error-boundary";
-export { lazy } from "./components/lazy";
+export { lazy, type LazyComponent } from "./components/lazy";
 export { Portal } from "./components/portal";
 
 export { type JSX } from "./types/jsx";

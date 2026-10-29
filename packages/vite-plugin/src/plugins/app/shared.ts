@@ -28,6 +28,7 @@ export type ResolvedEntries = {
 export type ClientAssets = {
   file: string;
   css: string[];
+  lazyModuleAssets: Record<string, string>;
 };
 
 export const CLIENT_ENTRY_ID = "virtual:vynn/client-entry";

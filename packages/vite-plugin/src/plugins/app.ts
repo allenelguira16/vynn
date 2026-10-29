@@ -305,6 +305,7 @@ export function vynnStartPlugin({
 
         return createSsrHandlerCode({
           clientEntryUrl,
+          lazyModuleAssets: assets?.lazyModuleAssets ?? {},
           css: assets?.css ?? [],
           base,
           title,
@@ -354,21 +355,23 @@ export function vynnStartPlugin({
           }
 
           if (!ssr) {
-            writeResponse(
-              res,
-              new Response(
-                createClientShell({
-                  base,
-                  title,
-                  mountId,
-                  clientEntryUrl: getClientEntryDevUrl(entries, root(), base),
-                  dev: true,
-                }),
-                {
-                  headers: { "content-type": "text/html; charset=utf-8" },
-                },
-              ),
-            ).catch(next);
+            void (async () => {
+              await writeResponse(
+                res,
+                new Response(
+                  createClientShell({
+                    base,
+                    title,
+                    mountId,
+                    clientEntryUrl: getClientEntryDevUrl(entries, root(), base),
+                    dev: true,
+                  }),
+                  {
+                    headers: { "content-type": "text/html; charset=utf-8" },
+                  },
+                ),
+              );
+            })().catch(next);
             return;
           }
 

@@ -9,6 +9,8 @@ type ManifestEntry = {
   css?: string[];
   isEntry?: boolean;
   name?: string;
+  imports?: string[];
+  dynamicImports?: string[];
 };
 
 const DEV_CSS_URL = VYNN_SSR_CSS_URL;
@@ -72,7 +74,9 @@ export function createServerEntry(
   ].join("\n");
 }
 
-export async function readClientAssets(outDir: string): Promise<ClientAssets> {
+export async function readClientAssets(
+  outDir: string,
+): Promise<ClientAssets> {
   const manifestPath = resolve(outDir, ".vite/manifest.json");
   let manifest: Record<string, ManifestEntry>;
   try {
@@ -101,6 +105,8 @@ export async function readClientAssets(outDir: string): Promise<ClientAssets> {
     );
   }
 
+  const lazyModuleAssets = readLazyModuleAssets(manifest, entry[0]);
+
   // Prefer the CSS associated with the selected entry. When CSS code
   // splitting is disabled (or a bundler emits CSS as a standalone manifest
   // asset), the JS entry's css list may be empty even though CSS was emitted.
@@ -118,7 +124,26 @@ export async function readClientAssets(outDir: string): Promise<ClientAssets> {
   return {
     file: entry[1].file,
     css: [...css],
+    lazyModuleAssets,
   };
+}
+
+function readLazyModuleAssets(
+  manifest: Record<string, ManifestEntry>,
+  clientEntryKey: string,
+): Record<string, string> {
+  const assets: Record<string, string> = {};
+
+  // Runtime SSR tracking selects the modules needed for each response.
+  // Keep the full source-to-chunk map available to that runtime.
+  for (const [key, chunk] of Object.entries(manifest)) {
+    const manifestPath = key.replace(/\\/g, "/").replace(/^\/+/, "");
+    if (key !== clientEntryKey && /\.m?js$/i.test(chunk.file)) {
+      assets[manifestPath] = chunk.file;
+    }
+  }
+
+  return assets;
 }
 
 async function findCssAssets(
@@ -143,17 +168,27 @@ async function findCssAssets(
 export function createSsrHandlerCode(options: {
   clientEntryUrl: string;
   css: string[];
+  lazyModuleAssets: Record<string, string>;
   base: string;
   title: string;
   mountId: string;
   dev: boolean;
   serverFunctions: boolean;
 }): string {
-  const { clientEntryUrl, css, base, title, mountId, dev, serverFunctions } =
-    options;
+  const {
+    clientEntryUrl,
+    css,
+    lazyModuleAssets,
+    base,
+    title,
+    mountId,
+    dev,
+    serverFunctions,
+  } = options;
 
   return [
     `import { render } from ${JSON.stringify(SERVER_ENTRY_ID)};`,
+    `import { getServerRenderLazyModules } from "vynn/server";`,
     ...(serverFunctions
       ? [
           `import { handleServerFunctionRequest } from "virtual:vynn/server-functions";`,
@@ -161,6 +196,7 @@ export function createSsrHandlerCode(options: {
       : []),
     `const CLIENT_ENTRY_URL = ${JSON.stringify(clientEntryUrl)};`,
     `const CSS_ASSETS = ${JSON.stringify(css)};`,
+    `const LAZY_MODULE_ASSETS = ${JSON.stringify(lazyModuleAssets)};`,
     `const BASE = ${JSON.stringify(base)};`,
     `const TITLE = ${JSON.stringify(title)};`,
     `const MOUNT_ID = ${JSON.stringify(mountId)};`,
@@ -174,12 +210,24 @@ export function createSsrHandlerCode(options: {
     `  const prefix = BASE === "/" ? "" : BASE.replace(/\\/$/, "");`,
     `  return prefix + "/" + value;`,
     `}`,
-    `function documentPrefix() {`,
+    `function collectModulePreloadLinks(moduleIds, emitted) {`,
+    `  const links = [];`,
+    `  for (const moduleId of moduleIds) {`,
+    `    const file = IS_DEV ? moduleId : LAZY_MODULE_ASSETS[moduleId];`,
+    `    if (!file) continue;`,
+    `    const href = assetUrl(file);`,
+    `    if (emitted.has(href)) continue;`,
+    `    emitted.add(href);`,
+    `    links.push('<link rel="modulepreload" href="' + escapeAttribute(href) + '">');`,
+    `  }`,
+    `  return links.join("");`,
+    `}`,
+    `function documentPrefix(modulePreloadLinks) {`,
     `  const css = IS_DEV`,
     `    ? '<link rel="stylesheet" href="' + assetUrl(DEV_CSS_URL) + '">'`,
     `    : CSS_ASSETS.map((file) => '<link rel="stylesheet" href="' + escapeAttribute(assetUrl(file)) + '">').join("");`,
     `  const viteClient = IS_DEV ? '<script type="module" src="' + escapeAttribute(assetUrl("/@vite/client")) + '"></script>' : "";`,
-    `  return '<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>' + TITLE.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") + '</title>' + css + viteClient + '</head><body><div id="' + escapeAttribute(MOUNT_ID) + '">';`,
+    `  return '<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>' + TITLE.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") + '</title>' + css + modulePreloadLinks + viteClient + '</head><body><div id="' + escapeAttribute(MOUNT_ID) + '">';`,
     `}`,
     `function asReadableStream(value) {`,
     `  if (value instanceof ReadableStream) return value;`,
@@ -187,16 +235,24 @@ export function createSsrHandlerCode(options: {
     `  if (value instanceof Uint8Array) return new Response(value).body;`,
     `  throw new TypeError("[Vynn Start] The server entry render() must return a string, Uint8Array, or ReadableStream.");`,
     `}`,
-    `function withDocument(body) {`,
+    `function withDocument(body, usedLazyModules) {`,
     `  const reader = body.getReader();`,
     `  const encoder = new TextEncoder();`,
+    `  const emittedPreloads = new Set();`,
     `  return new ReadableStream({`,
     `    async start(controller) {`,
-    `      controller.enqueue(encoder.encode(documentPrefix()));`,
+    `      let documentStarted = false;`,
     `      try {`,
     `        while (true) {`,
     `          const result = await reader.read();`,
+    `          if (!documentStarted) {`,
+    `            const links = collectModulePreloadLinks(usedLazyModules, emittedPreloads);`,
+    `            controller.enqueue(encoder.encode(documentPrefix(links)));`,
+    `            documentStarted = true;`,
+    `          }`,
     `          if (result.done) break;`,
+    `          const lateLinks = collectModulePreloadLinks(usedLazyModules, emittedPreloads);`,
+    `          if (lateLinks) controller.enqueue(encoder.encode(lateLinks));`,
     `          controller.enqueue(result.value);`,
     `        }`,
     `        controller.enqueue(encoder.encode('</div><script type="module" src="' + escapeAttribute(CLIENT_ENTRY_URL) + '"></script></body></html>'));`,
@@ -220,9 +276,11 @@ export function createSsrHandlerCode(options: {
     `  const url = new URL(request.url);`,
     `  const headers = { "content-type": "text/html; charset=utf-8" };`,
     `  if (request.method === "HEAD") return new Response(null, { status: 200, headers });`,
-    `  const result = await render(url.pathname + url.search);`,
+    `  const renderResult = render(url.pathname + url.search);`,
+    `  const usedLazyModules = getServerRenderLazyModules(renderResult);`,
+    `  const result = await renderResult;`,
     `  if (result instanceof Response) return result;`,
-    `  return new Response(withDocument(asReadableStream(result)), { status: 200, headers });`,
+    `  return new Response(withDocument(asReadableStream(result), usedLazyModules), { status: 200, headers });`,
     `}`,
     `export default { fetch(request) { return handleRequest(request); } };`,
     "",

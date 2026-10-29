@@ -7,13 +7,28 @@ import { initializeAsyncContext } from "../context/async-context";
 import { initializeLazyContext } from "../context/lazy-context";
 import { initializeErrorBoundaryContext } from "../context/error-boundary-context";
 
+const usedLazyModulesByRender = new WeakMap<object, Set<string>>();
+
+/** @internal Returns the live set of lazy module IDs used by a server render result. */
+export function getServerRenderLazyModules(result: unknown): Set<string> {
+  if (
+    (typeof result !== "object" && typeof result !== "function") ||
+    result === null
+  ) {
+    return new Set();
+  }
+
+  return usedLazyModulesByRender.get(result as object) ?? new Set();
+}
+
 export function renderToServer(App: () => JSX.Element, mode: RenderMode) {
   const owner = createOwner();
+  let usedLazyModules: Set<string> | undefined;
 
-  return runWithOwner(owner, () => {
+  const result = runWithOwner(owner, () => {
     setRenderMode(mode);
 
-    initializeLazyContext();
+    usedLazyModules = initializeLazyContext();
     initializeAsyncContext();
     initializeErrorBoundaryContext();
 
@@ -30,4 +45,14 @@ export function renderToServer(App: () => JSX.Element, mode: RenderMode) {
       }
     }
   });
+
+  if (
+    usedLazyModules &&
+    result !== null &&
+    (typeof result === "object" || typeof result === "function")
+  ) {
+    usedLazyModulesByRender.set(result as object, usedLazyModules);
+  }
+
+  return result;
 }

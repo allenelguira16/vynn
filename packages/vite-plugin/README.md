@@ -1,5 +1,49 @@
 # Vynn Vite plugin
 
+## Lazy component preloading
+
+A component returned by Vynn's `lazy()` helper exposes `preload()`. Call it
+only when you have a reason to expect that specific component will be needed,
+such as when the user hovers over its navigation link or starts a route
+transition:
+
+```tsx
+import { lazy } from "vynn";
+
+const SettingsPage = lazy(() => import("./pages/settings"), "SettingsPage");
+
+function onSettingsLinkIntent() {
+  // Start loading this component, without rendering it.
+  void SettingsPage.preload();
+}
+
+// Render it when the route is actually selected.
+<SettingsPage />;
+```
+
+`preload()` returns a promise for the selected component and shares the same
+cached import used by normal rendering. Repeated calls do not start another
+import, and preloading does not invoke the component function. With Vite, the
+dynamic import uses Vite's chunk-loading path, including dependency preloading.
+
+With Vynn app mode and SSR enabled, the Vite plugin tracks the lazy
+components actually reached during each server render and emits
+`<link rel="modulepreload">` only for their client chunks. It does not preload
+every route just because its `lazy()` declaration exists. This works without
+calling `.preload()`: the server-rendered route determines which links are
+emitted, while unused route chunks stay out of the initial response.
+
+In client-only mode there is no server render from which to infer the active
+route, so lazy modules load when rendered unless you call `preload()` based on
+user intent. The same explicit method can warm a likely next route in either
+mode.
+
+For a custom standalone SSR server, `getServerRenderLazyModules(result)`
+from `vynn/server` exposes the live set of source module IDs reached by a
+`renderToServer()` result. Since a custom server owns its document and HTTP
+response, it must use that set with its client manifest to insert the matching
+module-preload links. The generated Vynn app-mode handler does this automatically.
+
 ## Standalone server functions
 
 Server functions can be enabled without Vynn app mode or SSR rendering:

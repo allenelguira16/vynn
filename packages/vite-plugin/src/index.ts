@@ -2,6 +2,7 @@
 
 import type { Plugin } from "vite";
 import { vynnOxcPlugin } from "./plugins/jsx-transpiler.ts";
+import { createLazyModulePreloadScanner } from "./plugins/lazy-module-preload.ts";
 import { vynnStartPlugin, type VynnAppOptions } from "./plugins/app.ts";
 import { createVynnSsrCssPlugin } from "./plugins/ssr-css.ts";
 import {
@@ -29,9 +30,9 @@ type VitePluginVynnOptions = {
  * Vite preview can mount automatically.
  */
 export default function vynn(options: VitePluginVynnOptions = {}) {
-  const plugins: Plugin[] = [vynnOxcPlugin()];
-
   const startEnabled = options.app !== undefined && options.app !== false;
+  const lazyPreload = createLazyModulePreloadScanner();
+  const plugins: Plugin[] = [lazyPreload.plugin, vynnOxcPlugin()];
 
   const ssrCss = options.ssr ? createVynnSsrCssPlugin() : undefined;
   const serverFunctionsOptions =

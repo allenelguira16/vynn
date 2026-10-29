@@ -3,9 +3,19 @@ import { getContext, modifyContext, setContext } from "../life-cycle/owner";
 // LAZY ID CONTEXT
 
 const LAZY_ID = Symbol("vynn.lazy-id");
+const USED_LAZY_MODULES = Symbol("vynn.used-lazy-modules");
 
 export function initializeLazyContext() {
   setContext(LAZY_ID, 0);
+  const modules = new Set<string>();
+  setContext(USED_LAZY_MODULES, modules);
+  return modules;
+}
+
+/** Records a lazy module only when its component participates in an SSR render. */
+export function registerUsedLazyModule(moduleId: string | undefined) {
+  if (!moduleId) return;
+  getContext<Set<string>>(USED_LAZY_MODULES)?.add(moduleId);
 }
 
 export function getLazyID() {
