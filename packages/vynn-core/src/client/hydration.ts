@@ -145,6 +145,21 @@ export function claimHydrationText() {
   }
 }
 
+export function getServerRenderedLazyRange(
+  lazyID: number,
+): ServerRenderedLazyRange | undefined {
+  const range = serverRenderedLazy.get(lazyID);
+
+  if (!range?.start || !range.end) {
+    return undefined;
+  }
+
+  return {
+    start: range.start,
+    end: range.end,
+  };
+}
+
 export function syncServerRenderedLazy(lazyID: number) {
   if (isServer() || syncedLazyHydration.has(lazyID)) {
     return;
@@ -176,9 +191,16 @@ const LAZY_END_REGEX = new RegExp(`^${LAZY_END_SSR_MARKER}:(\\d+)$`);
 
 const HTML_NAMESPACE = "http://www.w3.org/1999/xhtml";
 
+export type ServerRenderedLazyRange = {
+  start: Comment;
+  end: Comment;
+};
+
 type LazyHydrationNodes = {
   elements: HTMLElement[];
   texts: Text[];
+  start?: Comment;
+  end?: Comment;
 };
 
 function isHTMLElement(node: Node): node is HTMLElement {
@@ -247,11 +269,11 @@ function getServerRenderedNodes(root: Node) {
       if (start) {
         const id = Number(start[1]);
 
-        // Create an entry even when the lazy range is empty.
-        getOrCreateLazyNodes(id);
+        // Keep the SSR boundary in the DOM so the client can reuse its exact
+        // position instead of moving hydrated content into newly-created markers.
+        getOrCreateLazyNodes(id).start = node;
 
         boundaryStack.push(id);
-        node.parentNode?.removeChild(node);
         return;
       }
 
@@ -261,6 +283,9 @@ function getServerRenderedNodes(root: Node) {
         const id = Number(end[1]);
         const index = boundaryStack.lastIndexOf(id);
 
+        // Keep the closing boundary as the reusable end anchor.
+        getOrCreateLazyNodes(id).end = node;
+
         if (index !== -1) {
           // Close this boundary and any nested entries above it.
           boundaryStack.splice(index);
@@ -268,7 +293,6 @@ function getServerRenderedNodes(root: Node) {
           console.warn(`[vynn] Unmatched lazy boundary end marker: ${value}`);
         }
 
-        node.parentNode?.removeChild(node);
         return;
       }
 
