@@ -2,23 +2,29 @@ import type { JSX } from "../jsx-runtime";
 import { $renderEffect } from "../reactivity/$effect";
 import { resolveNode, resolveSSRChild } from "./resolve-node";
 import { isServer } from "../context/is-server-context";
+import type { ServerRenderedLazyRange } from "../client/hydration";
 
 // Associates each region's start marker with its end marker.
 // This allows an outer region to clean up nodes inserted later by nested regions.
 const rangeEndByStart = new WeakMap<Node, Node>();
 
-export function $nodes(child: () => JSX.Element): JSX.Element {
+export function $nodes(
+  child: () => JSX.Element,
+  existingRange?: ServerRenderedLazyRange,
+): JSX.Element {
   if (isServer()) {
     return resolveSSRChild(child) as unknown as JSX.Element;
   }
 
-  const start = document.createTextNode("");
-  const end = document.createTextNode("");
+  const start = existingRange?.start ?? document.createTextNode("");
+  const end = existingRange?.end ?? document.createTextNode("");
 
   rangeEndByStart.set(start, end);
 
-  // Existing SSR content stays between its original markers while the lazy module loads.
-  let nodes: Node[] = [];
+  // Reuse the existing SSR contents while the lazy module is hydrating.
+  // If the first evaluation suspends, these nodes remain between the original
+  // server markers until a successful evaluation can reconcile the range.
+  let nodes: Node[] = existingRange?.nodes ?? [];
   let revision = 0;
 
   $renderEffect(() => {
