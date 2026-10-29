@@ -1,0 +1,30 @@
+{
+  "name": "solid-app",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "vite",
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "pnpm build && vite preview"
+  },
+  "dependencies": {
+    "@solidjs/web": "2.0.0-rc.18",
+    "@solidjs/router": "2.0.0-next.43",
+    "compression": "^1.8.2",
+    "express": "^5.2.1",
+    "solid-js": "2.0.0-rc.18",
+    "@tailwindcss/vite": "^4.3.3"
+  },
+  "devDependencies": {
+    "@solidjs/vite-plugin": "3.0.0-next.51",
+    "@types/compression": "^1.8.1",
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.6.3",
+    "cross-env": "^10.1.0",
+    "tsx": "^4.23.15",
+    "typescript": "^6.0.2",
+    "vite": "^8.3.1"
+  }
+}
