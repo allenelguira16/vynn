@@ -3,6 +3,7 @@ import { $async } from "../reactivity/$async";
 import { $cmpnt, $nodes } from "../render";
 import { createSSRComment } from "../render/resolve-node";
 import {
+  getServerRenderedLazyRange,
   syncServerRenderedLazy,
   // isHydrating,
   // runAfterHydration,
@@ -89,6 +90,9 @@ export function lazy<
     // return withLazyBoundary(() => {
     regsterAsyncGetterFromLazy(loadComponent);
     const component = $async(loadComponent);
+    const existingRange = isServer()
+      ? undefined
+      : getServerRenderedLazyRange(lazyID);
 
     // // The server does not wait for client hydration.
     // const hydrationReady = $state(!!isServer() || !isHydrating());
@@ -124,7 +128,7 @@ export function lazy<
       } finally {
         finishServerRenderedLazy(lazyID);
       }
-    });
+    }, existingRange);
     // });
   }) as Component;
 }
