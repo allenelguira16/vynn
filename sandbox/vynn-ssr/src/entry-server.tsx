@@ -9,8 +9,6 @@ import { handleServerFunctionRequest } from "virtual:vynn/server-functions";
 // and the production server-function RPC endpoint.
 export { handleServerFunctionRequest };
 
-export function render(url: string) {
-  return renderToServer(() => {
-    return <App url={url} />;
-  }, "stream");
+export function render(request: Request) {
+  return renderToServer(() => <App url={request.url} />, "stream");
 }

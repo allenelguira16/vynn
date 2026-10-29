@@ -60,6 +60,8 @@ function getWriteChunk(res: Response) {
 app.use(
   "/__vynn/server-function",
   async (req: Request, res: Response, next) => {
+    if (isDev) return next();
+
     const entry = await getProductionServerEntry();
     const request = toWebRequest(req, {
       url: req.originalUrl,
@@ -87,9 +89,7 @@ app.use(
 );
 
 app.use("*all", async (req: Request, res: Response, next) => {
-  const url = req.originalUrl;
-
-  if (url.includes(".")) {
+  if (req.originalUrl.includes(".")) {
     next();
     return;
   }
@@ -97,12 +97,16 @@ app.use("*all", async (req: Request, res: Response, next) => {
   try {
     let template: string;
     let render: (
-      url: string,
+      request: globalThis.Request,
     ) => Promise<string> | ReadableStream<Uint8Array<ArrayBufferLike>>;
+    const request = toWebRequest(req, {
+      url: req.originalUrl,
+      origin: `${req.protocol}://${req.get("host") ?? "localhost"}`,
+    });
 
     if (isDev && vite) {
       template = fs.readFileSync("./index.html", "utf-8");
-      template = (await vite.transformIndexHtml(url, template))
+      template = (await vite.transformIndexHtml(req.originalUrl, template))
         .replace(/>\s+</g, "><")
         .trim();
 
@@ -116,7 +120,7 @@ app.use("*all", async (req: Request, res: Response, next) => {
       render = (await import("./dist/server/entry-server.js")).render;
     }
 
-    const stream = await render(url);
+    const stream = await render(request);
 
     const [head, tail] = template.split("<!--ssr-outlet-->");
 
