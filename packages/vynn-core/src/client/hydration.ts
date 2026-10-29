@@ -154,9 +154,29 @@ export function getServerRenderedLazyRange(
     return undefined;
   }
 
+  const nodes: Node[] = [];
+  const parent = range.start.parentNode;
+
+  if (!parent || range.end.parentNode !== parent) {
+    return undefined;
+  }
+
+  let node = range.start.nextSibling;
+
+  while (node && node !== range.end) {
+    nodes.push(node);
+    node = node.nextSibling;
+  }
+
+  // A detached or malformed boundary is not a reusable range.
+  if (node !== range.end) {
+    return undefined;
+  }
+
   return {
     start: range.start,
     end: range.end,
+    nodes,
   };
 }
 
@@ -194,6 +214,7 @@ const HTML_NAMESPACE = "http://www.w3.org/1999/xhtml";
 export type ServerRenderedLazyRange = {
   start: Comment;
   end: Comment;
+  nodes: Node[];
 };
 
 type LazyHydrationNodes = {
