@@ -4,6 +4,7 @@ import { $renderEffect } from "../reactivity/$effect";
 import { resolveNode, resolveSSRChild } from "./resolve-node";
 import { markParked, unmarkParked } from "./$cmpnt.util";
 import { untrack } from "../reactivity/untrack";
+import { isHydrating } from "../client/hydration";
 
 type IfBranch = {
   start: Comment;
@@ -25,7 +26,7 @@ export function $if(
       if (value) return consequent();
       if (alternate) return alternate();
 
-      // An omitted alternate represents the short-circuit result of &&.
+      // An omitted alternate represents the short-circuit result of an && expression.
       // Boolean results render no content, while falsy values such as 0
       // remain visible as ordinary JSX children.
       return (typeof value === "boolean" ? undefined : value) as JSX.Element;
@@ -47,6 +48,7 @@ export function $if(
     key: boolean,
     value: unknown,
     claimInitialText = false,
+    parkInFragment = true,
   ): IfBranch {
     const start = document.createTextNode("");
     const end = document.createTextNode("");
@@ -73,7 +75,12 @@ export function $if(
     const nodes = [start, ...content, end];
     const fragment = document.createDocumentFragment();
 
-    fragment.append(...nodes);
+    // During hydration, the initial branch can contain SSR nodes that must
+    // stay in their original DOM positions. A fresh CSR branch still starts
+    // in a fragment, preserving the normal branch lifecycle.
+    if (parkInFragment) {
+      fragment.append(...nodes);
+    }
 
     const branch: IfBranch = {
       start,
@@ -177,7 +184,13 @@ export function $if(
   const initialKey = !!initialValue;
 
   let activeKey = initialKey;
-  let activeBranch = createBranch(initialKey, initialValue, true);
+  // Don't detach claimed SSR nodes, but keep the original fragment behavior in CSR.
+  let activeBranch = createBranch(
+    initialKey,
+    initialValue,
+    true,
+    !isHydrating(),
+  );
 
   $renderEffect(() => {
     const nextValue = condition();

@@ -145,6 +145,50 @@ export function claimHydrationText() {
   }
 }
 
+export type ServerRenderedLazyRange = {
+  start: Comment;
+  end: Comment;
+  nodes: Node[];
+};
+
+/**
+ * Gets the original DOM range for a server-rendered lazy component.
+ * Keeping the SSR markers lets the client hydrate the range in place.
+ */
+export function getServerRenderedLazyRange(
+  lazyID: number,
+): ServerRenderedLazyRange | undefined {
+  const range = serverRenderedLazy.get(lazyID);
+
+  if (!range?.start || !range.end) {
+    return undefined;
+  }
+
+  const parent = range.start.parentNode;
+
+  if (!parent || range.end.parentNode !== parent) {
+    return undefined;
+  }
+
+  const nodes: Node[] = [];
+  let node = range.start.nextSibling;
+
+  while (node && node !== range.end) {
+    nodes.push(node);
+    node = node.nextSibling;
+  }
+
+  if (node !== range.end) {
+    return undefined;
+  }
+
+  return {
+    start: range.start,
+    end: range.end,
+    nodes,
+  };
+}
+
 export function syncServerRenderedLazy(lazyID: number) {
   if (isServer() || syncedLazyHydration.has(lazyID)) {
     return;
@@ -179,6 +223,8 @@ const HTML_NAMESPACE = "http://www.w3.org/1999/xhtml";
 type LazyHydrationNodes = {
   elements: HTMLElement[];
   texts: Text[];
+  start?: Comment;
+  end?: Comment;
 };
 
 function isHTMLElement(node: Node): node is HTMLElement {
@@ -247,11 +293,9 @@ function getServerRenderedNodes(root: Node) {
       if (start) {
         const id = Number(start[1]);
 
-        // Create an entry even when the lazy range is empty.
-        getOrCreateLazyNodes(id);
-
+        // Keep the boundary at its SSR position until its lazy component claims it.
+        getOrCreateLazyNodes(id).start = node;
         boundaryStack.push(id);
-        node.parentNode?.removeChild(node);
         return;
       }
 
@@ -261,6 +305,8 @@ function getServerRenderedNodes(root: Node) {
         const id = Number(end[1]);
         const index = boundaryStack.lastIndexOf(id);
 
+        getOrCreateLazyNodes(id).end = node;
+
         if (index !== -1) {
           // Close this boundary and any nested entries above it.
           boundaryStack.splice(index);
@@ -268,7 +314,6 @@ function getServerRenderedNodes(root: Node) {
           console.warn(`[vynn] Unmatched lazy boundary end marker: ${value}`);
         }
 
-        node.parentNode?.removeChild(node);
         return;
       }
 
