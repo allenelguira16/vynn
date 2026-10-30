@@ -3,6 +3,7 @@ import fs from "node:fs";
 import express, { type Request, type Response } from "express";
 import { createServer as createViteServer, type ViteDevServer } from "vite";
 import {
+  getSsrHead,
   getSsrModuleIds,
   injectSsrPreloadLinks,
   renderSsrPreloadLinks,
@@ -85,6 +86,10 @@ async function writeStream(
       await beforeChunk?.();
       await write(value);
     }
+
+    // A final async boundary can discover preloadable modules after the
+    // last body chunk has been read.
+    if (!res.destroyed) await beforeChunk?.();
   } finally {
     reader.releaseLock();
   }
@@ -142,8 +147,12 @@ async function handlePageRequest(
     // Capture the live set before awaiting; nested lazy boundaries can register
     // more modules while the stream is being consumed.
     const rendered = render(toRequest(req));
+    const streaming = rendered instanceof ReadableStream;
     const moduleIds = getSsrModuleIds(rendered);
-    const html = await rendered;
+    // Async SSR is complete before the document shell is sent. Streaming SSR
+    // emits late head updates through the Vynn stream patch runtime.
+    const html = streaming ? rendered : await rendered;
+    const headHtml = getSsrHead(rendered);
     const seen = new Set<string>();
     const getPreloadLinks = () =>
       renderSsrPreloadLinks(moduleIds, ssrManifest, {
@@ -151,23 +160,28 @@ async function handlePageRequest(
         dev: isDev,
         exclude: seen,
       });
-
+    const headOutlet = "<!--ssr-head-->";
     const outlet = "<!--ssr-outlet-->";
-    const index = template.indexOf(outlet);
-    if (index < 0) throw new Error(`Missing ${outlet} in the HTML template.`);
+    if (!template.includes(headOutlet)) {
+      throw new Error(`Missing ${headOutlet} in the HTML template.`);
+    }
+
+    const document = template.replace(
+      headOutlet,
+      headHtml + getPreloadLinks(),
+    );
+    const index = document.indexOf(outlet);
+    if (index < 0) {
+      throw new Error(`Missing ${outlet} in the HTML template.`);
+    }
 
     res.status(200).type("html");
-    await writeStream(
-      res,
-      template
-        .slice(0, index)
-        .replace("</head>", getPreloadLinks() + "</head>"),
-    );
+    await writeStream(res, document.slice(0, index));
     await writeStream(res, html, async () => {
       const links = getPreloadLinks();
       if (links) await writeStream(res, injectSsrPreloadLinks(links));
     });
-    await writeStream(res, template.slice(index + outlet.length));
+    await writeStream(res, document.slice(index + outlet.length));
     res.end();
   } catch (error) {
     if (error instanceof Error && vite) vite.ssrFixStacktrace(error);

@@ -6,6 +6,7 @@ import { createOwner, disposeOwner, runWithOwner } from "../life-cycle/owner";
 import { addUnmountListener } from "../render/$cmpnt";
 import { withHydration } from "./hydration";
 import { resolveNode } from "../render/resolve-node";
+import { initializeHeadContext } from "../context/head-context";
 
 /**
  * Render the app to the dom
@@ -33,6 +34,7 @@ export function hydrateToDOM(
     const owner = createOwner();
 
     runWithOwner(owner, () => {
+      initializeHeadContext();
       initializeAsyncContext();
       initializeLazyContext();
       initializeErrorBoundaryContext();

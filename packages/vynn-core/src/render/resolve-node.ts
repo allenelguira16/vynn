@@ -4,6 +4,7 @@ import { getOwner, runWithOwner } from "../life-cycle/owner";
 import { NotReadyError } from "../reactivity/not-ready-error";
 import { claimHydrationText } from "../client/hydration";
 import { isServer } from "../context/is-server-context";
+import { isHeadElement, isCreatingHeadElement } from "./$head";
 
 export type SSR_NODE =
   | SSR_ELEMENT
@@ -170,22 +171,32 @@ export function resolveSSRChild(child: () => JSX.Element): SSR_NODE[] {
  * Resolves JSX into DOM nodes on the client or SSR nodes on the server.
  * The Node[] return type is retained for compatibility with existing callers.
  */
-export function resolveNode(child: () => JSX.Element): Node[] {
+export function resolveNode(
+  child: () => JSX.Element,
+  claimText = true,
+): Node[] {
   if (isServer()) {
     return resolveElementString(child()) as unknown as Node[];
   }
 
-  return resolveElement(child());
+  return resolveElement(child(), claimText);
 }
 
-export function resolveElement(element: JSX.Element): Node[] {
+export function resolveElement(
+  element: JSX.Element,
+  claimText = true,
+): Node[] {
+  if (isHeadElement(element)) return [];
+
   if (element === null || element === undefined || element === false) {
     return [document.createTextNode("")];
   }
 
   if (typeof element === "string" || typeof element === "number") {
     element = document.createTextNode(String(element));
-    element = claimHydrationText() || element;
+    if (claimText && !isCreatingHeadElement()) {
+      element = claimHydrationText() || element;
+    }
     // console.log(element, claimHydrationText());
     return [element];
   }
@@ -195,13 +206,15 @@ export function resolveElement(element: JSX.Element): Node[] {
   }
 
   if (typeof element === "function") {
-    return resolveElement((element as unknown as () => JSX.Element)());
+    return resolveElement((element as unknown as () => JSX.Element)(), claimText);
   }
 
-  return element.flatMap(resolveElement);
+  return element.flatMap((child) => resolveElement(child, claimText));
 }
 
 export function resolveElementString(element: JSX.Element): SSR_NODE[] {
+  if (isHeadElement(element)) return [];
+
   if (element === null || element === undefined || element === false) {
     return [];
   }

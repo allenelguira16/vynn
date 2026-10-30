@@ -6,45 +6,49 @@ import { resolveStream } from "./render-to-server.stream";
 import { initializeAsyncContext } from "../context/async-context";
 import { initializeLazyContext } from "../context/lazy-context";
 import { initializeErrorBoundaryContext } from "../context/error-boundary-context";
-import {
-  // attachSsrModules,
-  initializeSsrModuleContext,
-} from "../context/ssr-module-context";
+import { initializeSsrModuleContext } from "../context/ssr-module-context";
 import { attachSsrModules } from "./preload.ssr-modules";
+import { initializeHeadContext } from "../context/head-context";
+import { attachSsrHead } from "./head";
 
 export function renderToServer(App: () => JSX.Element, mode: RenderMode) {
   const owner = createOwner();
   const ssrModules = new Set<string>();
 
-  const result = runWithOwner(
-    owner,
-    (): Promise<string> | ReadableStream<Uint8Array> => {
-      setRenderMode(mode);
+  const { result, headContext } = runWithOwner(owner, () => {
+    setRenderMode(mode);
 
-      initializeSsrModuleContext(ssrModules);
-      initializeLazyContext();
-      initializeAsyncContext();
-      initializeErrorBoundaryContext();
+    const headContext = initializeHeadContext();
 
-      switch (mode) {
-        // @DEPRECATED: Sync will no longer be supported in favor of async and stream to fit well with $async
-        // case "sync": {
-        //   return resolveSync(App);
-        // }
-        case "async": {
-          return resolveAsync(App);
-        }
-        case "stream": {
-          return resolveStream(App);
-        }
-        default: {
-          throw new Error(
-            `[vynn]: Unsupported SSR render mode: ${String(mode)}`,
-          );
-        }
+    initializeSsrModuleContext(ssrModules);
+    initializeLazyContext();
+    initializeAsyncContext();
+    initializeErrorBoundaryContext();
+
+    let result: Promise<string> | ReadableStream<Uint8Array>;
+
+    switch (mode) {
+      // @DEPRECATED: Sync will no longer be supported in favor of async and stream to fit well with $async
+      case "async": {
+        result = resolveAsync(App);
+        break;
       }
-    },
-  );
+      case "stream": {
+        result = resolveStream(App, headContext);
+        break;
+      }
+      default: {
+        throw new Error(
+          `[vynn]: Unsupported SSR render mode: ${String(mode)}`,
+        );
+      }
+    }
 
-  return attachSsrModules(result, ssrModules);
+    return { result, headContext };
+  });
+
+  return attachSsrHead(
+    attachSsrModules(result, ssrModules),
+    headContext,
+  );
 }

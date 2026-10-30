@@ -15,3 +15,5 @@ export {
   type SsrClientManifest,
   type SsrPreloadLinkOptions,
 } from "./preload.render-preload-links";
+
+export { getSsrHead, subscribeSsrHead } from "./head";

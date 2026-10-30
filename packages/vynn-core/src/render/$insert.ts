@@ -4,6 +4,12 @@ import { resolveNode, resolveSSRChild } from "./resolve-node";
 import type { SSR_ELEMENT } from "./resolve-node";
 import { isServer } from "../context/is-server-context";
 import { isHydrating } from "../client/hydration";
+import {
+  isCreatingHeadElement,
+  runWithHeadElementContext,
+} from "./$head";
+
+const initializedHeadChildren = new WeakSet<Element>();
 
 /**
  * Inserts missing nodes around hydrated nodes without moving nodes that are
@@ -74,15 +80,30 @@ export function $insert<E extends HTMLElement>(
     return;
   }
 
+  const headChildren = isCreatingHeadElement();
   let oldNodes: Node[] = [];
+
+  // Each JSX child is lowered to its own $insert call. Only the first call
+  // owns the server-rendered child nodes; later calls must manage only the
+  // nodes they insert, otherwise a reactive title child replaces its siblings.
+  if (headChildren && !initializedHeadChildren.has(element)) {
+    initializedHeadChildren.add(element);
+    oldNodes = Array.from(element.childNodes);
+  }
 
   return $renderEffect(() => {
     // Capture this before resolving children, since resolution claims the SSR
     // nodes and can make the hydration queues appear empty.
-    const initialHydration = oldNodes.length === 0 && isHydrating();
-    const newNodes = resolveNode(
-      typeof child === "function" ? child : () => child,
-    );
+    const initialHydration =
+      !headChildren && oldNodes.length === 0 && isHydrating();
+    const resolveChild = () =>
+      resolveNode(
+        typeof child === "function" ? child : () => child,
+        !headChildren,
+      );
+    const newNodes = headChildren
+      ? runWithHeadElementContext(resolveChild)
+      : resolveChild();
 
     if (oldNodes.length === 0) {
       if (initialHydration) {

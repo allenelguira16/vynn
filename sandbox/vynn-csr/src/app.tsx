@@ -1,5 +1,5 @@
 import { Route, Router } from "vynn-router";
-import { Await, lazy, Portal } from "vynn";
+import { $state, Await, lazy, onMount, Portal } from "vynn";
 import { ButtonPageList } from "./components/button-page-list";
 import { name } from "./utils";
 
@@ -35,9 +35,29 @@ const ComponentError = lazy(
   "ComponentError",
 );
 
-export function App() {
+export default function App() {
+  const counter = $state(0);
+
+  onMount(() => {
+    setInterval(() => {
+      counter.value++;
+    }, 1000);
+  });
+
   return (
     <>
+      <title>Vynn SSR Sandbox {counter.value}</title>
+      <meta
+        name="description"
+        content="A server-rendered application built with Vynn."
+      />
+      <meta property="og:title" content="Vynn SSR Sandbox" />
+      <meta
+        property="og:description"
+        content="A server-rendered application built with Vynn."
+      />
+      <meta property="og:type" content="website" />
+
       <Router routes={routes} />
     </>
   );
@@ -54,7 +74,7 @@ export const routes: Route[] = [
           <Portal mount={document.body}>{name.firstName}</Portal>
           <ButtonPageList />
 
-          <Await>{props.children}</Await>
+          <Await fallback="Page Is Loading">{props.children}</Await>
         </div>
       );
     },

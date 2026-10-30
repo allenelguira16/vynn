@@ -128,7 +128,9 @@ type RuntimeHelperName =
   | "$spread"
   | "$for"
   | "$if"
-  | "$cache";
+  | "$cache"
+  | "$head"
+  | "$headTmpl";
 
 type ReactivePluginOptions = {
   /** Override parser language. Usually inferred from the file extension. */
@@ -233,11 +235,100 @@ class TransformState {
   private readonly specializedForCallbacks = new WeakSet<object>();
   private activeForIndexNames: string[] = [];
   private readonly usedNames = new Set<string>();
+  private readonly svgDescendants = new WeakSet<object>();
 
   constructor(program: NodeOfType<"Program">, filename: string) {
     this.program = program;
     this.filename = filename;
     this.collectUsedNames(program);
+    this.collectSvgDescendants(program, false);
+  }
+
+  private collectSvgDescendants(node: Node, insideSvg: boolean): void {
+    let nestedInSvg = insideSvg;
+
+    if (isJSXElement(node)) {
+      const tagName = isJSXIdentifier(node.openingElement.name)
+        ? node.openingElement.name.name.toLowerCase()
+        : "";
+      nestedInSvg = insideSvg || tagName === "svg";
+
+      if (nestedInSvg) this.svgDescendants.add(node);
+    }
+
+    forEachChild(node, (child) =>
+      this.collectSvgDescendants(child, nestedInSvg),
+    );
+  }
+
+  private getStaticHeadIdentity(
+    node: NodeOfType<"JSXElement">,
+    tagName: string,
+  ): string | null {
+    if (tagName === "title") return "title";
+
+    const attributes = node.openingElement.attributes.filter(isJSXAttribute);
+    const getAttributeName = (attribute: NodeOfType<"JSXAttribute">): string =>
+      isJSXIdentifier(attribute.name)
+        ? attribute.name.name.toLowerCase()
+        : "";
+    const hasAttribute = (name: string): boolean =>
+      attributes.some((attribute) => getAttributeName(attribute) === name);
+    const getStaticValue = (name: string): string | null => {
+      const attribute = attributes.find(
+        (candidate) => getAttributeName(candidate) === name,
+      );
+
+      return attribute && isLiteralString(attribute.value)
+        ? attribute.value.value
+        : null;
+    };
+
+    if (tagName === "meta") {
+      if (hasAttribute("charset")) return "meta:charset";
+
+      const name = getStaticValue("name");
+      if (name) return `meta:name:${name.toLowerCase()}`;
+
+      const property = getStaticValue("property");
+      if (property) return `meta:property:${property.toLowerCase()}`;
+
+      const httpEquiv = getStaticValue("http-equiv");
+      if (httpEquiv) return `meta:http-equiv:${httpEquiv.toLowerCase()}`;
+    }
+
+    if (tagName === "link") {
+      const rel = getStaticValue("rel")?.toLowerCase();
+      const href = getStaticValue("href") ?? "";
+
+      if (rel === "canonical") return "link:canonical";
+      if (rel && href) return `link:${rel}:${href}`;
+    }
+
+    return null;
+  }
+
+  private isHoistableHeadElement(
+    node: NodeOfType<"JSXElement">,
+    tagName: string,
+  ): boolean {
+    if (
+      tagName !== "title" &&
+      tagName !== "meta" &&
+      tagName !== "link"
+    ) {
+      return false;
+    }
+
+    if (this.svgDescendants.has(node)) return false;
+
+    // React keeps microdata metadata in its local DOM position.
+    return !node.openingElement.attributes.some(
+      (attribute: Node) =>
+        isJSXAttribute(attribute) &&
+        isJSXIdentifier(attribute.name) &&
+        attribute.name.name.toLowerCase() === "itemprop",
+    );
   }
 
   private collectUsedNames(node: Node): void {
@@ -2968,8 +3059,10 @@ class TransformState {
 
   private createElement(node: NodeOfType<"JSXElement">, allocator: IdentifierAllocator): ExpressionNode {
     const statements: Node[] = [];
+    const tagName = getJSXIdentifierName(node.openingElement.name);
+    const hoistedHead = this.isHoistableHeadElement(node, tagName);
     const elementId = this.createElementStatements(node, statements, allocator);
-    statements.push(returnStatement(elementId));
+    statements.push(returnStatement(hoistedHead ? arrayExpression([]) : elementId));
     return inheritSourceLocation(
       callExpression(
         arrowFunctionExpression([], blockStatement(statements)),
@@ -2985,14 +3078,24 @@ class TransformState {
     allocator: IdentifierAllocator,
   ): NodeOfType<"Identifier"> {
     const tagName = getJSXIdentifierName(node.openingElement.name);
+    const hoistToHead = this.isHoistableHeadElement(node, tagName);
     const elementId = allocator.nextElement();
+    const headIdentity = hoistToHead
+      ? this.getStaticHeadIdentity(node, tagName)
+      : null;
     statements.push(
       variableDeclaration("const", [
         variableDeclarator(
           elementId,
-          callExpression(this.getRuntimeHelper("$tmpl"), [
-            stringLiteral(tagName),
-          ]),
+          callExpression(
+            this.getRuntimeHelper(hoistToHead ? "$headTmpl" : "$tmpl"),
+            hoistToHead
+              ? [
+                  stringLiteral(tagName),
+                  ...(headIdentity ? [stringLiteral(headIdentity)] : []),
+                ]
+              : [stringLiteral(tagName)],
+          ),
         ),
       ]),
     );
@@ -3008,6 +3111,15 @@ class TransformState {
       statements,
       allocator,
     );
+
+    if (hoistToHead) {
+      statements.push(
+        expressionStatement(
+          callExpression(this.getRuntimeHelper("$head"), [elementId]),
+        ),
+      );
+    }
+
     return elementId;
   }
 

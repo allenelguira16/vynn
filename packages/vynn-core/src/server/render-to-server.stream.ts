@@ -12,9 +12,12 @@ import {
   renderText,
 } from "./render-to-server.util";
 import { resolveNode, SSR_NODE } from "../render/resolve-node";
+import type { HeadContext } from "../context/head-context";
+import { renderHeadPatch, renderSsrHead } from "./head";
 
 export function resolveStream(
   App: () => JSX.Element,
+  headContext: HeadContext,
 ): ReadableStream<Uint8Array> {
   const owner = getOwner()!;
   const encoder = new TextEncoder();
@@ -24,8 +27,17 @@ export function resolveStream(
   let nextBoundaryId = 0;
   let initialSent = false;
   let closed = false;
+  let previousHead = "";
 
   const queuedPatches: string[] = [];
+
+  function enqueueHeadPatch() {
+    const nextHead = renderSsrHead(headContext);
+    if (nextHead === previousHead) return;
+
+    previousHead = nextHead;
+    enqueuePatch(renderHeadPatch(nextHead));
+  }
 
   function enqueue(html: string) {
     if (!closed) {
@@ -70,8 +82,10 @@ export function resolveStream(
         const id = nextBoundaryId++;
 
         // Render the fallback immediately instead of blocking on promises.
+        const fallbackHTML = await resolve(node.fallback());
+        enqueueHeadPatch();
         html.push(
-          `<!--${FALLBACK_START_SSR_MARKER}:${id}-->${await resolve(node.fallback())}<!--${FALLBACK_END_SSR_MARKER}:${id}-->`,
+          `<!--${FALLBACK_START_SSR_MARKER}:${id}-->${fallbackHTML}<!--${FALLBACK_END_SSR_MARKER}:${id}-->`,
         );
 
         // Keep rendering the boundary in the background.
@@ -81,7 +95,11 @@ export function resolveStream(
           try {
             await Promise.all(node.promises);
 
-            const children = await resolve(node.children());
+            const childNodes = node.children();
+            enqueueHeadPatch();
+
+            const children = await resolve(childNodes);
+            enqueueHeadPatch();
 
             enqueuePatch(renderPatch(id, children));
           } catch (error) {
@@ -93,7 +111,10 @@ export function resolveStream(
       } else if ("promises" in node && node.type === "#deferred") {
         await Promise.all(node.promises);
 
-        html.push(await resolve(node.children()));
+        const childNodes = node.children();
+        enqueueHeadPatch();
+        html.push(await resolve(childNodes));
+        enqueueHeadPatch();
       } else if ("value" in node && node.type === "#text") {
         html.push(renderText(node));
       } else if ("value" in node && node.type === "#comment") {
@@ -121,9 +142,10 @@ export function resolveStream(
 
       void (async () => {
         try {
-          const initialHTML = await resolve(
-            resolveNode(App) as unknown as SSR_NODE[],
-          );
+          const app = resolveNode(App) as unknown as SSR_NODE[];
+          previousHead = renderSsrHead(headContext);
+
+          const initialHTML = await resolve(app);
 
           enqueue(renderPatchRuntime() + initialHTML);
           flushPatches();
@@ -155,70 +177,7 @@ declare global {
 }
 
 function renderPatchRuntime() {
-  return `<script>var e=[];${APPLY_PATCH_SSR_KEY}=function(r){e.push(function(){return function(e){var r=document.querySelector('template[id="'+e+'"]');if(!r)return!1;for(var t=document.createTreeWalker(document,NodeFilter.SHOW_COMMENT),n=null,o=null;t.nextNode();){var a=t.currentNode;a.data==="${FALLBACK_START_SSR_MARKER}:"+e&&(n=a),a.data==="${FALLBACK_END_SSR_MARKER}:"+e&&(o=a)}if(!n||!o||!o.parentNode)return!1;for(var u=o.parentNode,c=n.nextSibling;c&&c!==o;){var i=c.nextSibling;c.remove(),c=i}return u.insertBefore(r.content,o),r.remove(),n.remove(),o.remove(),!0}(r)});for(var t=!0;t;){t=!1;for(var n=e.length-1;n>=0;n--)e[n]()&&(e.splice(n,1),t=!0)}},document.currentScript.remove();</script>`;
-
-  // NOTE: EQUIVALENT CODE
-  //   return `<script>
-  // var queue = [];
-
-  // function applyPatch(id) {
-  //   var template = document.querySelector(
-  //     'template[id="' + id + '"]',
-  //   );
-
-  //   if (!template) return false;
-
-  //   var walker = document.createTreeWalker(document, NodeFilter.SHOW_COMMENT);
-
-  //   var start = null;
-  //   var end = null;
-
-  //   while (walker.nextNode()) {
-  //     var node = walker.currentNode;
-
-  //     if (node.data === "${FALLBACK_START_SSR_MARKER}:"+ id) start = node;
-  //     if (node.data === "${FALLBACK_END_SSR_MARKER}:"+ id) end = node;
-  //   }
-
-  //   if (!start || !end || !end.parentNode) {
-  //     return false;
-  //   }
-
-  //   var parent = end.parentNode;
-  //   var current = start.nextSibling;
-
-  //   while (current && current !== end) {
-  //     var next = current.nextSibling;
-  //     current.remove();
-  //     current = next;
-  //   }
-
-  //   parent.insertBefore(template.content, end);
-  //   template.remove();
-  //   start.remove();
-  //   end.remove();
-
-  //   return true;
-  // }
-
-  // ${APPLY_PATCH_SSR_KEY} = function (id) {
-  //   queue.push(function () {
-  //     return applyPatch(id);
-  //   });
-
-  //   var changed = true;
-
-  //   while (changed) {
-  //     changed = false;
-
-  //     for (var i = queue.length - 1; i >= 0; i--) {
-  //       if (queue[i]()) {
-  //         queue.splice(i, 1);
-  //         changed = true;
-  //       }
-  //     }
-  //   }
-  // };
-  // document.currentScript.remove();
-  // </script>`.replace(/\s+/g, " ");
+  return `<script>var e=[];${APPLY_PATCH_SSR_KEY}=function(r){e.push(function(){return function(e){var r=document.querySelector('template[id="'+e+'"]');if(!r)return!1;for(var t=document.createTreeWalker(document,NodeFilter.SHOW_COMMENT),n=null,o=null;t.nextNode();){var a=t.currentNode;a.data==="${FALLBACK_START_SSR_MARKER}:"+e&&(n=a),a.data==="${FALLBACK_END_SSR_MARKER}:"+e&&(o=a)}if(!n||!o||!o.parentNode)return!1;for(var u=o.parentNode,c=n.nextSibling;c&&c!==o;){var i=c.nextSibling;c.remove(),c=i}return u.insertBefore(r.content,o),r.remove(),n.remove(),o.remove(),!0}(r)});for(var t=!0;t;){t=!1;for(var n=e.length-1;n>=0;n--)e[n]()&&(e.splice(n,1),t=!0)}};
+  window.__vynnApplyHeadPatch=window.__vynnApplyHeadPatch||function(h){var t=document.createElement("template");t.innerHTML=h;function i(n){var g=n.tagName.toLowerCase();if(g==="title")return"title";if(g==="meta"){if(n.hasAttribute("charset"))return"meta:charset";var a=n.getAttribute("name");if(a)return"meta:name:"+a.toLowerCase();var p=n.getAttribute("property");if(p)return"meta:property:"+p.toLowerCase();var q=n.getAttribute("http-equiv");if(q)return"meta:http-equiv:"+q.toLowerCase()}if(g==="link"){var r=(n.getAttribute("rel")||"").toLowerCase(),u=n.getAttribute("href")||"";return r==="canonical"?"link:canonical":"link:"+r+":"+u}return null}t.content.querySelectorAll("[data-vynn-head]").forEach(function(n){var a=n.getAttribute("data-vynn-head");document.head.querySelectorAll(n.tagName.toLowerCase()).forEach(function(o){if(o.getAttribute("data-vynn-head")===a||i(o)===a)o.remove()})});document.head.querySelectorAll("[data-vynn-head]").forEach(function(n){n.remove()});document.head.append(t.content)};
+  document.currentScript.remove();</script>`;
 }

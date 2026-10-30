@@ -149,3 +149,52 @@ provide Web `Request` objects, so they do not need this adapter.
 
 This initial implementation does not serialize captured lexical variables.
 Pass values the server function needs as arguments.
+
+## JSX document metadata
+
+Vynn automatically hoists native JSX `<title>`, `<meta>`, and `<link>`
+elements into the document head. They can be declared at the application root
+or inside nested components:
+
+```tsx
+function BlogPost(props: { title: string; description: string; url: string }) {
+  return (
+    <article>
+      <title>{props.title}</title>
+      <meta name="description" content={props.description} />
+      <meta property="og:title" content={props.title} />
+      <link rel="canonical" href={props.url} />
+      <h1>{props.title}</h1>
+    </article>
+  );
+}
+```
+
+The elements are owned by the component that declares them. When that
+component is disposed, its metadata is removed and any previous registration
+for the same metadata identity becomes active again. Reactive attributes and
+title children update normally.
+
+The compiler keeps `<meta itemProp>` and `<link itemProp>` in their original
+DOM position, and does not hoist head tags written inside an SVG subtree.
+
+Vynn's SSR runtime injects the head patch bootstrap into streaming output and
+emits browser-side patches whenever a later async boundary registers metadata.
+The app-mode handler handles document assembly automatically. For a custom SSR
+document, insert the initial head snapshot into the document and preserve the
+streamed body chunks:
+
+```tsx
+import { getSsrHead, renderToServer } from "vynn/server";
+import App from "./app";
+
+const rendered = renderToServer(() => <App />, "stream");
+const head = getSsrHead(rendered);
+
+// Insert head into the document's <head>, then stream rendered into the body.
+// The stream includes Vynn's patch bootstrap and any later head updates.
+```
+
+The custom document renderer does not need to subscribe to head changes or
+generate its own head-patch scripts. It must pass the stream chunks through
+unchanged so the browser can execute Vynn's patch scripts.

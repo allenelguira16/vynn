@@ -1,6 +1,6 @@
 import "./main.css";
 
-import { App } from "./app";
+import App from "./app";
 import { renderToDOM } from "vynn/client";
 
 renderToDOM(App, "#app");

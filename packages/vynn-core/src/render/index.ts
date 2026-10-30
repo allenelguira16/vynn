@@ -3,6 +3,7 @@ export { $cache } from "./$cache";
 export { $cmpnt } from "./$cmpnt";
 export { $for } from "./$for";
 export { $if } from "./$if";
+export { $head, $headTmpl } from "./$head";
 export { $insert } from "./$insert";
 export { $mount } from "./$mount";
 export { $nodes } from "./$nodes";

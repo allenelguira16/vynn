@@ -2,6 +2,7 @@ import type { JSX } from "../jsx-runtime";
 import { createSSRText } from "./resolve-node";
 import { claimHydrationText } from "../client/hydration";
 import { isServer } from "../context/is-server-context";
+import { isCreatingHeadElement } from "./$head";
 
 /**
  * Creates a text node for static JSX text.
@@ -17,7 +18,9 @@ export function $txt(value: string): JSX.Element {
 
   let element = document.createTextNode(value);
 
-  element = claimHydrationText() || element;
+  if (!isCreatingHeadElement()) {
+    element = claimHydrationText() || element;
+  }
   // console.log(element, claimHydrationText());
 
   return element;

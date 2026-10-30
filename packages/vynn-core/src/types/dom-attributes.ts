@@ -134,6 +134,7 @@ export type HTMLMetaAttributes<T extends Element = HTMLMetaElement> =
     content?: string;
     httpEquiv?: string;
     name?: string;
+    property?: string;
   };
 
 export type HTMLScriptAttributes<T extends Element = HTMLScriptElement> =

@@ -5,6 +5,7 @@ import { JSX } from "../jsx-runtime";
 import { createOwner, disposeOwner, runWithOwner } from "../life-cycle/owner";
 import { addUnmountListener } from "../render/$cmpnt";
 import { resolveNode } from "../render/resolve-node";
+import { initializeHeadContext } from "../context/head-context";
 
 /**
  * Render the app to the dom
@@ -32,6 +33,7 @@ export function renderToDOM(
     const owner = createOwner();
 
     runWithOwner(owner, () => {
+      initializeHeadContext();
       initializeLazyContext();
       initializeAsyncContext();
       initializeErrorBoundaryContext();
