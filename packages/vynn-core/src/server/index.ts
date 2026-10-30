@@ -7,10 +7,11 @@ export {
   type ServerFunctionContext,
 } from "./server-function-context";
 
+export { injectSsrPreloadLinks } from "./preload.inject-links";
+export { attachSsrModules, getSsrModuleIds } from "./preload.ssr-modules";
+
 export {
-  getSsrModuleIds,
-  injectSsrPreloadLinks,
   renderSsrPreloadLinks,
   type SsrClientManifest,
   type SsrPreloadLinkOptions,
-} from "../context/ssr-module-context";
+} from "./preload.render-preload-links";

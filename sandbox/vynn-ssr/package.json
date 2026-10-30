@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "cross-env NODE_ENV=development tsx server.tsx",
+    "dev": "cross-env NODE_ENV=development tsx watch server.tsx",
     "start": "cross-env NODE_ENV=production tsx server.tsx",
     "preview": "cross-env NODE_ENV=production pnpm build && tsx server.tsx",
     "build": "pnpm build:client && pnpm build:server",

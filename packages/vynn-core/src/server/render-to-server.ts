@@ -7,9 +7,10 @@ import { initializeAsyncContext } from "../context/async-context";
 import { initializeLazyContext } from "../context/lazy-context";
 import { initializeErrorBoundaryContext } from "../context/error-boundary-context";
 import {
-  attachSsrModules,
+  // attachSsrModules,
   initializeSsrModuleContext,
 } from "../context/ssr-module-context";
+import { attachSsrModules } from "./preload.ssr-modules";
 
 export function renderToServer(App: () => JSX.Element, mode: RenderMode) {
   const owner = createOwner();
