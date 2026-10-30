@@ -4,11 +4,11 @@
  */
 export function injectSsrPreloadLinks(links: string): string {
   if (!links) return "";
-  const serialized = JSON.stringify(links);
+
+  const serialized = JSON.stringify(links).replace(/</g, "\\u003c");
+
   return (
-    '<script>(function(){var template=document.createElement("template");' +
-    "template.innerHTML=" +
-    serialized +
-    ";document.head.appendChild(template.content);document.currentScript.remove()})()</script>"
+    `<script>document.head.insertAdjacentHTML("beforeend",${serialized});` +
+    "document.currentScript.remove()</script>"
   );
 }
