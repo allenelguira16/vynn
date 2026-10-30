@@ -6,5 +6,6 @@ export const LAZY_START_SSR_MARKER = "l";
 export const LAZY_END_SSR_MARKER = "/l";
 
 export const APPLY_PATCH_SSR_KEY = "$AP";
+export const APPLY_HEAD_PATCH_SSR_KEY = "$AHP";
 export const ASYNC_DATA_SSR_KEY = "$AD";
 export const ERROR_BOUNDARY_DATA_SSR_KEY = "$EBD";

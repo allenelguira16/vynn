@@ -8,6 +8,7 @@ import {
 } from "../context/head-context";
 import { escapeHtml } from "../utils/escape-html";
 import type { SSR_ELEMENT, SSR_NODE } from "../render/resolve-node";
+import { APPLY_HEAD_PATCH_SSR_KEY } from "../const";
 
 const SSR_RESULT_HEAD_CONTEXT = Symbol.for("vynn.ssr-head-context");
 const voidElements = new Set([
@@ -113,7 +114,9 @@ function getAttachedHeadContext(result: unknown): HeadContext | undefined {
     return undefined;
   }
 
-  return Reflect.get(result, SSR_RESULT_HEAD_CONTEXT) as HeadContext | undefined;
+  return Reflect.get(result, SSR_RESULT_HEAD_CONTEXT) as
+    | HeadContext
+    | undefined;
 }
 
 /** Serializes the metadata collected by a renderToServer() result. */
@@ -136,5 +139,5 @@ export function subscribeSsrHead(
 /** Encodes a complete head snapshot as a browser-side patch. */
 export function renderHeadPatch(html: string): string {
   const serialized = JSON.stringify(html).replace(/</g, "\\u003c");
-  return `<script>window.__vynnApplyHeadPatch(${serialized});document.currentScript.remove();</script>`;
+  return `<script>${APPLY_HEAD_PATCH_SSR_KEY}(${serialized});document.currentScript.remove();</script>`;
 }
