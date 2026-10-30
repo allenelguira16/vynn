@@ -47,6 +47,11 @@ import {
 export { CLIENT_ENTRY_ID, SERVER_ENTRY_ID, SSR_HANDLER_ID };
 export type { VynnAppOptions };
 
+function normalizeFilePath(file: string): string {
+  const path = resolve(file).replace(/\\/g, "/");
+  return process.platform === "win32" ? path.toLowerCase() : path;
+}
+
 type PluginOptions = {
   ssr: boolean;
   start: VynnAppOptions;
@@ -321,6 +326,47 @@ export function vynnStartPlugin({
       }
 
       return null;
+    },
+
+    hotUpdate: {
+      order: "post",
+
+      handler({ file, modules, timestamp }) {
+        // The root app is rendered by the SSR environment, but the browser
+        // DOM is owned by Vynn and does not currently support component HMR.
+        // A stylesheet-only HMR update is not enough to apply app.tsx edits.
+        // Force a document reload from the client environment instead.
+        if (
+          !ssr ||
+          isBuild ||
+          !entries.appSpecifier ||
+          !isAbsolute(entries.appSpecifier) ||
+          normalizeFilePath(file) !== normalizeFilePath(entries.appSpecifier)
+        ) {
+          return;
+        }
+
+        // The SSR environment must use Vite's normal module propagation.
+        // The generated server entry deliberately has no accept boundary, so
+        // app.tsx invalidates the server entry and SSR handler as a chain.
+        if (this.environment.name !== "client") return;
+
+        // Tailwind may narrow the HMR module list to generated CSS modules.
+        // Look up the changed source file directly so app.tsx is invalidated
+        // even when the regular update payload only contains stylesheet nodes.
+        const graph = this.environment.moduleGraph;
+        const appModules = graph.getModulesByFile(file);
+        const invalidatedModules = new Set<(typeof modules)[number]>();
+
+        for (const module of appModules ?? modules) {
+          graph.invalidateModule(module, invalidatedModules, timestamp, true);
+        }
+
+        // Vynn does not yet support replacing the root component's DOM tree.
+        // Force the browser to request fresh SSR HTML and hydrate it.
+        this.environment.hot.send({ type: "full-reload" });
+        return [];
+      },
     },
 
     configureServer(server: ViteDevServer) {

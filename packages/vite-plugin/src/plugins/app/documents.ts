@@ -21,16 +21,17 @@ export function createClientEntry(
 ): string {
   // Read optional exports dynamically. A direct `appModule.App` access makes
   // Rollup/Rolldown warn when the module intentionally uses a default export.
-  const selected = exportName
-    ? `Reflect.get(appModule, ${JSON.stringify(exportName)})`
-    : 'Reflect.get(appModule, "default") ?? Reflect.get(appModule, "App")';
+  const selected = (moduleName: string) =>
+    exportName
+      ? `Reflect.get(${moduleName}, ${JSON.stringify(exportName)})`
+      : `Reflect.get(${moduleName}, "default") ?? Reflect.get(${moduleName}, "App")`;
   const renderer = ssr ? "hydrateToDOM" : "renderToDOM";
 
   return [
     ...styleSpecifiers.map((style) => `import ${JSON.stringify(style)};`),
     `import * as appModule from ${JSON.stringify(appSpecifier)};`,
     `import { ${renderer} } from "vynn/client";`,
-    `const App = ${selected};`,
+    `const App = ${selected("appModule")};`,
     `if (typeof App !== "function") throw new Error("[Vynn Start] The app module must export a component as default or App (or set start.exportName).");`,
     `${renderer}(() => App({ url: window.location.pathname + window.location.search }), ${JSON.stringify(mount)});`,
     "",
@@ -54,15 +55,16 @@ export function createServerEntry(
 ): string {
   // Read optional exports dynamically. A direct `appModule.App` access makes
   // Rollup/Rolldown warn when the module intentionally uses a default export.
-  const selected = exportName
-    ? `Reflect.get(appModule, ${JSON.stringify(exportName)})`
-    : 'Reflect.get(appModule, "default") ?? Reflect.get(appModule, "App")';
+  const selected = (moduleName: string) =>
+    exportName
+      ? `Reflect.get(${moduleName}, ${JSON.stringify(exportName)})`
+      : `Reflect.get(${moduleName}, "default") ?? Reflect.get(${moduleName}, "App")`;
 
   return [
     ...styleSpecifiers.map((style) => `import ${JSON.stringify(style)};`),
     `import * as appModule from ${JSON.stringify(appSpecifier)};`,
     `import { renderToServer } from "vynn/server";`,
-    `const App = ${selected};`,
+    `const App = ${selected("appModule")};`,
     `if (typeof App !== "function") throw new Error("[Vynn Start] The app module must export a component as default or App (or set start.exportName).");`,
     `export function render(url) {`,
     `  return renderToServer(() => App({ url }), ${JSON.stringify(renderMode)});`,

@@ -34,12 +34,40 @@ export function createVynnSsrCssPlugin(): VynnSsrCssCollector {
   let devServer: ViteDevServer | undefined;
 
   const entryUrls = new Set<string>();
+  let cachedLinks: VynnSsrCssLink[] | undefined;
+  let pendingLinks: Promise<VynnSsrCssLink[]> | undefined;
+  let cacheVersion = 0;
+
+  function invalidateCssLinks(): void {
+    cacheVersion++;
+    cachedLinks = undefined;
+    pendingLinks = undefined;
+  }
+
+  function getCachedCssLinks(server: ViteDevServer): Promise<VynnSsrCssLink[]> {
+    if (cachedLinks) return Promise.resolve(cachedLinks);
+    if (pendingLinks) return pendingLinks;
+
+    const version = cacheVersion;
+    const pending = collectCssLinks(server, entryUrls)
+      .then((links) => {
+        if (version === cacheVersion) cachedLinks = links;
+        return links;
+      })
+      .finally(() => {
+        if (pendingLinks === pending) pendingLinks = undefined;
+      });
+
+    pendingLinks = pending;
+    return pending;
+  }
 
   function registerEntryUrl(src: string): void {
     const url = normalizeEntryUrl(src, base);
 
-    if (url && !url.startsWith("/@vite/client")) {
+    if (url && !url.startsWith("/@vite/client") && !entryUrls.has(url)) {
       entryUrls.add(url);
+      invalidateCssLinks();
     }
   }
 
@@ -85,9 +113,7 @@ export function createVynnSsrCssPlugin(): VynnSsrCssCollector {
           registerEntryUrl(src);
         }
 
-        const links = devServer
-          ? await collectCssLinks(devServer, entryUrls)
-          : [];
+        const links = devServer ? await getCachedCssLinks(devServer) : [];
 
         return links.map(({ url, id }) => ({
           tag: "link" as const,
@@ -101,6 +127,13 @@ export function createVynnSsrCssPlugin(): VynnSsrCssCollector {
       },
     },
 
+    hotUpdate() {
+      // App and component edits can add or remove stylesheet imports.
+      // Rebuild the collection once for the next document request, not on
+      // every request while the module graph is unchanged.
+      invalidateCssLinks();
+    },
+
     configureServer(server: ViteDevServer) {
       devServer = server;
 
@@ -112,7 +145,7 @@ export function createVynnSsrCssPlugin(): VynnSsrCssCollector {
           return;
         }
 
-        void collectCssLinks(server, entryUrls)
+        void getCachedCssLinks(server)
           .then((links) => {
             const css = links
               .map(
@@ -137,7 +170,7 @@ export function createVynnSsrCssPlugin(): VynnSsrCssCollector {
     plugin,
     registerEntryUrl,
     getCssLinks(server) {
-      return collectCssLinks(server, entryUrls);
+      return getCachedCssLinks(server);
     },
   };
 }
