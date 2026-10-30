@@ -4,6 +4,7 @@ import { $nodes } from "./$nodes";
 import { untrack } from "../reactivity/untrack";
 import { $computed } from "../reactivity/$computed";
 import { isServer } from "../context/is-server-context";
+import { getCurrentDOMNamespace, withDOMNamespace } from "./namespace";
 
 type ForEntry<T> = {
   item: T;
@@ -15,8 +16,14 @@ export function $for<T>(
   items: () => T[],
   each: (item: T, index: State<number>) => JSX.Element,
 ): JSX.Element {
+  const namespace = getCurrentDOMNamespace();
+  const renderEach = (item: T, index: State<number>): JSX.Element =>
+    withDOMNamespace(namespace, () => each(item, index));
+
   if (isServer()) {
-    return $nodes(() => items().map((item, i) => each(item, { value: i })));
+    return $nodes(() =>
+      items().map((item, i) => renderEach(item, { value: i })),
+    );
   }
 
   // const result = $state<JSX.Element[]>([]);
@@ -37,7 +44,7 @@ export function $for<T>(
 
           return {
             item: value,
-            node: each(value, indexState),
+            node: renderEach(value, indexState),
             index: indexState,
           };
         });
@@ -103,7 +110,7 @@ export function $for<T>(
 
           newEntries.push({
             item: newItem,
-            node: each(newItem, indexState),
+            node: renderEach(newItem, indexState),
             index: indexState,
           });
         }

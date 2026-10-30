@@ -2,7 +2,7 @@ import { getOwner, runWithOwner } from "../life-cycle/owner";
 import { isServer } from "../context/is-server-context";
 
 type VynnEvent<
-  E extends HTMLElement,
+  E extends Element,
   K extends keyof HTMLElementEventMap,
 > = HTMLElementEventMap[K] & {
   readonly currentTarget: E;
@@ -22,7 +22,7 @@ type VynnEvent<
  * @param event The name of the event to listen for.
  * @param handler The function to call when the event is dispatched.
  */
-export function $on<E extends HTMLElement, K extends keyof HTMLElementEventMap>(
+export function $on<E extends Element, K extends keyof HTMLElementEventMap>(
   element: E,
   event: K,
   handler: (event: VynnEvent<E, K>) => void,

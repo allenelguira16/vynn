@@ -1,10 +1,15 @@
 import { $renderEffect } from "../reactivity/$effect";
-import { SSR_ELEMENT } from "./resolve-node";
+import type { SSR_ELEMENT } from "./resolve-node";
 import { isServer } from "../context/is-server-context";
+import { HTML_NAMESPACE, SVG_NAMESPACE } from "./namespace";
 
 type AttributeValue = string | number | boolean | null | undefined;
 
-// DOM properties that should be assigned directly instead of using attributes.
+const XLINK_NAMESPACE = "http://www.w3.org/1999/xlink";
+const XML_NAMESPACE = "http://www.w3.org/XML/1998/namespace";
+const XMLNS_NAMESPACE = "http://www.w3.org/2000/xmlns/";
+
+// DOM properties that should be assigned directly on HTML elements.
 const properties = new Set([
   "value",
   "checked",
@@ -45,66 +50,194 @@ const booleanAttributes = new Set([
   "selected",
 ]);
 
+// SVG uses kebab-case for most presentation attributes, but a small set of
+// standardized names intentionally retain internal capitals.
+const preservedSvgAttributeNames = new Set([
+  "attributeName",
+  "attributeType",
+  "baseFrequency",
+  "baseProfile",
+  "calcMode",
+  "contentScriptType",
+  "contentStyleType",
+  "diffuseConstant",
+  "externalResourcesRequired",
+  "filterRes",
+  "filterUnits",
+  "gradientTransform",
+  "gradientUnits",
+  "kernelMatrix",
+  "kernelUnitLength",
+  "keyPoints",
+  "keySplines",
+  "keyTimes",
+  "lengthAdjust",
+  "limitingConeAngle",
+  "markerHeight",
+  "markerUnits",
+  "markerWidth",
+  "numOctaves",
+  "pathLength",
+  "patternContentUnits",
+  "patternTransform",
+  "patternUnits",
+  "preserveAspectRatio",
+  "primitiveUnits",
+  "refX",
+  "refY",
+  "specularConstant",
+  "specularExponent",
+  "stdDeviation",
+  "surfaceScale",
+  "targetX",
+  "targetY",
+  "textLength",
+  "viewBox",
+  "viewTarget",
+  "xChannelSelector",
+  "yChannelSelector",
+]);
+
+const svgAttributeAliases: Record<string, string> = {
+  autoCapitalize: "autocapitalize",
+  className: "class",
+  contentEditable: "contenteditable",
+  enterKeyHint: "enterkeyhint",
+  htmlFor: "for",
+  inputMode: "inputmode",
+  tabIndex: "tabindex",
+  xlinkActuate: "xlink:actuate",
+  xlinkArcrole: "xlink:arcrole",
+  xlinkHref: "xlink:href",
+  xlinkRole: "xlink:role",
+  xlinkShow: "xlink:show",
+  xlinkTitle: "xlink:title",
+  xlinkType: "xlink:type",
+  xmlBase: "xml:base",
+  xmlLang: "xml:lang",
+  xmlSpace: "xml:space",
+  xmlnsXlink: "xmlns:xlink",
+};
+
+function getSVGAttributeName(name: string): string {
+  const alias = svgAttributeAliases[name];
+  if (alias) return alias;
+  if (preservedSvgAttributeNames.has(name)) return name;
+
+  return name.replace(/[A-Z]/g, (character) => `-${character.toLowerCase()}`);
+}
+
+function getAttributeName(namespaceURI: string, name: string): string {
+  if (namespaceURI === SVG_NAMESPACE) {
+    return getSVGAttributeName(name);
+  }
+
+  if (name === "className") return "class";
+  if (name === "htmlFor") return "for";
+
+  return name.toLowerCase();
+}
+
+function getAttributeNamespace(name: string): string | null {
+  if (name.startsWith("xlink:")) return XLINK_NAMESPACE;
+  if (name.startsWith("xml:")) return XML_NAMESPACE;
+  if (name === "xmlns" || name.startsWith("xmlns:")) return XMLNS_NAMESPACE;
+  return null;
+}
+
+function setDOMAttribute(element: Element, name: string, value: string): void {
+  const namespace = getAttributeNamespace(name);
+
+  if (namespace) {
+    element.setAttributeNS(namespace, name, value);
+  } else {
+    element.setAttribute(name, value);
+  }
+}
+
+function removeDOMAttribute(element: Element, name: string): void {
+  const namespace = getAttributeNamespace(name);
+
+  if (namespace) {
+    const separator = name.indexOf(":");
+    element.removeAttributeNS(
+      namespace,
+      separator === -1 ? name : name.slice(separator + 1),
+    );
+  } else {
+    element.removeAttribute(name);
+  }
+}
+
 /**
  * Sets a reactive DOM attribute or property.
  *
- * When `value` is a function, it is evaluated reactively and the attribute
- * or property is updated whenever its dependencies change.
- *
- * Known DOM properties are assigned directly. Other values are written as
- * HTML attributes, with `null` and `undefined` removing the attribute and
- * boolean values toggling it.
- *
- * @param element The DOM element to update.
- * @param name The property or attribute name.
- * @param value The value to assign, or a function that returns the value reactively.
+ * HTML form-control properties retain their property behavior. SVG elements
+ * receive namespace-aware attribute names, including presentation attributes
+ * such as strokeWidth -> stroke-width and namespaced xlink/xml attributes.
  */
-export function $attr<E extends HTMLElement>(
+export function $attr<E extends Element>(
   element: E,
   name: string,
   value: AttributeValue | (() => AttributeValue),
 ): void {
   if (isServer()) {
     const node = element as unknown as SSR_ELEMENT;
-    const key = name.toLowerCase();
+    const key = getAttributeName(node.namespaceURI, name);
     const next = typeof value === "function" ? value() : value;
 
     if (next == null) {
       delete node.attributes[key];
-    } else if (booleanAttributes.has(key)) {
+    } else if (
+      node.namespaceURI === HTML_NAMESPACE &&
+      booleanAttributes.has(key.toLowerCase())
+    ) {
       if (next) {
         node.attributes[key] = "";
       } else {
         delete node.attributes[key];
       }
     } else {
-      // Keep the raw value here. The serializer escapes it exactly once.
+      // Preserve SVG's case-sensitive names and serialize non-HTML booleans
+      // as values instead of treating them as HTML boolean attributes.
       node.attributes[key] = String(next);
     }
     return;
   }
 
-  if (!(element instanceof HTMLElement)) return;
+  const attributeName = getAttributeName(element.namespaceURI, name);
+  const isHtmlElement =
+    element.namespaceURI === HTML_NAMESPACE &&
+    element instanceof HTMLElement;
 
   $renderEffect(() => {
     const next = typeof value === "function" ? value() : value;
 
-    if (properties.has(name) && !booleanAttributes.has(name)) {
-      (element as any)[name] = next;
-      element.setAttribute(name, String(next));
+    if (
+      isHtmlElement &&
+      properties.has(name) &&
+      !booleanAttributes.has(name.toLowerCase())
+    ) {
+      Reflect.set(element, name, next);
+
+      if (next == null) {
+        removeDOMAttribute(element, attributeName);
+      } else {
+        setDOMAttribute(element, attributeName, String(next));
+      }
       return;
     }
 
     if (next == null) {
-      element.removeAttribute(name);
+      removeDOMAttribute(element, attributeName);
       return;
     }
 
-    if (typeof next === "boolean") {
-      element.toggleAttribute(name, next);
+    if (isHtmlElement && typeof next === "boolean") {
+      (element as HTMLElement).toggleAttribute(attributeName, next);
       return;
     }
 
-    element.setAttribute(name, String(next));
+    setDOMAttribute(element, attributeName, String(next));
   });
 }

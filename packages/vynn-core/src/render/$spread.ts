@@ -11,7 +11,7 @@ import { $attr } from "./$attr";
  * @param element The DOM element to update.
  * @param props A function that returns the properties to apply.
  */
-export function $spread<E extends HTMLElement, P extends Record<string, any>>(
+export function $spread<E extends Element, P extends Record<string, any>>(
   element: E,
   props: () => P,
 ): void {

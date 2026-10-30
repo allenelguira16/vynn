@@ -3,6 +3,7 @@ import { $renderEffect } from "../reactivity/$effect";
 import { resolveNode, resolveSSRChild } from "./resolve-node";
 import { isServer } from "../context/is-server-context";
 import type { ServerRenderedLazyRange } from "../client/hydration";
+import { getCurrentDOMNamespace, withDOMNamespace } from "./namespace";
 
 // Associates each region's start marker with its end marker.
 // This allows an outer region to clean up nodes inserted later by nested regions.
@@ -12,8 +13,11 @@ export function $nodes(
   child: () => JSX.Element,
   existingRange?: ServerRenderedLazyRange,
 ): JSX.Element {
+  const namespace = getCurrentDOMNamespace();
+  const renderChild = () => withDOMNamespace(namespace, child);
+
   if (isServer()) {
-    return resolveSSRChild(child) as unknown as JSX.Element;
+    return resolveSSRChild(renderChild) as unknown as JSX.Element;
   }
 
   const start = existingRange?.start ?? document.createTextNode("");
@@ -27,7 +31,7 @@ export function $nodes(
 
   $renderEffect(() => {
     // Resolve first. If NotReadyError occurs, preserve the current DOM.
-    const nextNodes = resolveNode(child);
+    const nextNodes = resolveNode(renderChild);
     const previousNodes = nodes;
 
     nodes = nextNodes;

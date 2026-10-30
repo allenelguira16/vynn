@@ -7,6 +7,7 @@ import { addUnmountListener } from "../render/$cmpnt";
 import { withHydration } from "./hydration";
 import { resolveNode } from "../render/resolve-node";
 import { initializeHeadContext } from "../context/head-context";
+import { getChildDOMNamespace, HTML_NAMESPACE, withDOMNamespace } from "../render/namespace";
 
 /**
  * Render the app to the dom
@@ -16,13 +17,13 @@ import { initializeHeadContext } from "../context/head-context";
  */
 export function hydrateToDOM(
   App: () => JSX.Element,
-  id: Document | HTMLElement | DocumentFragment | string,
+  id: Document | Element | DocumentFragment | string,
 ) {
   let cleanup: (() => void) | undefined;
 
-  let node: DocumentFragment | HTMLElement | null;
+  let node: DocumentFragment | Element | null;
 
-  if (id instanceof HTMLElement || id instanceof DocumentFragment) {
+  if (id instanceof Element || id instanceof DocumentFragment) {
     node = id;
   } else if (id instanceof Document) {
     node = id.documentElement;
@@ -30,7 +31,7 @@ export function hydrateToDOM(
     node = document.querySelector(id) as typeof node;
   }
 
-  if (node instanceof HTMLElement || node instanceof DocumentFragment) {
+  if (node instanceof Element || node instanceof DocumentFragment) {
     const owner = createOwner();
 
     runWithOwner(owner, () => {
@@ -39,7 +40,16 @@ export function hydrateToDOM(
       initializeLazyContext();
       initializeErrorBoundaryContext();
 
-      withHydration(() => resolveNode(App), node);
+      withHydration(
+        () =>
+          withDOMNamespace(
+            node instanceof Element
+              ? getChildDOMNamespace(node.namespaceURI, node.localName)
+              : HTML_NAMESPACE,
+            () => resolveNode(App),
+          ),
+        node,
+      );
 
       addUnmountListener();
     });

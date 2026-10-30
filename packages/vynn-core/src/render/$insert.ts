@@ -4,6 +4,7 @@ import { resolveNode, resolveSSRChild } from "./resolve-node";
 import type { SSR_ELEMENT } from "./resolve-node";
 import { isServer } from "../context/is-server-context";
 import { isHydrating } from "../client/hydration";
+import { getChildDOMNamespace, withDOMNamespace } from "./namespace";
 import {
   isCreatingHeadElement,
   runWithHeadElementContext,
@@ -15,7 +16,7 @@ const initializedHeadChildren = new WeakSet<Element>();
  * Inserts missing nodes around hydrated nodes without moving nodes that are
  * already in their correct parent.
  */
-function insertInitialNodes<E extends HTMLElement>(
+function insertInitialNodes<E extends Element>(
   element: E,
   nodes: Node[],
   before: Node | null,
@@ -60,7 +61,7 @@ function insertInitialNodes<E extends HTMLElement>(
  *
  * On the client, children are synchronized reactively.
  */
-export function $insert<E extends HTMLElement>(
+export function $insert<E extends Element>(
   element: E,
   child: (() => JSX.Element) | JSX.Element,
   before: Node | null = null,
@@ -70,7 +71,13 @@ export function $insert<E extends HTMLElement>(
 
     const renderChild = typeof child === "function" ? child : () => child;
 
-    const nodes = resolveSSRChild(renderChild);
+    const childNamespace = getChildDOMNamespace(
+      parent.namespaceURI,
+      parent.type,
+    );
+    const nodes = resolveSSRChild(() =>
+      withDOMNamespace(childNamespace, renderChild),
+    );
     const reference = before as unknown as SSR_ELEMENT | null;
 
     for (const node of nodes) {
@@ -96,10 +103,15 @@ export function $insert<E extends HTMLElement>(
     // nodes and can make the hydration queues appear empty.
     const initialHydration =
       !headChildren && oldNodes.length === 0 && isHydrating();
+    const childNamespace = getChildDOMNamespace(
+      element.namespaceURI,
+      element.localName,
+    );
+    const renderChild =
+      typeof child === "function" ? child : () => child;
     const resolveChild = () =>
-      resolveNode(
-        typeof child === "function" ? child : () => child,
-        !headChildren,
+      withDOMNamespace(childNamespace, () =>
+        resolveNode(renderChild, !headChildren),
       );
     const newNodes = headChildren
       ? runWithHeadElementContext(resolveChild)

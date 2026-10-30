@@ -7,7 +7,7 @@ import {
 import { isServer } from "../context/is-server-context";
 import { getOwner, runWithOwner, type Owner } from "../life-cycle/owner";
 
-let serverRenderedElements: HTMLElement[] = [];
+let serverRenderedElements: Element[] = [];
 let serverRenderedTexts: Text[] = [];
 let serverRenderedLazy = new Map<number, LazyHydrationNodes>();
 
@@ -127,7 +127,7 @@ function scheduleAfterHydrationCheck(): void {
   });
 }
 
-export function claimHydrationElement<T extends HTMLElement>() {
+export function claimHydrationElement<T extends Element>() {
   try {
     return serverRenderedElements[hydrationElementIndex] as T;
   } finally {
@@ -218,19 +218,15 @@ export function finishServerRenderedLazy(lazyID: number) {
 const LAZY_START_REGEX = new RegExp(`^${LAZY_START_SSR_MARKER}:(\\d+)$`);
 const LAZY_END_REGEX = new RegExp(`^${LAZY_END_SSR_MARKER}:(\\d+)$`);
 
-const HTML_NAMESPACE = "http://www.w3.org/1999/xhtml";
-
 type LazyHydrationNodes = {
-  elements: HTMLElement[];
+  elements: Element[];
   texts: Text[];
   start?: Comment;
   end?: Comment;
 };
 
-function isHTMLElement(node: Node): node is HTMLElement {
-  return (
-    node.nodeType === 1 && (node as Element).namespaceURI === HTML_NAMESPACE
-  );
+function isElement(node: Node): node is Element {
+  return node.nodeType === 1;
 }
 
 function isTextNode(node: Node): node is Text {
@@ -277,7 +273,7 @@ function getServerRenderedNodes(root: Node) {
 
     const nodes = getOrCreateLazyNodes(id);
 
-    if (isHTMLElement(node)) {
+    if (isElement(node)) {
       nodes.elements.push(node);
     } else if (isTextNode(node)) {
       nodes.texts.push(node);
@@ -332,7 +328,7 @@ function getServerRenderedNodes(root: Node) {
       }
     }
 
-    if (isHTMLElement(node) || isTextNode(node)) {
+    if (isElement(node) || isTextNode(node)) {
       addNode(node);
     }
 
@@ -346,5 +342,5 @@ function getServerRenderedNodes(root: Node) {
     flattenNode(child);
   }
 
-  return [doms.filter(isHTMLElement), doms.filter(isTextNode), lazy] as const;
+  return [doms.filter(isElement), doms.filter(isTextNode), lazy] as const;
 }

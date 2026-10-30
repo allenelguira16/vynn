@@ -6,6 +6,7 @@ import { createOwner, disposeOwner, runWithOwner } from "../life-cycle/owner";
 import { addUnmountListener } from "../render/$cmpnt";
 import { resolveNode } from "../render/resolve-node";
 import { initializeHeadContext } from "../context/head-context";
+import { getChildDOMNamespace, HTML_NAMESPACE, withDOMNamespace } from "../render/namespace";
 
 /**
  * Render the app to the dom
@@ -15,13 +16,13 @@ import { initializeHeadContext } from "../context/head-context";
  */
 export function renderToDOM(
   App: () => JSX.Element,
-  id: Document | HTMLElement | DocumentFragment | string,
+  id: Document | Element | DocumentFragment | string,
 ) {
   let cleanup: (() => void) | undefined;
 
-  let node: DocumentFragment | HTMLElement | null;
+  let node: DocumentFragment | Element | null;
 
-  if (id instanceof HTMLElement || id instanceof DocumentFragment) {
+  if (id instanceof Element || id instanceof DocumentFragment) {
     node = id;
   } else if (id instanceof Document) {
     node = id.documentElement;
@@ -29,7 +30,7 @@ export function renderToDOM(
     node = document.querySelector(id) as typeof node;
   }
 
-  if (node instanceof HTMLElement || node instanceof DocumentFragment) {
+  if (node instanceof Element || node instanceof DocumentFragment) {
     const owner = createOwner();
 
     runWithOwner(owner, () => {
@@ -38,7 +39,12 @@ export function renderToDOM(
       initializeAsyncContext();
       initializeErrorBoundaryContext();
 
-      const app = resolveNode(App);
+      const app = withDOMNamespace(
+        node instanceof Element
+          ? getChildDOMNamespace(node.namespaceURI, node.localName)
+          : HTML_NAMESPACE,
+        () => resolveNode(App),
+      );
       const nodes = app.map((element) => element);
 
       node.append(...nodes);

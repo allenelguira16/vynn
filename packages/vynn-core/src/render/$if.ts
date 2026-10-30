@@ -5,6 +5,7 @@ import { resolveNode, resolveSSRChild } from "./resolve-node";
 import { markParked, unmarkParked } from "./$cmpnt.util";
 import { untrack } from "../reactivity/untrack";
 import { isHydrating } from "../client/hydration";
+import { getCurrentDOMNamespace, withDOMNamespace } from "./namespace";
 
 type IfBranch = {
   start: Comment;
@@ -19,18 +20,24 @@ export function $if(
   consequent: () => JSX.Element,
   alternate?: () => JSX.Element,
 ): JSX.Element {
+  const namespace = getCurrentDOMNamespace();
+  const renderInNamespace = <T>(callback: () => T): T =>
+    withDOMNamespace(namespace, callback);
+
   if (isServer()) {
-    return resolveSSRChild(() => {
-      const value = condition();
+    return resolveSSRChild(() =>
+      renderInNamespace(() => {
+        const value = condition();
 
-      if (value) return consequent();
-      if (alternate) return alternate();
+        if (value) return consequent();
+        if (alternate) return alternate();
 
-      // An omitted alternate represents the short-circuit result of an && expression.
-      // Boolean results render no content, while falsy values such as 0
-      // remain visible as ordinary JSX children.
-      return (typeof value === "boolean" ? undefined : value) as JSX.Element;
-    }) as unknown as JSX.Element;
+        // An omitted alternate represents the short-circuit result of an && expression.
+        // Boolean results render no content, while falsy values such as 0
+        // remain visible as ordinary JSX children.
+        return (typeof value === "boolean" ? undefined : value) as JSX.Element;
+      }),
+    ) as unknown as JSX.Element;
   }
 
   const marker = document.createTextNode("");
@@ -60,14 +67,14 @@ export function $if(
     const shortCircuitText =
       !key && !alternate && isShortCircuitText(value)
         ? claimInitialText
-          ? (resolveNode(() => renderShortCircuitValue(value))[0] as Text)
+          ? (renderInNamespace(() => resolveNode(() => renderShortCircuitValue(value)))[0] as Text)
           : document.createTextNode(renderShortCircuitValue(value))
         : undefined;
 
     const content = key
-      ? resolveNode(consequent)
+      ? renderInNamespace(() => resolveNode(consequent))
       : alternate
-        ? resolveNode(alternate)
+        ? renderInNamespace(() => resolveNode(alternate))
         : shortCircuitText
           ? [shortCircuitText]
           : [];

@@ -13,7 +13,7 @@ import { isServer } from "../context/is-server-context";
  * @param props The portal mount node and child content to render.
  * @returns `null` because the portal does not render at its original location.
  */
-export const Portal = $cmpnt(function Portal<E extends HTMLElement>(
+export const Portal = $cmpnt(function Portal<E extends Element>(
   props: PropsWithChildren<{ mount: E }>,
 ): JSX.Element {
   if (isServer()) {

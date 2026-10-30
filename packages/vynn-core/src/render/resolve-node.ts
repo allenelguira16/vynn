@@ -5,6 +5,11 @@ import { NotReadyError } from "../reactivity/not-ready-error";
 import { claimHydrationText } from "../client/hydration";
 import { isServer } from "../context/is-server-context";
 import { isHeadElement, isCreatingHeadElement } from "./$head";
+import {
+  getCurrentDOMNamespace,
+  getElementNamespace,
+  withDOMNamespace,
+} from "./namespace";
 
 export type SSR_NODE =
   | SSR_ELEMENT
@@ -18,6 +23,7 @@ export type SSR_ELEMENT = {
   children: SSR_NODE[];
   parent: SSR_ELEMENT | null;
   attributes: Record<string, string>;
+  namespaceURI: string;
 
   insertBefore(node: SSR_NODE, before: SSR_NODE | null): void;
   appendChild(node: SSR_NODE): void;
@@ -44,11 +50,10 @@ export type SSR_ASYNC = {
   parent: SSR_ELEMENT | null;
 };
 
-export function createSSRNode<T extends keyof HTMLElementTagNameMap>(
-  type: T,
-): SSR_ELEMENT {
+export function createSSRNode(type: string): SSR_ELEMENT {
   const node: SSR_ELEMENT = {
     type,
+    namespaceURI: getElementNamespace(type),
     children: [],
     parent: null,
     attributes: {},
@@ -115,12 +120,19 @@ export function createSSRAsync(
   promises: Promise<unknown>[],
 ): SSR_ASYNC {
   const owner = getOwner();
+  const namespace = getCurrentDOMNamespace();
 
   return {
     type: "#async",
     parent: null,
-    fallback: () => runWithOwner(owner, fallback),
-    children: () => runWithOwner(owner, children),
+    fallback: () =>
+      runWithOwner(owner, () =>
+        withDOMNamespace(namespace, fallback),
+      ),
+    children: () =>
+      runWithOwner(owner, () =>
+        withDOMNamespace(namespace, children),
+      ),
     promises,
   };
 }
