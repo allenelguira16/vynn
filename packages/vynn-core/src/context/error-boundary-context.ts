@@ -1,3 +1,4 @@
+import { ERROR_BOUNDARY_DATA_SSR_KEY } from "../const";
 import {
   getContext,
   getOwner,
@@ -63,11 +64,11 @@ export function getErrorBoundaryValue(
   errorBoundaryID: number,
 ): ErrorBoundarySSRState | undefined {
   if (!isServer()) {
-    (window as any).__vynnErrorBoundaryData ??= [];
+    (window as any)[ERROR_BOUNDARY_DATA_SSR_KEY] ??= [];
     try {
-      return (window as any).__vynnErrorBoundaryData[errorBoundaryID];
+      return (window as any)[ERROR_BOUNDARY_DATA_SSR_KEY][errorBoundaryID];
     } finally {
-      delete (window as any).__vynnErrorBoundaryData[errorBoundaryID];
+      delete (window as any)[ERROR_BOUNDARY_DATA_SSR_KEY][errorBoundaryID];
     }
   }
 

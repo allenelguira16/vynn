@@ -1,4 +1,8 @@
-import { FALLBACK_END_SSR_MARKER, FALLBACK_START_SSR_MARKER } from "../const";
+import {
+  APPLY_PATCH_SSR_KEY,
+  FALLBACK_END_SSR_MARKER,
+  FALLBACK_START_SSR_MARKER,
+} from "../const";
 import { disposeOwner, getOwner, runWithOwner } from "../life-cycle/owner";
 import { JSX } from "../types/jsx";
 import {
@@ -143,78 +147,78 @@ export function resolveStream(
 }
 
 function renderPatch(id: number, html: string) {
-  return `<template data-vynn-patch="${id}">${html}</template><script>window.__vynnApplyPatch?.(${id});document.currentScript.remove();</script>`;
+  return `<template id="${id}">${html}</template><script>${APPLY_PATCH_SSR_KEY}(${id});document.currentScript.remove();</script>`;
+}
+
+declare global {
+  let $AP: (id: number) => void;
 }
 
 function renderPatchRuntime() {
-  return `<script>(${(() => {
-    var queue = ((window as any).__vynnPendingPatches =
-      (window as any).__vynnPendingPatches || []);
+  return `<script>var e=[];${APPLY_PATCH_SSR_KEY}=function(r){e.push(function(){return function(e){var r=document.querySelector('template[id="'+e+'"]');if(!r)return!1;for(var t=document.createTreeWalker(document,NodeFilter.SHOW_COMMENT),n=null,o=null;t.nextNode();){var a=t.currentNode;a.data==="${FALLBACK_START_SSR_MARKER}:"+e&&(n=a),a.data==="${FALLBACK_END_SSR_MARKER}:"+e&&(o=a)}if(!n||!o||!o.parentNode)return!1;for(var u=o.parentNode,c=n.nextSibling;c&&c!==o;){var i=c.nextSibling;c.remove(),c=i}return u.insertBefore(r.content,o),r.remove(),n.remove(),o.remove(),!0}(r)});for(var t=!0;t;){t=!1;for(var n=e.length-1;n>=0;n--)e[n]()&&(e.splice(n,1),t=!0)}},document.currentScript.remove();</script>`;
 
-    function applyPatch(id: number) {
-      var template = document.querySelector(
-        'template[data-vynn-patch="' + id + '"]',
-      ) as HTMLTemplateElement | null;
+  // NOTE: EQUIVALENT CODE
+  //   return `<script>
+  // var queue = [];
 
-      if (!template) return false;
+  // function applyPatch(id) {
+  //   var template = document.querySelector(
+  //     'template[id="' + id + '"]',
+  //   );
 
-      var walker = document.createTreeWalker(document, NodeFilter.SHOW_COMMENT);
+  //   if (!template) return false;
 
-      var start: Comment | null = null;
-      var end: Comment | null = null;
+  //   var walker = document.createTreeWalker(document, NodeFilter.SHOW_COMMENT);
 
-      while (walker.nextNode()) {
-        var node = walker.currentNode as Comment;
+  //   var start = null;
+  //   var end = null;
 
-        if (node.data === `FALLBACK_START_SSR_MARKER:${id}`) start = node;
-        if (node.data === `FALLBACK_END_SSR_MARKER:${id}`) end = node;
-      }
+  //   while (walker.nextNode()) {
+  //     var node = walker.currentNode;
 
-      if (!start || !end || !end.parentNode) {
-        return false;
-      }
+  //     if (node.data === "${FALLBACK_START_SSR_MARKER}:"+ id) start = node;
+  //     if (node.data === "${FALLBACK_END_SSR_MARKER}:"+ id) end = node;
+  //   }
 
-      var parent = end.parentNode;
-      var current = start.nextSibling;
+  //   if (!start || !end || !end.parentNode) {
+  //     return false;
+  //   }
 
-      while (current && current !== end) {
-        var next = current.nextSibling;
-        current.remove();
-        current = next;
-      }
+  //   var parent = end.parentNode;
+  //   var current = start.nextSibling;
 
-      parent.insertBefore(template.content, end);
-      template.remove();
-      start.remove();
-      end.remove();
+  //   while (current && current !== end) {
+  //     var next = current.nextSibling;
+  //     current.remove();
+  //     current = next;
+  //   }
 
-      return true;
-    }
+  //   parent.insertBefore(template.content, end);
+  //   template.remove();
+  //   start.remove();
+  //   end.remove();
 
-    (window as any).__vynnApplyPatch = function (id: number) {
-      queue.push(function () {
-        return applyPatch(id);
-      });
+  //   return true;
+  // }
 
-      var changed = true;
+  // ${APPLY_PATCH_SSR_KEY} = function (id) {
+  //   queue.push(function () {
+  //     return applyPatch(id);
+  //   });
 
-      while (changed) {
-        changed = false;
+  //   var changed = true;
 
-        for (var i = queue.length - 1; i >= 0; i--) {
-          if (queue[i]()) {
-            queue.splice(i, 1);
-            changed = true;
-          }
-        }
-      }
-    };
-  })
-    .toString()
-    .replace(/\s+/g, " ")
-    .replace("FALLBACK_START_SSR_MARKER", FALLBACK_START_SSR_MARKER)
-    .replace(
-      "FALLBACK_END_SSR_MARKER",
-      FALLBACK_END_SSR_MARKER,
-    )})();document.currentScript.remove();</script>`;
+  //   while (changed) {
+  //     changed = false;
+
+  //     for (var i = queue.length - 1; i >= 0; i--) {
+  //       if (queue[i]()) {
+  //         queue.splice(i, 1);
+  //         changed = true;
+  //       }
+  //     }
+  //   }
+  // };
+  // document.currentScript.remove();
+  // </script>`.replace(/\s+/g, " ");
 }

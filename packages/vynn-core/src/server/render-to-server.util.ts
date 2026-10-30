@@ -1,4 +1,9 @@
-import { EMPTY_TEXT_SSR_MARKER, TEXT_SSR_SEPARATOR } from "../const";
+import {
+  ASYNC_DATA_SSR_KEY,
+  EMPTY_TEXT_SSR_MARKER,
+  ERROR_BOUNDARY_DATA_SSR_KEY,
+  TEXT_SSR_SEPARATOR,
+} from "../const";
 import { escapeHtml } from "../utils/escape-html";
 import { SSR_ELEMENT, SSR_TEXT } from "../render/resolve-node";
 import { getAsyncValues } from "../context/async-context";
@@ -79,7 +84,7 @@ export function renderAsyncUtilities() {
     mode: serializeForInlineScript(getRenderMode()),
     error: serializeForInlineScript(getErrorBoundaryValues()),
   };
-  return `<script>window.__vynnAsyncData=${values.async};window.__vynnRenderMode=${values.mode};window.__vynnErrorBoundaryData=${values.error};document.currentScript.remove();</script>`.replaceAll(
+  return `<script>${ASYNC_DATA_SSR_KEY}=${values.async};${ERROR_BOUNDARY_DATA_SSR_KEY}=${values.error};document.currentScript.remove();</script>`.replaceAll(
     "\n",
     "",
   );

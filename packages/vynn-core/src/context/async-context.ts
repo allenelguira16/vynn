@@ -1,3 +1,4 @@
+import { ASYNC_DATA_SSR_KEY } from "../const";
 import { getContext, modifyContext, setContext } from "../life-cycle/owner";
 import { isServer } from "./is-server-context";
 
@@ -49,11 +50,11 @@ export function getAsyncValues() {
 
 export function getAsyncValue(asyncID: number) {
   if (!isServer()) {
-    (window as any).__vynnAsyncData ??= [];
+    (window as any)[ASYNC_DATA_SSR_KEY] ??= [];
     try {
-      return (window as any).__vynnAsyncData[asyncID];
+      return (window as any)[ASYNC_DATA_SSR_KEY][asyncID];
     } finally {
-      delete (window as any).__vynnAsyncData[asyncID];
+      delete (window as any)[ASYNC_DATA_SSR_KEY][asyncID];
     }
   }
 
