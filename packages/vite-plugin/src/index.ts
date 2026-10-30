@@ -4,6 +4,7 @@ import type { Plugin } from "vite";
 import { vynnOxcPlugin } from "./plugins/jsx-transpiler.ts";
 import { vynnStartPlugin, type VynnAppOptions } from "./plugins/app.ts";
 import { createVynnSsrCssPlugin } from "./plugins/ssr-css.ts";
+import { vynnSsrPreloadPlugin } from "./plugins/ssr-preload.ts";
 import {
   serverFunctionsPlugin,
   type VynnServerFunctionsOptions,
@@ -34,6 +35,7 @@ export default function vynn(options: VitePluginVynnOptions = {}) {
   const startEnabled = options.app !== undefined && options.app !== false;
 
   const ssrCss = options.ssr ? createVynnSsrCssPlugin() : undefined;
+  const ssrPreload = options.ssr ? vynnSsrPreloadPlugin() : undefined;
   const serverFunctionsOptions =
     options.serverFunctions === true
       ? {}
@@ -53,6 +55,10 @@ export default function vynn(options: VitePluginVynnOptions = {}) {
 
   if (ssrCss) {
     plugins.push(ssrCss.plugin);
+  }
+
+  if (ssrPreload) {
+    plugins.push(ssrPreload);
   }
 
   if (startEnabled) {

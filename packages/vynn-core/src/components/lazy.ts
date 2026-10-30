@@ -17,6 +17,7 @@ import {
   regsterAsyncGetterFromLazy,
 } from "../context/lazy-context";
 import { isServer } from "../context/is-server-context";
+import { registerSsrModule } from "../context/ssr-module-context";
 
 type AnyComponent = (props: never) => JSX.Element;
 
@@ -35,16 +36,18 @@ type ComponentExport<
 export function lazy<M extends Record<string, unknown>, K extends keyof M>(
   loader: () => Promise<M>,
   namedExport: K,
+  moduleId?: string,
 ): ComponentExport<M, K>;
 export function lazy<
   M extends Record<string, unknown> & { default: AnyComponent },
->(loader: () => Promise<M>): M["default"];
+>(loader: () => Promise<M>, namedExport?: undefined, moduleId?: string): M["default"];
 export function lazy<
   M extends Record<string, unknown>,
   K extends keyof M = "default" & keyof M,
 >(
   loader: () => Promise<M>,
   namedExport = "default" as K,
+  moduleId?: string,
 ): ComponentExport<M, K> {
   type Component = ComponentExport<M, K>;
 
@@ -86,6 +89,7 @@ export function lazy<
   ): JSX.Element {
     // The ID belongs to this component instance, not the lazy declaration.
     const lazyID = getLazyID();
+    if (isServer()) registerSsrModule(moduleId);
 
     // return withLazyBoundary(() => {
     regsterAsyncGetterFromLazy(loadComponent);

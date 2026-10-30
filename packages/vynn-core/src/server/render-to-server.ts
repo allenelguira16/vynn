@@ -6,28 +6,44 @@ import { resolveStream } from "./render-to-server.stream";
 import { initializeAsyncContext } from "../context/async-context";
 import { initializeLazyContext } from "../context/lazy-context";
 import { initializeErrorBoundaryContext } from "../context/error-boundary-context";
+import {
+  attachSsrModules,
+  initializeSsrModuleContext,
+} from "../context/ssr-module-context";
 
 export function renderToServer(App: () => JSX.Element, mode: RenderMode) {
   const owner = createOwner();
+  const ssrModules = new Set<string>();
 
-  return runWithOwner(owner, () => {
-    setRenderMode(mode);
+  const result = runWithOwner(
+    owner,
+    (): Promise<string> | ReadableStream<Uint8Array> => {
+      setRenderMode(mode);
 
-    initializeLazyContext();
-    initializeAsyncContext();
-    initializeErrorBoundaryContext();
+      initializeSsrModuleContext(ssrModules);
+      initializeLazyContext();
+      initializeAsyncContext();
+      initializeErrorBoundaryContext();
 
-    switch (mode) {
-      // @DEPRECATED: Sync will no longer be supported in favor of async and stream to fit well with $async
-      // case "sync": {
-      //   return resolveSync(App);
-      // }
-      case "async": {
-        return resolveAsync(App);
+      switch (mode) {
+        // @DEPRECATED: Sync will no longer be supported in favor of async and stream to fit well with $async
+        // case "sync": {
+        //   return resolveSync(App);
+        // }
+        case "async": {
+          return resolveAsync(App);
+        }
+        case "stream": {
+          return resolveStream(App);
+        }
+        default: {
+          throw new Error(
+            `[vynn]: Unsupported SSR render mode: ${String(mode)}`,
+          );
+        }
       }
-      case "stream": {
-        return resolveStream(App);
-      }
-    }
-  });
+    },
+  );
+
+  return attachSsrModules(result, ssrModules);
 }

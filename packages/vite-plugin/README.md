@@ -40,6 +40,44 @@ production HTTP server, import `handleServerFunctionRequest` from
 `handleServerFunctionRequest(request)`.
 
 
+## SSR lazy-module preloads
+
+When `ssr: true` is enabled, Vynn annotates static `lazy(() => import("./..."))`
+calls with their resolved client module IDs and records a module only when that
+lazy component is reached by a server render. The client build writes
+`.vite/ssr-manifest.json` automatically. Untouched lazy routes are not
+preloaded merely because they exist in the module graph.
+
+App mode wires the manifest and module tracking into its HTML response. For a
+custom SSR server, use the helpers exported from `vynn/server`:
+
+```tsx
+import { readFile } from "node:fs/promises";
+import { getSsrModuleIds, renderSsrPreloadLinks, renderToServer } from "vynn/server";
+import App from "./app";
+
+const ssrManifest = JSON.parse(
+  await readFile("dist/client/.vite/ssr-manifest.json", "utf8"),
+);
+const rendered = renderToServer(() => <App />, "async");
+const modules = getSsrModuleIds(rendered);
+const html = await rendered;
+const preloadLinks = renderSsrPreloadLinks(modules, ssrManifest, {
+  base: "/",
+});
+
+// Put preloadLinks inside the document's <head>, before the rendered HTML.
+```
+
+For streaming mode, `getSsrModuleIds(stream)` returns a live set. Put the first
+`renderSsrPreloadLinks` result in the document head, then call it before each
+emitted chunk with the same mutable `exclude` set to avoid duplicate tags. For
+late discoveries, wrap the returned links with `injectSsrPreloadLinks(links)`;
+this appends them to `document.head` without leaving unexpected nodes inside the
+hydrated app. App mode handles the initial and late links automatically. In
+development, pass `{ dev: true, base: "/" }` and a null manifest to generate
+Vite module URLs instead of production asset URLs.
+
 ## Custom SSR server integration
 
 When you own the HTTP server and build an SSR entry yourself, keep the entry

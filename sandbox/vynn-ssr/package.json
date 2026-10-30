@@ -8,7 +8,7 @@
     "start": "cross-env NODE_ENV=production tsx server.tsx",
     "preview": "cross-env NODE_ENV=production pnpm build && tsx server.tsx",
     "build": "pnpm build:client && pnpm build:server",
-    "build:client": "cross-env NODE_ENV=production vite build --outDir dist/client",
+    "build:client": "cross-env NODE_ENV=production vite build --outDir dist/client --ssrManifest",
     "build:server": "cross-env NODE_ENV=production vite build --outDir dist/server --ssr src/entry-server.tsx"
   },
   "dependencies": {

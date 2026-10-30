@@ -31,6 +31,7 @@ import {
   createServerEntry,
   createSsrHandlerCode,
   readClientAssets,
+  readSsrManifest,
 } from "./app/documents.ts";
 import {
   addBaseToRequestUrl,
@@ -133,6 +134,7 @@ export function vynnStartPlugin({
               build: {
                 outDir: "dist/client",
                 manifest: true,
+                ssrManifest: true,
                 rollupOptions: {
                   input: {
                     client: entries.clientInput,
@@ -295,8 +297,10 @@ export function vynnStartPlugin({
         ).environment?.config?.consumer;
 
         let assets: ClientAssets | null = null;
+        let ssrManifest: Record<string, string[]> | null = null;
         if (isBuild && consumer === "server") {
           assets = await readClientAssets(clientOutDir);
+          ssrManifest = await readSsrManifest(clientOutDir);
         }
 
         const clientEntryUrl = assets
@@ -312,6 +316,7 @@ export function vynnStartPlugin({
           dev: !isBuild,
           serverFunctions:
             serverFunctions !== undefined && serverFunctions.enabled !== false,
+          ssrManifest,
         });
       }
 

@@ -2,6 +2,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { relative, resolve } from "node:path";
 import { SERVER_ENTRY_ID, type ClientAssets } from "./shared.ts";
 import { joinAssetBase } from "./http.ts";
+import type { ViteSsrManifest } from "../ssr-preload.ts";
 
 type ManifestEntry = {
   file: string;
@@ -68,6 +69,20 @@ export function createServerEntry(
     `}`,
     "",
   ].join("\n");
+}
+
+export async function readSsrManifest(
+  outDir: string,
+): Promise<ViteSsrManifest> {
+  const manifestPath = resolve(outDir, ".vite/ssr-manifest.json");
+  try {
+    return JSON.parse(await readFile(manifestPath, "utf8")) as ViteSsrManifest;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `[Vynn Start] Could not read the client SSR manifest at ${manifestPath}. Ensure the client build enables build.ssrManifest and completes before the SSR build. Original error: ${message}`,
+    );
+  }
 }
 
 export async function readClientAssets(outDir: string): Promise<ClientAssets> {
@@ -146,11 +161,25 @@ export function createSsrHandlerCode(options: {
   mountId: string;
   dev: boolean;
   serverFunctions: boolean;
+  ssrManifest: ViteSsrManifest | null;
 }): string {
-  const { clientEntryUrl, css, base, title, mountId, dev, serverFunctions } =
-    options;
+  const {
+    clientEntryUrl,
+    css,
+    base,
+    title,
+    mountId,
+    dev,
+    serverFunctions,
+    ssrManifest,
+  } = options;
 
   return [
+    `import {`,
+    `  getSsrModuleIds,`,
+    `  injectSsrPreloadLinks,`,
+    `  renderSsrPreloadLinks,`,
+    `} from "vynn/server";`,
     `import { render } from ${JSON.stringify(SERVER_ENTRY_ID)};`,
     ...(serverFunctions
       ? [
@@ -163,6 +192,7 @@ export function createSsrHandlerCode(options: {
     `const TITLE = ${JSON.stringify(title)};`,
     `const MOUNT_ID = ${JSON.stringify(mountId)};`,
     `const IS_DEV = ${JSON.stringify(dev)};`,
+    `const SSR_MANIFEST = ${JSON.stringify(ssrManifest)};`,
     `function escapeAttribute(value) { return String(value).replace(/&/g, "&amp;").replace(/\"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }`,
     `function assetUrl(path) {`,
     `  const value = String(path).replace(/^\\/+/, "");`,
@@ -171,12 +201,12 @@ export function createSsrHandlerCode(options: {
     `  const prefix = BASE === "/" ? "" : BASE.replace(/\\/$/, "");`,
     `  return prefix + "/" + value;`,
     `}`,
-    `function documentPrefix(devCssLinks = []) {`,
+    `function documentPrefix(devCssLinks = [], preloadLinks = "") {`,
     `  const css = IS_DEV`,
     `    ? devCssLinks.map(({ url, id }) => '<link rel="stylesheet" data-vite-dev-id="' + escapeAttribute(id) + '" href="' + escapeAttribute(assetUrl(url + "?direct")) + '">').join("")`,
     `    : CSS_ASSETS.map((file) => '<link rel="stylesheet" href="' + escapeAttribute(assetUrl(file)) + '">').join("");`,
     `  const viteClient = IS_DEV ? '<script type="module" src="' + escapeAttribute(assetUrl("/@vite/client")) + '"></script>' : "";`,
-    `  return '<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>' + TITLE.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") + '</title>' + css + viteClient + '</head><body><div id="' + escapeAttribute(MOUNT_ID) + '">';`,
+    `  return '<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>' + TITLE.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") + '</title>' + css + preloadLinks + viteClient + '</head><body><div id="' + escapeAttribute(MOUNT_ID) + '">';`,
     `}`,
     `function asReadableStream(value) {`,
     `  if (value instanceof ReadableStream) return value;`,
@@ -184,17 +214,21 @@ export function createSsrHandlerCode(options: {
     `  if (value instanceof Uint8Array) return new Response(value).body;`,
     `  throw new TypeError("[Vynn Start] The server entry render() must return a string, Uint8Array, or ReadableStream.");`,
     `}`,
-    `function withDocument(body, devCssLinks) {`,
+    `function withDocument(body, devCssLinks, moduleIds) {`,
     `  const reader = body.getReader();`,
     `  const encoder = new TextEncoder();`,
+    `  const seenPreloads = new Set(CSS_ASSETS);`,
+    `  const preloadLinks = () => renderSsrPreloadLinks(moduleIds, SSR_MANIFEST, { base: BASE, dev: IS_DEV, exclude: seenPreloads });`,
     `  return new ReadableStream({`,
     `    async start(controller) {`,
-    `      controller.enqueue(encoder.encode(documentPrefix(devCssLinks)));`,
     `      try {`,
-    `        while (true) {`,
-    `          const result = await reader.read();`,
-    `          if (result.done) break;`,
+    `        let result = await reader.read();`,
+    `        controller.enqueue(encoder.encode(documentPrefix(devCssLinks, preloadLinks())));`,
+    `        while (!result.done) {`,
+    `          const links = preloadLinks();`,
+    `          if (links) controller.enqueue(encoder.encode(injectSsrPreloadLinks(links)));`,
     `          controller.enqueue(result.value);`,
+    `          result = await reader.read();`,
     `        }`,
     `        controller.enqueue(encoder.encode('</div><script type="module" src="' + escapeAttribute(CLIENT_ENTRY_URL) + '"></script></body></html>'));`,
     `        controller.close();`,
@@ -217,9 +251,11 @@ export function createSsrHandlerCode(options: {
     `  const url = new URL(request.url);`,
     `  const headers = { "content-type": "text/html; charset=utf-8" };`,
     `  if (request.method === "HEAD") return new Response(null, { status: 200, headers });`,
-    `  const result = await render(url.pathname + url.search);`,
+    `  const rendered = render(url.pathname + url.search);`,
+    `  const moduleIds = getSsrModuleIds(rendered);`,
+    `  const result = await rendered;`,
     `  if (result instanceof Response) return result;`,
-    `  return new Response(withDocument(asReadableStream(result), devCssLinks), { status: 200, headers });`,
+    `  return new Response(withDocument(asReadableStream(result), devCssLinks, moduleIds), { status: 200, headers });`,
     `}`,
     `export default { fetch(request) { return handleRequest(request); } };`,
     "",
