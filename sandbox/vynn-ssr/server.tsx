@@ -7,6 +7,7 @@ import {
   getSsrModuleIds,
   injectSsrPreloadLinks,
   renderSsrPreloadLinks,
+  runWithSsrContext,
   type SsrClientManifest,
 } from "vynn/server";
 import { toWebRequest } from "vynn/server/node";
@@ -18,7 +19,7 @@ const startedAt = Date.now();
 
 type Render = (
   request: globalThis.Request,
-) => Promise<string> | ReadableStream<Uint8Array<ArrayBufferLike>>;
+) => string | Promise<string> | ReadableStream<Uint8Array<ArrayBufferLike>>;
 
 type ServerEntry = {
   render: Render;
@@ -142,17 +143,18 @@ async function handlePageRequest(
   if (req.originalUrl.includes(".")) return next();
 
   try {
+    await runWithSsrContext(async () => {
     const { template, render } = await loadPage(req.originalUrl);
 
     // Capture the live set before awaiting; nested lazy boundaries can register
     // more modules while the stream is being consumed.
     const rendered = render(toRequest(req));
     const streaming = rendered instanceof ReadableStream;
-    const moduleIds = getSsrModuleIds(rendered);
+    const moduleIds = getSsrModuleIds();
     // Async SSR is complete before the document shell is sent. Streaming SSR
     // emits late head updates through the Vynn stream patch runtime.
-    const html = streaming ? rendered : await rendered;
-    const headHtml = getSsrHead(rendered);
+    const html = typeof rendered === "string" || streaming ? rendered : await rendered;
+    const headHtml = getSsrHead();
     const seen = new Set<string>();
     const getPreloadLinks = () =>
       renderSsrPreloadLinks(moduleIds, ssrManifest, {
@@ -183,6 +185,7 @@ async function handlePageRequest(
     });
     await writeStream(res, document.slice(index + outlet.length));
     res.end();
+    });
   } catch (error) {
     if (error instanceof Error && vite) vite.ssrFixStacktrace(error);
     next(error);

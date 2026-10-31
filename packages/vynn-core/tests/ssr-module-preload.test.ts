@@ -1,37 +1,49 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  attachSsrModules,
   getSsrModuleIds,
   initializeSsrModuleContext,
   registerSsrModule,
-  renderSsrPreloadLinks,
 } from "../src/context/ssr-module-context";
+import { renderSsrPreloadLinks } from "../src/server/preload.render-preload-links";
+import { runWithSsrContext } from "../src/server/ssr-request-context";
 import { createOwner, runWithOwner } from "../src/life-cycle/owner";
 import { vynnSsrPreloadPlugin } from "../../vite-plugin/src/plugins/ssr-preload.ts";
 
 describe("SSR lazy module tracking", () => {
-  it("isolates module IDs between render requests", () => {
-    const firstModules = new Set<string>();
-    const firstOwner = createOwner(null);
-    runWithOwner(firstOwner, () => {
-      initializeSsrModuleContext(firstModules);
-      registerSsrModule("src/pages/a.tsx");
+  it("isolates module IDs between SSR request contexts", () => {
+    const first = runWithSsrContext(() => {
+      const owner = createOwner(null);
+      runWithOwner(owner, () => {
+        initializeSsrModuleContext(new Set<string>());
+        registerSsrModule("src/pages/a.tsx");
+      });
+      return [...getSsrModuleIds()];
     });
-    const firstRender = Promise.resolve("first");
-    attachSsrModules(firstRender, firstModules);
 
-    const secondModules = new Set<string>();
-    const secondOwner = createOwner(null);
-    runWithOwner(secondOwner, () => {
-      initializeSsrModuleContext(secondModules);
-      registerSsrModule("src/pages/b.tsx");
+    const second = runWithSsrContext(() => {
+      const owner = createOwner(null);
+      runWithOwner(owner, () => {
+        initializeSsrModuleContext(new Set<string>());
+        registerSsrModule("src/pages/b.tsx");
+      });
+      return [...getSsrModuleIds()];
     });
-    const secondRender = Promise.resolve("second");
-    attachSsrModules(secondRender, secondModules);
 
-    expect([...getSsrModuleIds(firstRender)]).toEqual(["src/pages/a.tsx"]);
-    expect([...getSsrModuleIds(secondRender)]).toEqual(["src/pages/b.tsx"]);
+    expect(first).toEqual(["src/pages/a.tsx"]);
+    expect(second).toEqual(["src/pages/b.tsx"]);
+  });
+
+  it("returns a live module set for streaming SSR", () => {
+    runWithSsrContext(() => {
+      const modules = new Set<string>();
+      initializeSsrModuleContext(modules);
+
+      const captured = getSsrModuleIds();
+      modules.add("src/pages/lazy.tsx");
+
+      expect([...captured]).toEqual(["src/pages/lazy.tsx"]);
+    });
   });
 });
 

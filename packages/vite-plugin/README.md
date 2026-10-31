@@ -53,23 +53,33 @@ custom SSR server, use the helpers exported from `vynn/server`:
 
 ```tsx
 import { readFile } from "node:fs/promises";
-import { getSsrModuleIds, renderSsrPreloadLinks, renderToServer } from "vynn/server";
+import {
+  getSsrHead,
+  getSsrModuleIds,
+  renderSsrPreloadLinks,
+  renderToServer,
+  runWithSsrContext,
+} from "vynn/server";
 import App from "./app";
 
 const ssrManifest = JSON.parse(
   await readFile("dist/client/.vite/ssr-manifest.json", "utf8"),
 );
-const rendered = renderToServer(() => <App />, "async");
-const modules = getSsrModuleIds(rendered);
-const html = await rendered;
-const preloadLinks = renderSsrPreloadLinks(modules, ssrManifest, {
-  base: "/",
-});
+await runWithSsrContext(async () => {
+  const rendered = renderToServer(() => <App />, "async");
+  const modules = getSsrModuleIds();
+  const html = await rendered;
+  const head = getSsrHead();
+  const preloadLinks = renderSsrPreloadLinks(modules, ssrManifest, {
+    base: "/",
+  });
 
-// Put preloadLinks inside the document's <head>, before the rendered HTML.
+  // Insert head and preloadLinks into <head>, then write html into the body.
+});
 ```
 
-For streaming mode, `getSsrModuleIds(stream)` returns a live set. Put the first
+For streaming mode, run the complete request inside `runWithSsrContext()`.
+`getSsrModuleIds()` returns the request's live set. Put the first
 `renderSsrPreloadLinks` result in the document head, then call it before each
 emitted chunk with the same mutable `exclude` set to avoid duplicate tags. For
 late discoveries, wrap the returned links with `injectSsrPreloadLinks(links)`;
@@ -185,14 +195,16 @@ document, insert the initial head snapshot into the document and preserve the
 streamed body chunks:
 
 ```tsx
-import { getSsrHead, renderToServer } from "vynn/server";
+import { getSsrHead, renderToServer, runWithSsrContext } from "vynn/server";
 import App from "./app";
 
-const rendered = renderToServer(() => <App />, "stream");
-const head = getSsrHead(rendered);
+await runWithSsrContext(async () => {
+  const rendered = renderToServer(() => <App />, "stream");
+  const head = getSsrHead();
 
-// Insert head into the document's <head>, then stream rendered into the body.
-// The stream includes Vynn's patch bootstrap and any later head updates.
+  // Insert head into the document's <head>, then stream rendered into the body.
+  // The stream includes Vynn's patch bootstrap and any later head updates.
+});
 ```
 
 The custom document renderer does not need to subscribe to head changes or
