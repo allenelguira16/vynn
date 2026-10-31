@@ -1,6 +1,6 @@
 import { getContext, setContext } from "../life-cycle/owner";
 
-export type RenderMode = "async" | "stream";
+export type RenderMode = "sync" | "async" | "stream";
 
 const RENDER_MODE = Symbol("vynn.render-mode");
 

@@ -23,9 +23,11 @@
       "import": "./src/client/index.ts"
     },
     "./server": {
+      "browser": "./src/server/browser.ts",
       "import": "./src/server/index.ts"
     },
     "./server/node": {
+      "browser": "./src/server/node.browser.ts",
       "import": "./src/server/node.ts"
     }
   },

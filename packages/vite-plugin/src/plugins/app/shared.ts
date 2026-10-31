@@ -12,7 +12,7 @@ export type VynnAppOptions = {
   /** HTML document title used by the generated document shell. */
   title?: string;
   /** SSR rendering strategy. @default "stream" */
-  renderMode?: "async" | "stream";
+  renderMode?: "sync" | "async" | "stream";
 };
 
 export type ResolvedEntries = {

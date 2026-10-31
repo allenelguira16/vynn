@@ -50,7 +50,7 @@ export function createServerEntry(
   appSpecifier: string,
   styleSpecifiers: string[],
   exportName: string | undefined,
-  renderMode: "async" | "stream",
+  renderMode: "sync" | "async" | "stream",
 ): string {
   // Read optional exports dynamically. A direct `appModule.App` access makes
   // Rollup/Rolldown warn when the module intentionally uses a default export.
@@ -179,6 +179,7 @@ export function createSsrHandlerCode(options: {
     `import {`,
     `  getSsrHead,`,
     `  getSsrModuleIds,`,
+    `  runWithSsrContext,`,
     `  injectSsrPreloadLinks,`,
     `  renderSsrPreloadLinks,`,
     `} from "vynn/server";`,
@@ -242,6 +243,7 @@ export function createSsrHandlerCode(options: {
     `  });`,
     `}`,
     `export async function handleRequest(request, devCssLinks = []) {`,
+    `  return runWithSsrContext(async () => {`,
     ...(serverFunctions
       ? [
           `  const serverFunctionResponse = await handleServerFunctionRequest(request);`,
@@ -255,11 +257,12 @@ export function createSsrHandlerCode(options: {
     `  const headers = { "content-type": "text/html; charset=utf-8" };`,
     `  if (request.method === "HEAD") return new Response(null, { status: 200, headers });`,
     `  const rendered = render(url.pathname + url.search);`,
-    `  const moduleIds = getSsrModuleIds(rendered);`,
-    `  const result = await rendered;`,
+    `  const moduleIds = getSsrModuleIds();`,
+    `  const result = typeof rendered === "string" ? rendered : await rendered;`,
     `  if (result instanceof Response) return result;`,
-    `  const headHtml = getSsrHead(rendered);`,
+    `  const headHtml = getSsrHead();`,
     `  return new Response(withDocument(asReadableStream(result), devCssLinks, moduleIds, headHtml), { status: 200, headers });`,
+    `  });`,
     `}`,
     `export default { fetch(request) { return handleRequest(request); } };`,
     "",
