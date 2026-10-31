@@ -103,6 +103,16 @@ export function render(request: Request) {
 }
 ```
 
+The render mode controls the renderer's native return type:
+
+- `"sync"` returns an HTML `string`.
+- `"async"` returns a `Promise<string>`.
+- `"stream"` returns a `ReadableStream<Uint8Array>`.
+
+No result wrapper is added. When a custom request handler also needs SSR
+metadata, wrap the complete request in `runWithSsrContext()` and use
+`getSsrHead()` / `getSsrModuleIds()` inside that scope.
+
 With `vynn({ ssr: true, serverFunctions: true })`, the plugin automatically
 exposes `handleServerFunctionRequest` from the configured SSR entry during
 the SSR build. You do not need to import or re-export the virtual
