@@ -146,14 +146,14 @@ export function claimHydrationText() {
 }
 
 export type ServerRenderedLazyRange = {
-  start: Comment;
-  end: Comment;
+  start: Text;
+  end: Text;
   nodes: Node[];
 };
 
 /**
  * Gets the original DOM range for a server-rendered lazy component.
- * Keeping the SSR markers lets the client hydrate the range in place.
+ * Empty text anchors replace the temporary SSR comments and preserve the range.
  */
 export function getServerRenderedLazyRange(
   lazyID: number,
@@ -221,8 +221,8 @@ const LAZY_END_REGEX = new RegExp(`^${LAZY_END_SSR_MARKER}:(\\d+)$`);
 type LazyHydrationNodes = {
   elements: Element[];
   texts: Text[];
-  start?: Comment;
-  end?: Comment;
+  start?: Text;
+  end?: Text;
 };
 
 function isElement(node: Node): node is Element {
@@ -288,9 +288,12 @@ function getServerRenderedNodes(root: Node) {
 
       if (start) {
         const id = Number(start[1]);
+        const anchor = document.createTextNode("");
 
-        // Keep the boundary at its SSR position until its lazy component claims it.
-        getOrCreateLazyNodes(id).start = node;
+        // Replace the transport marker without changing the boundary position.
+        node.parentNode?.replaceChild(anchor, node);
+
+        getOrCreateLazyNodes(id).start = anchor;
         boundaryStack.push(id);
         return;
       }
@@ -299,9 +302,14 @@ function getServerRenderedNodes(root: Node) {
 
       if (end) {
         const id = Number(end[1]);
-        const index = boundaryStack.lastIndexOf(id);
+        const anchor = document.createTextNode("");
 
-        getOrCreateLazyNodes(id).end = node;
+        // Replace the transport marker without changing the boundary position.
+        node.parentNode?.replaceChild(anchor, node);
+
+        getOrCreateLazyNodes(id).end = anchor;
+
+        const index = boundaryStack.lastIndexOf(id);
 
         if (index !== -1) {
           // Close this boundary and any nested entries above it.

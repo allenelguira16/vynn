@@ -26,15 +26,8 @@ function getClientIdentity(entry: HeadEntry): string {
   );
 }
 
-function getCandidateIdentity(
-  element: HTMLElement,
-  tag: HeadTag,
-): string {
-  return getHeadIdentity(
-    tag,
-    (name) => element.getAttribute(name),
-    -1,
-  );
+function getCandidateIdentity(element: HTMLElement, tag: HeadTag): string {
+  return getHeadIdentity(tag, (name) => element.getAttribute(name), -1);
 }
 
 function takeHeadCandidate(
@@ -50,15 +43,14 @@ function takeHeadCandidate(
   if (targetIdentity) {
     const matches = candidates.filter(
       (candidate) =>
-        candidate.getAttribute("data-vynn-head") === targetIdentity ||
+        candidate.getAttribute("key") === targetIdentity ||
         getCandidateIdentity(candidate, tag) === targetIdentity,
     );
 
     // Prefer the SSR-managed node when the HTML shell also contains a
     // matching static tag. This preserves the exact node used by hydration.
     const existing =
-      matches.find((candidate) => candidate.hasAttribute("data-vynn-head")) ??
-      matches[0];
+      matches.find((candidate) => candidate.hasAttribute("key")) ?? matches[0];
 
     if (existing) {
       for (const duplicate of matches) {
@@ -78,7 +70,7 @@ function takeHeadCandidate(
   // Dynamic meta/link attributes cannot be matched until attributes have
   // been applied, so only reuse an existing Vynn-managed node in that case.
   const managedIndex = candidates.findIndex((candidate) =>
-    candidate.hasAttribute("data-vynn-head"),
+    candidate.hasAttribute("key"),
   );
 
   return managedIndex === -1
@@ -87,9 +79,7 @@ function takeHeadCandidate(
 }
 
 function syncClientHead(context: HeadContext): void {
-  const winners = new Set(
-    getHeadWinners(context, getClientIdentity),
-  );
+  const winners = new Set(getHeadWinners(context, getClientIdentity));
 
   for (const entry of context.entries) {
     const element = entry.element as HTMLElement;
@@ -102,7 +92,7 @@ function syncClientHead(context: HeadContext): void {
   for (const entry of winners) {
     const element = entry.element as HTMLElement;
 
-    element.setAttribute("data-vynn-head", getClientIdentity(entry));
+    element.setAttribute("key", getClientIdentity(entry));
 
     if (element.parentNode !== document.head) {
       document.head.append(element);
@@ -188,10 +178,8 @@ export function runWithHeadElementContext<T>(callback: () => T): T {
 
 /** Returns true when a value is a registered document-head element. */
 export function isHeadElement(value: unknown): boolean {
-  return (
-    (typeof value === "object" && value !== null) ||
+  return (typeof value === "object" && value !== null) ||
     typeof value === "function"
-  )
     ? headElements.has(value as object)
     : false;
 }
