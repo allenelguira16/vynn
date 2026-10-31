@@ -6,6 +6,8 @@ interface SsrRequestContext {
   modules: Set<string>;
 }
 
+// Vite can load the server entry and request handler as separate runtime copies.
+// Share one AsyncLocalStorage instance across those copies.
 const SSR_REQUEST_STORAGE = Symbol.for("vynn.ssr-request-storage");
 
 function getStorage(): AsyncLocalStorage<SsrRequestContext> {
