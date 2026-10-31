@@ -15,10 +15,10 @@ export function renderToServer(App: () => JSX.Element, mode: RenderMode) {
   const owner = createOwner();
   const ssrModules = new Set<string>();
 
-  const { result, headContext } = runWithOwner(owner, () => {
+  return runWithOwner(owner, () => {
     setRenderMode(mode);
 
-    const headContext = initializeHeadContext();
+    initializeHeadContext();
 
     initializeSsrModuleContext(ssrModules);
     initializeLazyContext();
@@ -28,27 +28,19 @@ export function renderToServer(App: () => JSX.Element, mode: RenderMode) {
     let result: Promise<string> | ReadableStream<Uint8Array>;
 
     switch (mode) {
-      // @DEPRECATED: Sync will no longer be supported in favor of async and stream to fit well with $async
       case "async": {
         result = resolveAsync(App);
         break;
       }
       case "stream": {
-        result = resolveStream(App, headContext);
+        result = resolveStream(App);
         break;
       }
       default: {
-        throw new Error(
-          `[vynn]: Unsupported SSR render mode: ${String(mode)}`,
-        );
+        throw new Error(`[vynn]: Unsupported SSR render mode: ${String(mode)}`);
       }
     }
 
-    return { result, headContext };
+    return attachSsrHead(attachSsrModules(result, ssrModules));
   });
-
-  return attachSsrHead(
-    attachSsrModules(result, ssrModules),
-    headContext,
-  );
 }

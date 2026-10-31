@@ -1,4 +1,4 @@
-import { getOwner, type Owner } from "../life-cycle/owner";
+import { getOwner, setContext, type Owner } from "../life-cycle/owner";
 
 export type HeadTag = "title" | "meta" | "link";
 
@@ -37,9 +37,7 @@ function createHeadContext(): HeadContext {
     for (const tag of ["title", "meta", "link"] as const) {
       candidates.set(
         tag,
-        Array.from(
-          document.head.querySelectorAll<HTMLElement>(tag),
-        ),
+        Array.from(document.head.querySelectorAll<HTMLElement>(tag)),
       );
     }
   }
@@ -79,12 +77,14 @@ export function peekHeadContext(): HeadContext | undefined {
  * Initializes a fresh document-head registry for a client or server render.
  * Existing matching head nodes are collected as candidates for reuse.
  */
-export function initializeHeadContext(): HeadContext {
-  const root = getRootOwner();
-  const context = createHeadContext();
+export function initializeHeadContext() {
+  setContext(HEAD_CONTEXT, 0);
 
-  root.context.set(HEAD_CONTEXT, context);
-  return context;
+  // const root = getRootOwner();
+  // const context = createHeadContext();
+
+  // root.context.set(HEAD_CONTEXT, context);
+  // return context;
 }
 
 /** Notifies subscribers that the head registry has changed. */

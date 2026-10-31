@@ -8,7 +8,7 @@ export {
 } from "./server-function-context";
 
 export { injectSsrPreloadLinks } from "./preload.inject-links";
-export { attachSsrModules, getSsrModuleIds } from "./preload.ssr-modules";
+export { getSsrModuleIds } from "./preload.ssr-modules";
 
 export {
   renderSsrPreloadLinks,

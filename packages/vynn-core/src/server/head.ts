@@ -1,4 +1,5 @@
 import {
+  getHeadContext,
   getHeadIdentity,
   getHeadWinners,
   subscribeHeadContext,
@@ -92,7 +93,7 @@ export function renderSsrHead(context: HeadContext): string {
 /** Associates request-local metadata with the Promise or stream returned by SSR. */
 export function attachSsrHead<T extends object>(
   result: T,
-  context: HeadContext,
+  // context: HeadContext,
 ): T {
   // A custom Node server and a Vite-loaded SSR entry can resolve separate
   // instances of this module. A global symbol keeps the request context
@@ -100,7 +101,7 @@ export function attachSsrHead<T extends object>(
   Object.defineProperty(result, SSR_RESULT_HEAD_CONTEXT, {
     configurable: false,
     enumerable: false,
-    value: context,
+    value: getHeadContext(),
     writable: false,
   });
   return result;

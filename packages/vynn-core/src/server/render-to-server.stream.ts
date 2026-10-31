@@ -13,13 +13,13 @@ import {
   renderText,
 } from "./render-to-server.util";
 import { resolveNode, SSR_NODE } from "../render/resolve-node";
-import type { HeadContext } from "../context/head-context";
+import { getHeadContext } from "../context/head-context";
 import { renderHeadPatch, renderSsrHead } from "./head";
 
 export function resolveStream(
   App: () => JSX.Element,
-  headContext: HeadContext,
 ): ReadableStream<Uint8Array> {
+  const headContext = getHeadContext();
   const owner = getOwner()!;
   const encoder = new TextEncoder();
 
