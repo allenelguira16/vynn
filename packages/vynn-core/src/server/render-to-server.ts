@@ -1,16 +1,24 @@
 import { createOwner, runWithOwner } from "../life-cycle/owner";
 import { JSX } from "../types/jsx";
-import { RenderMode, setRenderMode } from "../context/render-mode";
+import { setRenderMode, type RenderMode } from "../context/render-mode";
+import { resolveSync } from "./render-to-server.sync";
 import { resolveAsync } from "./render-to-server.async";
 import { resolveStream } from "./render-to-server.stream";
 import { initializeAsyncContext } from "../context/async-context";
 import { initializeLazyContext } from "../context/lazy-context";
 import { initializeErrorBoundaryContext } from "../context/error-boundary-context";
 import { initializeSsrModuleContext } from "../context/ssr-module-context";
-import { attachSsrModules } from "./preload.ssr-modules";
 import { initializeHeadContext } from "../context/head-context";
-import { attachSsrHead } from "./head";
+import { getHeadContext } from "../context/head-context";
+import { setSsrRequestHead } from "./ssr-request-context";
 
+export function renderToServer(App: () => JSX.Element, mode: "sync"): string;
+export function renderToServer(App: () => JSX.Element, mode: "async"): Promise<string>;
+export function renderToServer(App: () => JSX.Element, mode: "stream"): ReadableStream<Uint8Array>;
+export function renderToServer(
+  App: () => JSX.Element,
+  mode: RenderMode,
+): string | Promise<string> | ReadableStream<Uint8Array>;
 export function renderToServer(App: () => JSX.Element, mode: RenderMode) {
   const owner = createOwner();
   const ssrModules = new Set<string>();
@@ -25,22 +33,25 @@ export function renderToServer(App: () => JSX.Element, mode: RenderMode) {
     initializeAsyncContext();
     initializeErrorBoundaryContext();
 
-    let result: Promise<string> | ReadableStream<Uint8Array>;
+    setSsrRequestHead(getHeadContext());
+
+    initializeSsrModuleContext(ssrModules);
+    initializeLazyContext();
+    initializeAsyncContext();
+    initializeErrorBoundaryContext();
 
     switch (mode) {
-      case "async": {
-        result = resolveAsync(App);
-        break;
-      }
-      case "stream": {
-        result = resolveStream(App);
-        break;
-      }
-      default: {
-        throw new Error(`[vynn]: Unsupported SSR render mode: ${String(mode)}`);
-      }
-    }
+      case "sync":
+        return resolveSync(App);
 
-    return attachSsrHead(attachSsrModules(result, ssrModules));
+      case "async":
+        return resolveAsync(App);
+
+      case "stream":
+        return resolveStream(App);
+
+      default:
+        throw new Error(`[vynn]: Unsupported SSR render mode: ${String(mode)}`);
+    }
   });
 }

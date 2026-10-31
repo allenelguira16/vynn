@@ -1,5 +1,4 @@
 import {
-  getHeadContext,
   getHeadIdentity,
   getHeadWinners,
   subscribeHeadContext,
@@ -10,8 +9,7 @@ import {
 import { escapeHtml } from "../utils/escape-html";
 import type { SSR_ELEMENT, SSR_NODE } from "../render/resolve-node";
 import { APPLY_HEAD_PATCH_SSR_KEY } from "../const";
-
-const SSR_RESULT_HEAD_CONTEXT = Symbol.for("vynn.ssr-head-context");
+import { getSsrRequestHead } from "./ssr-request-context";
 const voidElements = new Set([
   "area",
   "base",
@@ -90,48 +88,17 @@ export function renderSsrHead(context: HeadContext): string {
     .join("");
 }
 
-/** Associates request-local metadata with the Promise or stream returned by SSR. */
-export function attachSsrHead<T extends object>(
-  result: T,
-  // context: HeadContext,
-): T {
-  // A custom Node server and a Vite-loaded SSR entry can resolve separate
-  // instances of this module. A global symbol keeps the request context
-  // accessible across those module instances.
-  Object.defineProperty(result, SSR_RESULT_HEAD_CONTEXT, {
-    configurable: false,
-    enumerable: false,
-    value: getHeadContext(),
-    writable: false,
-  });
-  return result;
-}
-
-function getAttachedHeadContext(result: unknown): HeadContext | undefined {
-  if (
-    (typeof result !== "object" && typeof result !== "function") ||
-    result === null
-  ) {
-    return undefined;
-  }
-
-  return Reflect.get(result, SSR_RESULT_HEAD_CONTEXT) as
-    | HeadContext
-    | undefined;
-}
-
-/** Serializes the metadata collected by a renderToServer() result. */
-export function getSsrHead(result: unknown): string {
-  const context = getAttachedHeadContext(result);
+/** Serialize the head metadata collected by the active SSR request. */
+export function getSsrHead(): string {
+  const context = getSsrRequestHead();
   return context ? renderSsrHead(context) : "";
 }
 
-/** Subscribes to metadata discovered after a streaming SSR shell was emitted. */
+/** Subscribe to head metadata discovered after a streaming shell is emitted. */
 export function subscribeSsrHead(
-  result: unknown,
   listener: (html: string) => void,
 ): () => void {
-  const context = getAttachedHeadContext(result);
+  const context = getSsrRequestHead();
   if (!context) return () => {};
 
   return subscribeHeadContext(context, () => listener(renderSsrHead(context)));
