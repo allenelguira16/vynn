@@ -47,8 +47,7 @@ describe("client head rendering", () => {
   });
 
   it("reuses the generated shell title during client-only rendering", () => {
-    document.head.innerHTML =
-      '<title data-vynn-head="title">Vynn App</title>';
+    document.head.innerHTML = '<title head-id="title">Vynn App</title>';
     const shellTitle = document.head.querySelector("title");
 
     const root = createOwner();
@@ -63,7 +62,9 @@ describe("client head rendering", () => {
     });
 
     expect(document.head.querySelectorAll("title")).toHaveLength(1);
-    expect(document.head.querySelector("title")?.textContent).toBe("Client page");
+    expect(document.head.querySelector("title")?.textContent).toBe(
+      "Client page",
+    );
 
     disposeOwner(root);
   });
@@ -87,8 +88,9 @@ describe("client head rendering", () => {
     expect(document.head.querySelector("title")?.textContent).toBe(
       "Application title",
     );
-    expect(document.head.querySelector("title")?.getAttribute("data-vynn-head"))
-      .toBe("title");
+    expect(document.head.querySelector("title")?.getAttribute("head-id")).toBe(
+      "title",
+    );
 
     disposeOwner(root);
   });
@@ -113,16 +115,19 @@ describe("client head rendering", () => {
     });
 
     expect(document.head.querySelector('meta[name="viewport"]')).toBe(viewport);
-    expect(document.head.querySelectorAll('meta[name="description"]'))
-      .toHaveLength(1);
-    expect(description?.getAttribute("content")).toBe("Application description");
+    expect(
+      document.head.querySelectorAll('meta[name="description"]'),
+    ).toHaveLength(1);
+    expect(description?.getAttribute("content")).toBe(
+      "Application description",
+    );
 
     disposeOwner(root);
   });
 
   it("does not reuse a managed element with a different identity", () => {
     document.head.innerHTML =
-      '<meta name="description" data-vynn-head="meta:name:description" content="Existing">';
+      '<meta name="description" head-id="meta:name:description" content="Existing">';
     const description = document.head.querySelector("meta");
 
     const root = createOwner();
@@ -141,11 +146,9 @@ describe("client head rendering", () => {
   it("prefers the SSR-managed node and removes a duplicate static title", () => {
     document.head.innerHTML = [
       "<title>HTML template title</title>",
-      '<title data-vynn-head="title">SSR title</title>',
+      '<title head-id="title">SSR title</title>',
     ].join("");
-    const managedTitle = document.head.querySelector(
-      'title[data-vynn-head="title"]',
-    );
+    const managedTitle = document.head.querySelector('title[head-id="title"]');
 
     const root = createOwner();
     runWithOwner(root, () => {
@@ -163,8 +166,7 @@ describe("client head rendering", () => {
   });
 
   it("does not consume application text nodes while hydrating title children", () => {
-    document.head.innerHTML =
-      '<title data-vynn-head="title">Server title</title>';
+    document.head.innerHTML = '<title head-id="title">Server title</title>';
     const appRoot = document.createElement("div");
     appRoot.innerHTML = "<p>Application text</p>";
     const serverText = appRoot.querySelector("p")?.firstChild;
@@ -185,7 +187,9 @@ describe("client head rendering", () => {
     });
 
     expect(hydratedText).toBe(serverText);
-    expect(document.head.querySelector("title")?.textContent).toBe("Client title");
+    expect(document.head.querySelector("title")?.textContent).toBe(
+      "Client title",
+    );
     expect(appRoot.textContent).toBe("Application text");
 
     disposeOwner(root);
@@ -209,8 +213,7 @@ describe("client head rendering", () => {
   });
 
   it("adopts an SSR-rendered head element during hydration", () => {
-    document.head.innerHTML =
-      '<title data-vynn-head="title">Server title</title>';
+    document.head.innerHTML = '<title head-id="title">Server title</title>';
     const serverTitle = document.head.querySelector("title");
 
     const root = createOwner();
@@ -225,7 +228,9 @@ describe("client head rendering", () => {
     });
 
     expect(document.head.querySelectorAll("title")).toHaveLength(1);
-    expect(document.head.querySelector("title")?.textContent).toBe("Client title");
+    expect(document.head.querySelector("title")?.textContent).toBe(
+      "Client title",
+    );
 
     disposeOwner(root);
   });

@@ -5,7 +5,11 @@ import { initializeHeadContext } from "../src/context/head-context";
 import { attachSsrHead, subscribeSsrHead } from "../src/server/head";
 import { $insert } from "../src/render/$insert";
 import { $txt } from "../src/render/$txt";
-import { createOwner, disposeOwner, runWithOwner } from "../src/life-cycle/owner";
+import {
+  createOwner,
+  disposeOwner,
+  runWithOwner,
+} from "../src/life-cycle/owner";
 import { setRenderMode } from "../src/context/render-mode";
 import { getSsrHead } from "../src/server";
 import { renderToServer } from "../src/server/render-to-server";
@@ -36,14 +40,12 @@ describe("JSX head rendering", () => {
     const head = getSsrHead(rendered);
 
     expect(body).toBe("");
+    expect(head).toContain('<title head-id="title">Profile | Vynn</title>');
     expect(head).toContain(
-      '<title data-vynn-head="title">Profile | Vynn</title>',
+      '<meta name="description" content="A Vynn profile." head-id="meta:name:description">',
     );
     expect(head).toContain(
-      '<meta name="description" content="A Vynn profile." data-vynn-head="meta:name:description">',
-    );
-    expect(head).toContain(
-      '<link rel="canonical" href="https://example.com/profile" data-vynn-head="link:canonical">',
+      '<link rel="canonical" href="https://example.com/profile" head-id="link:canonical">',
     );
   });
 
@@ -99,7 +101,7 @@ describe("JSX head rendering", () => {
 
     expect(runtimeIndex).toBeGreaterThanOrEqual(0);
     expect(patchIndex).toBeGreaterThan(runtimeIndex);
-    expect(html).toContain('data-vynn-head="title"');
+    expect(html).toContain('head-id="title"');
   });
 
   it("publishes complete snapshots when metadata is registered after subscription", async () => {
@@ -110,7 +112,9 @@ describe("JSX head rendering", () => {
       const context = initializeHeadContext();
       const result = attachSsrHead({}, context);
       const patches: string[] = [];
-      const unsubscribe = subscribeSsrHead(result, (html) => patches.push(html));
+      const unsubscribe = subscribeSsrHead(result, (html) =>
+        patches.push(html),
+      );
 
       const title = $headTmpl("title");
       $insert(title, $txt("Late page"));
@@ -119,9 +123,9 @@ describe("JSX head rendering", () => {
       expect(patches).toHaveLength(1);
       expect(patches[0]).toContain("<title");
       expect(patches[0]).toContain("Late page");
-      expect(
-        Object.getOwnPropertySymbols(result),
-      ).toContain(Symbol.for("vynn.ssr-head-context"));
+      expect(Object.getOwnPropertySymbols(result)).toContain(
+        Symbol.for("vynn.ssr-head-context"),
+      );
       expect(getSsrHead(result)).toContain("Late page");
       unsubscribe();
     });

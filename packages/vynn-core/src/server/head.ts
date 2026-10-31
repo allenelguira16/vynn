@@ -69,7 +69,7 @@ function serializeHeadEntry(entry: HeadEntry): string {
   const element = entry.element as SSR_ELEMENT;
   const attributes = {
     ...element.attributes,
-    "data-vynn-head": getServerIdentity(entry),
+    "head-id": getServerIdentity(entry),
   };
   const serializedAttributes = serializeAttributes(attributes);
   const suffix = serializedAttributes ? ` ${serializedAttributes}` : "";

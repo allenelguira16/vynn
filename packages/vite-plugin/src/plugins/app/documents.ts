@@ -11,7 +11,6 @@ type ManifestEntry = {
   name?: string;
 };
 
-
 export function createClientEntry(
   appSpecifier: string,
   styleSpecifiers: string[],
@@ -209,7 +208,7 @@ export function createSsrHandlerCode(options: {
     `    ? devCssLinks.map(({ url, id }) => '<link rel="stylesheet" data-vite-dev-id="' + escapeAttribute(id) + '" href="' + escapeAttribute(assetUrl(url + "?direct")) + '">').join("")`,
     `    : CSS_ASSETS.map((file) => '<link rel="stylesheet" href="' + escapeAttribute(assetUrl(file)) + '">').join("");`,
     `  const viteClient = IS_DEV ? '<script type="module" src="' + escapeAttribute(assetUrl("/@vite/client")) + '"></script>' : "";`,
-    `  const defaults = (headHtml.toLowerCase().includes("charset=") ? "" : '<meta charset="UTF-8">') + (headHtml.toLowerCase().includes('name="viewport"') ? "" : '<meta name="viewport" content="width=device-width, initial-scale=1.0">') + (headHtml.toLowerCase().includes("<title") ? "" : '<title data-vynn-head="title">' + TITLE.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") + '</title>');`,
+    `  const defaults = (headHtml.toLowerCase().includes("charset=") ? "" : '<meta charset="UTF-8">') + (headHtml.toLowerCase().includes('name="viewport"') ? "" : '<meta name="viewport" content="width=device-width, initial-scale=1.0">') + (headHtml.toLowerCase().includes("<title") ? "" : '<title head-id="title">' + TITLE.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") + '</title>');`,
     `  return '<!doctype html><html lang="en"><head>' + defaults + headHtml + css + preloadLinks + viteClient + '</head><body><div id="' + escapeAttribute(MOUNT_ID) + '">';`,
     `}`,
     `function asReadableStream(value) {`,
@@ -295,7 +294,7 @@ export function createClientShell(options: {
     "<head>",
     '<meta charset="UTF-8" />',
     '<meta name="viewport" content="width=device-width, initial-scale=1.0" />',
-    `<title data-vynn-head="title">${escapeHtml(options.title)}</title>`,
+    `<title head-id="title">${escapeHtml(options.title)}</title>`,
     css,
     viteClient,
     "</head>",
