@@ -10,10 +10,7 @@ let currentNamespace = HTML_NAMESPACE;
  * restore their parent's namespace when they finish, including across
  * component boundaries.
  */
-export function withDOMNamespace<T>(
-  namespace: string,
-  callback: () => T,
-): T {
+export function withDOMNamespace<T>(namespace: string, callback: () => T): T {
   const previous = currentNamespace;
   currentNamespace = namespace;
 
@@ -37,7 +34,7 @@ export function getElementNamespace(tagName: string): string {
 
 /** Returns the namespace inherited by an element's children. */
 export function getChildDOMNamespace(
-  namespace: string,
+  namespace: string | null,
   tagName: string,
 ): string {
   // foreignObject is an SVG integration point: its children are HTML.

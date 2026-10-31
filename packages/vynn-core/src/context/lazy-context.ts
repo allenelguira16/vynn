@@ -4,43 +4,69 @@ import { getContext, modifyContext, setContext } from "../life-cycle/owner";
 
 const LAZY_ID = Symbol("vynn.lazy-id");
 
+type LazyIdScope = {
+  prefix: string;
+  next: number;
+};
+
 export function initializeLazyContext() {
-  setContext(LAZY_ID, 0);
+  setContext<LazyIdScope>(LAZY_ID, {
+    prefix: "",
+    next: 0,
+  });
 }
 
-export function getLazyID() {
-  const lazyID = getContext<number>(LAZY_ID);
+/**
+ * Creates a lazy ID from the current boundary's local sequence.
+ *
+ * Nested lazy components use their parent's ID as a prefix, so loading two
+ * parent chunks in a different order cannot change either parent's child IDs.
+ */
+export function getLazyID(): string {
+  const scope = getContext<LazyIdScope>(LAZY_ID);
 
-  if (lazyID == null)
+  if (!scope) {
     throw new Error(
       "[vynn]: initializeLazyContext is not yet initialized, run it first before using getLazyID",
     );
+  }
 
-  modifyContext<number>(LAZY_ID, (currentID) => currentID + 1);
+  modifyContext<LazyIdScope>(LAZY_ID, (current) => ({
+    ...current,
+    next: current.next + 1,
+  }));
 
-  return lazyID;
+  return scope.prefix ? `${scope.prefix}.${scope.next}` : String(scope.next);
+}
+
+/** Starts a new local lazy-ID sequence for descendants of one lazy instance. */
+export function initializeLazyScope(lazyID: string): void {
+  setContext<LazyIdScope>(LAZY_ID, {
+    prefix: lazyID,
+    next: 0,
+  });
 }
 
 // LAZY PROMISES
 
-const promisesInLazy = new Set<Promise<any>>();
+const promisesInLazy = new Set<Promise<unknown>>();
 
-export function registerPromiseFromLazy(promise: Promise<any>) {
+export function registerPromiseFromLazy(promise: Promise<unknown>) {
   promisesInLazy.add(promise);
 }
 
-export function isPromiseFromLazy(promise: Promise<any>) {
+export function isPromiseFromLazy(promise: Promise<unknown>) {
   return promisesInLazy.has(promise);
 }
 
 // LAZY GETTERS
 
-const gettersInLazy = new Set<() => any>();
+const gettersInLazy = new Set<() => unknown>();
 
-export function regsterAsyncGetterFromLazy<T = any>(getter: () => T) {
-  return gettersInLazy.add(getter);
+export function regsterAsyncGetterFromLazy<T = unknown>(getter: () => T) {
+  gettersInLazy.add(getter);
 }
 
-export function isAsyncGetterFromLazy<T = any>(getter: () => T) {
+export function isAsyncGetterFromLazy<T = unknown>(getter: () => T) {
   return gettersInLazy.has(getter);
 }

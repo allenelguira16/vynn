@@ -12,7 +12,10 @@ export default defineConfig({
     }),
     tailwindcss(),
   ],
-  build: {
-    manifest: true,
+  preview: {
+    port: 3000,
+  },
+  server: {
+    port: 3000,
   },
 });

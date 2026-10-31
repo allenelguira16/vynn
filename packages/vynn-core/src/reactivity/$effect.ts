@@ -2,6 +2,10 @@ import { getErrorBoundary } from "../context/error-boundary-context";
 import { getOwner, runWithOwner } from "../life-cycle/owner";
 import { NotReadyError } from "../reactivity/not-ready-error";
 import { transaction, scheduleEffect } from "./transaction";
+import {
+  beginHydrationClaim,
+  rollbackHydrationClaim,
+} from "../client/hydration";
 
 export type EffectPhase = "effect" | "render";
 
@@ -66,6 +70,10 @@ function createReactiveEffect(
             const previousEffect = activeEffect;
             activeEffect = wrappedEffect;
 
+            // Hydration claims are transactional. A suspended render must
+            // leave its lazy boundary cursor where the attempt began.
+            const hydrationSnapshot = beginHydrationClaim();
+
             try {
               const result = callback();
 
@@ -74,7 +82,7 @@ function createReactiveEffect(
               }
             } catch (error) {
               if (error instanceof NotReadyError) {
-                // DO NOTHING
+                rollbackHydrationClaim(hydrationSnapshot);
                 return;
               }
 
@@ -85,7 +93,6 @@ function createReactiveEffect(
               }
 
               throw error;
-              // Preserve the existing Vynn NotReadyError behavior.
             } finally {
               activeEffect = previousEffect;
             }

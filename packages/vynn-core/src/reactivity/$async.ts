@@ -8,7 +8,6 @@ import { $state } from "./$state";
 import { $renderEffect } from "./$effect";
 import { NotReadyError } from "./not-ready-error";
 import { transaction } from "./transaction";
-// import { isInsideLazy } from "../components/lazy";
 import { withFakeAsyncApis } from "./$async.util";
 import { isServer } from "../context/is-server-context";
 import { isAsyncGetterFromLazy } from "../context/lazy-context";
@@ -49,14 +48,16 @@ export function $async<T>(getter: () => Promise<T>): Async<T> {
   $renderEffect(() => {
     transaction(() => {
       const currentVersion = ++version;
-      const $asyncValues = getAsyncValues();
-      const ssrData =
-        isLazy || asyncID === undefined ? undefined : getAsyncValue(asyncID);
+      const asyncValues = getAsyncValues();
+      const hydrationData =
+        isLazy || asyncID === undefined ? undefined : getAsyncValue<T>(asyncID);
 
-      let promise!: Promise<T>;
+      let promise: Promise<T> | undefined;
 
       try {
-        if (ssrData) {
+        if (hydrationData?.found) {
+          // Execute the getter with inert async APIs to establish the same
+          // reactive dependencies without repeating the server request.
           withFakeAsyncApis(getter);
         } else {
           promise = Promise.resolve(getter());
@@ -70,44 +71,47 @@ export function $async<T>(getter: () => Promise<T>): Async<T> {
         return;
       }
 
-      if (ssrData) {
+      if (hydrationData?.found) {
         result.value = {
           status: "resolved",
-          value: ssrData,
+          value: hydrationData.value as T,
           version: currentVersion,
         };
-      } else {
-        result.value = {
-          status: "pending",
-          promise,
-          version: currentVersion,
-        };
-
-        // Attach exactly one settlement handler for this operation.
-        promise.then(
-          (value) => {
-            if (currentVersion !== version) return;
-            if ($asyncValues && asyncID !== undefined) {
-              $asyncValues[asyncID] = value;
-            }
-
-            result.value = {
-              status: "resolved",
-              value,
-              version: currentVersion,
-            };
-          },
-          (error: unknown) => {
-            if (currentVersion !== version) return;
-
-            result.value = {
-              status: "rejected",
-              error,
-              version: currentVersion,
-            };
-          },
-        );
+        return;
       }
+
+      const pendingPromise = promise!;
+
+      result.value = {
+        status: "pending",
+        promise: pendingPromise,
+        version: currentVersion,
+      };
+
+      // Attach exactly one settlement handler for this operation.
+      pendingPromise.then(
+        (value) => {
+          if (currentVersion !== version) return;
+          if (asyncValues && asyncID !== undefined) {
+            asyncValues[asyncID] = value;
+          }
+
+          result.value = {
+            status: "resolved",
+            value,
+            version: currentVersion,
+          };
+        },
+        (error: unknown) => {
+          if (currentVersion !== version) return;
+
+          result.value = {
+            status: "rejected",
+            error,
+            version: currentVersion,
+          };
+        },
+      );
     });
   });
 
@@ -148,7 +152,7 @@ export function $async<T>(getter: () => Promise<T>): Async<T> {
   };
 
   context.set(derived, () => {
-    if (isServer()) derived.value; // On SSR, make this be handle by renderSSRChildren and defer it
+    if (isServer()) derived.value; // On SSR, make this be handled by renderSSRChildren and defer it.
 
     return result.value?.status === "pending";
   });

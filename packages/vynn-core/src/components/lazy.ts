@@ -3,19 +3,18 @@ import { $async } from "../reactivity/$async";
 import { $cmpnt, $nodes } from "../render";
 import { createSSRComment } from "../render/resolve-node";
 import {
-  getServerRenderedLazyRange,
-  syncServerRenderedLazy,
-  // isHydrating,
-  // runAfterHydration,
   finishServerRenderedLazy,
+  getServerRenderedLazyRange,
+  withServerRenderedLazy,
 } from "../client/hydration";
-// import { $state } from "../reactivity/$state";
 import { LAZY_END_SSR_MARKER, LAZY_START_SSR_MARKER } from "../const";
 import {
   getLazyID,
+  initializeLazyScope,
   registerPromiseFromLazy,
   regsterAsyncGetterFromLazy,
 } from "../context/lazy-context";
+import { initializeLazyAsyncScope } from "../context/async-context";
 import { isServer } from "../context/is-server-context";
 import { registerSsrModule } from "../context/ssr-module-context";
 
@@ -87,73 +86,39 @@ export function lazy<
   return $cmpnt(function LazyComponent(
     props: Parameters<Component>[0],
   ): JSX.Element {
-    // The ID belongs to this component instance, not the lazy declaration.
     const lazyID = getLazyID();
+
+    // Descendant lazy and async identities are scoped to this instance.
+    initializeLazyScope(lazyID);
+    initializeLazyAsyncScope(lazyID);
+
     if (isServer()) registerSsrModule(moduleId);
 
-    // return withLazyBoundary(() => {
     regsterAsyncGetterFromLazy(loadComponent);
     const component = $async(loadComponent);
-    const existingRange = isServer()
-      ? undefined
-      : getServerRenderedLazyRange(lazyID);
 
-    // // The server does not wait for client hydration.
-    // const hydrationReady = $state(!!isServer() || !isHydrating());
+    if (isServer()) {
+      return $nodes(() => [
+        createSSRComment(`${LAZY_START_SSR_MARKER}:${lazyID}`),
+        component.value(props),
+        createSSRComment(`${LAZY_END_SSR_MARKER}:${lazyID}`),
+      ] as JSX.Element);
+    }
 
-    // // Schedule exactly one transition for this instance.
-    // if (!isServer() && !hydrationReady.value) {
-    //   runAfterHydration(() => {
-    //     hydrationReady.value = true;
-    //   }, false);
-    // }
+    const existingRange = getServerRenderedLazyRange(lazyID);
 
-    return $nodes(() => {
-      if (isServer()) {
-        return [
-          createSSRComment(`${LAZY_START_SSR_MARKER}:${lazyID}`),
-          component.value(props),
-          createSSRComment(`${LAZY_END_SSR_MARKER}:${lazyID}`),
-        ] as JSX.Element;
-      }
+    // Install the scope before creating $nodes. Its initial render effect and
+    // every later retry must capture this lazy instance's independent queues.
+    return withServerRenderedLazy(lazyID, () =>
+      $nodes(() => {
+        if (!cachedComponent) {
+          cachedComponent = component.value;
+        }
 
-      // if (!hydrationReady.value) {
-      //   return [];
-      // }
-
-      if (!cachedComponent) {
-        cachedComponent = component.value;
-      }
-
-      syncServerRenderedLazy(lazyID);
-
-      try {
-        return cachedComponent(props);
-      } finally {
+        const rendered = cachedComponent(props);
         finishServerRenderedLazy(lazyID);
-      }
-    }, existingRange);
-    // });
+        return rendered;
+      }, existingRange),
+    );
   }) as Component;
 }
-
-// const LAZY_BOUNDARY = Symbol("vynn.lazy-boundary");
-
-// export function isInsideLazy() {
-//   return getContext<boolean>(LAZY_BOUNDARY) ?? false;
-// }
-
-// /**
-//  * Marks the current component owner as a lazy boundary.
-//  *
-//  * Unlike a module-level flag, owner context survives deferred SSR retries
-//  * and async reactive effects, without leaking into sibling component trees.
-//  */
-// export function withLazyBoundary<T>(callback: () => T) {
-//   if (!getOwner()) {
-//     throw new Error("[vynn]: A lazy boundary requires an active component owner.");
-//   }
-
-//   setContext(LAZY_BOUNDARY, true);
-//   return callback();
-// }

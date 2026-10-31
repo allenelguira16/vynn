@@ -127,7 +127,7 @@ function getSVGAttributeName(name: string): string {
   return name.replace(/[A-Z]/g, (character) => `-${character.toLowerCase()}`);
 }
 
-function getAttributeName(namespaceURI: string, name: string): string {
+function getAttributeName(namespaceURI: string | null, name: string): string {
   if (namespaceURI === SVG_NAMESPACE) {
     return getSVGAttributeName(name);
   }
@@ -207,8 +207,7 @@ export function $attr<E extends Element>(
 
   const attributeName = getAttributeName(element.namespaceURI, name);
   const isHtmlElement =
-    element.namespaceURI === HTML_NAMESPACE &&
-    element instanceof HTMLElement;
+    element.namespaceURI === HTML_NAMESPACE && element instanceof HTMLElement;
 
   $renderEffect(() => {
     const next = typeof value === "function" ? value() : value;

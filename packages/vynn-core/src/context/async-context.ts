@@ -9,6 +9,16 @@ const AWAIT_BOUNDARY = Symbol("vynn.await-boundary");
 const ASYNC_ID = Symbol("vynn.async-id");
 const ASYNC_VALUES = Symbol("vynn.async-values");
 
+type AsyncIdScope = {
+  prefix: string;
+  next: number;
+};
+
+export type AsyncHydrationValue<T = unknown> = {
+  found: boolean;
+  value: T | undefined;
+};
+
 export function isInsideAwaitBoundary(): boolean {
   return getContext<boolean>(AWAIT_BOUNDARY) ?? false;
 }
@@ -26,37 +36,73 @@ export function enterAsyncBoundary<T>(boundary: AsyncBoundary<T>): void {
   setContext(AWAIT_BOUNDARY, true);
 }
 
-export function initializeAsyncContext() {
-  setContext(ASYNC_ID, 0);
-  setContext(ASYNC_VALUES, []);
+export function initializeAsyncContext(): void {
+  setContext<AsyncIdScope>(ASYNC_ID, {
+    prefix: "root",
+    next: 0,
+  });
+  setContext<Record<string, unknown>>(ASYNC_VALUES, Object.create(null));
 }
 
-export function getAsyncID() {
-  let asyncID = getContext<number>(ASYNC_ID)!;
+/**
+ * Give each lazy instance an independent async-data sequence.
+ *
+ * The sequence is inherited by ordinary descendants and shadowed by nested
+ * lazy instances, so sibling module resolution order cannot exchange IDs.
+ */
+export function initializeLazyAsyncScope(lazyID: string): void {
+  setContext<AsyncIdScope>(ASYNC_ID, {
+    prefix: `lazy:${lazyID}`,
+    next: 0,
+  });
+}
 
-  if (asyncID == null)
+export function getAsyncID(): string {
+  const scope = getContext<AsyncIdScope>(ASYNC_ID);
+
+  if (!scope) {
     throw new Error(
       "[vynn]: initializeAsyncContext is not yet initialized, run it first before using getAsyncID",
     );
-
-  modifyContext<number>(ASYNC_ID, (current) => current + 1);
-
-  return asyncID;
-}
-
-export function getAsyncValues() {
-  return getContext<any[]>(ASYNC_VALUES);
-}
-
-export function getAsyncValue(asyncID: number) {
-  if (!isServer()) {
-    (window as any)[ASYNC_DATA_SSR_KEY] ??= [];
-    try {
-      return (window as any)[ASYNC_DATA_SSR_KEY][asyncID];
-    } finally {
-      delete (window as any)[ASYNC_DATA_SSR_KEY][asyncID];
-    }
   }
 
-  return undefined;
+  modifyContext<AsyncIdScope>(ASYNC_ID, (current) => ({
+    ...current,
+    next: current.next + 1,
+  }));
+
+  return `${scope.prefix}:${scope.next}`;
+}
+
+export function getAsyncValues(): Record<string, unknown> | undefined {
+  return getContext<Record<string, unknown>>(ASYNC_VALUES);
+}
+
+/**
+ * Read one serialized result without confusing a valid falsy value with a
+ * missing entry. The key is consumed once so later async instances cannot
+ * accidentally reuse it.
+ */
+export function getAsyncValue<T = unknown>(
+  asyncID: string,
+): AsyncHydrationValue<T> {
+  if (isServer()) {
+    return { found: false, value: undefined };
+  }
+
+  const values = (window as unknown as Record<string, unknown>)[
+    ASYNC_DATA_SSR_KEY
+  ] as Record<string, unknown> | undefined;
+
+  if (!values || !Object.prototype.hasOwnProperty.call(values, asyncID)) {
+    return { found: false, value: undefined };
+  }
+
+  const value = values[asyncID] as T;
+  delete values[asyncID];
+
+  return {
+    found: true,
+    value,
+  };
 }
