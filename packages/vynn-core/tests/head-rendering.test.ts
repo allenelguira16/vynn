@@ -142,4 +142,45 @@ describe("JSX head rendering", () => {
       unsubscribe();
     });
   });
+  it("keeps head registries isolated across interleaved requests", async () => {
+    let resumeFirst!: () => void;
+    const firstGate = new Promise<void>((resolve) => {
+      resumeFirst = resolve;
+    });
+
+    const first = runWithSsrContext(async (run) => {
+      const rendered = run(() => renderToServer(() => {
+        const title = $headTmpl("title");
+        $insert(title, $txt("First request"));
+        $head(title);
+        return null;
+      }, "async"));
+
+      await rendered;
+      await firstGate;
+
+      return run(getSsrHead);
+    });
+
+    const second = await runWithSsrContext(async (run) => {
+      const rendered = run(() => renderToServer(() => {
+        const title = $headTmpl("title");
+        $insert(title, $txt("Second request"));
+        $head(title);
+        return null;
+      }, "async"));
+
+      await rendered;
+      return run(getSsrHead);
+    });
+
+    resumeFirst();
+
+    expect(second).toContain("Second request");
+    expect(second).not.toContain("First request");
+    const firstHead = await first;
+    expect(firstHead).toContain("First request");
+    expect(firstHead).not.toContain("Second request");
+  });
+
 });
