@@ -11,7 +11,7 @@ export function initializeSsrModuleContext(modules: Set<string>): void {
 
   if (!owner) {
     throw new Error(
-      "[vynn]: SSR module context requires an active render owner.",
+      "[vynn]: SSR module context requires an active owner.",
     );
   }
 
