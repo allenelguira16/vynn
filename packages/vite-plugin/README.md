@@ -83,11 +83,7 @@ The callback receives a `run` function that re-enters the request owner for
 synchronous work after an `await`. Owner context is not implicitly propagated
 across asynchronous boundaries. `getSsrModuleIds()` returns the request's
 live set.
-
-When Vynn is consumed as a linked workspace dependency by a custom Vite SSR
-server, add `ssr.external: ["vynn"]` to the Vite config. Vite keeps linked
-dependencies in its SSR module graph by default; externalizing Vynn ensures
-the host server and the SSR entry use the same owner runtime instance. Put the first `renderSsrPreloadLinks` result in the document head,
+ Put the first `renderSsrPreloadLinks` result in the document head,
 then call it before each
 emitted chunk with the same mutable `exclude` set to avoid duplicate tags. For
 late discoveries, wrap the returned links with `injectSsrPreloadLinks(links)`;
