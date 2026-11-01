@@ -26,6 +26,7 @@ type Render = (
 
 type ServerEntry = {
   render: Render;
+  runWithOwner: <T>(owner: Owner | null, callback: () => T) => T;
   handleServerFunctionRequest: (
     request: globalThis.Request,
   ) => Promise<globalThis.Response | null>;
