@@ -10,6 +10,11 @@ export default defineConfig({
     }),
     tailwindcss(),
   ],
+  // Vynn is a workspace dependency. Externalize it so the host server and
+  // Vite's SSR module runner share the same owner runtime instance.
+  ssr: {
+    external: ["vynn"],
+  },
   preview: {
     port: 3000,
   },
