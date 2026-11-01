@@ -1,4 +1,4 @@
-import { getOwner, setContext, type Owner } from "../life-cycle/owner";
+import { getContext, setContext } from "../life-cycle/owner";
 
 export type HeadTag = "title" | "meta" | "link";
 
@@ -16,19 +16,6 @@ export type HeadContext = {
 };
 
 const HEAD_CONTEXT = Symbol.for("vynn.head-context");
-
-function getRootOwner(): Owner {
-  let owner = getOwner();
-
-  if (!owner) {
-    throw new Error(
-      "[vynn]: Head elements must be rendered inside a Vynn render root.",
-    );
-  }
-
-  while (owner.parent) owner = owner.parent;
-  return owner;
-}
 
 function createHeadContext(): HeadContext {
   const candidates = new Map<HeadTag, HTMLElement[]>();
@@ -53,24 +40,15 @@ function createHeadContext(): HeadContext {
 
 /** Returns the head registry associated with the current render root. */
 export function getHeadContext(): HeadContext {
-  const root = getRootOwner();
-  let context = root.context.get(HEAD_CONTEXT) as HeadContext | undefined;
+  const context = getContext<HeadContext>(HEAD_CONTEXT);
 
   if (!context) {
-    context = createHeadContext();
-    root.context.set(HEAD_CONTEXT, context);
+    throw new Error(
+      "[vynn]: getHeadContext must be initialized with initializeHeadContext",
+    );
   }
 
   return context;
-}
-
-/** Returns the current registry without creating one. */
-export function peekHeadContext(): HeadContext | undefined {
-  let owner = getOwner();
-  if (!owner) return undefined;
-
-  while (owner.parent) owner = owner.parent;
-  return owner.context.get(HEAD_CONTEXT) as HeadContext | undefined;
 }
 
 /**
@@ -78,13 +56,7 @@ export function peekHeadContext(): HeadContext | undefined {
  * Existing matching head nodes are collected as candidates for reuse.
  */
 export function initializeHeadContext() {
-  setContext(HEAD_CONTEXT, 0);
-
-  // const root = getRootOwner();
-  // const context = createHeadContext();
-
-  // root.context.set(HEAD_CONTEXT, context);
-  // return context;
+  setContext<HeadContext>(HEAD_CONTEXT, createHeadContext());
 }
 
 /** Notifies subscribers that the head registry has changed. */

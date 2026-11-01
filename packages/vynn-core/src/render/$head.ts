@@ -4,7 +4,6 @@ import {
   getHeadIdentity,
   getHeadWinners,
   notifyHeadContext,
-  peekHeadContext,
   type HeadContext,
   type HeadEntry,
   type HeadTag,
@@ -161,7 +160,7 @@ export function $head<T extends HeadElement>(element: T): T {
 
 /** Whether JSX is currently constructing the children of a head element. */
 export function isCreatingHeadElement(): boolean {
-  return (peekHeadContext()?.buildingHeadElements ?? 0) > 0;
+  return (getHeadContext().buildingHeadElements ?? 0) > 0;
 }
 
 /** Resolves head children without consuming the application's hydration text queue. */
