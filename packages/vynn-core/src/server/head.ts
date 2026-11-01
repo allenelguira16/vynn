@@ -98,7 +98,7 @@ export function getSsrHead(): string {
 export function subscribeSsrHead(
   listener: (html: string) => void,
 ): () => void {
-  const context = getSsrRequestHead();
+  const context = peekHeadContext();
   if (!context) return () => {};
 
   return subscribeHeadContext(context, () => listener(renderSsrHead(context)));
