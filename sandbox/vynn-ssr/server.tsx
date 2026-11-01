@@ -15,6 +15,7 @@ import {
   type SsrClientManifest,
 } from "vynn/server";
 import { toWebRequest } from "vynn/server/node";
+import { getOwner, type Owner } from "vynn";
 
 const isDev = process.env.NODE_ENV === "development";
 const app = express();
@@ -216,6 +217,11 @@ async function handlePageRequest(
       // entry as a separate module instance, so its own runWithOwner function
       // must activate this owner around render().
       const owner = getOwner();
+
+      if (!owner) {
+        throw new Error("[vynn-ssr]: No request owner is active.");
+      }
+
       const {
         template,
         render,
