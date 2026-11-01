@@ -2,6 +2,7 @@ import {
   getHeadIdentity,
   getHeadWinners,
   subscribeHeadContext,
+  peekHeadContext,
   type HeadContext,
   type HeadEntry,
   type HeadTag,
@@ -9,7 +10,6 @@ import {
 import { escapeHtml } from "../utils/escape-html";
 import type { SSR_ELEMENT, SSR_NODE } from "../render/resolve-node";
 import { APPLY_HEAD_PATCH_SSR_KEY } from "../const";
-import { getSsrRequestHead } from "./ssr-request-context";
 const voidElements = new Set([
   "area",
   "base",
@@ -90,7 +90,7 @@ export function renderSsrHead(context: HeadContext): string {
 
 /** Serialize the head metadata collected by the active SSR request. */
 export function getSsrHead(): string {
-  const context = getSsrRequestHead();
+  const context = peekHeadContext();
   return context ? renderSsrHead(context) : "";
 }
 
