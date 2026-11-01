@@ -1,3 +1,4 @@
+import { initializeSsrModuleContext } from "../context/ssr-module-context";
 import { createOwner, runWithOwner } from "../life-cycle/owner";
 
 /**
@@ -26,6 +27,8 @@ export async function runWithSsrContext<T>(
   const owner = createOwner(null);
   const run: SsrContextRunner = <T>(callback: () => T): T =>
     runWithOwner(owner, callback);
+
+  run(() => initializeSsrModuleContext(new Set<string>()));
 
   return await run(() => callback(run));
 }
