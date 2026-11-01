@@ -1,11 +1,26 @@
-import { getContext, setContext } from "../life-cycle/owner";
-import { setSsrRequestModuleIds } from "../server/ssr-request-context";
+import {
+  getContext,
+  getOwner,
+  setContext,
+  type Owner,
+} from "../life-cycle/owner";
 
 const SSR_MODULES = Symbol.for("vynn.ssr-modules");
 
-export function initializeSsrModuleContext(modules: Set<string>) {
-  setContext(SSR_MODULES, modules);
-  setSsrRequestModuleIds(modules);
+export function initializeSsrModuleContext(modules: Set<string>): void {
+  let owner: Owner | null = getOwner();
+
+  if (!owner) {
+    throw new Error(
+      "[vynn]: SSR module context requires an active render owner.",
+    );
+  }
+
+  while (owner.parent) {
+    owner = owner.parent;
+  }
+
+  owner.context.set(SSR_MODULES, modules);
 }
 
 /** Record a lazy module only when its component is reached during SSR. */
