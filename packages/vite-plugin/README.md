@@ -82,10 +82,8 @@ For streaming mode, run the complete request inside `runWithSsrContext()`.
 The callback receives a `run` function that re-enters the request owner for
 synchronous work after an `await`. Owner context is not implicitly propagated
 across asynchronous boundaries. `getSsrModuleIds()` returns the request's
-live set.
- Put the first `renderSsrPreloadLinks` result in the document head,
-then call it before each
-emitted chunk with the same mutable `exclude` set to avoid duplicate tags. For
+live set. Put the first `renderSsrPreloadLinks` result in the document head,
+then call it before each emitted chunk with the same mutable `exclude` set to avoid duplicate tags. For
 late discoveries, wrap the returned links with `injectSsrPreloadLinks(links)`;
 this appends them to `document.head` without leaving unexpected nodes inside the
 hydrated app. App mode handles the initial and late links automatically. In
