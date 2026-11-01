@@ -1,4 +1,5 @@
 import type { JSX } from "../types/jsx";
+import type { SsrContextRunner } from "./ssr-request-context";
 
 function serverOnly(name: string): never {
   throw new Error(`[vynn]: ${name} is only available in a server environment.`);
@@ -30,7 +31,7 @@ export function renderToServer(
 }
 
 export function runWithSsrContext<T>(
-  _callback: () => T,
+  _callback: (run: SsrContextRunner) => T,
 ): Promise<Awaited<T>> {
   return serverOnly("runWithSsrContext");
 }
