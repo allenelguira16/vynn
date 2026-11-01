@@ -156,28 +156,27 @@ async function loadPage(url: string) {
   const path = isDev ? "./index.html" : "./dist/client/index.html";
 
   let template = fs.readFileSync(path, "utf8");
-  let render: Render;
+  let entry: Pick<ServerEntry, "render" | "runWithOwner">;
 
   if (isDev && vite) {
-    const [transformed, entry] = await Promise.all([
+    const [transformed, loadedEntry] = await Promise.all([
       vite.transformIndexHtml(url, template),
       vite.ssrLoadModule("/src/entry-server.tsx") as Promise<
-        Pick<ServerEntry, "render">
+        Pick<ServerEntry, "render" | "runWithOwner">
       >,
     ]);
 
     template = transformed;
-    render = entry.render;
+    entry = loadedEntry;
   } else {
-    render = (await getProductionEntry()).render;
+    entry = await getProductionEntry();
   }
 
   return {
     template: template.replace(/>\s+</g, "><").trim(),
-    render,
+    ...entry,
   };
 }
-
 async function handleServerFunction(
   req: Request,
   res: Response,
@@ -213,11 +212,17 @@ async function handlePageRequest(
 
   try {
     await runWithSsrContext(async (run) => {
-      const { template, render } = await loadPage(req.originalUrl);
+      // Capture the request owner before awaiting. Vite may evaluate the SSR
+      // entry as a separate module instance, so its own runWithOwner function
+      // must activate this owner around render().
+      const owner = getOwner();
+      const {
+        template,
+        render,
+        runWithOwner: runWithEntryOwner,
+      } = await loadPage(req.originalUrl);
 
-      // Capture the live set before awaiting; nested lazy boundaries can register
-      // more modules while the stream is being consumed.
-      const rendered = run(() => render(toRequest(req)));
+      const rendered = runWithEntryOwner(owner, () => render(toRequest(req)));
       const moduleIds = run(getSsrModuleIds);
 
       // Async SSR is complete before the document shell is sent. Streaming SSR
