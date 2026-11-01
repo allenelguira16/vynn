@@ -12,8 +12,8 @@ import type { JSX } from "../src/types/jsx";
 
 describe("JSX head rendering", () => {
   it("serializes metadata into a separate head string and excludes it from body HTML", async () => {
-    await runWithSsrContext(async () => {
-      const rendered = renderToServer(() => {
+    await runWithSsrContext(async (run) => {
+      const rendered = run(() => renderToServer(() => {
         const title = $headTmpl("title");
         $insert(title, $txt("Profile | Vynn"));
         $head(title);
@@ -29,10 +29,10 @@ describe("JSX head rendering", () => {
         $head(canonical);
 
         return [title, description, canonical] as unknown as JSX.Element;
-      }, "async");
+      }, "async"));
 
       const body = await rendered;
-      const head = getSsrHead();
+      const head = run(getSsrHead);
 
       expect(body).toBe("");
       expect(head).toContain('<title key="title">Profile | Vynn</title>');
@@ -46,8 +46,8 @@ describe("JSX head rendering", () => {
   });
 
   it("uses the last active registration for duplicate metadata identities", async () => {
-    await runWithSsrContext(async () => {
-      const rendered = renderToServer(() => {
+    await runWithSsrContext(async (run) => {
+      const rendered = run(() => renderToServer(() => {
         const first = $headTmpl("meta");
         $attr(first, "name", "description");
         $attr(first, "content", "Layout description");
@@ -59,19 +59,19 @@ describe("JSX head rendering", () => {
         $head(second);
 
         return null;
-      }, "async");
+      }, "async"));
 
       await rendered;
 
-      const head = getSsrHead();
+      const head = run(getSsrHead);
       expect(head).toContain('content="Page description"');
       expect(head).not.toContain("Layout description");
     });
   });
 
   it("emits late head metadata when an SSR async boundary resolves", async () => {
-    await runWithSsrContext(async () => {
-      const rendered = renderToServer(() => {
+    await runWithSsrContext(async (run) => {
+      const rendered = run(() => renderToServer(() => {
         return createSSRAsync(
           () => [],
           () => {
@@ -83,7 +83,7 @@ describe("JSX head rendering", () => {
           },
           [Promise.resolve()],
         ) as unknown as JSX.Element;
-      }, "stream");
+      }, "stream"));
 
       const reader = rendered.getReader();
       const decoder = new TextDecoder();
@@ -105,13 +105,13 @@ describe("JSX head rendering", () => {
   });
 
   it("publishes head snapshots to request-scoped subscribers", async () => {
-    await runWithSsrContext(async () => {
+    await runWithSsrContext(async (run) => {
       let resolveBoundary!: () => void;
       const pending = new Promise<void>((resolve) => {
         resolveBoundary = resolve;
       });
 
-      const rendered = renderToServer(
+      const rendered = run(() => renderToServer(
         () =>
           createSSRAsync(
             () => [],
@@ -125,10 +125,10 @@ describe("JSX head rendering", () => {
             [pending],
           ) as unknown as JSX.Element,
         "stream",
-      );
+      ));
 
       const patches: string[] = [];
-      const unsubscribe = subscribeSsrHead((html) => patches.push(html));
+      const unsubscribe = run(() => subscribeSsrHead((html) => patches.push(html)));
       resolveBoundary();
 
       const reader = rendered.getReader();
@@ -138,7 +138,7 @@ describe("JSX head rendering", () => {
       }
 
       expect(patches.some((html) => html.includes("Late page"))).toBe(true);
-      expect(getSsrHead()).toContain("Late page");
+      expect(run(getSsrHead)).toContain("Late page");
       unsubscribe();
     });
   });
