@@ -1,5 +1,8 @@
 export { renderToServer } from "./render-to-server";
-export { runWithSsrContext } from "./ssr-request-context";
+export {
+  runWithSsrContext,
+  type SsrContextRunner,
+} from "./ssr-request-context";
 
 export {
   getServerFunctionContext,
