@@ -224,6 +224,7 @@ describe("$async", () => {
         // Wait until reading data.value succeeds.
         await new Promise<void>((resolve) => {
           $effect(() => {
+            // oxlint-disable
             data.value;
             resolve();
           });

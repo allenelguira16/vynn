@@ -42,7 +42,7 @@ export const Await = $cmpnt(function Suspense(props: {
   //   }
   // }
   if (isServer()) {
-    let pending: Promise<any>[] = [];
+    const pending: Promise<any>[] = [];
 
     enterAsyncBoundary((promise) => {
       pending.push(promise);

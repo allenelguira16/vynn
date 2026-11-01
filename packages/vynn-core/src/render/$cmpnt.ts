@@ -53,7 +53,7 @@ export function $cmpnt<P>(
 
         return [resolved, marker].flat();
       } finally {
-        if (!!owner.mount.length) {
+        if (owner.mount.length) {
           runAfterHydration(() => {
             for (const mount of owner.mount) {
               const cleanup = mount();

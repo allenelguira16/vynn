@@ -1,4 +1,4 @@
-/// <reference path="./virtual.d.ts" />
+import "./virtual.d.ts";
 
 import type { Plugin } from "vite";
 import { vynnOxcPlugin } from "./plugins/jsx-transpiler.ts";
@@ -49,8 +49,7 @@ export default function vynn(options: VynnPluginOptions = {}) {
         // SSR app builds include the handler in the application server entry.
         // Non-SSR apps can still build a standalone server-functions bundle.
         standalone:
-          options.ssr !== true &&
-          serverFunctionsOptions?.enabled !== false,
+          options.ssr !== true && serverFunctionsOptions?.enabled !== false,
       }),
     );
   }

@@ -205,6 +205,8 @@ settings:
 
 importers:
 
+  .: {}
+
   packages/babel-preset:
     dependencies:
       '@babel/core':

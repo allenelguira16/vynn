@@ -76,7 +76,7 @@ export function resolveStream(
   }
 
   async function resolve(app: SSR_NODE[]): Promise<string> {
-    let html: string[] = [];
+    const html: string[] = [];
 
     for (const node of app.flat(Infinity).filter(Boolean)) {
       if ("promises" in node && node.type === "#async") {

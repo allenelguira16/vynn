@@ -1,8 +1,4 @@
-import {
-  createServer,
-  type IncomingMessage,
-  type ServerResponse,
-} from "node:http";
+import { type IncomingMessage, type ServerResponse } from "node:http";
 import { Readable } from "node:stream";
 
 export type ToWebRequestOptions = {
@@ -101,7 +97,7 @@ export function toWebRequest(
   const defaultUrl =
     typeof expressOriginalUrl === "string" && expressOriginalUrl.length > 0
       ? expressOriginalUrl
-      : request.url ?? "/";
+      : (request.url ?? "/");
   const requestUrl = resolveRequestOption(options.url, request, defaultUrl);
 
   const headers = new Headers();
@@ -159,9 +155,7 @@ function waitForDrain(response: ServerResponse): Promise<void> {
 
     const onClose = () => {
       cleanup();
-      reject(
-        new Error("The client disconnected during the response stream."),
-      );
+      reject(new Error("The client disconnected during the response stream."));
     };
 
     const onError = (error: Error) => {
@@ -274,9 +268,7 @@ export function createListener(
       const webResponse = await handler(webRequest);
 
       if (!(webResponse instanceof Response)) {
-        throw new TypeError(
-          "A Vynn Node listener must return a Web Response.",
-        );
+        throw new TypeError("A Vynn Node listener must return a Web Response.");
       }
 
       await writeResponse(response, webResponse, request.method ?? "GET");
@@ -305,4 +297,3 @@ export function createListener(
     });
   };
 }
-

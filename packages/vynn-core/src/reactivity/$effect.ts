@@ -38,9 +38,7 @@ function createReactiveEffect(
 ): () => void {
   const owner = getOwner();
 
-  let wrappedEffect!: EffectFn;
-
-  wrappedEffect = (() => {
+  const wrappedEffect = (() => {
     if (wrappedEffect.disposed) {
       return;
     }

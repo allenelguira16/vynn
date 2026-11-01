@@ -1,0 +1,38 @@
+{
+  "plugins": ["eslint", "typescript"],
+  "ignorePatterns": [
+    "**/dist/**",
+    "**/node_modules/**",
+    ".yarn/**",
+    ".vscode/**",
+    ".pnp*",
+    "**/coverage/**"
+  ],
+  "globals": {
+    "process": "readonly",
+    "__dirname": "readonly",
+    "module": "readonly",
+    "require": "readonly"
+  },
+  "categories": {
+    "correctness": "error"
+  },
+  "rules": {
+    "no-unused-vars": [
+      "error",
+      {
+        "vars": "all",
+        "varsIgnorePattern": "^_",
+        "args": "after-used",
+        "argsIgnorePattern": "^_",
+        "caughtErrors": "all",
+        "caughtErrorsIgnorePattern": "^_"
+      }
+    ],
+    "typescript/no-explicit-any": "off",
+    "typescript/no-namespace": "off",
+    "no-var": "error",
+    "prefer-const": "warn",
+    "no-unsafe-finally": "off"
+  }
+}

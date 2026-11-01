@@ -103,9 +103,7 @@ export async function readClientAssets(outDir: string): Promise<ClientAssets> {
     entries.find(([, item]) => item.isEntry);
 
   if (!entry) {
-    throw new Error(
-      `[Vynn App] No client entry was found in ${manifestPath}.`,
-    );
+    throw new Error(`[Vynn App] No client entry was found in ${manifestPath}.`);
   }
 
   // Prefer the CSS associated with the selected entry. When CSS code
@@ -189,7 +187,7 @@ export function createSsrHandlerCode(options: {
     `const MOUNT_ID = ${JSON.stringify(mountId)};`,
     `const IS_DEV = ${JSON.stringify(dev)};`,
     `const SSR_MANIFEST = ${JSON.stringify(ssrManifest)};`,
-    `function escapeAttribute(value) { return String(value).replace(/&/g, "&amp;").replace(/\"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }`,
+    `function escapeAttribute(value) { return String(value).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }`,
     `function assetUrl(path) {`,
     `  const value = String(path).replace(/^\\/+/, "");`,
     `  if (BASE === "./") return "./" + value;`,

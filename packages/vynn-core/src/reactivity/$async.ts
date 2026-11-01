@@ -152,6 +152,7 @@ export function $async<T>(getter: () => Promise<T>): Async<T> {
   };
 
   context.set(derived, () => {
+    // oxlint-disable
     if (isServer()) derived.value; // On SSR, make this be handled by renderSSRChildren and defer it.
 
     return result.value?.status === "pending";
