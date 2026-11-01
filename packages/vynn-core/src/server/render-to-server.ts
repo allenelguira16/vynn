@@ -9,7 +9,6 @@ import { initializeLazyContext } from "../context/lazy-context";
 import { initializeErrorBoundaryContext } from "../context/error-boundary-context";
 import { initializeSsrModuleContext } from "../context/ssr-module-context";
 import { getHeadContext, initializeHeadContext } from "../context/head-context";
-import { setSsrRequestHead } from "./ssr-request-context";
 
 export function renderToServer(App: () => JSX.Element, mode: "sync"): string;
 export function renderToServer(App: () => JSX.Element, mode: "async"): Promise<string>;
@@ -29,7 +28,7 @@ export function renderToServer(App: () => JSX.Element, mode: RenderMode) {
     setRenderMode(mode);
 
     initializeHeadContext();
-    setSsrRequestHead(getHeadContext());
+    getHeadContext();
 
     initializeSsrModuleContext(ssrModules);
     initializeLazyContext();
