@@ -243,7 +243,7 @@ export function createSsrHandlerCode(options: {
     `  });`,
     `}`,
     `export async function handleRequest(request, devCssLinks = []) {`,
-    `  return runWithSsrContext(async () => {`,
+    `  return runWithSsrContext(async (run) => {`,
     ...(serverFunctions
       ? [
           `  const serverFunctionResponse = await handleServerFunctionRequest(request);`,
@@ -256,11 +256,11 @@ export function createSsrHandlerCode(options: {
     `  const url = new URL(request.url);`,
     `  const headers = { "content-type": "text/html; charset=utf-8" };`,
     `  if (request.method === "HEAD") return new Response(null, { status: 200, headers });`,
-    `  const rendered = render(url.pathname + url.search);`,
-    `  const moduleIds = getSsrModuleIds();`,
+    `  const rendered = run(() => render(url.pathname + url.search));`,
+    `  const moduleIds = run(getSsrModuleIds);`,
     `  const result = typeof rendered === "string" ? rendered : await rendered;`,
     `  if (result instanceof Response) return result;`,
-    `  const headHtml = getSsrHead();`,
+    `  const headHtml = run(getSsrHead);`,
     `  return new Response(withDocument(asReadableStream(result), devCssLinks, moduleIds, headHtml), { status: 200, headers });`,
     `  });`,
     `}`,
