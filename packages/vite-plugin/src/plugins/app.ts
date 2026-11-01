@@ -21,7 +21,6 @@ import {
   HTML_OUTLET_ID,
   type ClientAssets,
   type ResolvedEntries,
-  type VynnAppOptions,
 } from "./app/shared.ts";
 import { resolveEntries, toAbsoluteSpecifier } from "./app/entries.ts";
 import {
@@ -45,7 +44,6 @@ import {
 } from "./app/http.ts";
 
 export { CLIENT_ENTRY_ID, SERVER_ENTRY_ID, SSR_HANDLER_ID };
-export type { VynnAppOptions };
 
 function normalizeFilePath(file: string): string {
   const path = resolve(file).replace(/\\/g, "/");
@@ -54,7 +52,6 @@ function normalizeFilePath(file: string): string {
 
 type PluginOptions = {
   ssr: boolean;
-  start: VynnAppOptions;
   ssrCss?: VynnSsrCssCollector;
   serverFunctions?: VynnServerFunctionsOptions;
 };
@@ -70,20 +67,13 @@ type PluginOptions = {
  *
  * Neither mode requires a project-owned index.html or HTTP server file.
  */
-export function vynnStartPlugin({
+export function vynnAppPlugin({
   ssr,
-  start,
   ssrCss,
   serverFunctions,
 }: PluginOptions): Plugin {
-  const mount = start.mount ?? `#${HTML_OUTLET_ID}`;
-  const title = start.title ?? "Vynn App";
-
-  if (!/^#[A-Za-z_][\w:.-]*$/.test(mount)) {
-    throw new Error(
-      `[Vynn Start] The mount option must be an ID selector (for example, "#app"); received ${JSON.stringify(mount)}.`,
-    );
-  }
+  const mount = `#${HTML_OUTLET_ID}`;
+  const title = "Vynn App";
 
   const mountId = mount.slice(1);
   let resolvedConfig: ResolvedConfig | undefined;
@@ -100,7 +90,7 @@ export function vynnStartPlugin({
 
     config(userConfig, env): Omit<UserConfig, "plugins"> {
       const projectRoot = resolve(userConfig.root || process.cwd());
-      entries = resolveEntries(projectRoot, start, ssr);
+      entries = resolveEntries(projectRoot, ssr);
 
       // Vite preview configuration.
       if (env.isPreview) {
@@ -178,7 +168,7 @@ export function vynnStartPlugin({
         return ssrConfig;
       }
 
-      // Client-only Start configuration.
+      // Client-only app configuration.
       const clientConfig: Omit<UserConfig, "plugins"> = {
         appType: "custom",
         build: {
@@ -264,7 +254,6 @@ export function vynnStartPlugin({
         return createClientEntry(
           entries.appSpecifier,
           entries.styleSpecifiers,
-          start.exportName,
           mount,
           ssr,
         );
@@ -276,8 +265,6 @@ export function vynnStartPlugin({
           return createServerEntry(
             entries.appSpecifier,
             entries.styleSpecifiers,
-            start.exportName,
-            start.renderMode ?? "stream",
           );
         }
         if (entries.serverFile) {
@@ -291,7 +278,7 @@ export function vynnStartPlugin({
       if (id === RESOLVED_SSR_HANDLER_ID) {
         if (!ssr) {
           this.error(
-            `${SSR_HANDLER_ID} is only available when vynn({ start: true, ssr: true }) is enabled.`,
+            `${SSR_HANDLER_ID} is only available when vynn({ ssr: true }) is enabled.`,
           );
         }
 
@@ -429,7 +416,7 @@ export function vynnStartPlugin({
             };
             if (!ssrEnvironment?.runner) {
               throw new Error(
-                "[Vynn Start] The Vite SSR environment does not expose a Module Runner. Start mode requires Vite 8's runnable SSR environment.",
+                "[Vynn App] The Vite SSR environment does not expose a Module Runner. App mode requires Vite 8's runnable SSR environment.",
               );
             }
 

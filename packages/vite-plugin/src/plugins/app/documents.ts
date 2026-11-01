@@ -14,16 +14,13 @@ type ManifestEntry = {
 export function createClientEntry(
   appSpecifier: string,
   styleSpecifiers: string[],
-  exportName: string | undefined,
   mount: string,
   ssr: boolean,
 ): string {
   // Read optional exports dynamically. A direct `appModule.App` access makes
   // Rollup/Rolldown warn when the module intentionally uses a default export.
   const selected = (moduleName: string) =>
-    exportName
-      ? `Reflect.get(${moduleName}, ${JSON.stringify(exportName)})`
-      : `Reflect.get(${moduleName}, "default") ?? Reflect.get(${moduleName}, "App")`;
+    `Reflect.get(${moduleName}, "default") ?? Reflect.get(${moduleName}, "App")`;
   const renderer = ssr ? "hydrateToDOM" : "renderToDOM";
 
   return [
@@ -31,7 +28,7 @@ export function createClientEntry(
     `import * as appModule from ${JSON.stringify(appSpecifier)};`,
     `import { ${renderer} } from "vynn/client";`,
     `const App = ${selected("appModule")};`,
-    `if (typeof App !== "function") throw new Error("[Vynn Start] The app module must export a component as default or App (or set start.exportName).");`,
+    `if (typeof App !== "function") throw new Error("[Vynn App] The app module must export a component as default or App.");`,
     `${renderer}(() => App({ url: window.location.pathname + window.location.search }), ${JSON.stringify(mount)});`,
     "",
   ].join("\n");
@@ -40,7 +37,7 @@ export function createClientEntry(
 export function createAuthoredServerEntry(serverSpecifier: string): string {
   return [
     `import * as serverModule from ${JSON.stringify(serverSpecifier)};`,
-    `if (typeof serverModule.render !== "function") throw new Error("[Vynn Start] The entry-server module must export render(url).");`,
+    `if (typeof serverModule.render !== "function") throw new Error("[Vynn App] The entry-server module must export render(url).");`,
     `export function render(url) { return serverModule.render(url); }`,
     "",
   ].join("\n");
@@ -49,24 +46,20 @@ export function createAuthoredServerEntry(serverSpecifier: string): string {
 export function createServerEntry(
   appSpecifier: string,
   styleSpecifiers: string[],
-  exportName: string | undefined,
-  renderMode: "sync" | "async" | "stream",
 ): string {
   // Read optional exports dynamically. A direct `appModule.App` access makes
   // Rollup/Rolldown warn when the module intentionally uses a default export.
   const selected = (moduleName: string) =>
-    exportName
-      ? `Reflect.get(${moduleName}, ${JSON.stringify(exportName)})`
-      : `Reflect.get(${moduleName}, "default") ?? Reflect.get(${moduleName}, "App")`;
+    `Reflect.get(${moduleName}, "default") ?? Reflect.get(${moduleName}, "App")`;
 
   return [
     ...styleSpecifiers.map((style) => `import ${JSON.stringify(style)};`),
     `import * as appModule from ${JSON.stringify(appSpecifier)};`,
     `import { renderToServer } from "vynn/server";`,
     `const App = ${selected("appModule")};`,
-    `if (typeof App !== "function") throw new Error("[Vynn Start] The app module must export a component as default or App (or set start.exportName).");`,
+    `if (typeof App !== "function") throw new Error("[Vynn App] The app module must export a component as default or App.");`,
     `export function render(url) {`,
-    `  return renderToServer(() => App({ url }), ${JSON.stringify(renderMode)});`,
+    `  return renderToServer(() => App({ url }), "stream");`,
     `}`,
     "",
   ].join("\n");
@@ -81,7 +74,7 @@ export async function readSsrManifest(
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(
-      `[Vynn Start] Could not read the client SSR manifest at ${manifestPath}. Ensure the client build enables build.ssrManifest and completes before the SSR build. Original error: ${message}`,
+      `[Vynn App] Could not read the client SSR manifest at ${manifestPath}. Ensure the client build enables build.ssrManifest and completes before the SSR build. Original error: ${message}`,
     );
   }
 }
@@ -96,7 +89,7 @@ export async function readClientAssets(outDir: string): Promise<ClientAssets> {
     >;
   } catch (error) {
     throw new Error(
-      `[Vynn Start] Could not read the client manifest at ${manifestPath}. The client environment must build before the SSR environment. Original error: ${error instanceof Error ? error.message : String(error)}`,
+      `[Vynn App] Could not read the client manifest at ${manifestPath}. The client environment must build before the SSR environment. Original error: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
 
@@ -111,7 +104,7 @@ export async function readClientAssets(outDir: string): Promise<ClientAssets> {
 
   if (!entry) {
     throw new Error(
-      `[Vynn Start] No client entry was found in ${manifestPath}.`,
+      `[Vynn App] No client entry was found in ${manifestPath}.`,
     );
   }
 
@@ -216,7 +209,7 @@ export function createSsrHandlerCode(options: {
     `  if (value instanceof ReadableStream) return value;`,
     `  if (typeof value === "string") return new Response(value).body;`,
     `  if (value instanceof Uint8Array) return new Response(value).body;`,
-    `  throw new TypeError("[Vynn Start] The server entry render() must return a string, Uint8Array, or ReadableStream.");`,
+    `  throw new TypeError("[Vynn App] The server entry render() must return a string, Uint8Array, or ReadableStream.");`,
     `}`,
     `function withDocument(body, devCssLinks, moduleIds, headHtml) {`,
     `  const reader = body.getReader();`,

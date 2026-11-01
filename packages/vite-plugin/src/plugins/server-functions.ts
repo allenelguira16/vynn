@@ -126,7 +126,7 @@ export function serverFunctionsPlugin(
   const refsById = new Map<string, ServerFunctionReference>();
   const implementationChunkRefs = new Map<string, string>();
   // Vite's standalone `build --ssr` path may not expose an Environment
-  // consumer named "server", unlike Vynn Start's explicit SSR environment.
+  // consumer named "server", unlike Vynn App's explicit SSR environment.
   // Remember the server transform so the emitted implementation manifest is
   // still injected into the standalone server-functions handler bundle.
   let hasServerBuildTransform = false;

@@ -1,60 +1,122 @@
-import type { IncomingMessage } from "node:http";
+import {
+  createServer,
+  type IncomingMessage,
+  type ServerResponse,
+} from "node:http";
 import { Readable } from "node:stream";
 
 export type ToWebRequestOptions = {
   /**
-   * The incoming request URL or path. Defaults to req.url.
+   * Override the incoming URL. A callback is useful when mounting the
+   * listener behind a framework that rewrites req.url.
    *
-   * Pass Express's req.originalUrl when using Express so mounted routers do
-   * not accidentally remove part of the URL.
+   * Express's originalUrl is detected automatically when available.
    */
-  url?: string;
+  url?: string | ((request: IncomingMessage) => string);
   /**
-   * The public origin used to resolve relative request URLs.
-   *
-   * Set this explicitly when running behind a reverse proxy. If omitted, the
-   * protocol is inferred from the socket and the host from the Host header.
+   * Public origin used to resolve relative request URLs.
+   * Set this when running behind a reverse proxy.
    */
-  origin?: string;
+  origin?: string | ((request: IncomingMessage) => string);
 };
+
+export type FetchRequestHandler = (
+  request: Request,
+) => Response | Promise<Response>;
+
+export type NodeNextFunction = (error?: unknown) => void;
+
+export type NodeListener = (
+  request: IncomingMessage,
+  response: ServerResponse,
+  next?: NodeNextFunction,
+) => void;
+
+export type NodeListenerOptions = ToWebRequestOptions & {
+  /** Called when the Fetch handler or response stream fails. */
+  onError?: (
+    error: unknown,
+    request: IncomingMessage,
+    response: ServerResponse,
+  ) => void;
+};
+
+const REQUEST_HOP_BY_HOP_HEADERS = new Set([
+  "connection",
+  "keep-alive",
+  "proxy-authenticate",
+  "proxy-authorization",
+  "proxy-connection",
+  "te",
+  "trailer",
+  "transfer-encoding",
+  "upgrade",
+]);
+
+const RESPONSE_HOP_BY_HOP_HEADERS = new Set([
+  "connection",
+  "keep-alive",
+  "proxy-authenticate",
+  "proxy-authorization",
+  "proxy-connection",
+  "te",
+  "trailer",
+  "transfer-encoding",
+  "upgrade",
+]);
+
+function resolveRequestOption(
+  value: string | ((request: IncomingMessage) => string) | undefined,
+  request: IncomingMessage,
+  fallback: string,
+): string {
+  if (typeof value === "function") return value(request);
+  return value ?? fallback;
+}
 
 /**
  * Converts a Node.js IncomingMessage into a Web-standard Request.
  *
- * This adapter is intended for Node.js HTTP servers and frameworks built on
- * them, such as Express. Bun.serve(), Deno.serve(), and Fetch-based frameworks
- * can pass their existing Request objects directly to Vynn.
+ * This adapter works with Node HTTP servers and frameworks built on them,
+ * including Express. Fetch-based runtimes can pass their Request directly.
  */
 export function toWebRequest(
-  req: IncomingMessage,
+  request: IncomingMessage,
   options: ToWebRequestOptions = {},
 ): Request {
   const encrypted = Boolean(
-    (req.socket as { encrypted?: boolean }).encrypted,
+    (request.socket as { encrypted?: boolean }).encrypted,
   );
-  const defaultOrigin = `${encrypted ? "https" : "http"}://${req.headers.host ?? "localhost"}`;
-  const origin = new URL(options.origin ?? defaultOrigin).origin;
-  const requestUrl = options.url ?? req.url ?? "/";
-  const headers = new Headers();
-  const hopByHopHeaders = new Set([
-    "connection",
-    "keep-alive",
-    "proxy-authenticate",
-    "proxy-authorization",
-    "proxy-connection",
-    "te",
-    "trailer",
-    "transfer-encoding",
-    "upgrade",
-  ]);
+  const defaultOrigin =
+    (encrypted ? "https" : "http") +
+    "://" +
+    (request.headers.host ?? "localhost");
+  const origin = new URL(
+    resolveRequestOption(options.origin, request, defaultOrigin),
+  ).origin;
 
-  // Connection can nominate additional hop-by-hop headers.
-  for (const name of (req.headers.connection ?? "").split(",")) {
+  const expressOriginalUrl = (
+    request as IncomingMessage & { originalUrl?: unknown }
+  ).originalUrl;
+  const defaultUrl =
+    typeof expressOriginalUrl === "string" && expressOriginalUrl.length > 0
+      ? expressOriginalUrl
+      : request.url ?? "/";
+  const requestUrl = resolveRequestOption(options.url, request, defaultUrl);
+
+  const headers = new Headers();
+  const connection = request.headers.connection;
+  const connectionHeaders = Array.isArray(connection)
+    ? connection.join(",")
+    : (connection ?? "");
+
+  const hopByHopHeaders = new Set(REQUEST_HOP_BY_HOP_HEADERS);
+  for (const name of connectionHeaders.split(",")) {
     const normalized = name.trim().toLowerCase();
     if (normalized) hopByHopHeaders.add(normalized);
   }
 
-  for (const [key, value] of Object.entries(req.headers)) {
+  for (const [key, value] of Object.entries(request.headers)) {
     if (hopByHopHeaders.has(key.toLowerCase())) continue;
     if (value === undefined) continue;
 
@@ -65,13 +127,182 @@ export function toWebRequest(
     }
   }
 
-  const method = req.method ?? "GET";
+  const method = request.method ?? "GET";
   const init: RequestInit & { duplex?: "half" } = { method, headers };
 
   if (method !== "GET" && method !== "HEAD") {
-    init.body = Readable.toWeb(req) as ReadableStream<Uint8Array>;
+    init.body = Readable.toWeb(request) as ReadableStream<Uint8Array>;
     init.duplex = "half";
   }
 
   return new Request(new URL(requestUrl, origin), init);
 }
+
+function waitForDrain(response: ServerResponse): Promise<void> {
+  if (response.destroyed) {
+    return Promise.reject(
+      new Error("The client disconnected during the response stream."),
+    );
+  }
+
+  return new Promise<void>((resolve, reject) => {
+    const cleanup = () => {
+      response.off("drain", onDrain);
+      response.off("close", onClose);
+      response.off("error", onError);
+    };
+
+    const onDrain = () => {
+      cleanup();
+      resolve();
+    };
+
+    const onClose = () => {
+      cleanup();
+      reject(
+        new Error("The client disconnected during the response stream."),
+      );
+    };
+
+    const onError = (error: Error) => {
+      cleanup();
+      reject(error);
+    };
+
+    response.once("drain", onDrain);
+    response.once("close", onClose);
+    response.once("error", onError);
+
+    if (response.destroyed) onClose();
+  });
+}
+
+/**
+ * Writes a Web Response to a Node ServerResponse, preserving streaming and
+ * waiting for Node's drain event when the writable buffer fills.
+ */
+export async function writeResponse(
+  target: ServerResponse,
+  response: Response,
+  requestMethod = "GET",
+): Promise<void> {
+  target.statusCode = response.status;
+
+  const connection = response.headers.get("connection") ?? "";
+  const hopByHopHeaders = new Set(RESPONSE_HOP_BY_HOP_HEADERS);
+
+  for (const name of connection.split(",")) {
+    const normalized = name.trim().toLowerCase();
+    if (normalized) hopByHopHeaders.add(normalized);
+  }
+
+  const getSetCookie = (
+    response.headers as Headers & { getSetCookie?: () => string[] }
+  ).getSetCookie;
+  const cookies = getSetCookie?.call(response.headers) ?? [];
+
+  if (cookies.length > 0) {
+    target.setHeader("set-cookie", cookies);
+  }
+
+  response.headers.forEach((value, key) => {
+    const normalized = key.toLowerCase();
+    if (normalized === "set-cookie" && cookies.length > 0) return;
+    if (!hopByHopHeaders.has(normalized)) {
+      target.setHeader(key, value);
+    }
+  });
+
+  if (!response.body || requestMethod === "HEAD") {
+    if (requestMethod === "HEAD" && response.body) {
+      await response.body.cancel();
+    }
+    target.end();
+    return;
+  }
+
+  const reader = response.body.getReader();
+  const cancelOnClose = () => {
+    if (!target.writableEnded) {
+      void reader.cancel().catch(() => undefined);
+    }
+  };
+
+  target.once("close", cancelOnClose);
+
+  try {
+    while (!target.destroyed) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      const canContinue = target.write(value);
+
+      // Compression middleware buffers compressed output unless each SSR
+      // chunk is explicitly flushed.
+      (target as ServerResponse & { flush?: () => void }).flush?.();
+
+      if (!canContinue) {
+        await waitForDrain(target);
+      }
+    }
+
+    if (!target.destroyed) target.end();
+  } finally {
+    target.off("close", cancelOnClose);
+
+    if (target.destroyed) {
+      await reader.cancel().catch(() => undefined);
+    }
+
+    reader.releaseLock();
+  }
+}
+
+/**
+ * Creates a Node request listener for a Fetch-compatible request handler.
+ *
+ * The returned function can be passed to node:http.createServer() or
+ * mounted directly with Express's app.use().
+ */
+export function createListener(
+  handler: FetchRequestHandler,
+  options: NodeListenerOptions = {},
+): NodeListener {
+  return (request, response, next) => {
+    void (async () => {
+      const webRequest = toWebRequest(request, options);
+      const webResponse = await handler(webRequest);
+
+      if (!(webResponse instanceof Response)) {
+        throw new TypeError(
+          "A Vynn Node listener must return a Web Response.",
+        );
+      }
+
+      await writeResponse(response, webResponse, request.method ?? "GET");
+    })().catch((error: unknown) => {
+      try {
+        options.onError?.(error, request, response);
+      } catch {
+        // An error-reporting callback must not cause an unhandled rejection.
+      }
+
+      if (next) {
+        next(error);
+        return;
+      }
+
+      if (response.destroyed || response.writableEnded) return;
+
+      if (response.headersSent) {
+        response.destroy(error instanceof Error ? error : undefined);
+        return;
+      }
+
+      response.statusCode = 500;
+      response.setHeader("content-type", "text/plain; charset=utf-8");
+      response.end("Internal Server Error");
+    });
+  };
+}
+

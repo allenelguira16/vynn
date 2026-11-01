@@ -2,7 +2,8 @@
 
 import type { Plugin } from "vite";
 import { vynnOxcPlugin } from "./plugins/jsx-transpiler.ts";
-import { vynnStartPlugin, type VynnAppOptions } from "./plugins/app.ts";
+import { vynnAppPlugin } from "./plugins/app.ts";
+import { vynnNodeAdapterPlugin } from "./plugins/node-adapter.ts";
 import { createVynnSsrCssPlugin } from "./plugins/ssr-css.ts";
 import { vynnSsrPreloadPlugin } from "./plugins/ssr-preload.ts";
 import {
@@ -10,29 +11,30 @@ import {
   type VynnServerFunctionsOptions,
 } from "./plugins/server-functions.ts";
 
-type VitePluginVynnOptions = {
-  /** Enable SSR compiler/runtime integration for manually wired SSR projects or Start mode. */
+/**
+ * Configuration for the integrated Vynn application.
+ *
+ * Application handling is always enabled and follows the conventional
+ * application paths and document defaults.
+ */
+export type VynnPluginOptions = {
+  /** Enable server rendering and automatic hydration. */
   ssr?: boolean;
-  /** Own entries, HTML serving, and build orchestration. `true` uses conventions. */
-  app?: boolean | VynnAppOptions;
-  /** Enable `"use server"` RPC independently of Vynn app mode and SSR rendering. */
+  /** Enable "use server" RPC handling. */
   serverFunctions?: boolean | VynnServerFunctionsOptions;
 };
 
 /**
  * Vite plugin for Vynn.
  *
- * `app` enables Vynn Start mode. Pair it with `ssr: true` for streamed SSR,
- * automatic hydration, multi-environment builds, and SSR in `vite preview`.
- * `serverFunctions` can also be used on its own with a regular Vite app:
- * Vite dev middleware handles RPC requests, and a regular build emits
- * `dist/client` plus a separate `dist/server/server.js` handler bundle that
- * Vite preview can mount automatically.
+ * Application handling is integrated and enabled by default. Calling vynn()
+ * discovers the conventional application entry and provides document serving,
+ * client builds, and hydration. Add ssr: true for server rendering.
+ *
+ * Server functions are optional and can also be used without SSR.
  */
-export default function vynn(options: VitePluginVynnOptions = {}) {
+export default function vynn(options: VynnPluginOptions = {}) {
   const plugins: Plugin[] = [vynnOxcPlugin()];
-
-  const startEnabled = options.app !== undefined && options.app !== false;
 
   const ssrCss = options.ssr ? createVynnSsrCssPlugin() : undefined;
   const ssrPreload = options.ssr ? vynnSsrPreloadPlugin() : undefined;
@@ -44,8 +46,8 @@ export default function vynn(options: VitePluginVynnOptions = {}) {
   if (options.serverFunctions) {
     plugins.push(
       serverFunctionsPlugin(serverFunctionsOptions, {
-        // SSR builds include the handler in the SSR entry itself.
-        // Only client-only builds need a separate standalone server bundle.
+        // SSR app builds include the handler in the application server entry.
+        // Non-SSR apps can still build a standalone server-functions bundle.
         standalone:
           options.ssr !== true &&
           serverFunctionsOptions?.enabled !== false,
@@ -61,21 +63,22 @@ export default function vynn(options: VitePluginVynnOptions = {}) {
     plugins.push(ssrPreload);
   }
 
-  if (startEnabled) {
-    plugins.push(
-      vynnStartPlugin({
-        ssr: options.ssr === true,
-        start: options.app === true ? {} : (options.app as VynnAppOptions),
-        ssrCss,
-        serverFunctions:
-          options.serverFunctions && serverFunctionsOptions?.enabled !== false
-            ? serverFunctionsOptions
-            : undefined,
-      }),
-    );
+  plugins.push(
+    vynnAppPlugin({
+      ssr: options.ssr === true,
+      ssrCss,
+      serverFunctions:
+        options.serverFunctions && serverFunctionsOptions?.enabled !== false
+          ? serverFunctionsOptions
+          : undefined,
+    }),
+  );
+
+  if (options.ssr) {
+    plugins.push(vynnNodeAdapterPlugin());
   }
 
   return plugins;
 }
 
-export type { VynnAppOptions, VynnServerFunctionsOptions };
+export type { VynnServerFunctionsOptions };

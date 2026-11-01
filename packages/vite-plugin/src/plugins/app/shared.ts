@@ -1,20 +1,3 @@
-export type VynnAppOptions = {
-  /** Root component module, relative to the Vite root. Defaults to src/App.* or src/app.*. */
-  app?: string;
-  /** Optional named App export. Defaults to `default`, then `App`. */
-  exportName?: string;
-  /** Conventional client entry override. Defaults to src/entry-client.* when present. */
-  entryClient?: string;
-  /** Conventional server entry override. Defaults to src/entry-server.* when present in SSR mode. */
-  entryServer?: string;
-  /** Mount selector for the application. Currently must be an ID selector, such as #app. */
-  mount?: string;
-  /** HTML document title used by the generated document shell. */
-  title?: string;
-  /** SSR rendering strategy. @default "stream" */
-  renderMode?: "sync" | "async" | "stream";
-};
-
 export type ResolvedEntries = {
   appSpecifier: string | null;
   styleSpecifiers: string[];

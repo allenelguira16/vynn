@@ -118,7 +118,12 @@ export async function writeResponse(
     while (!res.destroyed) {
       const { done, value } = await reader.read();
       if (done) break;
-      if (!res.write(value)) {
+      const canContinue = res.write(value);
+
+      // Flush compression middleware after each streamed SSR chunk.
+      (res as ServerResponse & { flush?: () => void }).flush?.();
+
+      if (!canContinue) {
         await new Promise<void>((resolveDrain, reject) => {
           const cleanup = () => {
             res.off("drain", onDrain);
