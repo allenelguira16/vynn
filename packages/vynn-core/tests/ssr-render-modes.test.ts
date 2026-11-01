@@ -39,8 +39,8 @@ describe("renderToServer modes", () => {
   });
 
   it("collects head and lazy-module metadata independently of the string result", async () => {
-    await runWithSsrContext(() => {
-      const rendered = renderToServer(() => {
+    await runWithSsrContext((run) => {
+      const rendered = run(() => renderToServer(() => {
         registerSsrModule("src/pages/synchronous.tsx");
 
         const title = $headTmpl("title");
@@ -48,14 +48,14 @@ describe("renderToServer modes", () => {
         $head(title);
 
         return "Body";
-      }, "sync");
+      }, "sync"));
 
       expect(typeof rendered).toBe("string");
       expect(rendered).toContain("Body");
-      expect(getSsrHead()).toContain(
+      expect(run(getSsrHead)).toContain(
         '<title key="title">Synchronous page</title>',
       );
-      expect([...getSsrModuleIds()]).toEqual([
+      expect([...run(getSsrModuleIds)]).toEqual([
         "src/pages/synchronous.tsx",
       ]);
     });
