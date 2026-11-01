@@ -24,7 +24,7 @@ export async function runWithSsrContext<T>(
   callback: (run: SsrContextRunner) => T,
 ): Promise<Awaited<T>> {
   const owner = createOwner(null);
-  const run: SsrContextRunner = (callback) =>
+  const run: SsrContextRunner = <T>(callback: () => T): T =>
     runWithOwner(owner, callback);
 
   return await run(() => callback(run));
