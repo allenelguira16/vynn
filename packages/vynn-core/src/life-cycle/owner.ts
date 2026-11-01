@@ -8,7 +8,36 @@ export interface Owner {
   nodeCount: number;
 }
 
-let currentOwner: Owner | null = null;
+interface OwnerRuntime {
+  current: Owner | null;
+}
+
+const OWNER_RUNTIME = Symbol.for("vynn.owner-runtime");
+
+function getOwnerRuntime(): OwnerRuntime {
+  const existing = Reflect.get(
+    globalThis,
+    OWNER_RUNTIME,
+  ) as OwnerRuntime | undefined;
+
+  if (existing) return existing;
+
+  const runtime: OwnerRuntime = { current: null };
+
+  Object.defineProperty(globalThis, OWNER_RUNTIME, {
+    configurable: false,
+    enumerable: false,
+    value: runtime,
+    writable: false,
+  });
+
+  return runtime;
+}
+
+// Vite's SSR module runner and the host server can evaluate Vynn through
+// separate module instances. Keep the active owner on the shared JS realm so
+// both instances participate in the same synchronous owner scope.
+const ownerRuntime = getOwnerRuntime();
 
 /**
  * Returns the owner currently associated with the executing code.
@@ -16,7 +45,7 @@ let currentOwner: Owner | null = null;
  * @returns The current owner, or null when no owner is active.
  */
 export function getOwner(): Owner | null {
-  return currentOwner;
+  return ownerRuntime.current;
 }
 
 /**
@@ -27,7 +56,7 @@ export function getOwner(): Owner | null {
  * @param parent The parent owner, or the current owner when omitted.
  * @returns The newly created owner.
  */
-export function createOwner(parent = currentOwner): Owner {
+export function createOwner(parent = ownerRuntime.current): Owner {
   const owner: Owner = {
     parent,
     children: [],
@@ -53,14 +82,14 @@ export function createOwner(parent = currentOwner): Owner {
  * @returns The function's return value.
  */
 export function runWithOwner<T>(owner: Owner | null, fn: () => T): T {
-  const previousOwner = currentOwner;
+  const previousOwner = ownerRuntime.current;
 
-  currentOwner = owner;
+  ownerRuntime.current = owner;
 
   try {
     return fn();
   } finally {
-    currentOwner = previousOwner;
+    ownerRuntime.current = previousOwner;
   }
 }
 
@@ -109,7 +138,7 @@ export function disposeOwner(owner: Owner): void {
  * @param value The value to store.
  */
 export function setContext<T>(key: string | symbol, value: T): void {
-  const owner = currentOwner;
+  const owner = ownerRuntime.current;
 
   if (!owner) {
     return;
@@ -129,7 +158,7 @@ export function setContext<T>(key: string | symbol, value: T): void {
  * @returns Whether an existing context entry was updated.
  */
 export function updateContext<T>(key: string | symbol, value: T): boolean {
-  let owner = currentOwner;
+  let owner = ownerRuntime.current;
 
   while (owner) {
     if (owner.context.has(key)) {
@@ -157,7 +186,7 @@ export function modifyContext<T>(
   key: string | symbol,
   updater: (current: T) => T,
 ): boolean {
-  let owner = currentOwner;
+  let owner = ownerRuntime.current;
 
   while (owner) {
     if (owner.context.has(key)) {
@@ -182,7 +211,7 @@ export function modifyContext<T>(
  * @returns The nearest matching value, or undefined if none exists.
  */
 export function getContext<T>(key: string | symbol): T | undefined {
-  let owner = currentOwner;
+  let owner = ownerRuntime.current;
 
   while (owner) {
     if (owner.context.has(key)) {
