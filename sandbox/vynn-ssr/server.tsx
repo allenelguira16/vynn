@@ -211,13 +211,13 @@ async function handlePageRequest(
   if (req.originalUrl.includes(".")) return next();
 
   try {
-    await runWithSsrContext(async () => {
+    await runWithSsrContext(async (run) => {
       const { template, render } = await loadPage(req.originalUrl);
 
       // Capture the live set before awaiting; nested lazy boundaries can register
       // more modules while the stream is being consumed.
-      const rendered = render(toRequest(req));
-      const moduleIds = getSsrModuleIds();
+      const rendered = run(() => render(toRequest(req)));
+      const moduleIds = run(getSsrModuleIds);
 
       // Async SSR is complete before the document shell is sent. Streaming SSR
       // emits late head updates through the Vynn stream patch runtime.
@@ -228,7 +228,7 @@ async function handlePageRequest(
             ? rendered
             : await rendered;
 
-      const headHtml = getSsrHead();
+      const headHtml = run(getSsrHead);
       const seen = new Set<string>();
 
       const getPreloadLinks = () =>
