@@ -7,39 +7,66 @@ import {
 } from "../src/context/ssr-module-context";
 import { renderSsrPreloadLinks } from "../src/server/preload.render-preload-links";
 import { runWithSsrContext } from "../src/server/ssr-request-context";
-import { createOwner, runWithOwner } from "../src/life-cycle/owner";
 import { vynnSsrPreloadPlugin } from "../../vite-plugin/src/plugins/ssr-preload.ts";
 
 describe("SSR lazy module tracking", () => {
   it("isolates module IDs between SSR request contexts", async () => {
-    const first = await runWithSsrContext(() => {
-      const owner = createOwner(null);
-      runWithOwner(owner, () => {
+    const first = await runWithSsrContext((run) => {
+      run(() => {
         initializeSsrModuleContext(new Set<string>());
         registerSsrModule("src/pages/a.tsx");
       });
-      return [...getSsrModuleIds()];
+      return [...run(getSsrModuleIds)];
     });
 
-    const second = await runWithSsrContext(() => {
-      const owner = createOwner(null);
-      runWithOwner(owner, () => {
+    const second = await runWithSsrContext((run) => {
+      run(() => {
         initializeSsrModuleContext(new Set<string>());
         registerSsrModule("src/pages/b.tsx");
       });
-      return [...getSsrModuleIds()];
+      return [...run(getSsrModuleIds)];
     });
 
     expect(first).toEqual(["src/pages/a.tsx"]);
     expect(second).toEqual(["src/pages/b.tsx"]);
   });
 
-  it("returns a live module set for streaming SSR", async () => {
-    await runWithSsrContext(() => {
-      const modules = new Set<string>();
-      initializeSsrModuleContext(modules);
+  it("re-enters the correct request owner after asynchronous boundaries", async () => {
+    let resumeFirst!: () => void;
+    const firstGate = new Promise<void>((resolve) => {
+      resumeFirst = resolve;
+    });
 
-      const captured = getSsrModuleIds();
+    const first = runWithSsrContext(async (run) => {
+      run(() => initializeSsrModuleContext(new Set<string>()));
+
+      await firstGate;
+
+      run(() => registerSsrModule("src/pages/a.tsx"));
+      return [...run(getSsrModuleIds)];
+    });
+
+    const second = await runWithSsrContext((run) => {
+      run(() => {
+        initializeSsrModuleContext(new Set<string>());
+        registerSsrModule("src/pages/b.tsx");
+      });
+
+      return [...run(getSsrModuleIds)];
+    });
+
+    resumeFirst();
+
+    expect(second).toEqual(["src/pages/b.tsx"]);
+    expect(await first).toEqual(["src/pages/a.tsx"]);
+  });
+
+  it("returns a live module set for streaming SSR", async () => {
+    await runWithSsrContext((run) => {
+      const modules = new Set<string>();
+      run(() => initializeSsrModuleContext(modules));
+
+      const captured = run(getSsrModuleIds);
       modules.add("src/pages/lazy.tsx");
 
       expect([...captured]).toEqual(["src/pages/lazy.tsx"]);
