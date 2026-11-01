@@ -7,6 +7,9 @@ import {
 } from "../src/context/ssr-module-context";
 import { renderSsrPreloadLinks } from "../src/server/preload.render-preload-links";
 import { runWithSsrContext } from "../src/server/ssr-request-context";
+import { renderToServer } from "../src/server/render-to-server";
+import { createSSRAsync } from "../src/render/resolve-node";
+import type { JSX } from "../src/types/jsx";
 import { vynnSsrPreloadPlugin } from "../../vite-plugin/src/plugins/ssr-preload.ts";
 
 describe("SSR lazy module tracking", () => {
@@ -65,6 +68,39 @@ describe("SSR lazy module tracking", () => {
 
     expect(second).toEqual(["src/pages/b.tsx"]);
     expect(await first).toEqual(["src/pages/a.tsx"]);
+  });
+
+  it("collects modules registered by late streaming boundaries", async () => {
+    let resolveBoundary!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      resolveBoundary = resolve;
+    });
+
+    await runWithSsrContext(async (run) => {
+      const stream = run(() => renderToServer(
+        () =>
+          createSSRAsync(
+            () => [],
+            () => {
+              registerSsrModule("src/pages/streamed-lazy.tsx");
+              return [];
+            },
+            [pending],
+          ) as unknown as JSX.Element,
+        "stream",
+      ));
+      const modules = run(getSsrModuleIds);
+
+      resolveBoundary();
+
+      const reader = stream.getReader();
+      while (true) {
+        const { done } = await reader.read();
+        if (done) break;
+      }
+
+      expect([...modules]).toEqual(["src/pages/streamed-lazy.tsx"]);
+    });
   });
 
   it("returns a live module set for streaming SSR", async () => {
