@@ -65,11 +65,11 @@ import App from "./app";
 const ssrManifest = JSON.parse(
   await readFile("dist/client/.vite/ssr-manifest.json", "utf8"),
 );
-await runWithSsrContext(async () => {
-  const rendered = renderToServer(() => <App />, "async");
-  const modules = getSsrModuleIds();
+await runWithSsrContext(async (run) => {
+  const rendered = run(() => renderToServer(() => <App />, "async"));
+  const modules = run(getSsrModuleIds);
   const html = await rendered;
-  const head = getSsrHead();
+  const head = run(getSsrHead);
   const preloadLinks = renderSsrPreloadLinks(modules, ssrManifest, {
     base: "/",
   });
@@ -79,7 +79,9 @@ await runWithSsrContext(async () => {
 ```
 
 For streaming mode, run the complete request inside `runWithSsrContext()`.
-`getSsrModuleIds()` returns the request's live set. Put the first
+The callback receives a `run` function that re-enters the request owner for
+synchronous work after an `await`. Owner context is not implicitly propagated
+across asynchronous boundaries. `getSsrModuleIds()` returns the request's live set. Put the first
 `renderSsrPreloadLinks` result in the document head, then call it before each
 emitted chunk with the same mutable `exclude` set to avoid duplicate tags. For
 late discoveries, wrap the returned links with `injectSsrPreloadLinks(links)`;
@@ -110,8 +112,9 @@ The render mode controls the renderer's native return type:
 - `"stream"` returns a `ReadableStream<Uint8Array>`.
 
 No result wrapper is added. When a custom request handler also needs SSR
-metadata, wrap the complete request in `runWithSsrContext()` and use
-`getSsrHead()` / `getSsrModuleIds()` inside that scope.
+metadata, wrap the complete request in `runWithSsrContext()`. Use its `run`
+callback to call `renderToServer()` and to access `getSsrHead()` /
+`getSsrModuleIds()` after asynchronous boundaries.
 
 With `vynn({ ssr: true, serverFunctions: true })`, the plugin automatically
 exposes `handleServerFunctionRequest` from the configured SSR entry during
@@ -208,9 +211,9 @@ streamed body chunks:
 import { getSsrHead, renderToServer, runWithSsrContext } from "vynn/server";
 import App from "./app";
 
-await runWithSsrContext(async () => {
-  const rendered = renderToServer(() => <App />, "stream");
-  const head = getSsrHead();
+await runWithSsrContext(async (run) => {
+  const rendered = run(() => renderToServer(() => <App />, "stream"));
+  const head = run(getSsrHead);
 
   // Insert head into the document's <head>, then stream rendered into the body.
   // The stream includes Vynn's patch bootstrap and any later head updates.
