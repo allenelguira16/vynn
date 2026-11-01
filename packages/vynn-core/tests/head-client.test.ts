@@ -1,15 +1,12 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  createOwner,
-  disposeOwner,
-  runWithOwner,
-} from "../src/life-cycle/owner";
-import { $head, $headTmpl } from "../src/render/$head";
+
+import { withHydration } from "../src/client/hydration";
 import { initializeHeadContext } from "../src/context/head-context";
+import { createOwner, disposeOwner, runWithOwner } from "../src/life-cycle/owner";
+import { $head, $headTmpl } from "../src/render/$head";
 import { $insert } from "../src/render/$insert";
 import { $txt } from "../src/render/$txt";
-import { withHydration } from "../src/client/hydration";
 
 afterEach(() => {
   document.head.innerHTML = "";
@@ -62,9 +59,7 @@ describe("client head rendering", () => {
     });
 
     expect(document.head.querySelectorAll("title")).toHaveLength(1);
-    expect(document.head.querySelector("title")?.textContent).toBe(
-      "Client page",
-    );
+    expect(document.head.querySelector("title")?.textContent).toBe("Client page");
 
     disposeOwner(root);
   });
@@ -85,12 +80,8 @@ describe("client head rendering", () => {
     });
 
     expect(document.head.querySelectorAll("title")).toHaveLength(1);
-    expect(document.head.querySelector("title")?.textContent).toBe(
-      "Application title",
-    );
-    expect(document.head.querySelector("title")?.getAttribute("key")).toBe(
-      "title",
-    );
+    expect(document.head.querySelector("title")?.textContent).toBe("Application title");
+    expect(document.head.querySelector("title")?.getAttribute("key")).toBe("title");
 
     disposeOwner(root);
   });
@@ -115,12 +106,8 @@ describe("client head rendering", () => {
     });
 
     expect(document.head.querySelector('meta[name="viewport"]')).toBe(viewport);
-    expect(
-      document.head.querySelectorAll('meta[name="description"]'),
-    ).toHaveLength(1);
-    expect(description?.getAttribute("content")).toBe(
-      "Application description",
-    );
+    expect(document.head.querySelectorAll('meta[name="description"]')).toHaveLength(1);
+    expect(description?.getAttribute("content")).toBe("Application description");
 
     disposeOwner(root);
   });
@@ -187,9 +174,7 @@ describe("client head rendering", () => {
     });
 
     expect(hydratedText).toBe(serverText);
-    expect(document.head.querySelector("title")?.textContent).toBe(
-      "Client title",
-    );
+    expect(document.head.querySelector("title")?.textContent).toBe("Client title");
     expect(appRoot.textContent).toBe("Application text");
 
     disposeOwner(root);
@@ -228,9 +213,7 @@ describe("client head rendering", () => {
     });
 
     expect(document.head.querySelectorAll("title")).toHaveLength(1);
-    expect(document.head.querySelector("title")?.textContent).toBe(
-      "Client title",
-    );
+    expect(document.head.querySelector("title")?.textContent).toBe("Client title");
 
     disposeOwner(root);
   });

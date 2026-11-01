@@ -16,11 +16,12 @@
  * should be treated as a production compiler.
  */
 
-import { parseSync, visitorKeys } from "oxc-parser";
+import type { Plugin, Rolldown } from "vite";
+
 import { decodeHTML } from "entities";
 import { print } from "esrap";
 import tsx from "esrap/languages/tsx";
-import type { Plugin, Rolldown } from "vite";
+import { parseSync, visitorKeys } from "oxc-parser";
 
 type Node = any;
 type RuntimeHelperName =
@@ -85,12 +86,10 @@ const expressionTypes = new Set<string>([
 
 const isNode = (node: unknown): node is Node =>
   !!node && typeof node === "object" && typeof (node as Node).type === "string";
-const isType = (node: Node, type: string): boolean =>
-  !!node && node.type === type;
+const isType = (node: Node, type: string): boolean => !!node && node.type === type;
 const isIdentifier = (node: Node): boolean => isType(node, "Identifier");
 const isJSXIdentifier = (node: Node): boolean => isType(node, "JSXIdentifier");
-const isExpression = (node: Node): boolean =>
-  !!node && expressionTypes.has(node.type);
+const isExpression = (node: Node): boolean => !!node && expressionTypes.has(node.type);
 const isFunctionLike = (node: Node): boolean =>
   isType(node, "ArrowFunctionExpression") ||
   isType(node, "FunctionExpression") ||
@@ -103,75 +102,45 @@ const isStringLiteral = isLiteralString;
 const isJSXElement = (node: Node): boolean => isType(node, "JSXElement");
 const isJSXFragment = (node: Node): boolean => isType(node, "JSXFragment");
 const isJSXText = (node: Node): boolean => isType(node, "JSXText");
-const isJSXExpressionContainer = (node: Node): boolean =>
-  isType(node, "JSXExpressionContainer");
-const isJSXEmptyExpression = (node: Node): boolean =>
-  isType(node, "JSXEmptyExpression");
+const isJSXExpressionContainer = (node: Node): boolean => isType(node, "JSXExpressionContainer");
+const isJSXEmptyExpression = (node: Node): boolean => isType(node, "JSXEmptyExpression");
 const isJSXAttribute = (node: Node): boolean => isType(node, "JSXAttribute");
-const isJSXSpreadAttribute = (node: Node): boolean =>
-  isType(node, "JSXSpreadAttribute");
-const isJSXMemberExpression = (node: Node): boolean =>
-  isType(node, "JSXMemberExpression");
-const isCallExpression = (node: Node): boolean =>
-  isType(node, "CallExpression");
-const isMemberExpression = (node: Node): boolean =>
-  isType(node, "MemberExpression");
-const isArrowFunctionExpression = (node: Node): boolean =>
-  isType(node, "ArrowFunctionExpression");
-const isFunctionExpression = (node: Node): boolean =>
-  isType(node, "FunctionExpression");
-const isFunctionDeclaration = (node: Node): boolean =>
-  isType(node, "FunctionDeclaration");
-const isBlockStatement = (node: Node): boolean =>
-  isType(node, "BlockStatement");
-const isReturnStatement = (node: Node): boolean =>
-  isType(node, "ReturnStatement");
-const isVariableDeclaration = (node: Node): boolean =>
-  isType(node, "VariableDeclaration");
-const isExpressionStatement = (node: Node): boolean =>
-  isType(node, "ExpressionStatement");
-const isObjectExpression = (node: Node): boolean =>
-  isType(node, "ObjectExpression");
+const isJSXSpreadAttribute = (node: Node): boolean => isType(node, "JSXSpreadAttribute");
+const isJSXMemberExpression = (node: Node): boolean => isType(node, "JSXMemberExpression");
+const isCallExpression = (node: Node): boolean => isType(node, "CallExpression");
+const isMemberExpression = (node: Node): boolean => isType(node, "MemberExpression");
+const isArrowFunctionExpression = (node: Node): boolean => isType(node, "ArrowFunctionExpression");
+const isFunctionExpression = (node: Node): boolean => isType(node, "FunctionExpression");
+const isFunctionDeclaration = (node: Node): boolean => isType(node, "FunctionDeclaration");
+const isBlockStatement = (node: Node): boolean => isType(node, "BlockStatement");
+const isReturnStatement = (node: Node): boolean => isType(node, "ReturnStatement");
+const isVariableDeclaration = (node: Node): boolean => isType(node, "VariableDeclaration");
+const isExpressionStatement = (node: Node): boolean => isType(node, "ExpressionStatement");
+const isObjectExpression = (node: Node): boolean => isType(node, "ObjectExpression");
 const isObjectProperty = (node: Node): boolean =>
   isType(node, "Property") && !node.method && node.kind === "init";
 const isObjectMethod = (node: Node): boolean =>
-  isType(node, "Property") &&
-  (node.method || node.kind === "get" || node.kind === "set");
+  isType(node, "Property") && (node.method || node.kind === "get" || node.kind === "set");
 const isSpreadElement = (node: Node): boolean => isType(node, "SpreadElement");
-const isArrayExpression = (node: Node): boolean =>
-  isType(node, "ArrayExpression");
+const isArrayExpression = (node: Node): boolean => isType(node, "ArrayExpression");
 const isRestElement = (node: Node): boolean => isType(node, "RestElement");
-const isAssignmentPattern = (node: Node): boolean =>
-  isType(node, "AssignmentPattern");
+const isAssignmentPattern = (node: Node): boolean => isType(node, "AssignmentPattern");
 const isObjectPattern = (node: Node): boolean => isType(node, "ObjectPattern");
 const isArrayPattern = (node: Node): boolean => isType(node, "ArrayPattern");
 const isIfStatement = (node: Node): boolean => isType(node, "IfStatement");
-const isLogicalExpression = (node: Node): boolean =>
-  isType(node, "LogicalExpression");
-const isConditionalExpression = (node: Node): boolean =>
-  isType(node, "ConditionalExpression");
-const isUnaryExpression = (node: Node): boolean =>
-  isType(node, "UnaryExpression");
-const isAwaitExpression = (node: Node): boolean =>
-  isType(node, "AwaitExpression");
-const isUpdateExpression = (node: Node): boolean =>
-  isType(node, "UpdateExpression");
-const isAssignmentExpression = (node: Node): boolean =>
-  isType(node, "AssignmentExpression");
-const isBinaryExpression = (node: Node): boolean =>
-  isType(node, "BinaryExpression");
-const isTemplateLiteral = (node: Node): boolean =>
-  isType(node, "TemplateLiteral");
-const isSequenceExpression = (node: Node): boolean =>
-  isType(node, "SequenceExpression");
-const isTSAsExpression = (node: Node): boolean =>
-  isType(node, "TSAsExpression");
-const isTSNonNullExpression = (node: Node): boolean =>
-  isType(node, "TSNonNullExpression");
-const isImportDeclaration = (node: Node): boolean =>
-  isType(node, "ImportDeclaration");
-const isImportSpecifier = (node: Node): boolean =>
-  isType(node, "ImportSpecifier");
+const isLogicalExpression = (node: Node): boolean => isType(node, "LogicalExpression");
+const isConditionalExpression = (node: Node): boolean => isType(node, "ConditionalExpression");
+const isUnaryExpression = (node: Node): boolean => isType(node, "UnaryExpression");
+const isAwaitExpression = (node: Node): boolean => isType(node, "AwaitExpression");
+const isUpdateExpression = (node: Node): boolean => isType(node, "UpdateExpression");
+const isAssignmentExpression = (node: Node): boolean => isType(node, "AssignmentExpression");
+const isBinaryExpression = (node: Node): boolean => isType(node, "BinaryExpression");
+const isTemplateLiteral = (node: Node): boolean => isType(node, "TemplateLiteral");
+const isSequenceExpression = (node: Node): boolean => isType(node, "SequenceExpression");
+const isTSAsExpression = (node: Node): boolean => isType(node, "TSAsExpression");
+const isTSNonNullExpression = (node: Node): boolean => isType(node, "TSNonNullExpression");
+const isImportDeclaration = (node: Node): boolean => isType(node, "ImportDeclaration");
+const isImportSpecifier = (node: Node): boolean => isType(node, "ImportSpecifier");
 
 function identifier(name: string): Node {
   return { type: "Identifier", name };
@@ -203,11 +172,7 @@ function voidZero(): Node {
 function cloneNode<T extends Node>(node: T): T {
   return structuredClone(node);
 }
-function memberExpression(
-  object: Node,
-  property: Node,
-  computed = false,
-): Node {
+function memberExpression(object: Node, property: Node, computed = false): Node {
   return {
     type: "MemberExpression",
     object,
@@ -259,10 +224,7 @@ function expressionStatement(expression: Node): Node {
 function variableDeclarator(id: Node, init: Node | null): Node {
   return { type: "VariableDeclarator", id, init, definite: false };
 }
-function variableDeclaration(
-  kind: "const" | "let" | "var",
-  declarations: Node[],
-): Node {
+function variableDeclaration(kind: "const" | "let" | "var", declarations: Node[]): Node {
   return { type: "VariableDeclaration", kind, declarations };
 }
 function arrayExpression(elements: Array<Node | null>): Node {
@@ -280,26 +242,16 @@ function unaryExpression(operator: string, argument: Node): Node {
 function binaryExpression(operator: string, left: Node, right: Node): Node {
   return { type: "BinaryExpression", operator, left, right };
 }
-function conditionalExpression(
-  test: Node,
-  consequent: Node,
-  alternate: Node,
-): Node {
+function conditionalExpression(test: Node, consequent: Node, alternate: Node): Node {
   return { type: "ConditionalExpression", test, consequent, alternate };
 }
 function assignmentExpression(operator: string, left: Node, right: Node): Node {
   return { type: "AssignmentExpression", operator, left, right };
 }
 function propertyKey(name: string): Node {
-  return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name)
-    ? identifier(name)
-    : stringLiteral(name);
+  return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name) ? identifier(name) : stringLiteral(name);
 }
-function objectProperty(
-  key: Node,
-  value: Node,
-  options: Partial<Node> = {},
-): Node {
+function objectProperty(key: Node, value: Node, options: Partial<Node> = {}): Node {
   return {
     type: "Property",
     key,
@@ -310,12 +262,7 @@ function objectProperty(
     computed: options.computed ?? false,
   };
 }
-function objectMethod(
-  kind: "method" | "get" | "set",
-  key: Node,
-  params: Node[],
-  body: Node,
-): Node {
+function objectMethod(kind: "method" | "get" | "set", key: Node, params: Node[], body: Node): Node {
   const fn = functionExpression(null, params, body);
   return objectProperty(key, fn, {
     kind: kind === "method" ? "init" : kind,
@@ -359,9 +306,7 @@ function isComponentName(name: string): boolean {
 
 function getJSXIdentifierName(name: Node): string {
   if (isJSXIdentifier(name)) return name.name;
-  throw new Error(
-    "Vynn currently only supports simple JSX identifiers for native elements.",
-  );
+  throw new Error("Vynn currently only supports simple JSX identifiers for native elements.");
 }
 
 function isComponentElement(node: Node): boolean {
@@ -412,12 +357,7 @@ function normalizeJSXText(value: string): string {
 
 function inferLang(filename: string): "js" | "jsx" | "ts" | "tsx" {
   if (/\.tsx$/i.test(filename)) return "tsx";
-  if (
-    /\.ts$/i.test(filename) ||
-    /\.mts$/i.test(filename) ||
-    /\.cts$/i.test(filename)
-  )
-    return "ts";
+  if (/\.ts$/i.test(filename) || /\.mts$/i.test(filename) || /\.cts$/i.test(filename)) return "ts";
   // .js files often contain JSX in Vynn applications, so use the JSX parser.
   return "jsx";
 }
@@ -446,11 +386,7 @@ function addSourceLocations(program: Node, source: string): void {
   const positionAt = createPositionLookup(source);
   const visit = (node: Node): void => {
     if (!isNode(node)) return;
-    if (
-      typeof node.start === "number" &&
-      typeof node.end === "number" &&
-      !node.loc
-    ) {
+    if (typeof node.start === "number" && typeof node.end === "number" && !node.loc) {
       node.loc = { start: positionAt(node.start), end: positionAt(node.end) };
     }
     forEachChild(node, visit);
@@ -510,15 +446,10 @@ function compileVynnOxc(
 
   const parseErrors: any[] = parsed.errors ?? parsed.diagnostics ?? [];
   const fatal = parseErrors.filter(
-    (error) =>
-      error.severity === "Error" ||
-      error.severity === 2 ||
-      !("severity" in error),
+    (error) => error.severity === "Error" || error.severity === 2 || !("severity" in error),
   );
   if (fatal.length > 0) {
-    const messages = fatal
-      .map((error) => error.message ?? String(error))
-      .join("\n");
+    const messages = fatal.map((error) => error.message ?? String(error)).join("\n");
     throw new Error(`Oxc failed to parse ${filename}:\n${messages}`);
   }
 
@@ -574,8 +505,7 @@ class TransformState {
   }
 
   private generateUidIdentifier(hint: string): Node {
-    const cleanHint =
-      hint.replace(/^\$+/, "").replace(/[^A-Za-z0-9_$]/g, "") || "ref";
+    const cleanHint = hint.replace(/^\$+/, "").replace(/[^A-Za-z0-9_$]/g, "") || "ref";
     const base = `_${cleanHint}`;
     let name = base;
     let suffix = 1;
@@ -600,10 +530,7 @@ class TransformState {
 
   private findExistingRuntimeImport(name: RuntimeHelperName): Node | null {
     for (const statement of this.program.body as Node[]) {
-      if (
-        !isImportDeclaration(statement) ||
-        statement.source?.value !== runtimeImportSource
-      )
+      if (!isImportDeclaration(statement) || statement.source?.value !== runtimeImportSource)
         continue;
       for (const specifier of statement.specifiers ?? []) {
         if (!isImportSpecifier(specifier)) continue;
@@ -636,10 +563,7 @@ class TransformState {
 
     let existingImport: Node | undefined;
     for (const statement of this.program.body as Node[]) {
-      if (
-        isImportDeclaration(statement) &&
-        statement.source?.value === runtimeImportSource
-      ) {
+      if (isImportDeclaration(statement) && statement.source?.value === runtimeImportSource) {
         existingImport = statement;
         break;
       }
@@ -647,21 +571,15 @@ class TransformState {
 
     if (existingImport) {
       for (const [name, local] of this.runtimeHelpers) {
-        const alreadyImported = (existingImport.specifiers ?? []).some(
-          (specifier: Node) => {
-            if (!isImportSpecifier(specifier)) return false;
-            const importedName = isIdentifier(specifier.imported)
-              ? specifier.imported.name
-              : specifier.imported?.value;
-            return (
-              importedName === name && specifier.local?.name === local.name
-            );
-          },
-        );
+        const alreadyImported = (existingImport.specifiers ?? []).some((specifier: Node) => {
+          if (!isImportSpecifier(specifier)) return false;
+          const importedName = isIdentifier(specifier.imported)
+            ? specifier.imported.name
+            : specifier.imported?.value;
+          return importedName === name && specifier.local?.name === local.name;
+        });
         if (!alreadyImported) {
-          existingImport.specifiers.push(
-            importSpecifier(cloneNode(local), identifier(name)),
-          );
+          existingImport.specifiers.push(importSpecifier(cloneNode(local), identifier(name)));
         }
       }
       return;
@@ -670,9 +588,7 @@ class TransformState {
     const specifiers = [...this.runtimeHelpers].map(([name, local]) =>
       importSpecifier(cloneNode(local), identifier(name)),
     );
-    this.program.body.unshift(
-      importDeclaration(specifiers, runtimeImportSource),
-    );
+    this.program.body.unshift(importDeclaration(specifiers, runtimeImportSource));
   }
 
   transformProgram(): void {
@@ -692,10 +608,7 @@ class TransformState {
       const declaration = statement.declaration;
       if (declaration.id && isComponentName(declaration.id.name)) {
         const transformed = this.transformComponentDeclaration(declaration);
-        if (
-          isVariableDeclaration(transformed) &&
-          transformed.declarations.length === 1
-        ) {
+        if (isVariableDeclaration(transformed) && transformed.declarations.length === 1) {
           return inheritSourceLocation(
             {
               ...statement,
@@ -720,21 +633,14 @@ class TransformState {
   private visitNestedDeclarations(node: Node): Node {
     if (!isNode(node)) return node;
 
-    if (
-      isFunctionDeclaration(node) &&
-      node.id &&
-      isComponentName(node.id.name)
-    ) {
+    if (isFunctionDeclaration(node) && node.id && isComponentName(node.id.name)) {
       const transformed = this.transformComponentDeclaration(node);
       if (transformed !== node) return transformed;
     }
 
     if (isVariableDeclaration(node)) {
       for (const declaration of node.declarations as Node[]) {
-        if (
-          isArrowComponentDeclaration(declaration) &&
-          this.transformArrowComponent(declaration)
-        ) {
+        if (isArrowComponentDeclaration(declaration) && this.transformArrowComponent(declaration)) {
           continue;
         }
         if (declaration.init && isExpression(declaration.init)) {
@@ -793,10 +699,7 @@ class TransformState {
       variableDeclaration("const", [
         variableDeclarator(
           cloneNode(node.id),
-          inheritSourceLocation(
-            callExpression(this.getRuntimeHelper("$cmpnt"), [fn]),
-            node,
-          ),
+          inheritSourceLocation(callExpression(this.getRuntimeHelper("$cmpnt"), [fn]), node),
         ),
       ]),
       node,
@@ -870,16 +773,13 @@ class TransformState {
     allocator: IdentifierAllocator,
   ): void {
     body.body = body.body.map((statement: Node) =>
-      statement === rootReturn
-        ? statement
-        : this.transformStatement(statement, allocator),
+      statement === rootReturn ? statement : this.transformStatement(statement, allocator),
     );
   }
 
   private getForIndexName(parameter: Node | null | undefined): string | null {
     if (isIdentifier(parameter)) return parameter.name;
-    if (isAssignmentPattern(parameter) && isIdentifier(parameter.left))
-      return parameter.left.name;
+    if (isAssignmentPattern(parameter) && isIdentifier(parameter.left)) return parameter.left.name;
     return null;
   }
 
@@ -892,16 +792,12 @@ class TransformState {
       names.add(node.name);
       return names;
     }
-    if (isRestElement(node))
-      return this.collectBindingNames(node.argument, names);
-    if (isAssignmentPattern(node))
-      return this.collectBindingNames(node.left, names);
+    if (isRestElement(node)) return this.collectBindingNames(node.argument, names);
+    if (isAssignmentPattern(node)) return this.collectBindingNames(node.left, names);
     if (isObjectPattern(node)) {
       for (const property of node.properties as Node[]) {
-        if (isRestElement(property))
-          this.collectBindingNames(property.argument, names);
-        else if (isType(property, "Property"))
-          this.collectBindingNames(property.value, names);
+        if (isRestElement(property)) this.collectBindingNames(property.argument, names);
+        else if (isType(property, "Property")) this.collectBindingNames(property.value, names);
       }
       return names;
     }
@@ -916,8 +812,7 @@ class TransformState {
   private withForCallback<T>(parameters: Node[], callback: () => T): T {
     const previous = this.activeForIndexNames;
     const shadowed = new Set<string>();
-    for (const parameter of parameters)
-      this.collectBindingNames(parameter, shadowed);
+    for (const parameter of parameters) this.collectBindingNames(parameter, shadowed);
     const next = previous.filter((name) => !shadowed.has(name));
     const indexName = this.getForIndexName(parameters[1]);
     this.activeForIndexNames = indexName ? [...next, indexName] : next;
@@ -931,8 +826,7 @@ class TransformState {
   private withShadowedForIndices<T>(parameters: Node[], callback: () => T): T {
     const previous = this.activeForIndexNames;
     const shadowed = new Set<string>();
-    for (const parameter of parameters)
-      this.collectBindingNames(parameter, shadowed);
+    for (const parameter of parameters) this.collectBindingNames(parameter, shadowed);
     this.activeForIndexNames = previous.filter((name) => !shadowed.has(name));
     try {
       return callback();
@@ -942,23 +836,14 @@ class TransformState {
   }
 
   private transformForIndexReference(expression: Node): Node {
-    if (
-      !isIdentifier(expression) ||
-      !this.activeForIndexNames.includes(expression.name)
-    )
+    if (!isIdentifier(expression) || !this.activeForIndexNames.includes(expression.name))
       return expression;
-    const result = memberExpression(
-      identifier(expression.name),
-      identifier("value"),
-    );
+    const result = memberExpression(identifier(expression.name), identifier("value"));
     this.generatedForIndexReferences.add(result);
     return result;
   }
 
-  private isRuntimeHelperCall(
-    expression: Node,
-    name: RuntimeHelperName,
-  ): boolean {
+  private isRuntimeHelperCall(expression: Node, name: RuntimeHelperName): boolean {
     const helper = this.runtimeHelpers.get(name);
     return (
       !!helper &&
@@ -984,8 +869,7 @@ class TransformState {
     for (const key of getVisitorKeys(node)) {
       const value = node[key];
       if (Array.isArray(value)) {
-        for (const child of value)
-          if (isNode(child) && this.containsJSX(child)) return true;
+        for (const child of value) if (isNode(child) && this.containsJSX(child)) return true;
       } else if (isNode(value) && this.containsJSX(value)) return true;
     }
     return false;
@@ -996,9 +880,7 @@ class TransformState {
       if (callback.async) return false;
       if (isBlockStatement(callback.body)) {
         return callback.body.body.some(
-          (statement: Node) =>
-            isReturnStatement(statement) &&
-            this.containsJSX(statement.argument),
+          (statement: Node) => isReturnStatement(statement) && this.containsJSX(statement.argument),
         );
       }
       return this.containsJSX(callback.body);
@@ -1006,25 +888,19 @@ class TransformState {
     if (isFunctionExpression(callback)) {
       if (callback.async) return false;
       return callback.body.body.some(
-        (statement: Node) =>
-          isReturnStatement(statement) && this.containsJSX(statement.argument),
+        (statement: Node) => isReturnStatement(statement) && this.containsJSX(statement.argument),
       );
     }
     return false;
   }
 
   private isJSXMapExpression(expression: Node): boolean {
-    if (!isCallExpression(expression) || expression.arguments.length !== 1)
-      return false;
+    if (!isCallExpression(expression) || expression.arguments.length !== 1) return false;
     const callee = expression.callee;
     if (!isMemberExpression(callee)) return false;
     if (callee.computed) {
-      if (!isLiteralString(callee.property) || callee.property.value !== "map")
-        return false;
-    } else if (
-      !isIdentifier(callee.property) ||
-      callee.property.name !== "map"
-    ) {
+      if (!isLiteralString(callee.property) || callee.property.value !== "map") return false;
+    } else if (!isIdentifier(callee.property) || callee.property.name !== "map") {
       return false;
     }
     const callback = expression.arguments[0];
@@ -1043,37 +919,21 @@ class TransformState {
 
   private createMapFor(expression: Node, allocator: IdentifierAllocator): Node {
     const callee = expression.callee;
-    if (!isMemberExpression(callee))
-      throw new Error("Vynn `$for` requires a `.map()` call.");
+    if (!isMemberExpression(callee)) throw new Error("Vynn `$for` requires a `.map()` call.");
     const source = callee.object;
     const callback = expression.arguments[0];
-    if (!isExpression(source))
-      throw new Error("Vynn `$for` map source must be an expression.");
-    if (!isExpression(callback))
-      throw new Error("Vynn `$for` requires a map callback expression.");
-    if (
-      !isArrowFunctionExpression(callback) &&
-      !isFunctionExpression(callback)
-    ) {
+    if (!isExpression(source)) throw new Error("Vynn `$for` map source must be an expression.");
+    if (!isExpression(callback)) throw new Error("Vynn `$for` requires a map callback expression.");
+    if (!isArrowFunctionExpression(callback) && !isFunctionExpression(callback)) {
       throw new Error("Vynn `$for` requires a function callback.");
     }
 
-    const transformedSource = this.transformEmbeddedExpression(
-      source,
-      allocator,
-    );
+    const transformedSource = this.transformEmbeddedExpression(source, allocator);
     const transformedCallback = this.withForCallback(callback.params, () => {
       if (isArrowFunctionExpression(callback)) {
         if (isBlockStatement(callback.body))
-          callback.body = this.transformBlockStatement(
-            callback.body,
-            allocator,
-          );
-        else
-          callback.body = this.transformEmbeddedExpression(
-            callback.body,
-            allocator,
-          );
+          callback.body = this.transformBlockStatement(callback.body, allocator);
+        else callback.body = this.transformEmbeddedExpression(callback.body, allocator);
       } else {
         callback.body = this.transformBlockStatement(callback.body, allocator);
       }
@@ -1095,17 +955,11 @@ class TransformState {
     dynamicExpressions = false,
   ): Node {
     if (isJSXElement(expression)) {
-      if (isComponentElement(expression))
-        return this.createComponentCall(expression, allocator);
+      if (isComponentElement(expression)) return this.createComponentCall(expression, allocator);
       return this.createElementStatements(expression, statements, allocator);
     }
     if (isJSXFragment(expression)) {
-      return this.createFragmentInStatements(
-        expression,
-        allocator,
-        statements,
-        dynamicExpressions,
-      );
+      return this.createFragmentInStatements(expression, allocator, statements, dynamicExpressions);
     }
     return this.transformEmbeddedExpression(expression, allocator);
   }
@@ -1162,8 +1016,7 @@ class TransformState {
     dynamicExpressions = false,
   ): Node | null {
     if (isJSXElement(child)) {
-      if (isComponentElement(child))
-        return this.createComponentCall(child, allocator);
+      if (isComponentElement(child)) return this.createComponentCall(child, allocator);
       return this.createElement(child, allocator);
     }
     if (isJSXText(child)) {
@@ -1174,12 +1027,8 @@ class TransformState {
       const expression = child.expression;
       if (isJSXEmptyExpression(expression)) return null;
       if (isExpression(expression)) {
-        if (isStringLiteral(expression))
-          return this.createTextExpression(expression.value);
-        const transformed = this.transformEmbeddedExpression(
-          expression,
-          allocator,
-        );
+        if (isStringLiteral(expression)) return this.createTextExpression(expression.value);
+        const transformed = this.transformEmbeddedExpression(expression, allocator);
         if (dynamicExpressions && !this.isForExpression(transformed))
           return this.createDynamicExpression(transformed);
         return transformed;
@@ -1187,12 +1036,7 @@ class TransformState {
       return null;
     }
     if (isJSXFragment(child)) {
-      return this.createFragmentInStatements(
-        child,
-        allocator,
-        statements,
-        dynamicExpressions,
-      );
+      return this.createFragmentInStatements(child, allocator, statements, dynamicExpressions);
     }
     return null;
   }
@@ -1219,11 +1063,7 @@ class TransformState {
     for (const child of fragment.children as Node[]) {
       if (isJSXFragment(child)) {
         children.push(
-          ...this.collectFragmentChildrenForExpression(
-            child,
-            allocator,
-            dynamicExpressions,
-          ),
+          ...this.collectFragmentChildrenForExpression(child, allocator, dynamicExpressions),
         );
         continue;
       }
@@ -1255,12 +1095,8 @@ class TransformState {
       const expression = child.expression;
       if (isJSXEmptyExpression(expression)) return null;
       if (isExpression(expression)) {
-        if (isStringLiteral(expression))
-          return this.createTextExpression(expression.value);
-        const transformed = this.transformEmbeddedExpression(
-          expression,
-          allocator,
-        );
+        if (isStringLiteral(expression)) return this.createTextExpression(expression.value);
+        const transformed = this.transformEmbeddedExpression(expression, allocator);
         if (dynamicExpressions && !this.isForExpression(transformed))
           return this.createDynamicExpression(transformed);
         return transformed;
@@ -1277,10 +1113,7 @@ class TransformState {
     const elementId = this.createElementStatements(node, statements, allocator);
     statements.push(returnStatement(elementId));
     return inheritSourceLocation(
-      callExpression(
-        arrowFunctionExpression([], blockStatement(statements)),
-        [],
-      ),
+      callExpression(arrowFunctionExpression([], blockStatement(statements)), []),
       node,
     );
   }
@@ -1296,24 +1129,12 @@ class TransformState {
       variableDeclaration("const", [
         variableDeclarator(
           elementId,
-          callExpression(this.getRuntimeHelper("$tmpl"), [
-            stringLiteral(tagName),
-          ]),
+          callExpression(this.getRuntimeHelper("$tmpl"), [stringLiteral(tagName)]),
         ),
       ]),
     );
-    this.transformAttributes(
-      node.openingElement,
-      elementId,
-      statements,
-      allocator,
-    );
-    this.transformElementChildren(
-      node.children,
-      elementId,
-      statements,
-      allocator,
-    );
+    this.transformAttributes(node.openingElement, elementId, statements, allocator);
+    this.transformElementChildren(node.children, elementId, statements, allocator);
     return elementId;
   }
 
@@ -1328,43 +1149,29 @@ class TransformState {
         const text = normalizeJSXText(child.value);
         if (text)
           statements.push(
-            expressionStatement(
-              this.createInsert(elementId, this.createTextExpression(text)),
-            ),
+            expressionStatement(this.createInsert(elementId, this.createTextExpression(text))),
           );
         continue;
       }
       if (isJSXExpressionContainer(child)) {
         const expression = child.expression;
-        if (isJSXEmptyExpression(expression) || !isExpression(expression))
-          continue;
+        if (isJSXEmptyExpression(expression) || !isExpression(expression)) continue;
         const childExpression = isStringLiteral(expression)
           ? this.createTextExpression(expression.value)
           : this.transformEmbeddedExpression(expression, allocator);
-        statements.push(
-          expressionStatement(this.createInsert(elementId, childExpression)),
-        );
+        statements.push(expressionStatement(this.createInsert(elementId, childExpression)));
         continue;
       }
       if (isJSXElement(child)) {
         const childExpression = isComponentElement(child)
           ? this.createComponentCall(child, allocator)
           : this.createElement(child, allocator);
-        statements.push(
-          expressionStatement(this.createInsert(elementId, childExpression)),
-        );
+        statements.push(expressionStatement(this.createInsert(elementId, childExpression)));
         continue;
       }
       if (isJSXFragment(child)) {
-        const fragment = this.createFragmentInStatements(
-          child,
-          allocator,
-          statements,
-          false,
-        );
-        statements.push(
-          expressionStatement(this.createInsert(elementId, fragment)),
-        );
+        const fragment = this.createFragmentInStatements(child, allocator, statements, false);
+        statements.push(expressionStatement(this.createInsert(elementId, fragment)));
       }
     }
   }
@@ -1376,53 +1183,33 @@ class TransformState {
   }
 
   private createTextExpression(value: string): Node {
-    return callExpression(this.getRuntimeHelper("$txt"), [
-      stringLiteral(value),
-    ]);
+    return callExpression(this.getRuntimeHelper("$txt"), [stringLiteral(value)]);
   }
 
-  private transformEmbeddedExpression(
-    expression: Node,
-    allocator: IdentifierAllocator,
-  ): Node {
+  private transformEmbeddedExpression(expression: Node, allocator: IdentifierAllocator): Node {
     if (!isNode(expression)) return expression;
-    if (
-      isCallExpression(expression) &&
-      this.generatedForExpressions.has(expression)
-    )
+    if (isCallExpression(expression) && this.generatedForExpressions.has(expression))
       return expression;
-    if (
-      isMemberExpression(expression) &&
-      this.generatedForIndexReferences.has(expression)
-    )
+    if (isMemberExpression(expression) && this.generatedForIndexReferences.has(expression))
       return expression;
 
     const transformedForIndex = this.transformForIndexReference(expression);
     if (transformedForIndex !== expression) return transformedForIndex;
 
     if (isCallExpression(expression) && this.isJSXMapExpression(expression)) {
-      return inheritSourceLocation(
-        this.createMapFor(expression, allocator),
-        expression,
-      );
+      return inheritSourceLocation(this.createMapFor(expression, allocator), expression);
     }
 
     if (isArrayExpression(expression) && this.containsJSX(expression)) {
       expression.elements = expression.elements.map((element: Node | null) => {
         if (!element) return null;
         if (isSpreadElement(element)) {
-          element.argument = this.transformEmbeddedExpression(
-            element.argument,
-            allocator,
-          );
+          element.argument = this.transformEmbeddedExpression(element.argument, allocator);
           return element;
         }
         return this.transformEmbeddedExpression(element, allocator);
       });
-      return inheritSourceLocation(
-        this.createArrayIdentityFor(expression),
-        expression,
-      );
+      return inheritSourceLocation(this.createArrayIdentityFor(expression), expression);
     }
 
     if (isJSXElement(expression)) {
@@ -1440,38 +1227,20 @@ class TransformState {
     }
 
     if (isLogicalExpression(expression)) {
-      expression.left = this.transformEmbeddedExpression(
-        expression.left,
-        allocator,
-      );
-      expression.right = this.transformEmbeddedExpression(
-        expression.right,
-        allocator,
-      );
+      expression.left = this.transformEmbeddedExpression(expression.left, allocator);
+      expression.right = this.transformEmbeddedExpression(expression.right, allocator);
       return expression;
     }
     if (isConditionalExpression(expression)) {
-      expression.test = this.transformEmbeddedExpression(
-        expression.test,
-        allocator,
-      );
-      expression.consequent = this.transformEmbeddedExpression(
-        expression.consequent,
-        allocator,
-      );
-      expression.alternate = this.transformEmbeddedExpression(
-        expression.alternate,
-        allocator,
-      );
+      expression.test = this.transformEmbeddedExpression(expression.test, allocator);
+      expression.consequent = this.transformEmbeddedExpression(expression.consequent, allocator);
+      expression.alternate = this.transformEmbeddedExpression(expression.alternate, allocator);
       return expression;
     }
     if (isCallExpression(expression)) {
       expression.arguments = expression.arguments.map((argument: Node) => {
         if (isSpreadElement(argument)) {
-          argument.argument = this.transformEmbeddedExpression(
-            argument.argument,
-            allocator,
-          );
+          argument.argument = this.transformEmbeddedExpression(argument.argument, allocator);
           return argument;
         }
         return isExpression(argument)
@@ -1483,24 +1252,14 @@ class TransformState {
     if (isArrowFunctionExpression(expression)) {
       return this.withShadowedForIndices(expression.params, () => {
         if (isBlockStatement(expression.body))
-          expression.body = this.transformBlockStatement(
-            expression.body,
-            allocator,
-          );
-        else
-          expression.body = this.transformEmbeddedExpression(
-            expression.body,
-            allocator,
-          );
+          expression.body = this.transformBlockStatement(expression.body, allocator);
+        else expression.body = this.transformEmbeddedExpression(expression.body, allocator);
         return expression;
       });
     }
     if (isFunctionExpression(expression)) {
       return this.withShadowedForIndices(expression.params, () => {
-        expression.body = this.transformBlockStatement(
-          expression.body,
-          allocator,
-        );
+        expression.body = this.transformBlockStatement(expression.body, allocator);
         return expression;
       });
     }
@@ -1508,10 +1267,7 @@ class TransformState {
       expression.elements = expression.elements.map((element: Node | null) => {
         if (!element) return null;
         if (isSpreadElement(element)) {
-          element.argument = this.transformEmbeddedExpression(
-            element.argument,
-            allocator,
-          );
+          element.argument = this.transformEmbeddedExpression(element.argument, allocator);
           return element;
         }
         return this.transformEmbeddedExpression(element, allocator);
@@ -1521,19 +1277,13 @@ class TransformState {
     if (isObjectExpression(expression)) {
       expression.properties = expression.properties.map((property: Node) => {
         if (isSpreadElement(property)) {
-          property.argument = this.transformEmbeddedExpression(
-            property.argument,
-            allocator,
-          );
+          property.argument = this.transformEmbeddedExpression(property.argument, allocator);
           return property;
         }
         if (isObjectProperty(property)) {
           if (isExpression(property.value)) {
             const originalValue = property.value;
-            const transformedValue = this.transformEmbeddedExpression(
-              originalValue,
-              allocator,
-            );
+            const transformedValue = this.transformEmbeddedExpression(originalValue, allocator);
             if (property.shorthand && transformedValue !== originalValue)
               property.shorthand = false;
             property.value = transformedValue;
@@ -1541,9 +1291,8 @@ class TransformState {
           return property;
         }
         if (isObjectMethod(property)) {
-          property.value.body = this.withShadowedForIndices(
-            property.value.params,
-            () => this.transformBlockStatement(property.value.body, allocator),
+          property.value.body = this.withShadowedForIndices(property.value.params, () =>
+            this.transformBlockStatement(property.value.body, allocator),
           );
           return property;
         }
@@ -1558,31 +1307,19 @@ class TransformState {
       return expression;
     }
     if (isUnaryExpression(expression) || isAwaitExpression(expression)) {
-      expression.argument = this.transformEmbeddedExpression(
-        expression.argument,
-        allocator,
-      );
+      expression.argument = this.transformEmbeddedExpression(expression.argument, allocator);
       return expression;
     }
     if (isUpdateExpression(expression)) return expression;
     if (isAssignmentExpression(expression)) {
-      expression.right = this.transformEmbeddedExpression(
-        expression.right,
-        allocator,
-      );
+      expression.right = this.transformEmbeddedExpression(expression.right, allocator);
       return expression;
     }
     if (isBinaryExpression(expression)) {
       if (isExpression(expression.left))
-        expression.left = this.transformEmbeddedExpression(
-          expression.left,
-          allocator,
-        );
+        expression.left = this.transformEmbeddedExpression(expression.left, allocator);
       if (isExpression(expression.right))
-        expression.right = this.transformEmbeddedExpression(
-          expression.right,
-          allocator,
-        );
+        expression.right = this.transformEmbeddedExpression(expression.right, allocator);
       return expression;
     }
     if (isTemplateLiteral(expression)) {
@@ -1593,24 +1330,15 @@ class TransformState {
     }
     if (isMemberExpression(expression)) {
       if (isExpression(expression.object))
-        expression.object = this.transformEmbeddedExpression(
-          expression.object,
-          allocator,
-        );
+        expression.object = this.transformEmbeddedExpression(expression.object, allocator);
       if (expression.computed && isExpression(expression.property))
-        expression.property = this.transformEmbeddedExpression(
-          expression.property,
-          allocator,
-        );
+        expression.property = this.transformEmbeddedExpression(expression.property, allocator);
       return expression;
     }
     // Oxc's ESTree AST represents optional chains as ChainExpression, unlike
     // Babel's OptionalMemberExpression / OptionalCallExpression nodes.
     if (isType(expression, "ChainExpression")) {
-      expression.expression = this.transformEmbeddedExpression(
-        expression.expression,
-        allocator,
-      );
+      expression.expression = this.transformEmbeddedExpression(expression.expression, allocator);
       return expression;
     }
     if (
@@ -1618,66 +1346,38 @@ class TransformState {
       isTSNonNullExpression(expression) ||
       isType(expression, "TSTypeAssertion")
     ) {
-      expression.expression = this.transformEmbeddedExpression(
-        expression.expression,
-        allocator,
-      );
+      expression.expression = this.transformEmbeddedExpression(expression.expression, allocator);
       return expression;
     }
     return expression;
   }
 
-  private transformBlockStatement(
-    block: Node,
-    allocator: IdentifierAllocator,
-  ): Node {
+  private transformBlockStatement(block: Node, allocator: IdentifierAllocator): Node {
     block.body = block.body.map((statement: Node) => {
       if (isReturnStatement(statement)) {
         if (statement.argument && isExpression(statement.argument))
-          statement.argument = this.transformEmbeddedExpression(
-            statement.argument,
-            allocator,
-          );
+          statement.argument = this.transformEmbeddedExpression(statement.argument, allocator);
         return statement;
       }
       if (isExpressionStatement(statement)) {
-        statement.expression = this.transformEmbeddedExpression(
-          statement.expression,
-          allocator,
-        );
+        statement.expression = this.transformEmbeddedExpression(statement.expression, allocator);
         return statement;
       }
       if (isVariableDeclaration(statement)) {
         for (const declaration of statement.declarations as Node[]) {
-          if (
-            isArrowComponentDeclaration(declaration) &&
-            this.transformArrowComponent(declaration)
-          )
+          if (isArrowComponentDeclaration(declaration) && this.transformArrowComponent(declaration))
             continue;
           if (!declaration.init || !isExpression(declaration.init)) continue;
           this.assertJSXInitializerIsLazy(declaration);
-          declaration.init = this.transformEmbeddedExpression(
-            declaration.init,
-            allocator,
-          );
+          declaration.init = this.transformEmbeddedExpression(declaration.init, allocator);
         }
         return statement;
       }
       if (isIfStatement(statement)) {
-        statement.test = this.transformEmbeddedExpression(
-          statement.test,
-          allocator,
-        );
+        statement.test = this.transformEmbeddedExpression(statement.test, allocator);
         if (isBlockStatement(statement.consequent))
-          statement.consequent = this.transformBlockStatement(
-            statement.consequent,
-            allocator,
-          );
-        else
-          statement.consequent = this.transformStatement(
-            statement.consequent,
-            allocator,
-          );
+          statement.consequent = this.transformBlockStatement(statement.consequent, allocator);
+        else statement.consequent = this.transformStatement(statement.consequent, allocator);
         if (statement.alternate) {
           statement.alternate = isBlockStatement(statement.alternate)
             ? this.transformBlockStatement(statement.alternate, allocator)
@@ -1685,11 +1385,7 @@ class TransformState {
         }
         return statement;
       }
-      if (
-        isFunctionDeclaration(statement) &&
-        statement.id &&
-        isComponentName(statement.id.name)
-      ) {
+      if (isFunctionDeclaration(statement) && statement.id && isComponentName(statement.id.name)) {
         const transformed = this.transformComponentDeclaration(statement);
         if (transformed !== statement) return transformed;
       }
@@ -1698,40 +1394,24 @@ class TransformState {
     return block;
   }
 
-  private transformStatement(
-    statement: Node,
-    allocator: IdentifierAllocator,
-  ): Node {
+  private transformStatement(statement: Node, allocator: IdentifierAllocator): Node {
     if (isVariableDeclaration(statement)) {
       for (const declaration of statement.declarations as Node[]) {
-        if (
-          isArrowComponentDeclaration(declaration) &&
-          this.transformArrowComponent(declaration)
-        )
+        if (isArrowComponentDeclaration(declaration) && this.transformArrowComponent(declaration))
           continue;
         if (!declaration.init || !isExpression(declaration.init)) continue;
         this.assertJSXInitializerIsLazy(declaration);
-        declaration.init = this.transformEmbeddedExpression(
-          declaration.init,
-          allocator,
-        );
+        declaration.init = this.transformEmbeddedExpression(declaration.init, allocator);
       }
       return statement;
     }
     if (isExpressionStatement(statement)) {
-      statement.expression = this.transformEmbeddedExpression(
-        statement.expression,
-        allocator,
-      );
+      statement.expression = this.transformEmbeddedExpression(statement.expression, allocator);
       return statement;
     }
-    if (isBlockStatement(statement))
-      return this.transformBlockStatement(statement, allocator);
+    if (isBlockStatement(statement)) return this.transformBlockStatement(statement, allocator);
     if (isIfStatement(statement)) {
-      statement.test = this.transformEmbeddedExpression(
-        statement.test,
-        allocator,
-      );
+      statement.test = this.transformEmbeddedExpression(statement.test, allocator);
       statement.consequent = isBlockStatement(statement.consequent)
         ? this.transformBlockStatement(statement.consequent, allocator)
         : this.transformStatement(statement.consequent, allocator);
@@ -1742,11 +1422,7 @@ class TransformState {
       }
       return statement;
     }
-    if (
-      isFunctionDeclaration(statement) &&
-      statement.id &&
-      isComponentName(statement.id.name)
-    ) {
+    if (isFunctionDeclaration(statement) && statement.id && isComponentName(statement.id.name)) {
       const transformed = this.transformComponentDeclaration(statement);
       if (transformed !== statement) return transformed;
     }
@@ -1766,8 +1442,7 @@ class TransformState {
     for (const key of getVisitorKeys(node)) {
       const value = node[key];
       if (Array.isArray(value)) {
-        for (const child of value)
-          if (isNode(child) && this.containsEagerJSX(child)) return true;
+        for (const child of value) if (isNode(child) && this.containsEagerJSX(child)) return true;
       } else if (isNode(value) && this.containsEagerJSX(value)) return true;
     }
     return false;
@@ -1783,19 +1458,12 @@ class TransformState {
       `JSX in the initializer for ${variableName} must be wrapped in a function ` +
       "to preserve SSR hydration order. For example: const view = () => (<>...</>);";
     const location = declaration.loc?.start;
-    const suffix = location
-      ? ` (line ${location.line}, column ${location.column + 1})`
-      : "";
+    const suffix = location ? ` (line ${location.line}, column ${location.column + 1})` : "";
     throw new Error(`${message}${suffix} in ${this.filename}`);
   }
 
-  private createComponentCall(
-    node: Node,
-    allocator: IdentifierAllocator,
-  ): Node {
-    const componentExpression = this.createComponentExpression(
-      node.openingElement.name,
-    );
+  private createComponentCall(node: Node, allocator: IdentifierAllocator): Node {
+    const componentExpression = this.createComponentExpression(node.openingElement.name);
     const props = this.createComponentProps(node, allocator);
     return callExpression(componentExpression, props ? [props] : []);
   }
@@ -1808,27 +1476,19 @@ class TransformState {
         identifier(name.property.name),
       );
     }
-    throw new Error(
-      "Vynn currently only supports simple or member-expression components.",
-    );
+    throw new Error("Vynn currently only supports simple or member-expression components.");
   }
 
-  private createComponentProps(
-    node: Node,
-    allocator: IdentifierAllocator,
-  ): Node | null {
+  private createComponentProps(node: Node, allocator: IdentifierAllocator): Node | null {
     const properties: Node[] = [];
     for (const attribute of node.openingElement.attributes as Node[]) {
       if (isJSXSpreadAttribute(attribute)) {
         properties.push(
-          spreadElement(
-            this.transformEmbeddedExpression(attribute.argument, allocator),
-          ),
+          spreadElement(this.transformEmbeddedExpression(attribute.argument, allocator)),
         );
         continue;
       }
-      if (!isJSXAttribute(attribute) || !isJSXIdentifier(attribute.name))
-        continue;
+      if (!isJSXAttribute(attribute) || !isJSXIdentifier(attribute.name)) continue;
       const name = attribute.name.name;
 
       if (name === "ref") {
@@ -1848,9 +1508,7 @@ class TransformState {
             "get",
             propertyKey(name),
             [],
-            blockStatement([
-              returnStatement(stringLiteral(attribute.value.value)),
-            ]),
+            blockStatement([returnStatement(stringLiteral(attribute.value.value))]),
           ),
         );
         continue;
@@ -1882,10 +1540,7 @@ class TransformState {
     }
 
     const children = this.createComponentChildrenGetterBody(node, allocator);
-    if (children)
-      properties.push(
-        objectMethod("get", identifier("children"), [], children),
-      );
+    if (children) properties.push(objectMethod("get", identifier("children"), [], children));
     return properties.length ? objectExpression(properties) : null;
   }
 
@@ -1895,9 +1550,7 @@ class TransformState {
     if (isIdentifier(expression)) {
       const refIdentifier = this.generateUidIdentifier("ref");
       statements.push(
-        variableDeclaration("const", [
-          variableDeclarator(refIdentifier, cloneNode(expression)),
-        ]),
+        variableDeclaration("const", [variableDeclarator(refIdentifier, cloneNode(expression))]),
       );
       statements.push(
         expressionStatement(
@@ -1908,27 +1561,14 @@ class TransformState {
               stringLiteral("function"),
             ),
             callExpression(cloneNode(refIdentifier), [cloneNode(refParameter)]),
-            assignmentExpression(
-              "=",
-              cloneNode(expression),
-              cloneNode(refParameter),
-            ),
+            assignmentExpression("=", cloneNode(expression), cloneNode(refParameter)),
           ),
         ),
       );
-      return objectMethod(
-        "method",
-        identifier("ref"),
-        [refParameter],
-        blockStatement(statements),
-      );
+      return objectMethod("method", identifier("ref"), [refParameter], blockStatement(statements));
     }
     const refIdentifier = this.generateUidIdentifier("ref");
-    statements.push(
-      variableDeclaration("const", [
-        variableDeclarator(refIdentifier, expression),
-      ]),
-    );
+    statements.push(variableDeclaration("const", [variableDeclarator(refIdentifier, expression)]));
     statements.push(
       expressionStatement(
         conditionalExpression(
@@ -1942,12 +1582,7 @@ class TransformState {
         ),
       ),
     );
-    return objectMethod(
-      "method",
-      identifier("ref"),
-      [refParameter],
-      blockStatement(statements),
-    );
+    return objectMethod("method", identifier("ref"), [refParameter], blockStatement(statements));
   }
 
   private createComponentGetterBody(
@@ -1986,10 +1621,7 @@ class TransformState {
             children.push(this.createTextExpression(expression.value));
             continue;
           }
-          const transformed = this.transformEmbeddedExpression(
-            expression,
-            allocator,
-          );
+          const transformed = this.transformEmbeddedExpression(expression, allocator);
           children.push(
             this.isForExpression(transformed)
               ? transformed
@@ -2007,14 +1639,11 @@ class TransformState {
         continue;
       }
       if (isJSXFragment(child)) {
-        children.push(
-          this.createFragmentInStatements(child, allocator, statements, true),
-        );
+        children.push(this.createFragmentInStatements(child, allocator, statements, true));
       }
     }
     if (children.length === 0) return null;
-    const result =
-      children.length === 1 ? children[0] : arrayExpression(children);
+    const result = children.length === 1 ? children[0] : arrayExpression(children);
     statements.push(returnStatement(result));
     return blockStatement(statements);
   }
@@ -2037,8 +1666,7 @@ class TransformState {
         );
         continue;
       }
-      if (!isJSXAttribute(attribute) || !isJSXIdentifier(attribute.name))
-        continue;
+      if (!isJSXAttribute(attribute) || !isJSXIdentifier(attribute.name)) continue;
       const name = attribute.name.name;
 
       if (name === "ref") {
@@ -2054,8 +1682,7 @@ class TransformState {
       }
       if (this.isEventAttribute(name)) {
         const value = attribute.value;
-        if (!isJSXExpressionContainer(value) || !isExpression(value.expression))
-          continue;
+        if (!isJSXExpressionContainer(value) || !isExpression(value.expression)) continue;
         statements.push(
           expressionStatement(
             this.createEvent(
@@ -2069,8 +1696,7 @@ class TransformState {
       }
       if (isJSXExpressionContainer(attribute.value)) {
         const expression = attribute.value.expression;
-        if (isJSXEmptyExpression(expression) || !isExpression(expression))
-          continue;
+        if (isJSXEmptyExpression(expression) || !isExpression(expression)) continue;
         statements.push(
           expressionStatement(
             this.createAttribute(
@@ -2084,17 +1710,13 @@ class TransformState {
       }
       if (isLiteralString(attribute.value)) {
         statements.push(
-          expressionStatement(
-            this.createStaticAttribute(elementId, name, attribute.value),
-          ),
+          expressionStatement(this.createStaticAttribute(elementId, name, attribute.value)),
         );
         continue;
       }
       if (attribute.value === null) {
         statements.push(
-          expressionStatement(
-            this.createStaticAttribute(elementId, name, booleanLiteral(true)),
-          ),
+          expressionStatement(this.createStaticAttribute(elementId, name, booleanLiteral(true))),
         );
       }
     }
@@ -2111,28 +1733,17 @@ class TransformState {
               stringLiteral("function"),
             ),
             callExpression(cloneNode(expression), [cloneNode(elementId)]),
-            assignmentExpression(
-              "=",
-              cloneNode(expression),
-              cloneNode(elementId),
-            ),
+            assignmentExpression("=", cloneNode(expression), cloneNode(elementId)),
           ),
         ),
       ];
     }
-    if (
-      isArrowFunctionExpression(expression) ||
-      isFunctionExpression(expression)
-    ) {
-      return [
-        expressionStatement(callExpression(expression, [cloneNode(elementId)])),
-      ];
+    if (isArrowFunctionExpression(expression) || isFunctionExpression(expression)) {
+      return [expressionStatement(callExpression(expression, [cloneNode(elementId)]))];
     }
     const refIdentifier = this.generateUidIdentifier("ref");
     return [
-      variableDeclaration("const", [
-        variableDeclarator(refIdentifier, expression),
-      ]),
+      variableDeclaration("const", [variableDeclarator(refIdentifier, expression)]),
       expressionStatement(
         conditionalExpression(
           binaryExpression(
@@ -2154,11 +1765,7 @@ class TransformState {
     ]);
   }
 
-  private createAttribute(
-    elementId: Node,
-    name: string,
-    expression: Node,
-  ): Node {
+  private createAttribute(elementId: Node, name: string, expression: Node): Node {
     return callExpression(this.getRuntimeHelper("$attr"), [
       elementId,
       stringLiteral(name),
@@ -2166,16 +1773,8 @@ class TransformState {
     ]);
   }
 
-  private createStaticAttribute(
-    elementId: Node,
-    name: string,
-    value: Node,
-  ): Node {
-    return callExpression(this.getRuntimeHelper("$attr"), [
-      elementId,
-      stringLiteral(name),
-      value,
-    ]);
+  private createStaticAttribute(elementId: Node, name: string, value: Node): Node {
+    return callExpression(this.getRuntimeHelper("$attr"), [elementId, stringLiteral(name), value]);
   }
 
   private createEvent(elementId: Node, event: string, expression: Node): Node {
@@ -2187,11 +1786,7 @@ class TransformState {
   }
 
   private isEventAttribute(name: string): boolean {
-    return (
-      name.length > 2 &&
-      name.startsWith("on") &&
-      name[2] === name[2].toUpperCase()
-    );
+    return name.length > 2 && name.startsWith("on") && name[2] === name[2].toUpperCase();
   }
 
   private createInsert(elementId: Node, expression: Node): Node {

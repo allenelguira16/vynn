@@ -7,29 +7,17 @@ export const ButtonPageList = () => {
     <Template title="Pages">
       <ul class="flex flex-col gap-2">
         <li>
-          <button
-            class="btn"
-            onClick={() => navigate("/")}
-            disabled={isActiveRoute("/")}
-          >
+          <button class="btn" onClick={() => navigate("/")} disabled={isActiveRoute("/")}>
             All
           </button>
         </li>
         <li>
-          <button
-            class="btn"
-            onClick={() => navigate("/lazy")}
-            disabled={isActiveRoute("/lazy")}
-          >
+          <button class="btn" onClick={() => navigate("/lazy")} disabled={isActiveRoute("/lazy")}>
             Lazy
           </button>
         </li>
         <li>
-          <button
-            class="btn"
-            onClick={() => navigate("/forms")}
-            disabled={isActiveRoute("/forms")}
-          >
+          <button class="btn" onClick={() => navigate("/forms")} disabled={isActiveRoute("/forms")}>
             Forms
           </button>
         </li>

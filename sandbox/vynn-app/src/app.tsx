@@ -1,5 +1,6 @@
+import { $state, Await, Portal, lazy, onMount } from "vynn";
 import { Route, Router } from "vynn-router";
-import { $state, Await, lazy, onMount, Portal } from "vynn";
+
 import { ButtonPageList } from "./components/button-page-list";
 import { name } from "./utils";
 
@@ -17,23 +18,11 @@ const Contexts = lazy(() => import("./pages/context"), "Contexts");
 const Dropdowns = lazy(() => import("./pages/dropdown-list"), "Dropdowns");
 const Forms = lazy(() => import("./pages/forms"), "Forms");
 const Lazy = lazy(() => import("./pages/lazy"), "Lazy");
-const NonAsyncSuspense = lazy(
-  () => import("./pages/non-async-suspense"),
-  "NonAsyncSuspense",
-);
+const NonAsyncSuspense = lazy(() => import("./pages/non-async-suspense"), "NonAsyncSuspense");
 const PokeDex = lazy(() => import("./pages/poke-dex"), "PokeDex");
-const PokeDexAwait = lazy(
-  () => import("./pages/poke-dex-await"),
-  "PokeDexAwait",
-);
-const StackedSuspense = lazy(
-  () => import("./pages/stacked-suspense"),
-  "StackedSuspense",
-);
-const ComponentError = lazy(
-  () => import("./pages/component-error"),
-  "ComponentError",
-);
+const PokeDexAwait = lazy(() => import("./pages/poke-dex-await"), "PokeDexAwait");
+const StackedSuspense = lazy(() => import("./pages/stacked-suspense"), "StackedSuspense");
+const ComponentError = lazy(() => import("./pages/component-error"), "ComponentError");
 
 export default function App(props: { url: string }) {
   const counter = $state(0);
@@ -47,15 +36,9 @@ export default function App(props: { url: string }) {
   return (
     <>
       <title>Vynn SSR Sandbox {counter.value}</title>
-      <meta
-        name="description"
-        content="A server-rendered application built with Vynn."
-      />
+      <meta name="description" content="A server-rendered application built with Vynn." />
       <meta property="og:title" content="Vynn SSR Sandbox" />
-      <meta
-        property="og:description"
-        content="A server-rendered application built with Vynn."
-      />
+      <meta property="og:description" content="A server-rendered application built with Vynn." />
       <meta property="og:type" content="website" />
 
       <Router routes={routes} url={props.url} />

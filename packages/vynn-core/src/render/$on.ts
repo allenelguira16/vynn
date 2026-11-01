@@ -1,10 +1,7 @@
-import { getOwner, runWithOwner } from "../life-cycle/owner";
 import { isServer } from "../context/is-server-context";
+import { getOwner, runWithOwner } from "../life-cycle/owner";
 
-type VynnEvent<
-  E extends Element,
-  K extends keyof HTMLElementEventMap,
-> = HTMLElementEventMap[K] & {
+type VynnEvent<E extends Element, K extends keyof HTMLElementEventMap> = HTMLElementEventMap[K] & {
   readonly currentTarget: E;
 };
 

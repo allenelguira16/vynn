@@ -1,22 +1,23 @@
 import type { JSX } from "../types/jsx";
-import { $async } from "../reactivity/$async";
-import { $cmpnt, $nodes } from "../render";
-import { createSSRComment } from "../render/resolve-node";
+
 import {
   finishServerRenderedLazy,
   getServerRenderedLazyRange,
   withServerRenderedLazy,
 } from "../client/hydration";
 import { LAZY_END_SSR_MARKER, LAZY_START_SSR_MARKER } from "../const";
+import { initializeLazyAsyncScope } from "../context/async-context";
+import { isServer } from "../context/is-server-context";
 import {
   getLazyID,
   initializeLazyScope,
   registerPromiseFromLazy,
   regsterAsyncGetterFromLazy,
 } from "../context/lazy-context";
-import { initializeLazyAsyncScope } from "../context/async-context";
-import { isServer } from "../context/is-server-context";
 import { registerSsrModule } from "../context/ssr-module-context";
+import { $async } from "../reactivity/$async";
+import { $cmpnt, $nodes } from "../render";
+import { createSSRComment } from "../render/resolve-node";
 
 type AnyComponent = (props: never) => JSX.Element;
 
@@ -37,17 +38,12 @@ export function lazy<M extends Record<string, unknown>, K extends keyof M>(
   namedExport: K,
   moduleId?: string,
 ): ComponentExport<M, K>;
-export function lazy<
-  M extends Record<string, unknown> & { default: AnyComponent },
->(
+export function lazy<M extends Record<string, unknown> & { default: AnyComponent }>(
   loader: () => Promise<M>,
   namedExport?: undefined,
   moduleId?: string,
 ): M["default"];
-export function lazy<
-  M extends Record<string, unknown>,
-  K extends keyof M = "default" & keyof M,
->(
+export function lazy<M extends Record<string, unknown>, K extends keyof M = "default" & keyof M>(
   loader: () => Promise<M>,
   namedExport = "default" as K,
   moduleId?: string,
@@ -74,9 +70,7 @@ export function lazy<
       const component = module[namedExport];
 
       if (typeof component !== "function") {
-        throw new Error(
-          `[vynn]: lazy() export "${String(namedExport)}" is not a component.`,
-        );
+        throw new Error(`[vynn]: lazy() export "${String(namedExport)}" is not a component.`);
       }
 
       return component as Component;
@@ -87,9 +81,7 @@ export function lazy<
     return loadPromise;
   }
 
-  return $cmpnt(function LazyComponent(
-    props: Parameters<Component>[0],
-  ): JSX.Element {
+  return $cmpnt(function LazyComponent(props: Parameters<Component>[0]): JSX.Element {
     const lazyID = getLazyID();
 
     // Descendant lazy and async identities are scoped to this instance.

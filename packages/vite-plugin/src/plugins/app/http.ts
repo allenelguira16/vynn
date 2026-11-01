@@ -1,14 +1,12 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+
 import { isAbsolute, relative, sep } from "node:path";
-import { CLIENT_ENTRY_ID, type ResolvedEntries } from "./shared.ts";
-import { VYNN_SSR_CSS_URL } from "../ssr-css.ts";
 import { Readable } from "node:stream";
 
-export function getClientEntryDevUrl(
-  entries: ResolvedEntries,
-  root: string,
-  base: string,
-): string {
+import { VYNN_SSR_CSS_URL } from "../ssr-css.ts";
+import { CLIENT_ENTRY_ID, type ResolvedEntries } from "./shared.ts";
+
+export function getClientEntryDevUrl(entries: ResolvedEntries, root: string, base: string): string {
   if (entries.clientFile) {
     return joinAssetBase(base, toDevUrl(root, entries.clientFile));
   }
@@ -27,8 +25,7 @@ export function joinAssetBase(base: string, pathname: string): string {
   if (/^https?:\/\//.test(pathname)) return pathname;
   const cleanPath = `/${pathname.replace(/^\/+/, "")}`;
   if (base === "./") return `.${cleanPath}`;
-  if (/^https?:\/\//.test(base))
-    return `${base.replace(/\/$/, "")}${cleanPath}`;
+  if (/^https?:\/\//.test(base)) return `${base.replace(/\/$/, "")}${cleanPath}`;
   const prefix = base === "/" ? "" : `/${base.replace(/^\/+|\/+$/g, "")}`;
   return `${prefix}${cleanPath}`;
 }
@@ -37,8 +34,7 @@ export function addBaseToRequestUrl(base: string, incomingUrl: string): string {
   const parsed = new URL(incomingUrl, "http://vynn.local");
   const pathname = parsed.pathname;
   const basePath = base.startsWith("/") ? base.replace(/\/$/, "") : "";
-  const alreadyPrefixed =
-    !basePath || pathname === basePath || pathname.startsWith(`${basePath}/`);
+  const alreadyPrefixed = !basePath || pathname === basePath || pathname.startsWith(`${basePath}/`);
   const path = alreadyPrefixed
     ? pathname
     : `${basePath}${pathname.startsWith("/") ? pathname : `/${pathname}`}`;
@@ -58,17 +54,10 @@ export function isHtmlNavigation(req: IncomingMessage): boolean {
 
 export function isFrameworkRequest(url: string): boolean {
   const pathname = new URL(url, "http://vynn.local").pathname;
-  return (
-    pathname.startsWith("/@") ||
-    pathname === VYNN_SSR_CSS_URL ||
-    pathname === "/favicon.ico"
-  );
+  return pathname.startsWith("/@") || pathname === VYNN_SSR_CSS_URL || pathname === "/favicon.ico";
 }
 
-export function createWebRequest(
-  req: IncomingMessage,
-  requestUrl: string,
-): Request {
+export function createWebRequest(req: IncomingMessage, requestUrl: string): Request {
   const encrypted = Boolean((req.socket as { encrypted?: boolean }).encrypted);
   const origin = `${encrypted ? "https" : "http"}://${req.headers.host ?? "localhost"}`;
   const headers = new Headers();
@@ -88,17 +77,11 @@ export function createWebRequest(
   return new Request(new URL(requestUrl, origin), init);
 }
 
-export async function writeResponse(
-  res: ServerResponse,
-  response: Response,
-): Promise<void> {
+export async function writeResponse(res: ServerResponse, response: Response): Promise<void> {
   res.statusCode = response.status;
   response.headers.forEach((value, key) => {
     // The Node server owns transfer-encoding and computes lengths for bodies.
-    if (
-      key.toLowerCase() !== "content-length" &&
-      key.toLowerCase() !== "transfer-encoding"
-    ) {
+    if (key.toLowerCase() !== "content-length" && key.toLowerCase() !== "transfer-encoding") {
       res.setHeader(key, value);
     }
   });

@@ -12,12 +12,7 @@ export const Forms = () => {
             Hi {name.firstName}
           </label>
           <div>
-            <input
-              class="input"
-              type="text"
-              value={name.firstName}
-              id="name-input2"
-            />
+            <input class="input" type="text" value={name.firstName} id="name-input2" />
           </div>
         </div>
         <div>

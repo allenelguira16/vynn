@@ -1,10 +1,5 @@
 import { ERROR_BOUNDARY_DATA_SSR_KEY } from "../const";
-import {
-  getContext,
-  getOwner,
-  modifyContext,
-  setContext,
-} from "../life-cycle/owner";
+import { getContext, getOwner, modifyContext, setContext } from "../life-cycle/owner";
 import { isServer } from "./is-server-context";
 
 export type ErrorBoundary = (error: Error) => void;
@@ -33,9 +28,7 @@ export function initializeErrorBoundaryContext() {
   const owner = getOwner();
 
   if (!owner) {
-    throw new Error(
-      "[vynn]: initializeErrorBoundaryID must be inside owner context",
-    );
+    throw new Error("[vynn]: initializeErrorBoundaryID must be inside owner context");
   }
 
   setContext(ERROR_BOUNDARY_ID, 0);
@@ -50,9 +43,7 @@ export function getErrorBoundaryID(): number {
   const id = getContext<number>(ERROR_BOUNDARY_ID);
 
   if (id == null) {
-    throw new Error(
-      "[vynn]: initializeErrorBoundaryContext must be called first",
-    );
+    throw new Error("[vynn]: initializeErrorBoundaryContext must be called first");
   }
 
   modifyContext<number>(ERROR_BOUNDARY_ID, (current) => current + 1);
@@ -60,9 +51,7 @@ export function getErrorBoundaryID(): number {
   return id;
 }
 
-export function getErrorBoundaryValue(
-  errorBoundaryID: number,
-): ErrorBoundarySSRState | undefined {
+export function getErrorBoundaryValue(errorBoundaryID: number): ErrorBoundarySSRState | undefined {
   if (!isServer()) {
     (window as any)[ERROR_BOUNDARY_DATA_SSR_KEY] ??= [];
     try {

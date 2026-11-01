@@ -1,12 +1,6 @@
-import {
-  createContext,
-  createSignal,
-  lazy,
-  Loading,
-  useContext,
-} from "solid-js";
-
 import type { Accessor, Setter } from "solid-js";
+
+import { Loading, createContext, createSignal, lazy, useContext } from "solid-js";
 
 type NameContextValue = [Accessor<string>, Setter<string>];
 

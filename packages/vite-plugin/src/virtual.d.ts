@@ -5,7 +5,5 @@ declare module "virtual:vynn/server-functions" {
    * Returns null when the request URL does not match the configured endpoint.
    * Otherwise returns the HTTP response for the RPC request.
    */
-  export function handleServerFunctionRequest(
-    request: Request,
-  ): Promise<Response | null>;
+  export function handleServerFunctionRequest(request: Request): Promise<Response | null>;
 }

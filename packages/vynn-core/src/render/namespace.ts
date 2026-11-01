@@ -33,10 +33,7 @@ export function getElementNamespace(tagName: string): string {
 }
 
 /** Returns the namespace inherited by an element's children. */
-export function getChildDOMNamespace(
-  namespace: string | null,
-  tagName: string,
-): string {
+export function getChildDOMNamespace(namespace: string | null, tagName: string): string {
   // foreignObject is an SVG integration point: its children are HTML.
   if (namespace === SVG_NAMESPACE && tagName === "foreignObject") {
     return HTML_NAMESPACE;

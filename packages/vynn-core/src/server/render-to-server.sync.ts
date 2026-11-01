@@ -1,12 +1,13 @@
-import { disposeOwner, getOwner, runWithOwner } from "../life-cycle/owner";
 import type { JSX } from "../types/jsx";
+
+import { disposeOwner, getOwner, runWithOwner } from "../life-cycle/owner";
+import { type SSR_NODE, resolveNode } from "../render/resolve-node";
 import {
   joinHTMLElements,
   renderAsyncUtilities,
   renderNode,
   renderText,
 } from "./render-to-server.util";
-import { resolveNode, type SSR_NODE } from "../render/resolve-node";
 
 export function resolveSync(App: () => JSX.Element): string {
   const owner = getOwner();

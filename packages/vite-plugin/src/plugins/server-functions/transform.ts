@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { isAbsolute, relative, resolve } from "node:path";
 import { visitorKeys } from "oxc-parser";
+
 import {
   CREATE_SERVER_REFERENCE,
   type MarkedFunction,
@@ -9,9 +10,7 @@ import {
 } from "./shared.ts";
 
 const isNode = (value: unknown): value is Node =>
-  !!value &&
-  typeof value === "object" &&
-  typeof (value as Node).type === "string";
+  !!value && typeof value === "object" && typeof (value as Node).type === "string";
 
 function childrenOf(node: Node, visit: (child: Node) => void): void {
   const keys = (visitorKeys as Record<string, string[]>)[node.type] ?? [];
@@ -76,11 +75,7 @@ function stableDigest(value: string): string {
 export function getModuleKey(root: string, moduleId: string): string {
   const absolute = resolve(moduleId);
   const relativeId = relative(root, absolute).replace(/\\/g, "/");
-  if (
-    relativeId === ".." ||
-    relativeId.startsWith("../") ||
-    isAbsolute(relativeId)
-  ) {
+  if (relativeId === ".." || relativeId.startsWith("../") || isAbsolute(relativeId)) {
     throw new Error(
       `[Vynn use server] Server functions must be declared inside the Vite project root. Received: ${moduleId}`,
     );
@@ -95,17 +90,14 @@ export function applyEdits(source: string, edits: SourceEdit[]): string {
 
   for (const edit of sorted) {
     if (edit.start < 0 || edit.end < edit.start || edit.end > source.length) {
-      throw new Error(
-        "[Vynn use server] Internal compiler error: invalid source edit.",
-      );
+      throw new Error("[Vynn use server] Internal compiler error: invalid source edit.");
     }
     if (edit.end > previousStart) {
       throw new Error(
         "[Vynn use server] A server-marked function contains another server-marked function. Nested server boundaries are not supported yet.",
       );
     }
-    result =
-      result.slice(0, edit.start) + edit.content + result.slice(edit.end);
+    result = result.slice(0, edit.start) + edit.content + result.slice(edit.end);
     previousStart = edit.start;
   }
   return result;
@@ -128,15 +120,11 @@ function getTypeParametersSource(source: string, fn: Node): string {
   return "";
 }
 
-export function makeExtractedImplementation(
-  source: string,
-  marked: MarkedFunction,
-): string {
+export function makeExtractedImplementation(source: string, marked: MarkedFunction): string {
   const { fn, directive, exportName } = marked;
   const body = fn.body as Node;
   const bodySource =
-    source.slice(body.start, directive.start) +
-    source.slice(directive.end, body.end);
+    source.slice(body.start, directive.start) + source.slice(directive.end, body.end);
   const typeParameters = getTypeParametersSource(source, fn);
   const params = getParamsSource(source, fn);
   const asyncPrefix = fn.async ? "async " : "";
@@ -150,10 +138,7 @@ function makeReferenceCall(marked: MarkedFunction, isServer: boolean): string {
     : `${CREATE_SERVER_REFERENCE}(${JSON.stringify(marked.id)})`;
 }
 
-export function makeReplacement(
-  marked: MarkedFunction,
-  isServer: boolean,
-): SourceEdit {
+export function makeReplacement(marked: MarkedFunction, isServer: boolean): SourceEdit {
   const { fn, parent } = marked;
   const reference = makeReferenceCall(marked, isServer);
 
@@ -214,9 +199,7 @@ export function collectMarkedFunctions(
   const moduleKey = getModuleKey(root, moduleId);
   return found.map((item, ordinal) => {
     if (item.fn.generator) {
-      throw new Error(
-        `[Vynn use server] Generator functions are not supported (${moduleKey}).`,
-      );
+      throw new Error(`[Vynn use server] Generator functions are not supported (${moduleKey}).`);
     }
 
     const token = `${moduleKey}#${ordinal}`;
@@ -231,10 +214,7 @@ export function collectMarkedFunctions(
   });
 }
 
-export function containsNestedMarkedBoundary(
-  marked: MarkedFunction[],
-  program: Node,
-): boolean {
+export function containsNestedMarkedBoundary(marked: MarkedFunction[], program: Node): boolean {
   const markedNodes = new Set(marked.map((item) => item.fn));
   const parentMap = new WeakMap<object, Node>();
   const walk = (node: Node): void => {

@@ -1,15 +1,15 @@
 import "./virtual.d.ts";
-
 import type { Plugin } from "vite";
-import { vynnOxcPlugin } from "./plugins/jsx-transpiler.ts";
+
 import { vynnAppPlugin } from "./plugins/app.ts";
+import { vynnOxcPlugin } from "./plugins/jsx-transpiler.ts";
 import { vynnNodeAdapterPlugin } from "./plugins/node-adapter.ts";
+import {
+  type VynnServerFunctionsOptions,
+  serverFunctionsPlugin,
+} from "./plugins/server-functions.ts";
 import { createVynnSsrCssPlugin } from "./plugins/ssr-css.ts";
 import { vynnSsrPreloadPlugin } from "./plugins/ssr-preload.ts";
-import {
-  serverFunctionsPlugin,
-  type VynnServerFunctionsOptions,
-} from "./plugins/server-functions.ts";
 
 /**
  * Configuration for the integrated Vynn application.
@@ -39,17 +39,14 @@ export default function vynn(options: VynnPluginOptions = {}) {
   const ssrCss = options.ssr ? createVynnSsrCssPlugin() : undefined;
   const ssrPreload = options.ssr ? vynnSsrPreloadPlugin() : undefined;
   const serverFunctionsOptions =
-    options.serverFunctions === true
-      ? {}
-      : options.serverFunctions || undefined;
+    options.serverFunctions === true ? {} : options.serverFunctions || undefined;
 
   if (options.serverFunctions) {
     plugins.push(
       serverFunctionsPlugin(serverFunctionsOptions, {
         // SSR app builds include the handler in the application server entry.
         // Non-SSR apps can still build a standalone server-functions bundle.
-        standalone:
-          options.ssr !== true && serverFunctionsOptions?.enabled !== false,
+        standalone: options.ssr !== true && serverFunctionsOptions?.enabled !== false,
       }),
     );
   }

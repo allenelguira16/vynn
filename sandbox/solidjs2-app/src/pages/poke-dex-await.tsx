@@ -1,12 +1,12 @@
 import {
+  For,
+  Loading,
+  Show,
   createMemo,
   createSignal,
-  For,
   isPending,
-  Loading,
   onCleanup,
   onSettled,
-  Show,
 } from "solid-js";
 
 import { Template } from "../components/template";
@@ -26,9 +26,7 @@ type SortKey = keyof PokeDexData["results"][number];
 type SortDirection = "asc" | "desc";
 
 export default function PokeDexAwait() {
-  const [url, setUrl] = createSignal(
-    "https://pokeapi.co/api/v2/pokemon/?offset=1100&limit=20",
-  );
+  const [url, setUrl] = createSignal("https://pokeapi.co/api/v2/pokemon/?offset=1100&limit=20");
 
   const [sortBy, setSortBy] = createSignal<SortKey>("name");
   const [sortDirection, setSortDirection] = createSignal<SortDirection>("asc");
@@ -108,10 +106,7 @@ export default function PokeDexAwait() {
                 Name
               </th>
 
-              <th
-                onClick={sortOnClick("url")}
-                class="select-none cursor-pointer w-1/3 text-center"
-              >
+              <th onClick={sortOnClick("url")} class="select-none cursor-pointer w-1/3 text-center">
                 URL
               </th>
             </tr>
@@ -125,11 +120,7 @@ export default function PokeDexAwait() {
                   <>
                     <For each={sortedPokeDex().results}>
                       {(pokemon, index) => (
-                        <Row
-                          name={pokemon.name}
-                          url={pokemon.url}
-                          index={index()}
-                        />
+                        <Row name={pokemon.name} url={pokemon.url} index={index()} />
                       )}
                     </For>
 
@@ -141,9 +132,7 @@ export default function PokeDexAwait() {
                             onClick={() => {
                               changeUrl(sortedPokeDex().previous);
                             }}
-                            disabled={
-                              isPending(pokeDex) || !sortedPokeDex().previous
-                            }
+                            disabled={isPending(pokeDex) || !sortedPokeDex().previous}
                           >
                             Previous
                           </button>
@@ -153,9 +142,7 @@ export default function PokeDexAwait() {
                             onClick={() => {
                               changeUrl(sortedPokeDex().next);
                             }}
-                            disabled={
-                              isPending(pokeDex) || !sortedPokeDex().next
-                            }
+                            disabled={isPending(pokeDex) || !sortedPokeDex().next}
                           >
                             Next
                           </button>
@@ -214,10 +201,7 @@ function Row(props: { name: string; url: string; index: number }) {
 
       <td class="w-1/3 text-center truncate">{props.name}</td>
 
-      <td
-        class="w-1/3 text-center truncate"
-        onClick={showUrlOnClick(props.url)}
-      >
+      <td class="w-1/3 text-center truncate" onClick={showUrlOnClick(props.url)}>
         {props.url}
       </td>
     </tr>

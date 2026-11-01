@@ -1,12 +1,4 @@
-import {
-  $async,
-  $effect,
-  $state,
-  Await,
-  isPending,
-  onDestroy,
-  onMount,
-} from "vynn";
+import { $async, $effect, $state, Await, isPending, onDestroy, onMount } from "vynn";
 
 import { Template } from "../components/template";
 import { name, sleep } from "../utils";
@@ -90,10 +82,7 @@ export const PokeDexAwait = () => {
               >
                 Name
               </th>
-              <th
-                onClick={sortOnClick("url")}
-                class="select-none cursor-pointer w-1/3 text-center"
-              >
+              <th onClick={sortOnClick("url")} class="select-none cursor-pointer w-1/3 text-center">
                 URL
               </th>
             </tr>
@@ -170,10 +159,7 @@ function Row(props: { name: string; url: string; index: number }) {
     <tr>
       <td class="w-1/3 text-center">{props.index + 1}</td>
       <td class="w-1/3 text-center truncate">{props.name}</td>
-      <td
-        class="w-1/3 text-center truncate"
-        onClick={showUrlOnClick(props.url)}
-      >
+      <td class="w-1/3 text-center truncate" onClick={showUrlOnClick(props.url)}>
         {props.url}
       </td>
     </tr>

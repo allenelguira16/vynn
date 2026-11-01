@@ -1,11 +1,11 @@
 import { JSX } from "@solidjs/web";
 import {
-  createStore,
-  createSignal,
-  onSettled,
-  createContext,
-  useContext,
   StoreSetter,
+  createContext,
+  createSignal,
+  createStore,
+  onSettled,
+  useContext,
 } from "solid-js";
 
 import { Template } from "../components/template";
@@ -83,9 +83,7 @@ const Input = () => {
         type="text"
         name="name"
         class="input"
-        onInput={(event: any) =>
-          setForms(() => ({ name: event.currentTarget.value }))
-        }
+        onInput={(event: any) => setForms(() => ({ name: event.currentTarget.value }))}
         placeholder="name"
         autocomplete="off"
         value={forms.name}

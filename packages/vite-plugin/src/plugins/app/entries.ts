@@ -1,27 +1,15 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import {
-  CLIENT_ENTRY_ID,
-  type ResolvedEntries,
-} from "./shared.ts";
 
-const ENTRY_EXTENSIONS = [
-  ".tsx",
-  ".jsx",
-  ".ts",
-  ".js",
-  ".tsrx",
-  ".mts",
-  ".mjs",
-];
+import { CLIENT_ENTRY_ID, type ResolvedEntries } from "./shared.ts";
+
+const ENTRY_EXTENSIONS = [".tsx", ".jsx", ".ts", ".js", ".tsrx", ".mts", ".mjs"];
 const CLIENT_ENTRY_NAMES = ["entry-client"];
 const SERVER_ENTRY_NAMES = ["entry-server"];
 
 export function resolveEntries(root: string, ssr: boolean): ResolvedEntries {
   const clientFile = findConventionalFile(root, CLIENT_ENTRY_NAMES);
-  const serverFile = ssr
-    ? findConventionalFile(root, SERVER_ENTRY_NAMES)
-    : null;
+  const serverFile = ssr ? findConventionalFile(root, SERVER_ENTRY_NAMES) : null;
 
   const needsApp = !clientFile || (ssr && !serverFile);
   const appSpecifier = needsApp ? findAppSpecifier(root) : null;

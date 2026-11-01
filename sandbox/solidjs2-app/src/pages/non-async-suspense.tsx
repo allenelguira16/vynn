@@ -1,4 +1,4 @@
-import { onSettled, Loading } from "solid-js";
+import { Loading, onSettled } from "solid-js";
 
 import { Template } from "../components/template";
 

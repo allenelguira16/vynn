@@ -1,4 +1,4 @@
-import { createStore, For, onSettled, Show, untrack } from "solid-js";
+import { For, Show, createStore, onSettled, untrack } from "solid-js";
 
 import { Template } from "../components/template";
 import { name, sleep } from "../utils";
@@ -22,10 +22,7 @@ async function getPokedex(url: string): Promise<PokeDexData> {
   // Restrict server-side requests to the intended API endpoint.
   const parsedUrl = new URL(url);
 
-  if (
-    parsedUrl.origin !== "https://pokeapi.co" ||
-    parsedUrl.pathname !== "/api/v2/pokemon/"
-  ) {
+  if (parsedUrl.origin !== "https://pokeapi.co" || parsedUrl.pathname !== "/api/v2/pokemon/") {
     throw new Error("Invalid PokéAPI URL");
   }
 
@@ -118,17 +115,11 @@ export default function PokeDex() {
           <tr>
             <th class="w-1/3">ID</th>
 
-            <th
-              onClick={sortOnClick("name")}
-              class="select-none cursor-pointer w-1/3 text-center"
-            >
+            <th onClick={sortOnClick("name")} class="select-none cursor-pointer w-1/3 text-center">
               Name
             </th>
 
-            <th
-              onClick={sortOnClick("url")}
-              class="select-none cursor-pointer w-1/3 text-center"
-            >
+            <th onClick={sortOnClick("url")} class="select-none cursor-pointer w-1/3 text-center">
               URL
             </th>
           </tr>

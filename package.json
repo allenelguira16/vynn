@@ -3,8 +3,15 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "lint": "pnpm dlx oxlint@1.90.0 packages",
-    "lint:fix": "pnpm dlx oxlint@1.90.0 packages --fix"
+    "lint": "oxlint",
+    "lint:fix": "oxlint --fix",
+    "fmt": "oxfmt",
+    "fmt:check": "oxfmt --check"
+  },
+  "devDependencies": {
+    "oxfmt": "^0.75.0",
+    "oxlint": "^1.90.0",
+    "oxlint-tsgolint": "^7.0.2005"
   },
   "devEngines": {
     "packageManager": {

@@ -43,11 +43,9 @@ export const SERVER_FUNCTIONS_API_ID = "virtual:vynn/server-functions";
 export const RESOLVED_CLIENT_RUNTIME_ID = `\0${CLIENT_RUNTIME_ID}`;
 export const RESOLVED_SERVER_RUNTIME_ID = `\0${SERVER_RUNTIME_ID}`;
 export const RESOLVED_SERVER_FUNCTIONS_API_ID = `\0${SERVER_FUNCTIONS_API_ID}`;
-export const SERVER_FUNCTION_IMPL_PREFIX =
-  "virtual:vynn/server-functions/implementation/";
+export const SERVER_FUNCTION_IMPL_PREFIX = "virtual:vynn/server-functions/implementation/";
 export const RESOLVED_SERVER_FUNCTION_IMPL_PREFIX = `\0${SERVER_FUNCTION_IMPL_PREFIX}`;
-export const SERVER_FUNCTION_MANIFEST_SENTINEL =
-  "__VYNN_SERVER_FUNCTION_MANIFEST__";
+export const SERVER_FUNCTION_MANIFEST_SENTINEL = "__VYNN_SERVER_FUNCTION_MANIFEST__";
 export const CREATE_SERVER_REFERENCE = "__vynnCreateServerReference";
 export const SCRIPT_EXTENSION_RE = /\.(?:[cm]?[jt]sx?)$/i;
 export const DEFAULT_ENDPOINT = "/__vynn/server-function";
@@ -67,8 +65,6 @@ export function normalizeAllowedOrigin(value: string): string {
     throw new Error("[Vynn use server] Invalid allowed origin: " + value);
   }
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:")
-    throw new Error(
-      "[Vynn use server] Allowed origins must use http or https: " + value,
-    );
+    throw new Error("[Vynn use server] Allowed origins must use http or https: " + value);
   return parsed.origin;
 }

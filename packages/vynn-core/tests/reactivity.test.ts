@@ -1,21 +1,17 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 
-import { $state } from "../src/reactivity/$state";
-import { $effect } from "../src/reactivity/$effect";
-import { $computed } from "../src/reactivity/$computed";
-import { $store } from "../src/reactivity/$store";
+import { initializeAsyncContext } from "../src/context/async-context";
+import { createOwner, disposeOwner, runWithOwner } from "../src/life-cycle/owner";
 import { $async, isPending } from "../src/reactivity/$async";
+import { $computed } from "../src/reactivity/$computed";
+import { $effect } from "../src/reactivity/$effect";
+import { $state } from "../src/reactivity/$state";
+import { $store } from "../src/reactivity/$store";
+import { NotReadyError } from "../src/reactivity/not-ready-error";
 import { transaction } from "../src/reactivity/transaction";
 import { untrack } from "../src/reactivity/untrack";
 import { sleep } from "../src/utils/sleep";
-import { initializeAsyncContext } from "../src/context/async-context";
-import {
-  createOwner,
-  disposeOwner,
-  runWithOwner,
-} from "../src/life-cycle/owner";
-import { NotReadyError } from "../src/reactivity/not-ready-error";
 
 async function flushEffects() {
   await new Promise<void>((resolve) => {

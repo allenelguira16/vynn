@@ -75,9 +75,10 @@ The SSR app build emits:
 Serve static assets before mounting the generated Node listener:
 
 ```ts
-import express from "express";
 import compression from "compression";
+import express from "express";
 import sirv from "sirv";
+
 import { listener } from "./dist/server/node.js";
 
 const app = express();

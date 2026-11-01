@@ -1,4 +1,5 @@
 import { $state, ErrorBoundary, JSX } from "vynn";
+
 import { Template } from "../components/template";
 
 function ComponentWillThrow(): JSX.Element {

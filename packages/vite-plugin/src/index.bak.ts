@@ -1,8 +1,9 @@
+import type { IncomingMessage, ServerResponse } from "node:http";
+import type { Plugin, ViteDevServer } from "vite";
+
 import { transformSync } from "@babel/core";
 import babelPluginTS from "@babel/preset-typescript";
 import babelPluginVynn from "@babel/preset-vynn";
-import type { IncomingMessage, ServerResponse } from "node:http";
-import type { Plugin, ViteDevServer } from "vite";
 
 type VitePluginVynnOptions = {
   ssr?: boolean;
@@ -104,18 +105,16 @@ export default (options: VitePluginVynnOptions = { ssr: false }): Plugin[] => {
 
       // Serve a virtual stylesheet containing the collected styles.
       configureServer(server: ViteDevServer) {
-        server.middlewares.use(
-          (req: IncomingMessage, res: ServerResponse, next) => {
-            if (req.url === virtualCssPath) {
-              res.setHeader("Content-Type", "text/css");
-              res.statusCode = 200;
-              res.end(Array.from(collectedStyles.values()).join("\n"));
-              return;
-            }
+        server.middlewares.use((req: IncomingMessage, res: ServerResponse, next) => {
+          if (req.url === virtualCssPath) {
+            res.setHeader("Content-Type", "text/css");
+            res.statusCode = 200;
+            res.end(Array.from(collectedStyles.values()).join("\n"));
+            return;
+          }
 
-            next();
-          },
-        );
+          next();
+        });
       },
 
       // Inject one stylesheet link into the HTML head.

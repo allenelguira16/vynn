@@ -4,13 +4,13 @@ import {
   getAsyncValue,
   getAsyncValues,
 } from "../context/async-context";
-import { $state } from "./$state";
-import { $renderEffect } from "./$effect";
-import { NotReadyError } from "./not-ready-error";
-import { transaction } from "./transaction";
-import { withFakeAsyncApis } from "./$async.util";
 import { isServer } from "../context/is-server-context";
 import { isAsyncGetterFromLazy } from "../context/lazy-context";
+import { withFakeAsyncApis } from "./$async.util";
+import { $renderEffect } from "./$effect";
+import { $state } from "./$state";
+import { NotReadyError } from "./not-ready-error";
+import { transaction } from "./transaction";
 
 export type Async<T> = {
   value: T;
@@ -49,8 +49,7 @@ export function $async<T>(getter: () => Promise<T>): Async<T> {
     transaction(() => {
       const currentVersion = ++version;
       const asyncValues = getAsyncValues();
-      const hydrationData =
-        isLazy || asyncID === undefined ? undefined : getAsyncValue<T>(asyncID);
+      const hydrationData = isLazy || asyncID === undefined ? undefined : getAsyncValue<T>(asyncID);
 
       let promise: Promise<T> | undefined;
 
@@ -120,9 +119,7 @@ export function $async<T>(getter: () => Promise<T>): Async<T> {
       const record = result.value;
 
       if (!record) {
-        throw new Error(
-          "$async was read before its operation was initialized.",
-        );
+        throw new Error("$async was read before its operation was initialized.");
       }
 
       if (record.status === "pending") {

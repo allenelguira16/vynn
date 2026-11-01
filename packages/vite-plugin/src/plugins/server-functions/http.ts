@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+
 import { MAX_REQUEST_BYTES } from "./shared.ts";
 
 export async function readLimitedBody(
@@ -27,21 +28,13 @@ export async function readLimitedBody(
   return Buffer.concat(chunks).toString("utf8");
 }
 
-export function createServerFunctionRequest(
-  request: IncomingMessage,
-  body: string,
-): Request {
-  const encrypted = Boolean(
-    (request.socket as { encrypted?: boolean }).encrypted,
-  );
+export function createServerFunctionRequest(request: IncomingMessage, body: string): Request {
+  const encrypted = Boolean((request.socket as { encrypted?: boolean }).encrypted);
   const origin = `${encrypted ? "https" : "http"}://${request.headers.host ?? "localhost"}`;
   const url = new URL(request.url ?? "/", origin);
   const headers = new Headers();
   for (const [key, value] of Object.entries(request.headers)) {
-    if (
-      key.toLowerCase() === "content-length" ||
-      key.toLowerCase() === "transfer-encoding"
-    )
+    if (key.toLowerCase() === "content-length" || key.toLowerCase() === "transfer-encoding")
       continue;
     if (Array.isArray(value)) {
       for (const item of value) headers.append(key, item);

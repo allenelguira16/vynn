@@ -1,4 +1,5 @@
 import type { PluginAPI } from "@babel/core";
+
 import * as t from "@babel/types";
 
 type RuntimeHelperName =
@@ -19,10 +20,7 @@ type ReactivePluginOptions = {
   // ssr?: boolean;
 };
 
-export default function reactivePlugin(
-  _api: PluginAPI,
-  _options: ReactivePluginOptions = {},
-) {
+export default function reactivePlugin(_api: PluginAPI, _options: ReactivePluginOptions = {}) {
   const runtimeImportSource = "vynn/render";
   let programPath: any = null;
 
@@ -88,9 +86,7 @@ export default function reactivePlugin(
     }
 
     if (!programPath) {
-      throw new Error(
-        `Cannot create Vynn runtime helper "${name}" outside of a Program.`,
-      );
+      throw new Error(`Cannot create Vynn runtime helper "${name}" outside of a Program.`);
     }
 
     const existingImport = findExistingRuntimeImport(name);
@@ -107,9 +103,7 @@ export default function reactivePlugin(
     return localIdentifier;
   }
 
-  function findExistingRuntimeImport(
-    name: RuntimeHelperName,
-  ): t.Identifier | null {
+  function findExistingRuntimeImport(name: RuntimeHelperName): t.Identifier | null {
     const program = programPath.node as t.Program;
 
     for (const statement of program.body) {
@@ -128,9 +122,7 @@ export default function reactivePlugin(
 
         const imported = specifier.imported;
 
-        const importedName = t.isIdentifier(imported)
-          ? imported.name
-          : imported.value;
+        const importedName = t.isIdentifier(imported) ? imported.name : imported.value;
 
         if (importedName !== name) {
           continue;
@@ -153,10 +145,7 @@ export default function reactivePlugin(
     let vynnImport: t.ImportDeclaration | null = null;
 
     for (const statement of program.body) {
-      if (
-        t.isImportDeclaration(statement) &&
-        statement.source.value === runtimeImportSource
-      ) {
+      if (t.isImportDeclaration(statement) && statement.source.value === runtimeImportSource) {
         vynnImport = statement;
         break;
       }
@@ -171,9 +160,7 @@ export default function reactivePlugin(
 
           const imported = specifier.imported;
 
-          const importedName = t.isIdentifier(imported)
-            ? imported.name
-            : imported.value;
+          const importedName = t.isIdentifier(imported) ? imported.name : imported.value;
 
           return importedName === name && specifier.local.name === local.name;
         });
@@ -182,9 +169,7 @@ export default function reactivePlugin(
           continue;
         }
 
-        vynnImport.specifiers.push(
-          t.importSpecifier(local, t.identifier(name)),
-        );
+        vynnImport.specifiers.push(t.importSpecifier(local, t.identifier(name)));
       }
 
       return;
@@ -196,10 +181,7 @@ export default function reactivePlugin(
       specifiers.push(t.importSpecifier(local, t.identifier(name)));
     }
 
-    const declaration = t.importDeclaration(
-      specifiers,
-      t.stringLiteral(runtimeImportSource),
-    );
+    const declaration = t.importDeclaration(specifiers, t.stringLiteral(runtimeImportSource));
 
     programPath.unshiftContainer("body", declaration);
   }
@@ -265,11 +247,7 @@ export default function reactivePlugin(
           if (isComponentElement(node.init)) {
             node.init = createComponentCall(node.init);
           } else {
-            node.init = createElement(
-              node.init,
-              path,
-              createIdentifierAllocator(path.scope),
-            );
+            node.init = createElement(node.init, path, createIdentifierAllocator(path.scope));
           }
 
           return;
@@ -425,9 +403,7 @@ export default function reactivePlugin(
         arrow.async ?? undefined,
       );
 
-      node.init = t.callExpression(getRuntimeHelper("$cmpnt"), [
-        functionExpression,
-      ]);
+      node.init = t.callExpression(getRuntimeHelper("$cmpnt"), [functionExpression]);
 
       return true;
     }
@@ -470,16 +446,12 @@ export default function reactivePlugin(
       arrow.async ?? undefined,
     );
 
-    node.init = t.callExpression(getRuntimeHelper("$cmpnt"), [
-      functionExpression,
-    ]);
+    node.init = t.callExpression(getRuntimeHelper("$cmpnt"), [functionExpression]);
 
     return true;
   }
 
-  function findArrowReturnStatement(
-    body: t.BlockStatement,
-  ): t.ReturnStatement | undefined {
+  function findArrowReturnStatement(body: t.BlockStatement): t.ReturnStatement | undefined {
     for (const statement of body.body) {
       if (t.isReturnStatement(statement)) {
         return statement;
@@ -489,9 +461,7 @@ export default function reactivePlugin(
     return undefined;
   }
 
-  function findReturnStatement(
-    node: t.FunctionDeclaration,
-  ): t.ReturnStatement | undefined {
+  function findReturnStatement(node: t.FunctionDeclaration): t.ReturnStatement | undefined {
     for (const statement of node.body.body) {
       if (t.isReturnStatement(statement)) {
         return statement;
@@ -505,27 +475,19 @@ export default function reactivePlugin(
   // JSX array / $for helpers
   // ===========================================================================
 
-  function getForIndexName(
-    indexParameter: t.Node | null | undefined,
-  ): string | null {
+  function getForIndexName(indexParameter: t.Node | null | undefined): string | null {
     if (t.isIdentifier(indexParameter)) {
       return indexParameter.name;
     }
 
-    if (
-      t.isAssignmentPattern(indexParameter) &&
-      t.isIdentifier(indexParameter.left)
-    ) {
+    if (t.isAssignmentPattern(indexParameter) && t.isIdentifier(indexParameter.left)) {
       return indexParameter.left.name;
     }
 
     return null;
   }
 
-  function withForIndex<T>(
-    indexParameter: t.Node | null | undefined,
-    callback: () => T,
-  ): T {
+  function withForIndex<T>(indexParameter: t.Node | null | undefined, callback: () => T): T {
     const previous = activeForIndexNames;
     const indexName = getForIndexName(indexParameter);
 
@@ -547,10 +509,7 @@ export default function reactivePlugin(
       return expression;
     }
 
-    const result = t.memberExpression(
-      t.identifier(expression.name),
-      t.identifier("value"),
-    );
+    const result = t.memberExpression(t.identifier(expression.name), t.identifier("value"));
 
     generatedForIndexReferences.add(result);
 
@@ -604,10 +563,7 @@ export default function reactivePlugin(
     return names;
   }
 
-  function withShadowedForIndices<T>(
-    parameters: readonly t.Node[],
-    callback: () => T,
-  ): T {
+  function withShadowedForIndices<T>(parameters: readonly t.Node[], callback: () => T): T {
     const previous = activeForIndexNames;
     const shadowed = new Set<string>();
 
@@ -624,10 +580,7 @@ export default function reactivePlugin(
     }
   }
 
-  function isRuntimeHelperCall(
-    expression: t.Expression,
-    name: RuntimeHelperName,
-  ): boolean {
+  function isRuntimeHelperCall(expression: t.Expression, name: RuntimeHelperName): boolean {
     const helper = runtimeHelpers.get(name);
 
     return (
@@ -668,8 +621,7 @@ export default function reactivePlugin(
       return false;
     }
 
-    const visitorKeys = ((t as any).VISITOR_KEYS?.[node.type] ??
-      []) as string[];
+    const visitorKeys = ((t as any).VISITOR_KEYS?.[node.type] ?? []) as string[];
 
     for (const key of visitorKeys) {
       const value = (node as any)[key];
@@ -702,8 +654,7 @@ export default function reactivePlugin(
 
       if (t.isBlockStatement(callback.body)) {
         return callback.body.body.some(
-          (statement) =>
-            t.isReturnStatement(statement) && containsJSX(statement.argument),
+          (statement) => t.isReturnStatement(statement) && containsJSX(statement.argument),
         );
       }
 
@@ -716,8 +667,7 @@ export default function reactivePlugin(
       }
 
       return callback.body.body.some(
-        (statement) =>
-          t.isReturnStatement(statement) && containsJSX(statement.argument),
+        (statement) => t.isReturnStatement(statement) && containsJSX(statement.argument),
       );
     }
 
@@ -779,11 +729,7 @@ export default function reactivePlugin(
       throw new Error("Vynn `$for` requires a map callback expression.");
     }
 
-    const transformedSource = transformEmbeddedExpression(
-      source,
-      componentPath,
-      allocator,
-    );
+    const transformedSource = transformEmbeddedExpression(source, componentPath, allocator);
 
     const transformedCallback = withForIndex(
       t.isArrowFunctionExpression(callback) || t.isFunctionExpression(callback)
@@ -792,27 +738,15 @@ export default function reactivePlugin(
       () => {
         if (t.isArrowFunctionExpression(callback)) {
           if (t.isBlockStatement(callback.body)) {
-            callback.body = transformBlockStatement(
-              callback.body,
-              componentPath,
-              allocator,
-            );
+            callback.body = transformBlockStatement(callback.body, componentPath, allocator);
           } else {
-            callback.body = transformEmbeddedExpression(
-              callback.body,
-              componentPath,
-              allocator,
-            );
+            callback.body = transformEmbeddedExpression(callback.body, componentPath, allocator);
           }
 
           return callback;
         }
 
-        callback.body = transformBlockStatement(
-          callback.body,
-          componentPath,
-          allocator,
-        );
+        callback.body = transformBlockStatement(callback.body, componentPath, allocator);
 
         return callback;
       },
@@ -844,12 +778,7 @@ export default function reactivePlugin(
         return createComponentCall(expression);
       }
 
-      return createElementStatements(
-        expression,
-        componentPath,
-        statements,
-        allocator,
-      );
+      return createElementStatements(expression, componentPath, statements, allocator);
     }
 
     if (t.isJSXFragment(expression)) {
@@ -911,12 +840,7 @@ export default function reactivePlugin(
         return createComponentCall(child);
       }
 
-      return createElementStatements(
-        child,
-        componentPath,
-        statements,
-        allocator,
-      );
+      return createElementStatements(child, componentPath, statements, allocator);
     }
 
     // -------------------------------------------------------------------------
@@ -945,11 +869,7 @@ export default function reactivePlugin(
       }
 
       if (t.isExpression(expression)) {
-        const transformed = transformStandaloneExpression(
-          expression,
-          componentPath,
-          allocator,
-        );
+        const transformed = transformStandaloneExpression(expression, componentPath, allocator);
 
         if (dynamicExpressions && !isForExpression(transformed)) {
           return createDynamicExpression(transformed);
@@ -1042,11 +962,7 @@ export default function reactivePlugin(
       }
 
       if (t.isExpression(expression)) {
-        const transformed = transformStandaloneExpression(
-          expression,
-          componentPath,
-          allocator,
-        );
+        const transformed = transformStandaloneExpression(expression, componentPath, allocator);
 
         if (dynamicExpressions && !isForExpression(transformed)) {
           return createDynamicExpression(transformed);
@@ -1059,12 +975,7 @@ export default function reactivePlugin(
     }
 
     if (t.isJSXFragment(child)) {
-      return createNestedFragment(
-        child,
-        componentPath,
-        allocator,
-        dynamicExpressions,
-      );
+      return createNestedFragment(child, componentPath, allocator, dynamicExpressions);
     }
 
     return null;
@@ -1081,12 +992,7 @@ export default function reactivePlugin(
   ): t.Expression {
     const statements: t.Statement[] = [];
 
-    const elementId = createElementStatements(
-      node,
-      componentPath,
-      statements,
-      allocator,
-    );
+    const elementId = createElementStatements(node, componentPath, statements, allocator);
 
     statements.push(t.returnStatement(elementId));
 
@@ -1107,22 +1013,14 @@ export default function reactivePlugin(
       t.variableDeclaration("const", [
         t.variableDeclarator(
           elementId,
-          t.callExpression(getRuntimeHelper("$tmpl"), [
-            t.stringLiteral(tagName),
-          ]),
+          t.callExpression(getRuntimeHelper("$tmpl"), [t.stringLiteral(tagName)]),
         ),
       ]),
     );
 
     transformAttributes(node.openingElement, elementId, statements);
 
-    transformElementChildren(
-      node.children,
-      elementId,
-      componentPath,
-      statements,
-      allocator,
-    );
+    transformElementChildren(node.children, elementId, componentPath, statements, allocator);
 
     return elementId;
   }
@@ -1150,9 +1048,7 @@ export default function reactivePlugin(
           continue;
         }
 
-        statements.push(
-          t.expressionStatement(createInsert(elementId, t.stringLiteral(text))),
-        );
+        statements.push(t.expressionStatement(createInsert(elementId, t.stringLiteral(text))));
 
         continue;
       }
@@ -1191,17 +1087,12 @@ export default function reactivePlugin(
       if (t.isJSXElement(child)) {
         if (isComponentElement(child)) {
           statements.push(
-            t.expressionStatement(
-              createInsert(elementId, createComponentCall(child)),
-            ),
+            t.expressionStatement(createInsert(elementId, createComponentCall(child))),
           );
         } else {
           statements.push(
             t.expressionStatement(
-              createInsert(
-                elementId,
-                createElement(child, componentPath, allocator),
-              ),
+              createInsert(elementId, createElement(child, componentPath, allocator)),
             ),
           );
         }
@@ -1222,9 +1113,7 @@ export default function reactivePlugin(
           false,
         );
 
-        statements.push(
-          t.expressionStatement(createInsert(elementId, fragment)),
-        );
+        statements.push(t.expressionStatement(createInsert(elementId, fragment)));
       }
     }
   }
@@ -1234,9 +1123,7 @@ export default function reactivePlugin(
   // ===========================================================================
 
   function createDynamicExpression(expression: t.Expression): t.CallExpression {
-    return t.callExpression(getRuntimeHelper("$dyn"), [
-      t.arrowFunctionExpression([], expression),
-    ]);
+    return t.callExpression(getRuntimeHelper("$dyn"), [t.arrowFunctionExpression([], expression)]);
   }
 
   // ===========================================================================
@@ -1251,17 +1138,11 @@ export default function reactivePlugin(
     // A `$for` generated by this pass is already fully transformed. Babel may
     // encounter it again while traversing the replacement AST, so do not
     // recursively transform its arguments a second time.
-    if (
-      t.isCallExpression(expression) &&
-      generatedForExpressions.has(expression)
-    ) {
+    if (t.isCallExpression(expression) && generatedForExpressions.has(expression)) {
       return expression;
     }
 
-    if (
-      t.isMemberExpression(expression) &&
-      generatedForIndexReferences.has(expression)
-    ) {
+    if (t.isMemberExpression(expression) && generatedForIndexReferences.has(expression)) {
       return expression;
     }
 
@@ -1334,17 +1215,9 @@ export default function reactivePlugin(
     // -------------------------------------------------------------------------
 
     if (t.isLogicalExpression(expression)) {
-      expression.left = transformEmbeddedExpression(
-        expression.left,
-        componentPath,
-        allocator,
-      );
+      expression.left = transformEmbeddedExpression(expression.left, componentPath, allocator);
 
-      expression.right = transformEmbeddedExpression(
-        expression.right,
-        componentPath,
-        allocator,
-      );
+      expression.right = transformEmbeddedExpression(expression.right, componentPath, allocator);
 
       return expression;
     }
@@ -1354,11 +1227,7 @@ export default function reactivePlugin(
     // -------------------------------------------------------------------------
 
     if (t.isConditionalExpression(expression)) {
-      expression.test = transformEmbeddedExpression(
-        expression.test,
-        componentPath,
-        allocator,
-      );
+      expression.test = transformEmbeddedExpression(expression.test, componentPath, allocator);
 
       expression.consequent = transformEmbeddedExpression(
         expression.consequent,
@@ -1392,11 +1261,7 @@ export default function reactivePlugin(
         }
 
         if (t.isExpression(argument)) {
-          return transformEmbeddedExpression(
-            argument,
-            componentPath,
-            allocator,
-          );
+          return transformEmbeddedExpression(argument, componentPath, allocator);
         }
 
         return argument;
@@ -1412,17 +1277,9 @@ export default function reactivePlugin(
     if (t.isArrowFunctionExpression(expression)) {
       return withShadowedForIndices(expression.params, () => {
         if (t.isBlockStatement(expression.body)) {
-          expression.body = transformBlockStatement(
-            expression.body,
-            componentPath,
-            allocator,
-          );
+          expression.body = transformBlockStatement(expression.body, componentPath, allocator);
         } else {
-          expression.body = transformEmbeddedExpression(
-            expression.body,
-            componentPath,
-            allocator,
-          );
+          expression.body = transformEmbeddedExpression(expression.body, componentPath, allocator);
         }
 
         return expression;
@@ -1435,11 +1292,7 @@ export default function reactivePlugin(
 
     if (t.isFunctionExpression(expression)) {
       return withShadowedForIndices(expression.params, () => {
-        expression.body = transformBlockStatement(
-          expression.body,
-          componentPath,
-          allocator,
-        );
+        expression.body = transformBlockStatement(expression.body, componentPath, allocator);
 
         return expression;
       });
@@ -1573,11 +1426,7 @@ export default function reactivePlugin(
     // -------------------------------------------------------------------------
 
     if (t.isAssignmentExpression(expression)) {
-      expression.right = transformEmbeddedExpression(
-        expression.right,
-        componentPath,
-        allocator,
-      );
+      expression.right = transformEmbeddedExpression(expression.right, componentPath, allocator);
 
       return expression;
     }
@@ -1588,19 +1437,11 @@ export default function reactivePlugin(
 
     if (t.isBinaryExpression(expression)) {
       if (t.isExpression(expression.left)) {
-        expression.left = transformEmbeddedExpression(
-          expression.left,
-          componentPath,
-          allocator,
-        );
+        expression.left = transformEmbeddedExpression(expression.left, componentPath, allocator);
       }
 
       if (t.isExpression(expression.right)) {
-        expression.right = transformEmbeddedExpression(
-          expression.right,
-          componentPath,
-          allocator,
-        );
+        expression.right = transformEmbeddedExpression(expression.right, componentPath, allocator);
       }
 
       return expression;
@@ -1695,11 +1536,7 @@ export default function reactivePlugin(
         }
 
         if (t.isExpression(argument)) {
-          return transformEmbeddedExpression(
-            argument,
-            componentPath,
-            allocator,
-          );
+          return transformEmbeddedExpression(argument, componentPath, allocator);
         }
 
         return argument;
@@ -1786,11 +1623,7 @@ export default function reactivePlugin(
       }
 
       if (t.isIfStatement(statement)) {
-        statement.test = transformEmbeddedExpression(
-          statement.test,
-          componentPath,
-          allocator,
-        );
+        statement.test = transformEmbeddedExpression(statement.test, componentPath, allocator);
 
         if (t.isBlockStatement(statement.consequent)) {
           statement.consequent = transformBlockStatement(
@@ -1859,11 +1692,7 @@ export default function reactivePlugin(
     }
 
     if (t.isIfStatement(statement)) {
-      statement.test = transformEmbeddedExpression(
-        statement.test,
-        componentPath,
-        allocator,
-      );
+      statement.test = transformEmbeddedExpression(statement.test, componentPath, allocator);
 
       if (t.isBlockStatement(statement.consequent)) {
         statement.consequent = transformBlockStatement(
@@ -1881,11 +1710,7 @@ export default function reactivePlugin(
             allocator,
           );
         } else {
-          statement.alternate = transformStatement(
-            statement.alternate,
-            componentPath,
-            allocator,
-          );
+          statement.alternate = transformStatement(statement.alternate, componentPath, allocator);
         }
       }
 
@@ -1948,18 +1773,14 @@ export default function reactivePlugin(
   }
 
   function createComponentCall(node: t.JSXElement): t.CallExpression {
-    const componentExpression = createComponentExpression(
-      node.openingElement.name,
-    );
+    const componentExpression = createComponentExpression(node.openingElement.name);
 
     const props = createComponentProps(node);
 
     return t.callExpression(componentExpression, props ? [props] : []);
   }
 
-  function createComponentExpression(
-    name: t.JSXElement["openingElement"]["name"],
-  ): t.Expression {
+  function createComponentExpression(name: t.JSXElement["openingElement"]["name"]): t.Expression {
     if (t.isJSXIdentifier(name)) {
       return t.identifier(name.name);
     }
@@ -1971,9 +1792,7 @@ export default function reactivePlugin(
       );
     }
 
-    throw new Error(
-      "Vynn currently only supports simple or member-expression components.",
-    );
+    throw new Error("Vynn currently only supports simple or member-expression components.");
   }
 
   // ===========================================================================
@@ -1981,9 +1800,7 @@ export default function reactivePlugin(
   // ===========================================================================
 
   function createComponentProps(node: t.JSXElement): t.ObjectExpression | null {
-    const properties: Array<
-      t.ObjectProperty | t.ObjectMethod | t.SpreadElement
-    > = [];
+    const properties: Array<t.ObjectProperty | t.ObjectMethod | t.SpreadElement> = [];
 
     const allocator = createIdentifierAllocator(programPath.scope);
 
@@ -1994,9 +1811,7 @@ export default function reactivePlugin(
 
       if (t.isJSXSpreadAttribute(attribute)) {
         properties.push(
-          t.spreadElement(
-            transformEmbeddedExpression(attribute.argument, null, allocator),
-          ),
+          t.spreadElement(transformEmbeddedExpression(attribute.argument, null, allocator)),
         );
 
         continue;
@@ -2059,9 +1874,7 @@ export default function reactivePlugin(
             "get",
             createPropertyKey(name),
             [],
-            t.blockStatement([
-              t.returnStatement(t.stringLiteral(attribute.value.value)),
-            ]),
+            t.blockStatement([t.returnStatement(t.stringLiteral(attribute.value.value))]),
           ),
         );
 
@@ -2112,9 +1925,7 @@ export default function reactivePlugin(
     const children = createComponentChildrenGetterBody(node);
 
     if (children) {
-      properties.push(
-        t.objectMethod("get", t.identifier("children"), [], children),
-      );
+      properties.push(t.objectMethod("get", t.identifier("children"), [], children));
     }
 
     if (properties.length === 0) {
@@ -2197,11 +2008,7 @@ export default function reactivePlugin(
 
             t.callExpression(t.cloneNode(refIdentifier), [refParameter]),
 
-            t.assignmentExpression(
-              "=",
-              t.cloneNode(expression),
-              t.cloneNode(refParameter),
-            ),
+            t.assignmentExpression("=", t.cloneNode(expression), t.cloneNode(refParameter)),
           ),
         ),
       );
@@ -2229,9 +2036,7 @@ export default function reactivePlugin(
     const refIdentifier = programPath.scope.generateUidIdentifier("ref");
 
     statements.push(
-      t.variableDeclaration("const", [
-        t.variableDeclarator(refIdentifier, expression),
-      ]),
+      t.variableDeclaration("const", [t.variableDeclarator(refIdentifier, expression)]),
     );
 
     statements.push(
@@ -2243,9 +2048,7 @@ export default function reactivePlugin(
             t.stringLiteral("function"),
           ),
 
-          t.callExpression(t.cloneNode(refIdentifier), [
-            t.cloneNode(refParameter),
-          ]),
+          t.callExpression(t.cloneNode(refIdentifier), [t.cloneNode(refParameter)]),
 
           t.unaryExpression("void", t.numericLiteral(0)),
         ),
@@ -2289,9 +2092,7 @@ export default function reactivePlugin(
   // Component children
   // ===========================================================================
 
-  function createComponentChildrenGetterBody(
-    node: t.JSXElement,
-  ): t.BlockStatement | null {
+  function createComponentChildrenGetterBody(node: t.JSXElement): t.BlockStatement | null {
     const children: t.Expression[] = [];
     const statements: t.Statement[] = [];
 
@@ -2324,16 +2125,10 @@ export default function reactivePlugin(
         }
 
         if (t.isExpression(expression)) {
-          const transformed = transformStandaloneExpression(
-            expression,
-            node,
-            allocator,
-          );
+          const transformed = transformStandaloneExpression(expression, node, allocator);
 
           children.push(
-            isForExpression(transformed)
-              ? transformed
-              : createDynamicExpression(transformed),
+            isForExpression(transformed) ? transformed : createDynamicExpression(transformed),
           );
         }
 
@@ -2348,9 +2143,7 @@ export default function reactivePlugin(
         if (isComponentElement(child)) {
           children.push(createComponentCall(child));
         } else {
-          children.push(
-            createElementStatements(child, node, statements, allocator),
-          );
+          children.push(createElementStatements(child, node, statements, allocator));
         }
 
         continue;
@@ -2361,9 +2154,7 @@ export default function reactivePlugin(
       // -----------------------------------------------------------------------
 
       if (t.isJSXFragment(child)) {
-        children.push(
-          createFragmentInStatements(child, node, allocator, statements, true),
-        );
+        children.push(createFragmentInStatements(child, node, allocator, statements, true));
       }
     }
 
@@ -2371,8 +2162,7 @@ export default function reactivePlugin(
       return null;
     }
 
-    const result =
-      children.length === 1 ? children[0] : t.arrayExpression(children);
+    const result = children.length === 1 ? children[0] : t.arrayExpression(children);
 
     statements.push(t.returnStatement(result));
 
@@ -2514,9 +2304,7 @@ export default function reactivePlugin(
 
       if (t.isStringLiteral(attribute.value)) {
         statements.push(
-          t.expressionStatement(
-            createStaticAttribute(elementId, name, attribute.value),
-          ),
+          t.expressionStatement(createStaticAttribute(elementId, name, attribute.value)),
         );
 
         continue;
@@ -2528,9 +2316,7 @@ export default function reactivePlugin(
 
       if (attribute.value === null) {
         statements.push(
-          t.expressionStatement(
-            createStaticAttribute(elementId, name, t.booleanLiteral(true)),
-          ),
+          t.expressionStatement(createStaticAttribute(elementId, name, t.booleanLiteral(true))),
         );
       }
     }
@@ -2571,10 +2357,7 @@ export default function reactivePlugin(
    *     ? _ref(el1)
    *     : void 0;
    */
-  function createRef(
-    elementId: t.Identifier,
-    expression: t.Expression,
-  ): t.Statement[] {
+  function createRef(elementId: t.Identifier, expression: t.Expression): t.Statement[] {
     // -------------------------------------------------------------------------
     // Identifier ref
     // -------------------------------------------------------------------------
@@ -2582,15 +2365,9 @@ export default function reactivePlugin(
     if (t.isIdentifier(expression)) {
       const refIdentifier = t.cloneNode(expression);
 
-      const callbackCall = t.callExpression(t.cloneNode(expression), [
-        t.cloneNode(elementId),
-      ]);
+      const callbackCall = t.callExpression(t.cloneNode(expression), [t.cloneNode(elementId)]);
 
-      const assignment = t.assignmentExpression(
-        "=",
-        refIdentifier,
-        t.cloneNode(elementId),
-      );
+      const assignment = t.assignmentExpression("=", refIdentifier, t.cloneNode(elementId));
 
       return [
         t.expressionStatement(
@@ -2611,15 +2388,8 @@ export default function reactivePlugin(
     // Inline callback
     // -------------------------------------------------------------------------
 
-    if (
-      t.isArrowFunctionExpression(expression) ||
-      t.isFunctionExpression(expression)
-    ) {
-      return [
-        t.expressionStatement(
-          t.callExpression(expression, [t.cloneNode(elementId)]),
-        ),
-      ];
+    if (t.isArrowFunctionExpression(expression) || t.isFunctionExpression(expression)) {
+      return [t.expressionStatement(t.callExpression(expression, [t.cloneNode(elementId)]))];
     }
 
     // -------------------------------------------------------------------------
@@ -2635,9 +2405,7 @@ export default function reactivePlugin(
     const refIdentifier = programPath.scope.generateUidIdentifier("ref");
 
     return [
-      t.variableDeclaration("const", [
-        t.variableDeclarator(refIdentifier, expression),
-      ]),
+      t.variableDeclaration("const", [t.variableDeclarator(refIdentifier, expression)]),
 
       t.expressionStatement(
         t.conditionalExpression(
@@ -2647,9 +2415,7 @@ export default function reactivePlugin(
             t.stringLiteral("function"),
           ),
 
-          t.callExpression(t.cloneNode(refIdentifier), [
-            t.cloneNode(elementId),
-          ]),
+          t.callExpression(t.cloneNode(refIdentifier), [t.cloneNode(elementId)]),
 
           t.unaryExpression("void", t.numericLiteral(0)),
         ),
@@ -2688,11 +2454,7 @@ export default function reactivePlugin(
     name: string,
     value: t.Expression,
   ): t.CallExpression {
-    return t.callExpression(getRuntimeHelper("$attr"), [
-      elementId,
-      t.stringLiteral(name),
-      value,
-    ]);
+    return t.callExpression(getRuntimeHelper("$attr"), [elementId, t.stringLiteral(name), value]);
   }
 
   function createEvent(
@@ -2708,21 +2470,14 @@ export default function reactivePlugin(
   }
 
   function isEventAttribute(name: string): boolean {
-    return (
-      name.length > 2 &&
-      name.startsWith("on") &&
-      name[2] === name[2].toUpperCase()
-    );
+    return name.length > 2 && name.startsWith("on") && name[2] === name[2].toUpperCase();
   }
 
   // ===========================================================================
   // Runtime insertion
   // ===========================================================================
 
-  function createInsert(
-    elementId: t.Identifier,
-    expression: t.Expression,
-  ): t.CallExpression {
+  function createInsert(elementId: t.Identifier, expression: t.Expression): t.CallExpression {
     let child: t.Expression;
 
     if (isStaticInsertValue(expression) || isForExpression(expression)) {
@@ -2764,19 +2519,14 @@ export default function reactivePlugin(
   }
 
   function createIIFE(statements: t.Statement[]): t.CallExpression {
-    return t.callExpression(
-      t.arrowFunctionExpression([], t.blockStatement(statements)),
-      [],
-    );
+    return t.callExpression(t.arrowFunctionExpression([], t.blockStatement(statements)), []);
   }
 
   // ===========================================================================
   // JSX helpers
   // ===========================================================================
 
-  function getJSXIdentifierName(
-    name: t.JSXElement["openingElement"]["name"],
-  ): string {
+  function getJSXIdentifierName(name: t.JSXElement["openingElement"]["name"]): string {
     if (t.isJSXIdentifier(name)) {
       return name.name;
     }

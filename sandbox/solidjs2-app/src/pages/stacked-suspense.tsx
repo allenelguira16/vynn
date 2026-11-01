@@ -1,10 +1,4 @@
-import {
-  createMemo,
-  createSignal,
-  Loading,
-  onCleanup,
-  onSettled,
-} from "solid-js";
+import { Loading, createMemo, createSignal, onCleanup, onSettled } from "solid-js";
 
 import { Template } from "../components/template";
 import { sleep } from "../utils";
@@ -24,9 +18,7 @@ export default function StackedSuspense() {
 
   // The async memo provides the initial value.
   // Once the input changes, the override becomes the displayed value.
-  const [msg2Override, setMsg2Override] = createSignal<string | undefined>(
-    undefined,
-  );
+  const [msg2Override, setMsg2Override] = createSignal<string | undefined>(undefined);
 
   const msg2Value = createMemo(() => msg2Override() ?? msg2());
 

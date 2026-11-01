@@ -102,11 +102,7 @@ export function createVynnSsrCssPlugin(): VynnSsrCssCollector {
         for (const match of html.matchAll(scriptRE)) {
           const src = match[2];
 
-          if (
-            !src ||
-            /^(?:https?:)?\/\//i.test(src) ||
-            /^(?:data:|blob:)/i.test(src)
-          ) {
+          if (!src || /^(?:https?:)?\/\//i.test(src) || /^(?:data:|blob:)/i.test(src)) {
             continue;
           }
 
@@ -179,8 +175,7 @@ async function collectCssLinks(
   server: ViteDevServer,
   entryUrls: Set<string>,
 ): Promise<VynnSsrCssLink[]> {
-  const environment = server.environments
-    .client as unknown as ClientEnvironment;
+  const environment = server.environments.client as unknown as ClientEnvironment;
 
   const visited = new Set<string>();
   const cssUrls = new Map<string, string>();
@@ -200,9 +195,7 @@ async function collectCssLinks(
   }
 
   function isCssModule(module: ModuleNode): boolean {
-    const id = (module.id ?? module.file ?? module.url)
-      .split("?", 1)[0]
-      .replace(/\\/g, "/");
+    const id = (module.id ?? module.file ?? module.url).split("?", 1)[0].replace(/\\/g, "/");
 
     const query = new URLSearchParams(module.url.split("?", 2)[1] ?? "");
 
@@ -215,9 +208,7 @@ async function collectCssLinks(
   }
 
   function getModulePath(module: ModuleNode): string {
-    return (module.file ?? module.id ?? module.url)
-      .split(/[?#]/, 1)[0]
-      .replace(/\\/g, "/");
+    return (module.file ?? module.id ?? module.url).split(/[?#]/, 1)[0].replace(/\\/g, "/");
   }
 
   function isScriptModule(module: ModuleNode): boolean {
@@ -230,10 +221,7 @@ async function collectCssLinks(
     return /^(?:server|entry-server)\.[cm]?[jt]sx?$/i.test(filename);
   }
 
-  async function visitModule(
-    initial: ModuleNode,
-    parentIsCss = false,
-  ): Promise<void> {
+  async function visitModule(initial: ModuleNode, parentIsCss = false): Promise<void> {
     if (isGlobModule(initial) || isOptimizedDependency(initial)) {
       return;
     }
@@ -260,16 +248,12 @@ async function collectCssLinks(
     try {
       await environment.transformRequest(module.url);
 
-      module =
-        (await environment.moduleGraph.getModuleByUrl(module.url)) ?? module;
+      module = (await environment.moduleGraph.getModuleByUrl(module.url)) ?? module;
     } catch (error) {
       const code = (error as { code?: string })?.code;
 
       if (code !== "ERR_OUTDATED_OPTIMIZED_DEP") {
-        console.warn(
-          `[vynn:ssr-css] Could not process module: ${module.url}`,
-          error,
-        );
+        console.warn(`[vynn:ssr-css] Could not process module: ${module.url}`, error);
       }
     }
 
@@ -277,9 +261,7 @@ async function collectCssLinks(
 
     if (cssModule) {
       const url = module.url.split("?", 1)[0];
-      const id = (module.id ?? module.file ?? module.url)
-        .split("?", 1)[0]
-        .replace(/\\/g, "/");
+      const id = (module.id ?? module.file ?? module.url).split("?", 1)[0].replace(/\\/g, "/");
       cssUrls.set(url, id);
     }
 
@@ -308,11 +290,7 @@ async function collectCssLinks(
   async function visitEntry(url: string): Promise<void> {
     const path = url.split(/[?#]/, 1)[0];
 
-    if (
-      !/\.(?:[cm]?[jt]sx?|css|pcss|postcss|scss|sass|less|styl|stylus)$/i.test(
-        path,
-      )
-    ) {
+    if (!/\.(?:[cm]?[jt]sx?|css|pcss|postcss|scss|sass|less|styl|stylus)$/i.test(path)) {
       return;
     }
 
@@ -347,8 +325,7 @@ function normalizeEntryUrl(src: string, base: string): string {
 
   let pathname = url.pathname;
 
-  const basePath =
-    base.startsWith("/") && base !== "/" ? base.replace(/\/+$/, "") : "";
+  const basePath = base.startsWith("/") && base !== "/" ? base.replace(/\/+$/, "") : "";
 
   if (basePath && pathname.startsWith(`${basePath}/`)) {
     pathname = pathname.slice(basePath.length);
@@ -358,8 +335,7 @@ function normalizeEntryUrl(src: string, base: string): string {
 }
 
 function stripBase(pathname: string, base: string): string {
-  const basePath =
-    base.startsWith("/") && base !== "/" ? base.replace(/\/+$/, "") : "";
+  const basePath = base.startsWith("/") && base !== "/" ? base.replace(/\/+$/, "") : "";
 
   if (basePath && pathname.startsWith(`${basePath}/`)) {
     return pathname.slice(basePath.length);

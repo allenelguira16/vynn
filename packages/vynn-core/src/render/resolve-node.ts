@@ -1,22 +1,12 @@
-import { JSX } from "../jsx-runtime";
-import { getOwner, runWithOwner } from "../life-cycle/owner";
-
-import { NotReadyError } from "../reactivity/not-ready-error";
 import { claimHydrationText } from "../client/hydration";
 import { isServer } from "../context/is-server-context";
-import { isHeadElement, isCreatingHeadElement } from "./$head";
-import {
-  getCurrentDOMNamespace,
-  getElementNamespace,
-  withDOMNamespace,
-} from "./namespace";
+import { JSX } from "../jsx-runtime";
+import { getOwner, runWithOwner } from "../life-cycle/owner";
+import { NotReadyError } from "../reactivity/not-ready-error";
+import { isCreatingHeadElement, isHeadElement } from "./$head";
+import { getCurrentDOMNamespace, getElementNamespace, withDOMNamespace } from "./namespace";
 
-export type SSR_NODE =
-  | SSR_ELEMENT
-  | SSR_TEXT
-  | SSR_ASYNC
-  | SSR_DEFERRED
-  | SSR_COMMENT;
+export type SSR_NODE = SSR_ELEMENT | SSR_TEXT | SSR_ASYNC | SSR_DEFERRED | SSR_COMMENT;
 
 export type SSR_ELEMENT = {
   type: string;
@@ -125,14 +115,8 @@ export function createSSRAsync(
   return {
     type: "#async",
     parent: null,
-    fallback: () =>
-      runWithOwner(owner, () =>
-        withDOMNamespace(namespace, fallback),
-      ),
-    children: () =>
-      runWithOwner(owner, () =>
-        withDOMNamespace(namespace, children),
-      ),
+    fallback: () => runWithOwner(owner, () => withDOMNamespace(namespace, fallback)),
+    children: () => runWithOwner(owner, () => withDOMNamespace(namespace, children)),
     promises,
   };
 }
@@ -171,10 +155,7 @@ export function resolveSSRChild(child: () => JSX.Element): SSR_NODE[] {
     if (!(error instanceof NotReadyError)) throw error;
 
     return [
-      createSSRDeferred(
-        () => runWithOwner(owner, () => resolveSSRChild(child)),
-        [error.promise],
-      ),
+      createSSRDeferred(() => runWithOwner(owner, () => resolveSSRChild(child)), [error.promise]),
     ];
   }
 }
@@ -183,10 +164,7 @@ export function resolveSSRChild(child: () => JSX.Element): SSR_NODE[] {
  * Resolves JSX into DOM nodes on the client or SSR nodes on the server.
  * The Node[] return type is retained for compatibility with existing callers.
  */
-export function resolveNode(
-  child: () => JSX.Element,
-  claimText = true,
-): Node[] {
+export function resolveNode(child: () => JSX.Element, claimText = true): Node[] {
   if (isServer()) {
     return resolveElementString(child()) as unknown as Node[];
   }
@@ -194,10 +172,7 @@ export function resolveNode(
   return resolveElement(child(), claimText);
 }
 
-export function resolveElement(
-  element: JSX.Element,
-  claimText = true,
-): Node[] {
+export function resolveElement(element: JSX.Element, claimText = true): Node[] {
   if (isHeadElement(element)) return [];
 
   if (element === null || element === undefined || element === false) {

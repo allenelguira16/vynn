@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
 
+import { vynnSsrPreloadPlugin } from "../../vite-plugin/src/plugins/ssr-preload.ts";
 import {
   getSsrModuleIds,
   initializeSsrModuleContext,
   registerSsrModule,
 } from "../src/context/ssr-module-context";
+import { createOwner, runWithOwner } from "../src/life-cycle/owner";
 import { renderSsrPreloadLinks } from "../src/server/preload.render-preload-links";
 import { runWithSsrContext } from "../src/server/ssr-request-context";
-import { createOwner, runWithOwner } from "../src/life-cycle/owner";
-import { vynnSsrPreloadPlugin } from "../../vite-plugin/src/plugins/ssr-preload.ts";
 
 describe("SSR lazy module tracking", () => {
   it("isolates module IDs between SSR request contexts", async () => {
@@ -49,20 +49,12 @@ describe("SSR lazy module tracking", () => {
 
 describe("renderSsrPreloadLinks", () => {
   const manifest = {
-    "src/pages/a.tsx": [
-      "assets/a-C5.js",
-      "assets/shared-H2.js",
-      "assets/a-A1.css",
-    ],
+    "src/pages/a.tsx": ["assets/a-C5.js", "assets/shared-H2.js", "assets/a-A1.css"],
     "src/pages/b.tsx": ["assets/b-D4.js", "assets/b-B2.css"],
   };
 
   it("emits assets for reached modules only", () => {
-    const links = renderSsrPreloadLinks(
-      new Set(["src/pages/a.tsx"]),
-      manifest,
-      { base: "/" },
-    );
+    const links = renderSsrPreloadLinks(new Set(["src/pages/a.tsx"]), manifest, { base: "/" });
 
     expect(links).toContain('href="/assets/a-C5.js"');
     expect(links).toContain('href="/assets/shared-H2.js"');
@@ -73,11 +65,10 @@ describe("renderSsrPreloadLinks", () => {
 
   it("deduplicates assets across modules and repeated stream chunks", () => {
     const excluded = new Set<string>();
-    const first = renderSsrPreloadLinks(
-      new Set(["src/pages/a.tsx"]),
-      manifest,
-      { base: "/app/", exclude: excluded },
-    );
+    const first = renderSsrPreloadLinks(new Set(["src/pages/a.tsx"]), manifest, {
+      base: "/app/",
+      exclude: excluded,
+    });
     const second = renderSsrPreloadLinks(
       new Set(["src/pages/a.tsx", "src/pages/b.tsx"]),
       manifest,
@@ -92,15 +83,12 @@ describe("renderSsrPreloadLinks", () => {
   });
 
   it("uses Vite module URLs in development without a manifest", () => {
-    const links = renderSsrPreloadLinks(
-      new Set(["src/pages/a.tsx"]),
-      null,
-      { base: "/base/", dev: true },
-    );
+    const links = renderSsrPreloadLinks(new Set(["src/pages/a.tsx"]), null, {
+      base: "/base/",
+      dev: true,
+    });
 
-    expect(links).toBe(
-      '<link rel="modulepreload" crossorigin href="/base/src/pages/a.tsx">',
-    );
+    expect(links).toBe('<link rel="modulepreload" crossorigin href="/base/src/pages/a.tsx">');
   });
 
   it("escapes paths when emitting link attributes", () => {

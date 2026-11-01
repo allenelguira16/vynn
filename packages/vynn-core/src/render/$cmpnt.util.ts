@@ -1,4 +1,4 @@
-import { disposeOwner, Owner } from "../life-cycle/owner";
+import { Owner, disposeOwner } from "../life-cycle/owner";
 
 /**
  * Associates a component's DOM marker with its owner.

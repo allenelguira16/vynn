@@ -1,8 +1,8 @@
 import "./main.css";
-
 import { createRouter } from "@solidjs/router";
 import { Portal } from "@solidjs/web";
-import { lazy, Loading } from "solid-js";
+import { Loading, lazy } from "solid-js";
+
 import { ButtonPageList } from "./components/button-page-list";
 import { name } from "./utils";
 

@@ -1,8 +1,10 @@
-import { readdir, readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { relative, resolve } from "node:path";
-import { SERVER_ENTRY_ID, type ClientAssets } from "./shared.ts";
-import { joinAssetBase } from "./http.ts";
+
 import type { ViteSsrManifest } from "../ssr-preload.ts";
+
+import { joinAssetBase } from "./http.ts";
+import { type ClientAssets, SERVER_ENTRY_ID } from "./shared.ts";
 
 type ManifestEntry = {
   file: string;
@@ -43,10 +45,7 @@ export function createAuthoredServerEntry(serverSpecifier: string): string {
   ].join("\n");
 }
 
-export function createServerEntry(
-  appSpecifier: string,
-  styleSpecifiers: string[],
-): string {
+export function createServerEntry(appSpecifier: string, styleSpecifiers: string[]): string {
   // Read optional exports dynamically. A direct `appModule.App` access makes
   // Rollup/Rolldown warn when the module intentionally uses a default export.
   const selected = (moduleName: string) =>
@@ -65,9 +64,7 @@ export function createServerEntry(
   ].join("\n");
 }
 
-export async function readSsrManifest(
-  outDir: string,
-): Promise<ViteSsrManifest> {
+export async function readSsrManifest(outDir: string): Promise<ViteSsrManifest> {
   const manifestPath = resolve(outDir, ".vite/ssr-manifest.json");
   try {
     return JSON.parse(await readFile(manifestPath, "utf8")) as ViteSsrManifest;
@@ -83,10 +80,7 @@ export async function readClientAssets(outDir: string): Promise<ClientAssets> {
   const manifestPath = resolve(outDir, ".vite/manifest.json");
   let manifest: Record<string, ManifestEntry>;
   try {
-    manifest = JSON.parse(await readFile(manifestPath, "utf8")) as Record<
-      string,
-      ManifestEntry
-    >;
+    manifest = JSON.parse(await readFile(manifestPath, "utf8")) as Record<string, ManifestEntry>;
   } catch (error) {
     throw new Error(
       `[Vynn App] Could not read the client manifest at ${manifestPath}. The client environment must build before the SSR environment. Original error: ${error instanceof Error ? error.message : String(error)}`,
@@ -97,8 +91,7 @@ export async function readClientAssets(outDir: string): Promise<ClientAssets> {
   const entry =
     entries.find(([, item]) => item.isEntry && item.name === "client") ??
     entries.find(
-      ([key, item]) =>
-        item.isEntry && /client-entry|virtual:vynn\/client-entry/.test(key),
+      ([key, item]) => item.isEntry && /client-entry|virtual:vynn\/client-entry/.test(key),
     ) ??
     entries.find(([, item]) => item.isEntry);
 
@@ -126,10 +119,7 @@ export async function readClientAssets(outDir: string): Promise<ClientAssets> {
   };
 }
 
-async function findCssAssets(
-  outDir: string,
-  directory = outDir,
-): Promise<string[]> {
+async function findCssAssets(outDir: string, directory = outDir): Promise<string[]> {
   const entries = await readdir(directory, { withFileTypes: true });
   const stylesheets: string[] = [];
 
@@ -155,16 +145,7 @@ export function createSsrHandlerCode(options: {
   serverFunctions: boolean;
   ssrManifest: ViteSsrManifest | null;
 }): string {
-  const {
-    clientEntryUrl,
-    css,
-    base,
-    title,
-    mountId,
-    dev,
-    serverFunctions,
-    ssrManifest,
-  } = options;
+  const { clientEntryUrl, css, base, title, mountId, dev, serverFunctions, ssrManifest } = options;
 
   return [
     `import {`,
@@ -176,9 +157,7 @@ export function createSsrHandlerCode(options: {
     `} from "vynn/server";`,
     `import { render } from ${JSON.stringify(SERVER_ENTRY_ID)};`,
     ...(serverFunctions
-      ? [
-          `import { handleServerFunctionRequest } from "virtual:vynn/server-functions";`,
-        ]
+      ? [`import { handleServerFunctionRequest } from "virtual:vynn/server-functions";`]
       : []),
     `const CLIENT_ENTRY_URL = ${JSON.stringify(clientEntryUrl)};`,
     `const CSS_ASSETS = ${JSON.stringify(css)};`,
@@ -273,9 +252,7 @@ export function createClientShell(options: {
     : (options.css ?? [])
         .map(
           (file) =>
-            `<link rel="stylesheet" href="${escapeHtml(
-              joinAssetBase(options.base, `/${file}`),
-            )}">`,
+            `<link rel="stylesheet" href="${escapeHtml(joinAssetBase(options.base, `/${file}`))}">`,
         )
         .join("");
   const viteClient = options.dev

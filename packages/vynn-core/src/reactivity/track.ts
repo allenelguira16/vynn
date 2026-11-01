@@ -1,4 +1,4 @@
-import { activeEffect, scheduleEffect, type EffectFn } from "./$effect";
+import { type EffectFn, activeEffect, scheduleEffect } from "./$effect";
 
 /**
  * Maps a reactive object to its property dependencies.
@@ -7,10 +7,7 @@ import { activeEffect, scheduleEffect, type EffectFn } from "./$effect";
  *   └── property
  *         └── effects
  */
-const targetToPropertyEffectsMap: WeakMap<
-  object,
-  Map<PropertyKey, Set<EffectFn>>
-> = new WeakMap();
+const targetToPropertyEffectsMap: WeakMap<object, Map<PropertyKey, Set<EffectFn>>> = new WeakMap();
 
 /**
  * Tracks a reactive property access for the currently active effect.

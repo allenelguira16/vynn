@@ -22,10 +22,7 @@ function createHeadContext(): HeadContext {
 
   if (typeof document !== "undefined") {
     for (const tag of ["title", "meta", "link"] as const) {
-      candidates.set(
-        tag,
-        Array.from(document.head.querySelectorAll<HTMLElement>(tag)),
-      );
+      candidates.set(tag, Array.from(document.head.querySelectorAll<HTMLElement>(tag)));
     }
   }
 
@@ -43,9 +40,7 @@ export function getHeadContext(): HeadContext {
   const context = getContext<HeadContext>(HEAD_CONTEXT);
 
   if (!context) {
-    throw new Error(
-      "[vynn]: getHeadContext must be initialized with initializeHeadContext",
-    );
+    throw new Error("[vynn]: getHeadContext must be initialized with initializeHeadContext");
   }
 
   return context;
@@ -65,10 +60,7 @@ export function notifyHeadContext(context: HeadContext): void {
 }
 
 /** Subscribes to head registry changes without depending on a rendering mode. */
-export function subscribeHeadContext(
-  context: HeadContext,
-  listener: () => void,
-): () => void {
+export function subscribeHeadContext(context: HeadContext, listener: () => void): () => void {
   context.listeners.add(listener);
   return () => context.listeners.delete(listener);
 }

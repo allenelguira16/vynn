@@ -1,6 +1,7 @@
+import type { Plugin } from "vite";
+
 import { mkdir, writeFile } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
-import type { Plugin } from "vite";
 
 const NODE_ENTRY = [
   'import { createListener as createNodeListener } from "vynn/server/node";',
@@ -53,13 +54,10 @@ export function vynnNodeAdapterPlugin(): Plugin {
 
       if (environment?.config?.consumer !== "server") return;
 
-      const configuredOutDir =
-        outputOptions.dir ?? environment.config.build?.outDir;
+      const configuredOutDir = outputOptions.dir ?? environment.config.build?.outDir;
 
       if (!configuredOutDir) {
-        this.error(
-          "[Vynn] Could not determine the SSR output directory for the Node adapter.",
-        );
+        this.error("[Vynn] Could not determine the SSR output directory for the Node adapter.");
       }
 
       const outDir = isAbsolute(configuredOutDir)

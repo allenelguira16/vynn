@@ -1,28 +1,13 @@
+import type { Plugin, PreviewServer, ResolvedConfig, UserConfig, ViteDevServer } from "vite";
+
 import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import type {
-  Plugin,
-  PreviewServer,
-  ResolvedConfig,
-  UserConfig,
-  ViteDevServer,
-} from "vite";
-import type { VynnSsrCssCollector, VynnSsrCssLink } from "./ssr-css.ts";
+
 import type { VynnServerFunctionsOptions } from "./server-functions.ts";
-import {
-  CLIENT_ENTRY_ID,
-  SERVER_ENTRY_ID,
-  SSR_HANDLER_ID,
-  RESOLVED_CLIENT_ENTRY_ID,
-  RESOLVED_SERVER_ENTRY_ID,
-  RESOLVED_SSR_HANDLER_ID,
-  HTML_OUTLET_ID,
-  type ClientAssets,
-  type ResolvedEntries,
-} from "./app/shared.ts";
-import { resolveEntries, toAbsoluteSpecifier } from "./app/entries.ts";
+import type { VynnSsrCssCollector, VynnSsrCssLink } from "./ssr-css.ts";
+
 import {
   createAuthoredServerEntry,
   createClientEntry,
@@ -32,6 +17,7 @@ import {
   readClientAssets,
   readSsrManifest,
 } from "./app/documents.ts";
+import { resolveEntries, toAbsoluteSpecifier } from "./app/entries.ts";
 import {
   addBaseToRequestUrl,
   createWebRequest,
@@ -42,6 +28,17 @@ import {
   toDevUrl,
   writeResponse,
 } from "./app/http.ts";
+import {
+  CLIENT_ENTRY_ID,
+  type ClientAssets,
+  HTML_OUTLET_ID,
+  RESOLVED_CLIENT_ENTRY_ID,
+  RESOLVED_SERVER_ENTRY_ID,
+  RESOLVED_SSR_HANDLER_ID,
+  type ResolvedEntries,
+  SERVER_ENTRY_ID,
+  SSR_HANDLER_ID,
+} from "./app/shared.ts";
 
 export { CLIENT_ENTRY_ID, SERVER_ENTRY_ID, SSR_HANDLER_ID };
 
@@ -67,11 +64,7 @@ type PluginOptions = {
  *
  * Neither mode requires a project-owned index.html or HTTP server file.
  */
-export function vynnAppPlugin({
-  ssr,
-  ssrCss,
-  serverFunctions,
-}: PluginOptions): Plugin {
+export function vynnAppPlugin({ ssr, ssrCss, serverFunctions }: PluginOptions): Plugin {
   const mount = `#${HTML_OUTLET_ID}`;
   const title = "Vynn App";
 
@@ -115,10 +108,7 @@ export function vynnAppPlugin({
       }
 
       const optimizeEntries = [entries.clientFile, entries.appSpecifier]
-        .filter(
-          (entry): entry is string =>
-            !!entry && isAbsolute(entry) && existsSync(entry),
-        )
+        .filter((entry): entry is string => !!entry && isAbsolute(entry) && existsSync(entry))
         .map((entry) => relative(projectRoot, entry).replace(/\\/g, "/"));
 
       if (ssr) {
@@ -201,13 +191,8 @@ export function vynnAppPlugin({
       // important for owner/context identity when Vynn is workspace-linked.
       const current = environmentConfig.resolve.noExternal;
       if (current !== true) {
-        const noExternal =
-          current == null ? [] : Array.isArray(current) ? current : [current];
-        environmentConfig.resolve.noExternal = [
-          ...noExternal,
-          "vynn",
-          "vynn-router",
-        ];
+        const noExternal = current == null ? [] : Array.isArray(current) ? current : [current];
+        environmentConfig.resolve.noExternal = [...noExternal, "vynn", "vynn-router"];
       }
     },
 
@@ -215,14 +200,9 @@ export function vynnAppPlugin({
       resolvedConfig = config;
       base = config.base || "/";
       isBuild = config.command === "build";
-      const rawServerFunctionEndpoint =
-        serverFunctions?.endpoint ?? "/__vynn/server-function";
+      const rawServerFunctionEndpoint = serverFunctions?.endpoint ?? "/__vynn/server-function";
       const basePrefix =
-        base === "/" || base === "./"
-          ? ""
-          : base.startsWith("/")
-            ? base.replace(/\/+$/, "")
-            : "";
+        base === "/" || base === "./" ? "" : base.startsWith("/") ? base.replace(/\/+$/, "") : "";
       serverFunctionEndpoint = basePrefix
         ? `${basePrefix}${rawServerFunctionEndpoint}`
         : rawServerFunctionEndpoint;
@@ -251,35 +231,23 @@ export function vynnAppPlugin({
     async load(id) {
       if (id === RESOLVED_CLIENT_ENTRY_ID) {
         if (!entries.clientIsGenerated || !entries.appSpecifier) return null;
-        return createClientEntry(
-          entries.appSpecifier,
-          entries.styleSpecifiers,
-          mount,
-          ssr,
-        );
+        return createClientEntry(entries.appSpecifier, entries.styleSpecifiers, mount, ssr);
       }
 
       if (id === RESOLVED_SERVER_ENTRY_ID) {
         if (!ssr) return null;
         if (entries.serverIsGenerated && entries.appSpecifier) {
-          return createServerEntry(
-            entries.appSpecifier,
-            entries.styleSpecifiers,
-          );
+          return createServerEntry(entries.appSpecifier, entries.styleSpecifiers);
         }
         if (entries.serverFile) {
-          return createAuthoredServerEntry(
-            toAbsoluteSpecifier(entries.serverFile),
-          );
+          return createAuthoredServerEntry(toAbsoluteSpecifier(entries.serverFile));
         }
         return null;
       }
 
       if (id === RESOLVED_SSR_HANDLER_ID) {
         if (!ssr) {
-          this.error(
-            `${SSR_HANDLER_ID} is only available when vynn({ ssr: true }) is enabled.`,
-          );
+          this.error(`${SSR_HANDLER_ID} is only available when vynn({ ssr: true }) is enabled.`);
         }
 
         const consumer = (
@@ -306,8 +274,7 @@ export function vynnAppPlugin({
           title,
           mountId,
           dev: !isBuild,
-          serverFunctions:
-            serverFunctions !== undefined && serverFunctions.enabled !== false,
+          serverFunctions: serverFunctions !== undefined && serverFunctions.enabled !== false,
           ssrManifest,
         });
       }
@@ -371,9 +338,7 @@ export function vynnAppPlugin({
           ) {
             ssrCss.registerEntryUrl(toDevUrl(root(), entries.appSpecifier));
           } else {
-            ssrCss.registerEntryUrl(
-              getClientEntryDevUrl(entries, root(), base),
-            );
+            ssrCss.registerEntryUrl(getClientEntryDevUrl(entries, root(), base));
           }
 
           for (const style of entries.styleSpecifiers) {
@@ -420,13 +385,8 @@ export function vynnAppPlugin({
               );
             }
 
-            const handler = (await ssrEnvironment.runner.import(
-              SSR_HANDLER_ID,
-            )) as {
-              handleRequest: (
-                request: Request,
-                cssLinks?: VynnSsrCssLink[],
-              ) => Promise<Response>;
+            const handler = (await ssrEnvironment.runner.import(SSR_HANDLER_ID)) as {
+              handleRequest: (request: Request, cssLinks?: VynnSsrCssLink[]) => Promise<Response>;
             };
 
             const requestUrl = addBaseToRequestUrl(base, req.url ?? "/");
@@ -439,8 +399,7 @@ export function vynnAppPlugin({
               res.destroy(error instanceof Error ? error : undefined);
               return;
             }
-            const viteError =
-              error instanceof Error ? error : new Error(String(error));
+            const viteError = error instanceof Error ? error : new Error(String(error));
             server.ssrFixStacktrace(viteError);
             next(viteError);
           });
@@ -461,11 +420,9 @@ export function vynnAppPlugin({
           | undefined;
 
         server.middlewares.use((req, res, next) => {
-          const pathname = new URL(req.url ?? "/", "http://vynn.local")
-            .pathname;
+          const pathname = new URL(req.url ?? "/", "http://vynn.local").pathname;
           const isServerFunctionRequest =
-            serverFunctions !== undefined &&
-            pathname === serverFunctionEndpoint;
+            serverFunctions !== undefined && pathname === serverFunctionEndpoint;
           if (
             (!isHtmlNavigation(req) && !isServerFunctionRequest) ||
             isFrameworkRequest(req.url ?? "/")
@@ -482,9 +439,7 @@ export function vynnAppPlugin({
             );
             const handler = await handlerPromise;
             const requestUrl = addBaseToRequestUrl(base, req.url ?? "/");
-            const response = await handler.handleRequest(
-              createWebRequest(req, requestUrl),
-            );
+            const response = await handler.handleRequest(createWebRequest(req, requestUrl));
             await writeResponse(res, response);
           })().catch((error: unknown) => {
             if (res.headersSent) {
@@ -502,9 +457,7 @@ export function vynnAppPlugin({
       // bundle. Emit index.html after Vite has written the client manifest.
       if (ssr || this.environment?.config.consumer !== "client") return;
 
-      const outDir = outputOptions.dir
-        ? resolve(outputOptions.dir)
-        : clientOutDir;
+      const outDir = outputOptions.dir ? resolve(outputOptions.dir) : clientOutDir;
       const assets = await readClientAssets(outDir);
       const shell = createClientShell({
         base,

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+
 import {
   beginHydrationClaim,
   claimHydrationElement,
@@ -8,11 +9,7 @@ import {
   withHydration,
   withServerRenderedLazy,
 } from "../src/client/hydration";
-import {
-  createOwner,
-  disposeOwner,
-  runWithOwner,
-} from "../src/life-cycle/owner";
+import { createOwner, disposeOwner, runWithOwner } from "../src/life-cycle/owner";
 
 afterEach(() => {
   document.body.innerHTML = "";

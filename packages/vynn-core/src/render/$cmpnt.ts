@@ -1,16 +1,17 @@
 import type { JSX } from "../jsx-runtime";
+
+import { runAfterHydration } from "../client/hydration";
+import { isServer } from "../context/is-server-context";
 import { createOwner, runWithOwner } from "../life-cycle/owner";
 import { untrack } from "../reactivity/untrack";
 import {
-  rootNodes,
   addUnmountListener,
   isRootNode,
   markParked,
   parkedNodes,
+  rootNodes,
   unmarkParked,
 } from "./$cmpnt.util";
-import { runAfterHydration } from "../client/hydration";
-import { isServer } from "../context/is-server-context";
 
 /**
  * Creates a component function with its own reactive owner and lifecycle.
@@ -27,13 +28,9 @@ import { isServer } from "../context/is-server-context";
  */
 export function $cmpnt(Component: () => JSX.Element): () => JSX.Element;
 
-export function $cmpnt<P>(
-  Component: (props: P) => JSX.Element,
-): (props?: P) => JSX.Element;
+export function $cmpnt<P>(Component: (props: P) => JSX.Element): (props?: P) => JSX.Element;
 
-export function $cmpnt<P>(
-  Component: ((props?: P) => JSX.Element) | (() => JSX.Element),
-) {
+export function $cmpnt<P>(Component: ((props?: P) => JSX.Element) | (() => JSX.Element)) {
   return (props?: P): JSX.Element => {
     const owner = createOwner();
     // owner.Component = Component;
@@ -73,11 +70,4 @@ export function $cmpnt<P>(
   };
 }
 
-export {
-  rootNodes,
-  addUnmountListener,
-  isRootNode,
-  markParked,
-  parkedNodes,
-  unmarkParked,
-};
+export { rootNodes, addUnmountListener, isRootNode, markParked, parkedNodes, unmarkParked };

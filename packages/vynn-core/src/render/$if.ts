@@ -1,11 +1,12 @@
 import type { JSX } from "../jsx-runtime";
+
+import { isHydrating } from "../client/hydration";
 import { isServer } from "../context/is-server-context";
 import { $renderEffect } from "../reactivity/$effect";
-import { resolveNode, resolveSSRChild } from "./resolve-node";
-import { markParked, unmarkParked } from "./$cmpnt.util";
 import { untrack } from "../reactivity/untrack";
-import { isHydrating } from "../client/hydration";
+import { markParked, unmarkParked } from "./$cmpnt.util";
 import { getCurrentDOMNamespace, withDOMNamespace } from "./namespace";
+import { resolveNode, resolveSSRChild } from "./resolve-node";
 
 type IfBranch = {
   start: Comment;
@@ -21,8 +22,7 @@ export function $if(
   alternate?: () => JSX.Element,
 ): JSX.Element {
   const namespace = getCurrentDOMNamespace();
-  const renderInNamespace = <T>(callback: () => T): T =>
-    withDOMNamespace(namespace, callback);
+  const renderInNamespace = <T>(callback: () => T): T => withDOMNamespace(namespace, callback);
 
   if (isServer()) {
     return resolveSSRChild(() =>
@@ -192,12 +192,7 @@ export function $if(
 
   let activeKey = initialKey;
   // Don't detach claimed SSR nodes, but keep the original fragment behavior in CSR.
-  let activeBranch = createBranch(
-    initialKey,
-    initialValue,
-    true,
-    !isHydrating(),
-  );
+  let activeBranch = createBranch(initialKey, initialValue, true, !isHydrating());
 
   $renderEffect(() => {
     const nextValue = condition();
@@ -213,8 +208,7 @@ export function $if(
 
     // Resolve/create before modifying the active branch.
     // A thrown NotReadyError leaves the current branch untouched.
-    const nextBranch =
-      branches.get(nextKey) ?? createBranch(nextKey, nextValue);
+    const nextBranch = branches.get(nextKey) ?? createBranch(nextKey, nextValue);
 
     if (!nextKey && !alternate) {
       updateShortCircuitValue(nextBranch, nextValue);

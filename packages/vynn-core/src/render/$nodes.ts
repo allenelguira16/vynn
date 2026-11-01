@@ -1,9 +1,10 @@
-import type { JSX } from "../jsx-runtime";
-import { $renderEffect } from "../reactivity/$effect";
-import { resolveNode, resolveSSRChild } from "./resolve-node";
-import { isServer } from "../context/is-server-context";
 import type { ServerRenderedLazyRange } from "../client/hydration";
+import type { JSX } from "../jsx-runtime";
+
+import { isServer } from "../context/is-server-context";
+import { $renderEffect } from "../reactivity/$effect";
 import { getCurrentDOMNamespace, withDOMNamespace } from "./namespace";
+import { resolveNode, resolveSSRChild } from "./resolve-node";
 
 // Associates each region's start marker with its end marker.
 // This allows an outer region to clean up nodes inserted later by nested regions.

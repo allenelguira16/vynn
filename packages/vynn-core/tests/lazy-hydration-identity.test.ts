@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
+
 import { ASYNC_DATA_SSR_KEY } from "../src/const";
 import {
   getAsyncID,
@@ -8,16 +9,8 @@ import {
   initializeAsyncContext,
   initializeLazyAsyncScope,
 } from "../src/context/async-context";
-import {
-  getLazyID,
-  initializeLazyContext,
-  initializeLazyScope,
-} from "../src/context/lazy-context";
-import {
-  createOwner,
-  disposeOwner,
-  runWithOwner,
-} from "../src/life-cycle/owner";
+import { getLazyID, initializeLazyContext, initializeLazyScope } from "../src/context/lazy-context";
+import { createOwner, disposeOwner, runWithOwner } from "../src/life-cycle/owner";
 
 describe("lazy hydration identities", () => {
   it("keeps nested lazy IDs stable when sibling parents resolve out of order", () => {

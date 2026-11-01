@@ -1,15 +1,15 @@
-import { isServer } from "../context/is-server-context";
 import {
+  type HeadContext,
+  type HeadEntry,
+  type HeadTag,
   getHeadContext,
   getHeadIdentity,
   getHeadWinners,
   notifyHeadContext,
-  type HeadContext,
-  type HeadEntry,
-  type HeadTag,
 } from "../context/head-context";
+import { isServer } from "../context/is-server-context";
 import { getOwner } from "../life-cycle/owner";
-import { createSSRNode, type SSR_ELEMENT } from "./resolve-node";
+import { type SSR_ELEMENT, createSSRNode } from "./resolve-node";
 
 type HeadElement = HTMLElement | SSR_ELEMENT;
 
@@ -48,8 +48,7 @@ function takeHeadCandidate(
 
     // Prefer the SSR-managed node when the HTML shell also contains a
     // matching static tag. This preserves the exact node used by hydration.
-    const existing =
-      matches.find((candidate) => candidate.hasAttribute("key")) ?? matches[0];
+    const existing = matches.find((candidate) => candidate.hasAttribute("key")) ?? matches[0];
 
     if (existing) {
       for (const duplicate of matches) {
@@ -68,13 +67,9 @@ function takeHeadCandidate(
 
   // Dynamic meta/link attributes cannot be matched until attributes have
   // been applied, so only reuse an existing Vynn-managed node in that case.
-  const managedIndex = candidates.findIndex((candidate) =>
-    candidate.hasAttribute("key"),
-  );
+  const managedIndex = candidates.findIndex((candidate) => candidate.hasAttribute("key"));
 
-  return managedIndex === -1
-    ? undefined
-    : candidates.splice(managedIndex, 1)[0];
+  return managedIndex === -1 ? undefined : candidates.splice(managedIndex, 1)[0];
 }
 
 function syncClientHead(context: HeadContext): void {
@@ -103,10 +98,7 @@ function syncClientHead(context: HeadContext): void {
  * Creates a head element without consuming the application's normal
  * hydration element queue.
  */
-export function $headTmpl<T extends HeadTag>(
-  tag: T,
-  identity?: string,
-): HTMLElementTagNameMap[T] {
+export function $headTmpl<T extends HeadTag>(tag: T, identity?: string): HTMLElementTagNameMap[T] {
   const context = getHeadContext();
   context.buildingHeadElements++;
 
@@ -177,8 +169,7 @@ export function runWithHeadElementContext<T>(callback: () => T): T {
 
 /** Returns true when a value is a registered document-head element. */
 export function isHeadElement(value: unknown): boolean {
-  return (typeof value === "object" && value !== null) ||
-    typeof value === "function"
+  return (typeof value === "object" && value !== null) || typeof value === "function"
     ? headElements.has(value as object)
     : false;
 }

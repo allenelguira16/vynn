@@ -17,8 +17,7 @@ export const Dropdowns = () => {
       dropdownStore.numbers = [...dropdownStore.numbers].sort((a, b) => {
         return dropdownStore.sortDirection === "desc" ? a - b : b - a;
       });
-      dropdownStore.sortDirection =
-        dropdownStore.sortDirection === "asc" ? "desc" : "asc";
+      dropdownStore.sortDirection = dropdownStore.sortDirection === "asc" ? "desc" : "asc";
     },
     handleRandomize() {
       const result = [...dropdownStore.numbers];
@@ -38,10 +37,7 @@ export const Dropdowns = () => {
       if (!currentNumbers.length) {
         dropdownStore.numbers = [1];
       } else {
-        dropdownStore.numbers = [
-          ...currentNumbers,
-          currentNumbers[currentNumbers.length - 1] + 1,
-        ];
+        dropdownStore.numbers = [...currentNumbers, currentNumbers[currentNumbers.length - 1] + 1];
       }
     },
     removeDropdown() {
@@ -89,16 +85,12 @@ export const Dropdowns = () => {
         <div>
           <button
             class="btn"
-            onClick={() =>
-              (dropdownStore.showDropdown = !dropdownStore.showDropdown)
-            }
+            onClick={() => (dropdownStore.showDropdown = !dropdownStore.showDropdown)}
           >
             Unmount Dropdown List
           </button>
         </div>
-        {dropdownStore.showDropdown && (
-          <DropdownList dropdowns={dropdownStore} />
-        )}
+        {dropdownStore.showDropdown && <DropdownList dropdowns={dropdownStore} />}
         <div>Hi</div>
       </div>
     </Template>

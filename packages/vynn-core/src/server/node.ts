@@ -16,9 +16,7 @@ export type ToWebRequestOptions = {
   origin?: string | ((request: IncomingMessage) => string);
 };
 
-export type FetchRequestHandler = (
-  request: Request,
-) => Response | Promise<Response>;
+export type FetchRequestHandler = (request: Request) => Response | Promise<Response>;
 
 export type NodeNextFunction = (error?: unknown) => void;
 
@@ -30,11 +28,7 @@ export type NodeListener = (
 
 export type NodeListenerOptions = ToWebRequestOptions & {
   /** Called when the Fetch handler or response stream fails. */
-  onError?: (
-    error: unknown,
-    request: IncomingMessage,
-    response: ServerResponse,
-  ) => void;
+  onError?: (error: unknown, request: IncomingMessage, response: ServerResponse) => void;
 };
 
 const REQUEST_HOP_BY_HOP_HEADERS = new Set([
@@ -76,24 +70,13 @@ function resolveRequestOption(
  * This adapter works with Node HTTP servers and frameworks built on them,
  * including Express. Fetch-based runtimes can pass their Request directly.
  */
-export function toWebRequest(
-  request: IncomingMessage,
-  options: ToWebRequestOptions = {},
-): Request {
-  const encrypted = Boolean(
-    (request.socket as { encrypted?: boolean }).encrypted,
-  );
+export function toWebRequest(request: IncomingMessage, options: ToWebRequestOptions = {}): Request {
+  const encrypted = Boolean((request.socket as { encrypted?: boolean }).encrypted);
   const defaultOrigin =
-    (encrypted ? "https" : "http") +
-    "://" +
-    (request.headers.host ?? "localhost");
-  const origin = new URL(
-    resolveRequestOption(options.origin, request, defaultOrigin),
-  ).origin;
+    (encrypted ? "https" : "http") + "://" + (request.headers.host ?? "localhost");
+  const origin = new URL(resolveRequestOption(options.origin, request, defaultOrigin)).origin;
 
-  const expressOriginalUrl = (
-    request as IncomingMessage & { originalUrl?: unknown }
-  ).originalUrl;
+  const expressOriginalUrl = (request as IncomingMessage & { originalUrl?: unknown }).originalUrl;
   const defaultUrl =
     typeof expressOriginalUrl === "string" && expressOriginalUrl.length > 0
       ? expressOriginalUrl
@@ -102,9 +85,7 @@ export function toWebRequest(
 
   const headers = new Headers();
   const connection = request.headers.connection;
-  const connectionHeaders = Array.isArray(connection)
-    ? connection.join(",")
-    : (connection ?? "");
+  const connectionHeaders = Array.isArray(connection) ? connection.join(",") : (connection ?? "");
 
   const hopByHopHeaders = new Set(REQUEST_HOP_BY_HOP_HEADERS);
   for (const name of connectionHeaders.split(",")) {
@@ -136,9 +117,7 @@ export function toWebRequest(
 
 function waitForDrain(response: ServerResponse): Promise<void> {
   if (response.destroyed) {
-    return Promise.reject(
-      new Error("The client disconnected during the response stream."),
-    );
+    return Promise.reject(new Error("The client disconnected during the response stream."));
   }
 
   return new Promise<void>((resolve, reject) => {
@@ -190,9 +169,8 @@ export async function writeResponse(
     if (normalized) hopByHopHeaders.add(normalized);
   }
 
-  const getSetCookie = (
-    response.headers as Headers & { getSetCookie?: () => string[] }
-  ).getSetCookie;
+  const getSetCookie = (response.headers as Headers & { getSetCookie?: () => string[] })
+    .getSetCookie;
   const cookies = getSetCookie?.call(response.headers) ?? [];
 
   if (cookies.length > 0) {

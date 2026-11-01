@@ -1,14 +1,15 @@
 import type { JSX } from "../types/jsx";
-import { $cmpnt } from "../render/$cmpnt";
-import { createSSRAsync, resolveNode, SSR_NODE } from "../render/resolve-node";
+
 import { enterAsyncBoundary } from "../context/async-context";
-import { $state } from "../reactivity/$state";
-import { memo } from "../utils/memo";
-import { getOwner, runWithOwner } from "../life-cycle/owner";
 import { isServer } from "../context/is-server-context";
-import { $if } from "../render/$if";
-import { untrack } from "../reactivity/untrack";
 import { isPromiseFromLazy } from "../context/lazy-context";
+import { getOwner, runWithOwner } from "../life-cycle/owner";
+import { $state } from "../reactivity/$state";
+import { untrack } from "../reactivity/untrack";
+import { $cmpnt } from "../render/$cmpnt";
+import { $if } from "../render/$if";
+import { SSR_NODE, createSSRAsync, resolveNode } from "../render/resolve-node";
+import { memo } from "../utils/memo";
 
 /**
  * Displays a fallback while the children are initially loading.

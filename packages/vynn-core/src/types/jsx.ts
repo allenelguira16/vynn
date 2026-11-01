@@ -1,14 +1,7 @@
 import { JSXIntrinsicElements } from "./intrinsic-elements";
 
 export namespace JSX {
-  export type Element =
-    | false
-    | undefined
-    | null
-    | string
-    | number
-    | Node
-    | Element[];
+  export type Element = false | undefined | null | string | number | Node | Element[];
 
   export type IntrinsicElements = JSXIntrinsicElements;
 

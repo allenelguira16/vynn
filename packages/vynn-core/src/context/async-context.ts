@@ -83,16 +83,14 @@ export function getAsyncValues(): Record<string, unknown> | undefined {
  * missing entry. The key is consumed once so later async instances cannot
  * accidentally reuse it.
  */
-export function getAsyncValue<T = unknown>(
-  asyncID: string,
-): AsyncHydrationValue<T> {
+export function getAsyncValue<T = unknown>(asyncID: string): AsyncHydrationValue<T> {
   if (isServer()) {
     return { found: false, value: undefined };
   }
 
-  const values = (window as unknown as Record<string, unknown>)[
-    ASYNC_DATA_SSR_KEY
-  ] as Record<string, unknown> | undefined;
+  const values = (window as unknown as Record<string, unknown>)[ASYNC_DATA_SSR_KEY] as
+    | Record<string, unknown>
+    | undefined;
 
   if (!values || !Object.prototype.hasOwnProperty.call(values, asyncID)) {
     return { found: false, value: undefined };

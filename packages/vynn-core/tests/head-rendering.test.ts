@@ -1,14 +1,16 @@
 import { describe, expect, it } from "vitest";
+
+import type { JSX } from "../src/types/jsx";
+
 import { $attr } from "../src/render/$attr";
 import { $head, $headTmpl } from "../src/render/$head";
-import { subscribeSsrHead } from "../src/server/head";
-import { runWithSsrContext } from "../src/server/ssr-request-context";
 import { $insert } from "../src/render/$insert";
 import { $txt } from "../src/render/$txt";
-import { getSsrHead } from "../src/server";
-import { renderToServer } from "../src/server/render-to-server";
 import { createSSRAsync } from "../src/render/resolve-node";
-import type { JSX } from "../src/types/jsx";
+import { getSsrHead } from "../src/server";
+import { subscribeSsrHead } from "../src/server/head";
+import { renderToServer } from "../src/server/render-to-server";
+import { runWithSsrContext } from "../src/server/ssr-request-context";
 
 describe("JSX head rendering", () => {
   it("serializes metadata into a separate head string and excludes it from body HTML", async () => {

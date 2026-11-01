@@ -1,5 +1,5 @@
-import { For } from "solid-js";
 import { useLocation, useNavigate } from "@solidjs/router";
+import { For } from "solid-js";
 
 import { Template } from "./template";
 

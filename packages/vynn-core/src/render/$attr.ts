@@ -1,6 +1,7 @@
-import { $renderEffect } from "../reactivity/$effect";
 import type { SSR_ELEMENT } from "./resolve-node";
+
 import { isServer } from "../context/is-server-context";
+import { $renderEffect } from "../reactivity/$effect";
 import { HTML_NAMESPACE, SVG_NAMESPACE } from "./namespace";
 
 type AttributeValue = string | number | boolean | null | undefined;
@@ -160,10 +161,7 @@ function removeDOMAttribute(element: Element, name: string): void {
 
   if (namespace) {
     const separator = name.indexOf(":");
-    element.removeAttributeNS(
-      namespace,
-      separator === -1 ? name : name.slice(separator + 1),
-    );
+    element.removeAttributeNS(namespace, separator === -1 ? name : name.slice(separator + 1));
   } else {
     element.removeAttribute(name);
   }
@@ -188,10 +186,7 @@ export function $attr<E extends Element>(
 
     if (next == null) {
       delete node.attributes[key];
-    } else if (
-      node.namespaceURI === HTML_NAMESPACE &&
-      booleanAttributes.has(key.toLowerCase())
-    ) {
+    } else if (node.namespaceURI === HTML_NAMESPACE && booleanAttributes.has(key.toLowerCase())) {
       if (next) {
         node.attributes[key] = "";
       } else {
@@ -206,17 +201,12 @@ export function $attr<E extends Element>(
   }
 
   const attributeName = getAttributeName(element.namespaceURI, name);
-  const isHtmlElement =
-    element.namespaceURI === HTML_NAMESPACE && element instanceof HTMLElement;
+  const isHtmlElement = element.namespaceURI === HTML_NAMESPACE && element instanceof HTMLElement;
 
   $renderEffect(() => {
     const next = typeof value === "function" ? value() : value;
 
-    if (
-      isHtmlElement &&
-      properties.has(name) &&
-      !booleanAttributes.has(name.toLowerCase())
-    ) {
+    if (isHtmlElement && properties.has(name) && !booleanAttributes.has(name.toLowerCase())) {
       Reflect.set(element, name, next);
 
       if (next == null) {

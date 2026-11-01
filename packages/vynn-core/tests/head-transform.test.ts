@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+
 import { transformVynnOxc } from "../../vite-plugin/src/plugins/jsx-transpiler";
 
 describe("JSX document metadata lowering", () => {

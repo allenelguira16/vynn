@@ -1,11 +1,8 @@
-import { lazy, Await } from "vynn";
+import { Await, lazy } from "vynn";
 
 import { Template } from "../components/template";
 
-const LazyImport = lazy(
-  () => import("../components/lazy-import"),
-  "LazyImport",
-);
+const LazyImport = lazy(() => import("../components/lazy-import"), "LazyImport");
 const LazyTest = lazy(() => import("../components/test"), "Test");
 
 export const Lazy = () => {

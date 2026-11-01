@@ -62,10 +62,7 @@ const FakePromise = Object.assign(
 /**
  * Restores a global property to its original descriptor.
  */
-function restoreGlobal(
-  key: "Promise" | "fetch",
-  descriptor: PropertyDescriptor | undefined,
-): void {
+function restoreGlobal(key: "Promise" | "fetch", descriptor: PropertyDescriptor | undefined): void {
   if (descriptor) {
     Object.defineProperty(globalThis, key, descriptor);
   } else {
@@ -80,10 +77,7 @@ function restoreGlobal(
  * All global replacements are restored, even if the callback throws.
  */
 export function withFakeAsyncApis<T>(callback: () => T): T {
-  const promiseDescriptor = Object.getOwnPropertyDescriptor(
-    globalThis,
-    "Promise",
-  );
+  const promiseDescriptor = Object.getOwnPropertyDescriptor(globalThis, "Promise");
 
   const fetchDescriptor = Object.getOwnPropertyDescriptor(globalThis, "fetch");
 
@@ -102,8 +96,7 @@ export function withFakeAsyncApis<T>(callback: () => T): T {
         configurable: true,
         enumerable: fetchDescriptor?.enumerable ?? false,
         writable: true,
-        value: (..._args: Parameters<typeof fetch>) =>
-          NEVER_PROMISE as Promise<Response>,
+        value: (..._args: Parameters<typeof fetch>) => NEVER_PROMISE as Promise<Response>,
       });
     }
 

@@ -1,8 +1,8 @@
-import { JSX } from "../types/jsx";
+import { isServer } from "../context/is-server-context";
 import { onMount } from "../life-cycle/on-mount";
 import { $cmpnt, $insert } from "../render";
+import { JSX } from "../types/jsx";
 import { PropsWithChildren } from "../types/props";
-import { isServer } from "../context/is-server-context";
 
 /**
  * Renders its children into a specified mount node.

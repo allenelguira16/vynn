@@ -2,34 +2,34 @@
   "name": "vite-plugin-vynn",
   "version": "0.0.0",
   "description": "",
+  "keywords": [],
+  "license": "ISC",
+  "author": "",
+  "type": "module",
   "main": "src/index.ts",
   "scripts": {},
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "dependencies": {
+    "@babel/core": "^8.0.5",
+    "@babel/preset-typescript": "^8.0.1",
+    "@babel/preset-vynn": "workspace:*",
+    "@types/node": "^26.6.3",
+    "@typescript-eslint/types": "^8.72.0",
+    "entities": "^8.1.0",
+    "esrap": "^2.4.0",
+    "oxc-parser": "^0.155.0",
+    "typescript": "^7.0.2"
+  },
+  "devDependencies": {
+    "vite": "^8.3.5"
+  },
+  "peerDependencies": {
+    "vite": "^8.3.5"
+  },
   "devEngines": {
     "packageManager": {
       "name": "pnpm",
       "version": "^11.17.0",
       "onFail": "download"
     }
-  },
-  "type": "module",
-  "dependencies": {
-    "@babel/core": "^8.0.5",
-    "@babel/preset-typescript": "^8.0.1",
-    "@babel/preset-vynn": "workspace:*",
-    "@types/node": "^26.6.3",
-    "entities": "^8.1.0",
-    "esrap": "^2.4.0",
-    "oxc-parser": "^0.155.0",
-    "typescript": "^7.0.2",
-    "@typescript-eslint/types": "^8.72.0"
-  },
-  "peerDependencies": {
-    "vite": "^8.3.5"
-  },
-  "devDependencies": {
-    "vite": "^8.3.5"
   }
 }

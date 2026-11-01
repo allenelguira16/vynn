@@ -1,13 +1,13 @@
 import { initializeAsyncContext } from "../context/async-context";
 import { initializeErrorBoundaryContext } from "../context/error-boundary-context";
+import { initializeHeadContext } from "../context/head-context";
 import { initializeLazyContext } from "../context/lazy-context";
 import { JSX } from "../jsx-runtime";
 import { createOwner, disposeOwner, runWithOwner } from "../life-cycle/owner";
 import { addUnmountListener } from "../render/$cmpnt";
-import { withHydration } from "./hydration";
+import { HTML_NAMESPACE, getChildDOMNamespace, withDOMNamespace } from "../render/namespace";
 import { resolveNode } from "../render/resolve-node";
-import { initializeHeadContext } from "../context/head-context";
-import { getChildDOMNamespace, HTML_NAMESPACE, withDOMNamespace } from "../render/namespace";
+import { withHydration } from "./hydration";
 
 /**
  * Render the app to the dom

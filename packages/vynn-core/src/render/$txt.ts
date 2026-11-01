@@ -1,8 +1,9 @@
 import type { JSX } from "../jsx-runtime";
-import { createSSRText } from "./resolve-node";
+
 import { claimHydrationText } from "../client/hydration";
 import { isServer } from "../context/is-server-context";
 import { isCreatingHeadElement } from "./$head";
+import { createSSRText } from "./resolve-node";
 
 /**
  * Creates a text node for static JSX text.

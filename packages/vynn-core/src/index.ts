@@ -8,12 +8,7 @@ export { $async, type Async, isPending } from "./reactivity/$async";
 export { $store } from "./reactivity/$store";
 export { untrack } from "./reactivity/untrack";
 
-export {
-  getOwner,
-  runWithOwner,
-  createOwner,
-  disposeOwner,
-} from "./life-cycle/owner";
+export { getOwner, runWithOwner, createOwner, disposeOwner } from "./life-cycle/owner";
 
 export { createContext } from "./context/provider-context";
 
@@ -23,8 +18,4 @@ export { lazy } from "./components/lazy";
 export { Portal } from "./components/portal";
 
 export { type JSX } from "./types/jsx";
-export {
-  type FC,
-  type PropsWithChildren,
-  type PropsWithRef,
-} from "./types/props";
+export { type FC, type PropsWithChildren, type PropsWithRef } from "./types/props";

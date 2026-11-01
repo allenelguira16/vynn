@@ -1,5 +1,6 @@
-import { $computed, $store, createContext, onMount } from "vynn";
 import type { FC, PropsWithChildren } from "vynn";
+
+import { $computed, $store, createContext, onMount } from "vynn";
 
 export type Route = {
   path: string;
@@ -48,9 +49,7 @@ function currentLocation(): Location {
 }
 
 function parseLocation(url?: string): Location {
-  const fallback = !isServer
-    ? `${window.location.pathname}${window.location.search}`
-    : "/";
+  const fallback = !isServer ? `${window.location.pathname}${window.location.search}` : "/";
   const parsed = new URL(url || fallback, "http://vynn.local");
   return {
     pathname: parsed.pathname,
@@ -70,29 +69,18 @@ function updateLocation(target: Location, next: Location): void {
  * Calls outside a Router use the legacy `$location` store.
  */
 export function navigate(path: string, location = currentLocation()): void {
-  const target = new URL(
-    path,
-    `http://vynn.local${location.pathname}${location.search}`,
-  );
+  const target = new URL(path, `http://vynn.local${location.pathname}${location.search}`);
   const next = {
     pathname: target.pathname,
     search: target.search,
   };
 
-  if (
-    next.pathname === location.pathname &&
-    next.search === location.search &&
-    !target.hash
-  ) {
+  if (next.pathname === location.pathname && next.search === location.search && !target.hash) {
     return;
   }
 
   if (!isServer) {
-    history.pushState(
-      null,
-      "",
-      `${target.pathname}${target.search}${target.hash}`,
-    );
+    history.pushState(null, "", `${target.pathname}${target.search}${target.hash}`);
     updateLocation(location, {
       pathname: window.location.pathname,
       search: window.location.search,
@@ -121,11 +109,7 @@ function toSegments(path: string): string[] {
 }
 
 /** Checks whether the supplied pathname matches a route path. */
-function matchRoute(
-  targetPath: string,
-  exact = true,
-  location = currentLocation(),
-): boolean {
+function matchRoute(targetPath: string, exact = true, location = currentLocation()): boolean {
   const pathname = normalizePath(location.pathname);
   const target = normalizePath(targetPath);
   const pathnameSegments = toSegments(pathname);
@@ -136,8 +120,7 @@ function matchRoute(
   if (!exact && pathnameSegments.length < targetSegments.length) return false;
 
   return targetSegments.every(
-    (segment, index) =>
-      segment.startsWith(":") || segment === pathnameSegments[index],
+    (segment, index) => segment.startsWith(":") || segment === pathnameSegments[index],
   );
 }
 
@@ -174,10 +157,7 @@ function RouteOutlet(props: { routes: Route[]; parentPath?: string }) {
     const next = findMatch(props.routes, props.parentPath ?? "");
 
     // Keep the existing component tree when this outlet's route is unchanged.
-    if (
-      previousMatch?.route === next?.route &&
-      previousMatch?.fullPath === next?.fullPath
-    ) {
+    if (previousMatch?.route === next?.route && previousMatch?.fullPath === next?.fullPath) {
       return previousView;
     }
 
@@ -190,9 +170,7 @@ function RouteOutlet(props: { routes: Route[]; parentPath?: string }) {
       const Component = route.component;
       nextView = (
         <Component>
-          {!!childRoutes.length && (
-            <RouteOutlet routes={childRoutes} parentPath={fullPath} />
-          )}
+          {!!childRoutes.length && <RouteOutlet routes={childRoutes} parentPath={fullPath} />}
         </Component>
       );
     }
@@ -236,10 +214,7 @@ export function Router(props: { url?: string; routes: Route[] }) {
 }
 
 /** Checks whether a path matches the current pathname. */
-export function isActiveRoute(
-  targetPath: string,
-  location = currentLocation(),
-): boolean {
+export function isActiveRoute(targetPath: string, location = currentLocation()): boolean {
   const pathname = normalizePath(location.pathname);
   const target = normalizePath(targetPath);
   const pathnameSegments = toSegments(pathname);
@@ -249,8 +224,7 @@ export function isActiveRoute(
   if (pathnameSegments.length !== targetSegments.length) return false;
 
   return targetSegments.every(
-    (segment, index) =>
-      segment.startsWith(":") || segment === pathnameSegments[index],
+    (segment, index) => segment.startsWith(":") || segment === pathnameSegments[index],
   );
 }
 
@@ -269,10 +243,7 @@ export function Link(
     <a
       href={props.href}
       class={(
-        props.class +
-        (isActiveRoute(props.href, location)
-          ? ` ${props.activeClass ?? ""}`
-          : "")
+        props.class + (isActiveRoute(props.href, location) ? ` ${props.activeClass ?? ""}` : "")
       ).trim()}
       onClick={(event) => {
         if (!isServer) {

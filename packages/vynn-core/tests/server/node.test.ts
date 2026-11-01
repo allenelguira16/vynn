@@ -1,8 +1,10 @@
-import { once } from "node:events";
 import type { AddressInfo } from "node:net";
-import { createServer, type Server, type ServerResponse } from "node:http";
+
+import { once } from "node:events";
+import { type Server, type ServerResponse, createServer } from "node:http";
 import { describe, expect, it } from "vitest";
-import { createListener, type FetchRequestHandler } from "../../src/server/node";
+
+import { type FetchRequestHandler, createListener } from "../../src/server/node";
 
 async function withServer(
   handler: FetchRequestHandler,
@@ -37,14 +39,11 @@ describe("Node server adapter", () => {
   it("converts incoming requests and streams Web responses", async () => {
     await withServer(
       async (request) =>
-        new Response(
-          request.method + ":" + (await request.text()),
-          {
-            headers: {
-              "content-type": "text/plain; charset=utf-8",
-            },
+        new Response(request.method + ":" + (await request.text()), {
+          headers: {
+            "content-type": "text/plain; charset=utf-8",
           },
-        ),
+        }),
       async (url) => {
         const response = await fetch(url, {
           method: "POST",
@@ -56,7 +55,6 @@ describe("Node server adapter", () => {
       },
     );
   });
-
 
   it("flushes each streamed chunk for compression middleware", async () => {
     let flushCount = 0;
@@ -80,9 +78,7 @@ describe("Node server adapter", () => {
         expect(flushCount).toBe(2);
       },
       (response) => {
-        (
-          response as ServerResponse & { flush?: () => void }
-        ).flush = () => {
+        (response as ServerResponse & { flush?: () => void }).flush = () => {
           flushCount++;
         };
       },

@@ -4,21 +4,19 @@ import {
   FALLBACK_END_SSR_MARKER,
   FALLBACK_START_SSR_MARKER,
 } from "../const";
+import { getHeadContext } from "../context/head-context";
 import { disposeOwner, getOwner, runWithOwner } from "../life-cycle/owner";
+import { SSR_NODE, resolveNode } from "../render/resolve-node";
 import { JSX } from "../types/jsx";
+import { renderHeadPatch, renderSsrHead } from "./head";
 import {
   joinHTMLElements,
   renderAsyncUtilities,
   renderNode,
   renderText,
 } from "./render-to-server.util";
-import { resolveNode, SSR_NODE } from "../render/resolve-node";
-import { getHeadContext } from "../context/head-context";
-import { renderHeadPatch, renderSsrHead } from "./head";
 
-export function resolveStream(
-  App: () => JSX.Element,
-): ReadableStream<Uint8Array> {
+export function resolveStream(App: () => JSX.Element): ReadableStream<Uint8Array> {
   const headContext = getHeadContext();
   const owner = getOwner()!;
   const encoder = new TextEncoder();

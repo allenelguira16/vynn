@@ -1,14 +1,15 @@
+import type { SSR_ELEMENT, SSR_NODE } from "../render/resolve-node";
+
+import { APPLY_HEAD_PATCH_SSR_KEY } from "../const";
 import {
-  getHeadIdentity,
-  getHeadWinners,
-  subscribeHeadContext,
   type HeadContext,
   type HeadEntry,
   type HeadTag,
+  getHeadIdentity,
+  getHeadWinners,
+  subscribeHeadContext,
 } from "../context/head-context";
 import { escapeHtml } from "../utils/escape-html";
-import type { SSR_ELEMENT, SSR_NODE } from "../render/resolve-node";
-import { APPLY_HEAD_PATCH_SSR_KEY } from "../const";
 import { getSsrRequestHead } from "./ssr-request-context";
 const voidElements = new Set([
   "area",
@@ -44,9 +45,7 @@ function serializeAttributes(attributes: Record<string, string>): string {
 
 function serializeSsrNode(node: SSR_NODE): string {
   if ("value" in node) {
-    return node.type === "#text"
-      ? escapeHtml(node.value)
-      : `<!--${node.value}-->`;
+    return node.type === "#text" ? escapeHtml(node.value) : `<!--${node.value}-->`;
   }
 
   if ("promises" in node) {
@@ -59,9 +58,7 @@ function serializeSsrNode(node: SSR_NODE): string {
 
   if (voidElements.has(node.type)) return `<${node.type}${suffix}>`;
 
-  return `<${node.type}${suffix}>${node.children
-    .map(serializeSsrNode)
-    .join("")}</${node.type}>`;
+  return `<${node.type}${suffix}>${node.children.map(serializeSsrNode).join("")}</${node.type}>`;
 }
 
 function serializeHeadEntry(entry: HeadEntry): string {
@@ -83,9 +80,7 @@ function serializeHeadEntry(entry: HeadEntry): string {
 }
 
 export function renderSsrHead(context: HeadContext): string {
-  return getHeadWinners(context, getServerIdentity)
-    .map(serializeHeadEntry)
-    .join("");
+  return getHeadWinners(context, getServerIdentity).map(serializeHeadEntry).join("");
 }
 
 /** Serialize the head metadata collected by the active SSR request. */
@@ -95,9 +90,7 @@ export function getSsrHead(): string {
 }
 
 /** Subscribe to head metadata discovered after a streaming shell is emitted. */
-export function subscribeSsrHead(
-  listener: (html: string) => void,
-): () => void {
+export function subscribeSsrHead(listener: (html: string) => void): () => void {
   const context = getSsrRequestHead();
   if (!context) return () => {};
 

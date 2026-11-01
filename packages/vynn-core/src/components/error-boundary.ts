@@ -1,3 +1,6 @@
+import type { JSX } from "../jsx-runtime";
+import type { Owner } from "../life-cycle/owner";
+
 import {
   enterErrorBoundary,
   getErrorBoundary,
@@ -6,14 +9,7 @@ import {
   getErrorBoundaryValues,
 } from "../context/error-boundary-context";
 import { isServer } from "../context/is-server-context";
-import type { JSX } from "../jsx-runtime";
-import {
-  createOwner,
-  disposeOwner,
-  getOwner,
-  runWithOwner,
-} from "../life-cycle/owner";
-import type { Owner } from "../life-cycle/owner";
+import { createOwner, disposeOwner, getOwner, runWithOwner } from "../life-cycle/owner";
 import { $state } from "../reactivity/$state";
 import { NotReadyError } from "../reactivity/not-ready-error";
 import { $cmpnt, $nodes } from "../render";
@@ -97,10 +93,7 @@ export const ErrorBoundary = $cmpnt(function ErrorBoundary(props: {
         disposeViewOwner();
       }
 
-      if (
-        fallbackError instanceof NotReadyError ||
-        !(fallbackError instanceof Error)
-      ) {
+      if (fallbackError instanceof NotReadyError || !(fallbackError instanceof Error)) {
         throw fallbackError;
       }
 

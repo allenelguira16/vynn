@@ -5,7 +5,7 @@ import {
   TEXT_SSR_SEPARATOR,
 } from "../const";
 import { isServer } from "../context/is-server-context";
-import { getContext, setContext, getOwner, runWithOwner, type Owner } from "../life-cycle/owner";
+import { type Owner, getContext, getOwner, runWithOwner, setContext } from "../life-cycle/owner";
 
 let serverRenderedElements: Element[] = [];
 let serverRenderedTexts: Text[] = [];
@@ -35,8 +35,7 @@ const afterHydrationTasks = new Set<AfterHydrationTask>();
 let hydrationCheckScheduled = false;
 
 export function withHydration(callback: () => void, root: Node) {
-  [serverRenderedElements, serverRenderedTexts, serverRenderedLazy] =
-    getServerRenderedNodes(root);
+  [serverRenderedElements, serverRenderedTexts, serverRenderedLazy] = getServerRenderedNodes(root);
 
   hydrationElementIndex = 0;
   hydrationTextIndex = 0;
@@ -67,16 +66,10 @@ function hasUnclaimedHydrationNodes(): boolean {
  *   Also wait for every discovered lazy boundary to finish hydration.
  */
 export function isHydrating(waitForLazy = true): boolean {
-  return (
-    hasUnclaimedHydrationNodes() ||
-    (waitForLazy && pendingLazyHydration.size > 0)
-  );
+  return hasUnclaimedHydrationNodes() || (waitForLazy && pendingLazyHydration.size > 0);
 }
 
-export function runAfterHydration<T>(
-  callback: () => T,
-  waitForLazy = true,
-): void {
+export function runAfterHydration<T>(callback: () => T, waitForLazy = true): void {
   if (isServer()) return;
 
   const owner = getOwner();
@@ -196,14 +189,9 @@ export type ServerRenderedLazyRange = {
  * If no SSR range exists, an empty scope prevents the component from consuming
  * unrelated root hydration nodes.
  */
-export function withServerRenderedLazy<T>(
-  lazyID: string | number,
-  callback: () => T,
-): T {
+export function withServerRenderedLazy<T>(lazyID: string | number, callback: () => T): T {
   const id = String(lazyID);
-  const scope =
-    serverRenderedLazy.get(id) ??
-    createLazyHydrationNodes(id);
+  const scope = serverRenderedLazy.get(id) ?? createLazyHydrationNodes(id);
 
   setContext(LAZY_HYDRATION, scope);
 
@@ -226,9 +214,7 @@ export function beginHydrationClaim(): HydrationClaimSnapshot {
  * from the same cursor, while other lazy owners keep their own independent
  * positions.
  */
-export function rollbackHydrationClaim(
-  snapshot: HydrationClaimSnapshot,
-): void {
+export function rollbackHydrationClaim(snapshot: HydrationClaimSnapshot): void {
   if (snapshot.scope) {
     snapshot.scope.elementIndex = snapshot.elementIndex;
     snapshot.scope.textIndex = snapshot.textIndex;
@@ -294,12 +280,8 @@ export function finishServerRenderedLazy(lazyID: string | number): void {
   finishIfClaimed(scope);
 }
 
-const LAZY_START_REGEX = new RegExp(
-  `^${LAZY_START_SSR_MARKER}:(\\d+(?:\\.\\d+)*)$`,
-);
-const LAZY_END_REGEX = new RegExp(
-  `^${LAZY_END_SSR_MARKER}:(\\d+(?:\\.\\d+)*)$`,
-);
+const LAZY_START_REGEX = new RegExp(`^${LAZY_START_SSR_MARKER}:(\\d+(?:\\.\\d+)*)$`);
+const LAZY_END_REGEX = new RegExp(`^${LAZY_END_SSR_MARKER}:(\\d+(?:\\.\\d+)*)$`);
 
 type LazyHydrationNodes = {
   id?: string;

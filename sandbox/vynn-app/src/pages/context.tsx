@@ -1,4 +1,4 @@
-import { $state, $store, createContext, JSX, onMount } from "vynn";
+import { $state, $store, JSX, createContext, onMount } from "vynn";
 
 import { Template } from "../components/template";
 

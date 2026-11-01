@@ -4,11 +4,11 @@ import {
   ERROR_BOUNDARY_DATA_SSR_KEY,
   TEXT_SSR_SEPARATOR,
 } from "../const";
-import { escapeHtml } from "../utils/escape-html";
-import { SSR_ELEMENT, SSR_TEXT } from "../render/resolve-node";
 import { getAsyncValues } from "../context/async-context";
-import { getRenderMode } from "../context/render-mode";
 import { getErrorBoundaryValues } from "../context/error-boundary-context";
+import { getRenderMode } from "../context/render-mode";
+import { SSR_ELEMENT, SSR_TEXT } from "../render/resolve-node";
+import { escapeHtml } from "../utils/escape-html";
 
 const voidElements = new Set([
   "area",
@@ -27,9 +27,7 @@ const voidElements = new Set([
 ]);
 
 export function renderText(node: SSR_TEXT) {
-  return node.value === ""
-    ? `<!--${EMPTY_TEXT_SSR_MARKER}-->`
-    : escapeHtml(node.value);
+  return node.value === "" ? `<!--${EMPTY_TEXT_SSR_MARKER}-->` : escapeHtml(node.value);
 }
 
 export function renderNode(props: {

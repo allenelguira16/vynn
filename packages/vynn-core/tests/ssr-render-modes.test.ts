@@ -1,16 +1,14 @@
 import { describe, expect, it } from "vitest";
+
+import type { JSX } from "../src/types/jsx";
+
+import { registerSsrModule } from "../src/context/ssr-module-context";
 import { $head, $headTmpl } from "../src/render/$head";
 import { $insert } from "../src/render/$insert";
 import { $txt } from "../src/render/$txt";
-import { registerSsrModule } from "../src/context/ssr-module-context";
-import {
-  getSsrHead,
-  getSsrModuleIds,
-  runWithSsrContext,
-} from "../src/server";
-import { renderToServer } from "../src/server/render-to-server";
 import { createSSRAsync, createSSRText } from "../src/render/resolve-node";
-import type { JSX } from "../src/types/jsx";
+import { getSsrHead, getSsrModuleIds, runWithSsrContext } from "../src/server";
+import { renderToServer } from "../src/server/render-to-server";
 
 describe("renderToServer modes", () => {
   it("returns a string in sync mode without wrapping the result", () => {
@@ -52,12 +50,8 @@ describe("renderToServer modes", () => {
 
       expect(typeof rendered).toBe("string");
       expect(rendered).toContain("Body");
-      expect(getSsrHead()).toContain(
-        '<title key="title">Synchronous page</title>',
-      );
-      expect([...getSsrModuleIds()]).toEqual([
-        "src/pages/synchronous.tsx",
-      ]);
+      expect(getSsrHead()).toContain('<title key="title">Synchronous page</title>');
+      expect([...getSsrModuleIds()]).toEqual(["src/pages/synchronous.tsx"]);
     });
   });
 

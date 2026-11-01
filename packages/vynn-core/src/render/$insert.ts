@@ -1,14 +1,12 @@
-import { $renderEffect } from "../reactivity/$effect";
 import type { JSX } from "../jsx-runtime";
-import { resolveNode, resolveSSRChild } from "./resolve-node";
 import type { SSR_ELEMENT } from "./resolve-node";
-import { isServer } from "../context/is-server-context";
+
 import { isHydrating } from "../client/hydration";
+import { isServer } from "../context/is-server-context";
+import { $renderEffect } from "../reactivity/$effect";
+import { isCreatingHeadElement, runWithHeadElementContext } from "./$head";
 import { getChildDOMNamespace, withDOMNamespace } from "./namespace";
-import {
-  isCreatingHeadElement,
-  runWithHeadElementContext,
-} from "./$head";
+import { resolveNode, resolveSSRChild } from "./resolve-node";
 
 const initializedHeadChildren = new WeakSet<Element>();
 
@@ -71,13 +69,8 @@ export function $insert<E extends Element>(
 
     const renderChild = typeof child === "function" ? child : () => child;
 
-    const childNamespace = getChildDOMNamespace(
-      parent.namespaceURI,
-      parent.type,
-    );
-    const nodes = resolveSSRChild(() =>
-      withDOMNamespace(childNamespace, renderChild),
-    );
+    const childNamespace = getChildDOMNamespace(parent.namespaceURI, parent.type);
+    const nodes = resolveSSRChild(() => withDOMNamespace(childNamespace, renderChild));
     const reference = before as unknown as SSR_ELEMENT | null;
 
     for (const node of nodes) {
@@ -101,21 +94,12 @@ export function $insert<E extends Element>(
   return $renderEffect(() => {
     // Capture this before resolving children, since resolution claims the SSR
     // nodes and can make the hydration queues appear empty.
-    const initialHydration =
-      !headChildren && oldNodes.length === 0 && isHydrating();
-    const childNamespace = getChildDOMNamespace(
-      element.namespaceURI,
-      element.localName,
-    );
-    const renderChild =
-      typeof child === "function" ? child : () => child;
+    const initialHydration = !headChildren && oldNodes.length === 0 && isHydrating();
+    const childNamespace = getChildDOMNamespace(element.namespaceURI, element.localName);
+    const renderChild = typeof child === "function" ? child : () => child;
     const resolveChild = () =>
-      withDOMNamespace(childNamespace, () =>
-        resolveNode(renderChild, !headChildren),
-      );
-    const newNodes = headChildren
-      ? runWithHeadElementContext(resolveChild)
-      : resolveChild();
+      withDOMNamespace(childNamespace, () => resolveNode(renderChild, !headChildren));
+    const newNodes = headChildren ? runWithHeadElementContext(resolveChild) : resolveChild();
 
     if (oldNodes.length === 0) {
       if (initialHydration) {

@@ -2,14 +2,8 @@ import { JSX } from "../jsx-runtime";
 import { getOwner } from "../life-cycle/owner";
 
 export function $mount(Component: () => JSX.Element): JSX.Element;
-export function $mount<P>(
-  Component: (props: P) => JSX.Element,
-  props: P,
-): JSX.Element;
-export function $mount(
-  Component: (props?: unknown) => JSX.Element,
-  props?: unknown,
-): JSX.Element {
+export function $mount<P>(Component: (props: P) => JSX.Element, props: P): JSX.Element;
+export function $mount(Component: (props?: unknown) => JSX.Element, props?: unknown): JSX.Element {
   // console.log();
 
   const owner = getOwner();

@@ -1,5 +1,5 @@
-import { $state } from "./$state";
 import { $renderEffect } from "./$effect";
+import { $state } from "./$state";
 
 export type Computed<T> = {
   readonly value: T;

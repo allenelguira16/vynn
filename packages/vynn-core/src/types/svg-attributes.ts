@@ -1,8 +1,4 @@
-import {
-  AriaAttributes,
-  CoreAttributes,
-  EventAttributes,
-} from "./common-attributes";
+import { AriaAttributes, CoreAttributes, EventAttributes } from "./common-attributes";
 import { JSX } from "./jsx";
 
 export type SVGAttributes<T extends SVGElement = SVGElement> = CoreAttributes &

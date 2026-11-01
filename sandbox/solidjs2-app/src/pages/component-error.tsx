@@ -1,5 +1,6 @@
 import { Errored, JSX } from "@solidjs/web";
 import { createSignal } from "solid-js";
+
 import { Template } from "../components/template";
 
 function ComponentWillThrow(): JSX.Element {

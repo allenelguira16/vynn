@@ -1,4 +1,4 @@
-import { createStore, For, Show } from "solid-js";
+import { For, Show, createStore } from "solid-js";
 
 import { Template } from "../components/template";
 import { name } from "../utils";
@@ -21,13 +21,10 @@ export default function Dropdowns() {
   });
 
   function handleSort() {
-    const nextDirection: SortDirection =
-      dropdownStore.sortDirection === "asc" ? "desc" : "asc";
+    const nextDirection: SortDirection = dropdownStore.sortDirection === "asc" ? "desc" : "asc";
 
     setDropdownStore((state) => {
-      state.numbers = [...state.numbers].sort((a, b) =>
-        nextDirection === "asc" ? a - b : b - a,
-      );
+      state.numbers = [...state.numbers].sort((a, b) => (nextDirection === "asc" ? a - b : b - a));
 
       state.sortDirection = nextDirection;
     });
@@ -52,10 +49,7 @@ export default function Dropdowns() {
 
       const numbers = [...state.numbers].sort((a, b) => a - b);
 
-      state.numbers =
-        numbers.length === 0
-          ? [1]
-          : [...numbers, numbers[numbers.length - 1] + 1];
+      state.numbers = numbers.length === 0 ? [1] : [...numbers, numbers[numbers.length - 1] + 1];
     });
   }
 
@@ -129,9 +123,7 @@ const DropdownList = (props: TDropdownListProps) => {
 
   return (
     <div class="flex gap-2 flex-col lg:flex-row">
-      <For each={props.dropdowns.numbers}>
-        {(number) => <Dropdown number={number} />}
-      </For>
+      <For each={props.dropdowns.numbers}>{(number) => <Dropdown number={number} />}</For>
     </div>
   );
 };

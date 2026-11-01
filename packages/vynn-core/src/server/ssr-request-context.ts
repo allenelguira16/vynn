@@ -1,4 +1,5 @@
 import type { AsyncLocalStorage } from "node:async_hooks";
+
 import type { HeadContext } from "../context/head-context";
 
 interface SsrRequestContext {
@@ -55,9 +56,7 @@ function getStorage(): SsrStorage {
 }
 
 /** Creates an isolated SSR metadata scope for one server request. */
-export async function runWithSsrContext<T>(
-  callback: () => Promise<T>,
-): Promise<T> {
+export async function runWithSsrContext<T>(callback: () => Promise<T>): Promise<T> {
   const storage = await getOrCreateStorage();
 
   return storage.run(

@@ -16,105 +16,108 @@
  * should be treated as a production compiler.
  */
 
-import { parseSync } from "oxc-parser";
+import type { Plugin, Rolldown } from "vite";
+
 import { print } from "esrap";
 import tsx from "esrap/languages/tsx";
-import type { Plugin, Rolldown } from "vite";
+import { parseSync } from "oxc-parser";
+
 import type { ExpressionNode, Node, NodeOfType } from "./jsx-transpiler/ast.ts";
+
 import {
-  isNode,
-  isNodeArray,
+  addSourceLocations,
+  arrayExpression,
+  arrowFunctionExpression,
+  assignmentExpression,
+  binaryExpression,
+  blockStatement,
+  booleanLiteral,
+  callExpression,
+  cloneNode,
+  conditionalExpression,
+  createPositionLookup,
+  expressionStatement,
+  findArrowReturnStatement,
+  findReturnStatement,
+  forEachChild,
+  functionExpression,
   generatedNode,
+  getJSXIdentifierName,
   getNodeProperty,
-  setNodeProperty,
-  isType,
-  isIdentifier,
-  isJSXIdentifier,
-  isExpression,
-  isFunctionLike,
-  isLiteralString,
-  isNumericLiteral,
-  isStringLiteral,
-  isJSXElement,
-  isJSXFragment,
-  isJSXText,
-  isJSXExpressionContainer,
-  isJSXEmptyExpression,
-  isJSXAttribute,
-  isJSXSpreadAttribute,
-  isJSXMemberExpression,
-  isCallExpression,
-  isMemberExpression,
-  isArrowFunctionExpression,
-  isFunctionExpression,
-  isFunctionDeclaration,
-  isBlockStatement,
-  isReturnStatement,
-  isVariableDeclaration,
-  isExpressionStatement,
-  isObjectExpression,
-  isObjectProperty,
-  isObjectMethod,
-  isSpreadElement,
+  getVisitorKeys,
+  identifier,
+  importDeclaration,
+  importSpecifier,
+  inferLang,
+  inheritSourceLocation,
   isArrayExpression,
-  isRestElement,
-  isAssignmentPattern,
-  isObjectPattern,
   isArrayPattern,
-  isIfStatement,
-  isLogicalExpression,
-  isConditionalExpression,
-  isUnaryExpression,
-  isAwaitExpression,
-  isUpdateExpression,
+  isArrowComponentDeclaration,
+  isArrowFunctionExpression,
   isAssignmentExpression,
+  isAssignmentPattern,
+  isAwaitExpression,
   isBinaryExpression,
-  isTemplateLiteral,
-  isSequenceExpression,
-  isTSAsExpression,
-  isTSNonNullExpression,
+  isBlockStatement,
+  isCallExpression,
+  isComponentElement,
+  isComponentName,
+  isConditionalExpression,
+  isExpression,
+  isExpressionStatement,
+  isFunctionDeclaration,
+  isFunctionExpression,
+  isFunctionLike,
+  isIdentifier,
+  isIfStatement,
   isImportDeclaration,
   isImportSpecifier,
-  identifier,
-  stringLiteral,
-  booleanLiteral,
-  voidZero,
-  cloneNode,
+  isJSXAttribute,
+  isJSXElement,
+  isJSXEmptyExpression,
+  isJSXExpressionContainer,
+  isJSXFragment,
+  isJSXIdentifier,
+  isJSXMemberExpression,
+  isJSXSpreadAttribute,
+  isJSXText,
+  isLiteralString,
+  isLogicalExpression,
+  isMemberExpression,
+  isNode,
+  isNodeArray,
+  isNumericLiteral,
+  isObjectExpression,
+  isObjectMethod,
+  isObjectPattern,
+  isObjectProperty,
+  isRestElement,
+  isReturnStatement,
+  isSequenceExpression,
+  isSpreadElement,
+  isStringLiteral,
+  isTSAsExpression,
+  isTSNonNullExpression,
+  isTemplateLiteral,
+  isType,
+  isUnaryExpression,
+  isUpdateExpression,
+  isVariableDeclaration,
   memberExpression,
-  callExpression,
-  arrowFunctionExpression,
-  functionExpression,
-  blockStatement,
-  returnStatement,
-  expressionStatement,
-  variableDeclarator,
-  variableDeclaration,
-  arrayExpression,
-  objectExpression,
-  spreadElement,
-  unaryExpression,
-  binaryExpression,
-  conditionalExpression,
-  assignmentExpression,
-  propertyKey,
-  objectProperty,
-  objectMethod,
-  importSpecifier,
-  importDeclaration,
-  getVisitorKeys,
-  forEachChild,
-  isComponentName,
-  getJSXIdentifierName,
-  isComponentElement,
-  isArrowComponentDeclaration,
-  findReturnStatement,
-  findArrowReturnStatement,
   normalizeJSXText,
-  inferLang,
-  createPositionLookup,
-  addSourceLocations,
+  objectExpression,
+  objectMethod,
+  objectProperty,
   programContainsJSX,
-  inheritSourceLocation,
+  propertyKey,
+  returnStatement,
+  setNodeProperty,
+  spreadElement,
+  stringLiteral,
+  unaryExpression,
+  variableDeclaration,
+  variableDeclarator,
+  voidZero,
 } from "./jsx-transpiler/ast.ts";
 
 type RuntimeHelperName =
@@ -152,7 +155,6 @@ type IdentifierAllocator = {
 };
 
 const runtimeImportSource = "vynn/render";
-
 
 export function transformVynnOxc(
   source: string,
@@ -206,14 +208,10 @@ function compileVynnOxc(
       end: positionAt(comment.end),
     },
   }));
-  const output = print(
-    program,
-    tsx({ comments }),
-    {
-      sourceMapSource: filename,
-      sourceMapContent: source,
-    },
-  );
+  const output = print(program, tsx({ comments }), {
+    sourceMapSource: filename,
+    sourceMapContent: source,
+  });
   // esrap currently exposes its generated map as `unknown`; it is a raw
   // source-map object compatible with Rolldown/Vite's SourceMapInput.
   const map = output.map as Rolldown.SourceMapInput | undefined;
@@ -256,32 +254,21 @@ class TransformState {
       if (nestedInSvg) this.svgDescendants.add(node);
     }
 
-    forEachChild(node, (child) =>
-      this.collectSvgDescendants(child, nestedInSvg),
-    );
+    forEachChild(node, (child) => this.collectSvgDescendants(child, nestedInSvg));
   }
 
-  private getStaticHeadIdentity(
-    node: NodeOfType<"JSXElement">,
-    tagName: string,
-  ): string | null {
+  private getStaticHeadIdentity(node: NodeOfType<"JSXElement">, tagName: string): string | null {
     if (tagName === "title") return "title";
 
     const attributes = node.openingElement.attributes.filter(isJSXAttribute);
     const getAttributeName = (attribute: NodeOfType<"JSXAttribute">): string =>
-      isJSXIdentifier(attribute.name)
-        ? attribute.name.name.toLowerCase()
-        : "";
+      isJSXIdentifier(attribute.name) ? attribute.name.name.toLowerCase() : "";
     const hasAttribute = (name: string): boolean =>
       attributes.some((attribute) => getAttributeName(attribute) === name);
     const getStaticValue = (name: string): string | null => {
-      const attribute = attributes.find(
-        (candidate) => getAttributeName(candidate) === name,
-      );
+      const attribute = attributes.find((candidate) => getAttributeName(candidate) === name);
 
-      return attribute && isLiteralString(attribute.value)
-        ? attribute.value.value
-        : null;
+      return attribute && isLiteralString(attribute.value) ? attribute.value.value : null;
     };
 
     if (tagName === "meta") {
@@ -308,15 +295,8 @@ class TransformState {
     return null;
   }
 
-  private isHoistableHeadElement(
-    node: NodeOfType<"JSXElement">,
-    tagName: string,
-  ): boolean {
-    if (
-      tagName !== "title" &&
-      tagName !== "meta" &&
-      tagName !== "link"
-    ) {
+  private isHoistableHeadElement(node: NodeOfType<"JSXElement">, tagName: string): boolean {
+    if (tagName !== "title" && tagName !== "meta" && tagName !== "link") {
       return false;
     }
 
@@ -337,8 +317,7 @@ class TransformState {
   }
 
   private generateUidIdentifier(hint: string): NodeOfType<"Identifier"> {
-    const cleanHint =
-      hint.replace(/^\$+/, "").replace(/[^A-Za-z0-9_$]/g, "") || "ref";
+    const cleanHint = hint.replace(/^\$+/, "").replace(/[^A-Za-z0-9_$]/g, "") || "ref";
     const base = `_${cleanHint}`;
     let name = base;
     let suffix = 1;
@@ -363,10 +342,7 @@ class TransformState {
 
   private findExistingRuntimeImport(name: RuntimeHelperName): NodeOfType<"Identifier"> | null {
     for (const statement of this.program.body) {
-      if (
-        !isImportDeclaration(statement) ||
-        statement.source?.value !== runtimeImportSource
-      )
+      if (!isImportDeclaration(statement) || statement.source?.value !== runtimeImportSource)
         continue;
       for (const specifier of statement.specifiers ?? []) {
         if (!isImportSpecifier(specifier)) continue;
@@ -401,10 +377,7 @@ class TransformState {
 
     let existingImport: NodeOfType<"ImportDeclaration"> | undefined;
     for (const statement of this.program.body) {
-      if (
-        isImportDeclaration(statement) &&
-        statement.source?.value === runtimeImportSource
-      ) {
+      if (isImportDeclaration(statement) && statement.source?.value === runtimeImportSource) {
         existingImport = statement;
         break;
       }
@@ -412,23 +385,17 @@ class TransformState {
 
     if (existingImport) {
       for (const [name, local] of this.runtimeHelpers) {
-        const alreadyImported = (existingImport.specifiers ?? []).some(
-          (specifier: Node) => {
-            if (!isImportSpecifier(specifier)) return false;
-            const importedName = isIdentifier(specifier.imported)
-              ? specifier.imported.name
-              : isLiteralString(specifier.imported)
-                ? specifier.imported.value
-                : null;
-            return (
-              importedName === name && specifier.local?.name === local.name
-            );
-          },
-        );
+        const alreadyImported = (existingImport.specifiers ?? []).some((specifier: Node) => {
+          if (!isImportSpecifier(specifier)) return false;
+          const importedName = isIdentifier(specifier.imported)
+            ? specifier.imported.name
+            : isLiteralString(specifier.imported)
+              ? specifier.imported.value
+              : null;
+          return importedName === name && specifier.local?.name === local.name;
+        });
         if (!alreadyImported) {
-          existingImport.specifiers.push(
-            importSpecifier(cloneNode(local), identifier(name)),
-          );
+          existingImport.specifiers.push(importSpecifier(cloneNode(local), identifier(name)));
         }
       }
       return;
@@ -447,10 +414,14 @@ class TransformState {
     // Resolve named JSX-producing map callbacks before lowering mutates the AST.
     this.prepareNamedMapCallbacks();
 
-    setNodeProperty(this.program, "body", this.program.body.flatMap((statement) => {
-      const transformed = this.transformTopLevelStatement(statement);
-      return Array.isArray(transformed) ? transformed : [transformed];
-    }));
+    setNodeProperty(
+      this.program,
+      "body",
+      this.program.body.flatMap((statement) => {
+        const transformed = this.transformTopLevelStatement(statement);
+        return Array.isArray(transformed) ? transformed : [transformed];
+      }),
+    );
     this.injectRuntimeImports();
   }
 
@@ -479,14 +450,18 @@ class TransformState {
       importedName: string | null;
       namespace: boolean;
       statement: NodeOfType<"ImportDeclaration">;
-      specifier: NodeOfType<"ImportSpecifier" | "ImportDefaultSpecifier" | "ImportNamespaceSpecifier">;
+      specifier: NodeOfType<
+        "ImportSpecifier" | "ImportDefaultSpecifier" | "ImportNamespaceSpecifier"
+      >;
       typeOnly: boolean;
       companionLocal?: Node;
     };
 
     type CallbackBinding = {
       name: string;
-      callback: NodeOfType<"FunctionDeclaration" | "FunctionExpression" | "ArrowFunctionExpression"> | null;
+      callback: NodeOfType<
+        "FunctionDeclaration" | "FunctionExpression" | "ArrowFunctionExpression"
+      > | null;
       statement: Node | null;
       statementList: Node[] | null;
       declarationKind?: string;
@@ -505,25 +480,22 @@ class TransformState {
     const exportCandidates = new Set<CallbackBinding>();
     const extraImports: Node[] = [];
 
-    const createScope = (
-      parent: Scope | null,
-      isFunctionScope = false,
-    ): Scope => {
+    const createScope = (parent: Scope | null, isFunctionScope = false): Scope => {
       const scope = {
         parent,
         bindings: new Map<string, CallbackBinding>(),
         functionScope: null as unknown as Scope,
       };
-      scope.functionScope = isFunctionScope
-        ? scope
-        : (parent?.functionScope ?? scope);
+      scope.functionScope = isFunctionScope ? scope : (parent?.functionScope ?? scope);
       return scope;
     };
 
     const bind = (
       scope: Scope,
       name: string,
-      callback: NodeOfType<"FunctionDeclaration" | "FunctionExpression" | "ArrowFunctionExpression"> | null = null,
+      callback: NodeOfType<
+        "FunctionDeclaration" | "FunctionExpression" | "ArrowFunctionExpression"
+      > | null = null,
       statement: Node | null = null,
       statementList: Node[] | null = null,
       declarationKind?: string,
@@ -549,7 +521,9 @@ class TransformState {
     const bindPattern = (
       scope: Scope,
       pattern: Node,
-      callback: NodeOfType<"FunctionDeclaration" | "FunctionExpression" | "ArrowFunctionExpression"> | null,
+      callback: NodeOfType<
+        "FunctionDeclaration" | "FunctionExpression" | "ArrowFunctionExpression"
+      > | null,
       statement: Node | null,
       statementList: Node[] | null,
       declarationKind?: string,
@@ -585,8 +559,7 @@ class TransformState {
       // First collect declarations so local export aliases can point forward.
       for (const statement of statements) {
         const isExportNamed =
-          isType(statement, "ExportNamedDeclaration") &&
-          isValueExport(statement);
+          isType(statement, "ExportNamedDeclaration") && isValueExport(statement);
         const isExportDefault = isType(statement, "ExportDefaultDeclaration");
         const declaration =
           (isExportNamed || isExportDefault) && isNode(statement.declaration)
@@ -600,15 +573,7 @@ class TransformState {
             : isExportNamed && declaration.id
               ? [declaration.id.name]
               : [];
-          bind(
-            scope,
-            localName,
-            declaration,
-            statement,
-            statements,
-            "function",
-            exportNames,
-          );
+          bind(scope, localName, declaration, statement, statements, "function", exportNames);
           continue;
         }
 
@@ -616,19 +581,14 @@ class TransformState {
           for (const item of declaration.declarations) {
             const init = item.init;
             const callback =
-              isIdentifier(item.id) &&
-              isFunctionLike(init) &&
-              declaration.kind !== "var"
+              isIdentifier(item.id) && isFunctionLike(init) && declaration.kind !== "var"
                 ? init
                 : null;
             const isFunctionValue = callback !== null;
             const isDirectExport = isExportNamed && !statement.source;
             const exportNames =
-              isDirectExport && isIdentifier(item.id) && isFunctionValue
-                ? [item.id.name]
-                : [];
-            const target =
-              declaration.kind === "var" ? scope.functionScope : scope;
+              isDirectExport && isIdentifier(item.id) && isFunctionValue ? [item.id.name] : [];
+            const target = declaration.kind === "var" ? scope.functionScope : scope;
             bindPattern(
               target,
               item.id,
@@ -670,16 +630,7 @@ class TransformState {
               typeOnly,
             };
 
-            bind(
-              scope,
-              specifier.local.name,
-              null,
-              statement,
-              statements,
-              "import",
-              [],
-              imported,
-            );
+            bind(scope, specifier.local.name, null, statement, statements, "import", [], imported);
           }
           continue;
         }
@@ -717,10 +668,7 @@ class TransformState {
         }
 
         // export default localCallback
-        if (
-          isType(statement, "ExportDefaultDeclaration") &&
-          isIdentifier(statement.declaration)
-        ) {
+        if (isType(statement, "ExportDefaultDeclaration") && isIdentifier(statement.declaration)) {
           const binding = scope.bindings.get(statement.declaration.name);
           if (binding?.callback && !binding.exportNames.includes("default")) {
             binding.exportNames.push("default");
@@ -731,11 +679,7 @@ class TransformState {
     };
 
     const resolve = (scope: Scope, name: string): CallbackBinding | null => {
-      for (
-        let current: Scope | null = scope;
-        current;
-        current = current.parent
-      ) {
+      for (let current: Scope | null = scope; current; current = current.parent) {
         const binding = current.bindings.get(name);
         if (binding) return binding;
       }
@@ -747,25 +691,18 @@ class TransformState {
       const callee = node.callee;
       if (!isMemberExpression(callee)) return false;
       if (callee.computed) {
-        return (
-          isLiteralString(callee.property) && callee.property.value === "map"
-        );
+        return isLiteralString(callee.property) && callee.property.value === "map";
       }
       return isIdentifier(callee.property) && callee.property.name === "map";
     };
 
     const callbackReturnsJSX = (callback: Node): boolean => {
-      if (
-        !isFunctionLike(callback) ||
-        callback.async ||
-        callback.generator ||
-        !callback.body
-      ) {
+      if (!isFunctionLike(callback) || callback.async || callback.generator || !callback.body) {
         return false;
       }
 
       if (isBlockStatement(callback.body)) {
-        return (callback.body.body).some(
+        return callback.body.body.some(
           (statement) =>
             isReturnStatement(statement) &&
             statement.argument &&
@@ -781,42 +718,33 @@ class TransformState {
       specifier.startsWith("@/") ||
       specifier.startsWith("~/");
 
-    const companionName = (exportName: string): string =>
-      "__vynn_for_" + exportName;
+    const companionName = (exportName: string): string => "__vynn_for_" + exportName;
 
-    const createExportSpecifier = (
-      localName: string,
-      exportedName: string,
-    ): Node => generatedNode({
-      type: "ExportSpecifier",
-      local: identifier(localName),
-      exported: identifier(exportedName),
-      exportKind: "value",
-    });
+    const createExportSpecifier = (localName: string, exportedName: string): Node =>
+      generatedNode({
+        type: "ExportSpecifier",
+        local: identifier(localName),
+        exported: identifier(exportedName),
+        exportKind: "value",
+      });
 
-    const createCompanionExport = (
-      localName: string,
-      exportNames: string[],
-    ): Node => generatedNode({
-      type: "ExportNamedDeclaration",
-      declaration: null,
-      specifiers: exportNames.map((name) =>
-        createExportSpecifier(localName, companionName(name)),
-      ),
-      source: null,
-      exportKind: "value",
-      attributes: [],
-    });
+    const createCompanionExport = (localName: string, exportNames: string[]): Node =>
+      generatedNode({
+        type: "ExportNamedDeclaration",
+        declaration: null,
+        specifiers: exportNames.map((name) =>
+          createExportSpecifier(localName, companionName(name)),
+        ),
+        source: null,
+        exportKind: "value",
+        attributes: [],
+      });
 
     const createVariant = (binding: CallbackBinding): string | null => {
       // A default-exported named component can expose its existing $cmpnt
       // wrapper as the default companion. Other components aren't list callbacks.
       if (isComponentName(binding.name)) {
-        if (
-          binding.exportNames.includes("default") &&
-          binding.statement &&
-          binding.statementList
-        ) {
+        if (binding.exportNames.includes("default") && binding.statement && binding.statementList) {
           let byAnchor = insertions.get(binding.statementList);
           if (!byAnchor) {
             byAnchor = new Map<Node, Node[]>();
@@ -837,8 +765,7 @@ class TransformState {
         !binding.statementList ||
         binding.callback.async ||
         binding.callback.generator ||
-        (binding.exportNames.length === 0 &&
-          !callbackReturnsJSX(binding.callback))
+        (binding.exportNames.length === 0 && !callbackReturnsJSX(binding.callback))
       ) {
         return null;
       }
@@ -873,9 +800,7 @@ class TransformState {
       const added = byAnchor.get(binding.statement) ?? [];
       added.push(variantStatement);
       if (binding.exportNames.length > 0) {
-        added.push(
-          createCompanionExport(variantName, [...new Set(binding.exportNames)]),
-        );
+        added.push(createCompanionExport(variantName, [...new Set(binding.exportNames)]));
       }
       byAnchor.set(binding.statement, added);
 
@@ -907,8 +832,8 @@ class TransformState {
         importKind: "value",
       });
 
-      const hasNamespaceSpecifier = (imported.statement.specifiers ?? []).some(
-        (specifier: Node) => isType(specifier, "ImportNamespaceSpecifier"),
+      const hasNamespaceSpecifier = (imported.statement.specifiers ?? []).some((specifier: Node) =>
+        isType(specifier, "ImportNamespaceSpecifier"),
       );
       const canAppend =
         imported.statement.importKind !== "type" &&
@@ -918,25 +843,23 @@ class TransformState {
       if (canAppend) {
         imported.statement.specifiers.push(addedSpecifier);
       } else {
-        extraImports.push(generatedNode({
-          type: "ImportDeclaration",
-          specifiers: [addedSpecifier],
-          source: stringLiteral(imported.source),
-          importKind: "value",
-          assertions: [],
-          attributes: [],
-        }));
+        extraImports.push(
+          generatedNode({
+            type: "ImportDeclaration",
+            specifiers: [addedSpecifier],
+            source: stringLiteral(imported.source),
+            importKind: "value",
+            assertions: [],
+            attributes: [],
+          }),
+        );
       }
 
       imported.companionLocal = local;
       return cloneNode(local);
     };
 
-    const visitStatements = (
-      statements: Node[],
-      parent: Scope | null,
-      isRoot = false,
-    ): void => {
+    const visitStatements = (statements: Node[], parent: Scope | null, isRoot = false): void => {
       const scope = createScope(parent, isRoot || !parent);
       collectStatements(statements, scope);
       for (const statement of statements) {
@@ -944,11 +867,7 @@ class TransformState {
       }
     };
 
-    const visitNode = (
-      node: Node,
-      scope: Scope,
-      renderChild: boolean,
-    ): void => {
+    const visitNode = (node: Node, scope: Scope, renderChild: boolean): void => {
       if (!isNode(node)) return;
 
       // Only an expression in JSX output can trigger imported callback
@@ -987,14 +906,7 @@ class TransformState {
             if (!isNode(current) || isFunctionLike(current)) return;
             if (isVariableDeclaration(current) && current.kind === "var") {
               for (const declaration of current.declarations) {
-                bindPattern(
-                  functionScope,
-                  declaration.id,
-                  null,
-                  null,
-                  null,
-                  "var",
-                );
+                bindPattern(functionScope, declaration.id, null, null, null, "var");
               }
             }
             forEachChild(current, collectFunctionScopedVars);
@@ -1079,10 +991,7 @@ class TransformState {
     }
 
     if (extraImports.length > 0) {
-      setNodeProperty(this.program, "body", [
-        ...this.program.body,
-        ...extraImports,
-      ]);
+      setNodeProperty(this.program, "body", [...this.program.body, ...extraImports]);
     }
   }
 
@@ -1098,10 +1007,7 @@ class TransformState {
       if (declaration.id && isComponentName(declaration.id.name)) {
         const transformed = this.transformComponentDeclaration(declaration);
 
-        if (
-          isVariableDeclaration(transformed) &&
-          transformed.declarations.length === 1
-        ) {
+        if (isVariableDeclaration(transformed) && transformed.declarations.length === 1) {
           // Keep the named component in module scope so a companion export can
           // reference the already-wrapped $cmpnt function.
           return [
@@ -1124,10 +1030,11 @@ class TransformState {
     // Transform top-level expression statements, including JSX nested
     // inside function arguments and callbacks.
     if (isExpressionStatement(statement)) {
-      setNodeProperty(statement, "expression", this.transformEmbeddedExpression(
-        statement.expression,
-        this.createIdentifierAllocator(),
-      ));
+      setNodeProperty(
+        statement,
+        "expression",
+        this.transformEmbeddedExpression(statement.expression, this.createIdentifierAllocator()),
+      );
 
       return statement;
     }
@@ -1166,31 +1073,33 @@ class TransformState {
       // transformBlockStatement lowers return expressions, callbacks,
       // variable initializers, and nested JSX expressions.
       const allocator = this.createIdentifierAllocator();
-      setNodeProperty(node, "body", this.specializedForCallbacks.has(node)
-        ? this.withForCallback(node.params ?? [], () =>
-            this.transformBlockStatement(node.body, allocator),
-          )
-        : this.transformBlockStatement(node.body, allocator));
+      setNodeProperty(
+        node,
+        "body",
+        this.specializedForCallbacks.has(node)
+          ? this.withForCallback(node.params ?? [], () =>
+              this.transformBlockStatement(node.body, allocator),
+            )
+          : this.transformBlockStatement(node.body, allocator),
+      );
 
       return node;
     }
 
     if (isVariableDeclaration(node)) {
       for (const declaration of node.declarations) {
-        if (
-          isArrowComponentDeclaration(declaration) &&
-          this.transformArrowComponent(declaration)
-        ) {
+        if (isArrowComponentDeclaration(declaration) && this.transformArrowComponent(declaration)) {
           continue;
         }
 
         if (declaration.init && isExpression(declaration.init)) {
           this.assertJSXInitializerIsLazy(declaration);
 
-          setNodeProperty(declaration, "init", this.transformEmbeddedExpression(
-            declaration.init,
-            this.createIdentifierAllocator(),
-          ));
+          setNodeProperty(
+            declaration,
+            "init",
+            this.transformEmbeddedExpression(declaration.init, this.createIdentifierAllocator()),
+          );
         }
       }
 
@@ -1201,9 +1110,11 @@ class TransformState {
       const value = getNodeProperty(node, key);
 
       if (isNodeArray(value)) {
-        setNodeProperty(node, key, value.map((child) =>
-          isNode(child) ? this.visitNestedDeclarations(child) : child,
-        ));
+        setNodeProperty(
+          node,
+          key,
+          value.map((child) => (isNode(child) ? this.visitNestedDeclarations(child) : child)),
+        );
       } else if (isNode(value)) {
         setNodeProperty(node, key, this.visitNestedDeclarations(value));
       }
@@ -1212,9 +1123,7 @@ class TransformState {
     return node;
   }
 
-  private transformComponentDeclaration(
-    node: NodeOfType<"FunctionDeclaration">,
-  ): Node {
+  private transformComponentDeclaration(node: NodeOfType<"FunctionDeclaration">): Node {
     const id = node.id;
     if (!id) return node;
     const returnStatement = findReturnStatement(node);
@@ -1225,12 +1134,16 @@ class TransformState {
     this.transformComponentBody(node.body, returnStatement, allocator);
 
     const statements: Node[] = [];
-    setNodeProperty(returnStatement, "argument", this.transformStatementContextExpression(
-      returnStatement.argument,
-      allocator,
-      statements,
-      isJSXFragment(returnStatement.argument),
-    ));
+    setNodeProperty(
+      returnStatement,
+      "argument",
+      this.transformStatementContextExpression(
+        returnStatement.argument,
+        allocator,
+        statements,
+        isJSXFragment(returnStatement.argument),
+      ),
+    );
 
     if (statements.length > 0) {
       const body: Node[] = node.body.body;
@@ -1249,10 +1162,7 @@ class TransformState {
       variableDeclaration("const", [
         variableDeclarator(
           cloneNode(id),
-          inheritSourceLocation(
-            callExpression(this.getRuntimeHelper("$cmpnt"), [fn]),
-            node,
-          ),
+          inheritSourceLocation(callExpression(this.getRuntimeHelper("$cmpnt"), [fn]), node),
         ),
       ]),
       node,
@@ -1266,16 +1176,10 @@ class TransformState {
 
     // Avoid mutating component parameters when this visitor won't transform the
     // body (components without a top-level return are currently unsupported).
-    if (
-      isBlockStatement(arrow.body) &&
-      !findArrowReturnStatement(arrow.body)?.argument
-    )
+    if (isBlockStatement(arrow.body) && !findArrowReturnStatement(arrow.body)?.argument)
       return false;
 
-    setNodeProperty(arrow, "body", this.transformComponentPropsParameter(
-      arrow.params,
-      arrow.body,
-    ));
+    setNodeProperty(arrow, "body", this.transformComponentPropsParameter(arrow.params, arrow.body));
 
     // Props lowering can turn an expression-bodied arrow into a block when it
     // needs lazy default/rest accessors or local mutable bindings.
@@ -1285,30 +1189,38 @@ class TransformState {
 
       this.transformComponentBody(arrow.body, returnStatement, allocator);
       const statements: Node[] = [];
-      setNodeProperty(returnStatement, "argument", this.transformStatementContextExpression(
-        returnStatement.argument,
-        allocator,
-        statements,
-        isJSXFragment(returnStatement.argument),
-      ));
+      setNodeProperty(
+        returnStatement,
+        "argument",
+        this.transformStatementContextExpression(
+          returnStatement.argument,
+          allocator,
+          statements,
+          isJSXFragment(returnStatement.argument),
+        ),
+      );
       if (statements.length > 0) {
         const body: Node[] = arrow.body.body;
         const returnIndex = body.indexOf(returnStatement);
         if (returnIndex !== -1) body.splice(returnIndex, 0, ...statements);
       }
 
-      setNodeProperty(declaration, "init", inheritSourceLocation(
-        callExpression(this.getRuntimeHelper("$cmpnt"), [
-          functionExpression(
-            identifier(declaration.id.name),
-            arrow.params,
-            arrow.body,
-            !!arrow.generator,
-            !!arrow.async,
-          ),
-        ]),
-        arrow,
-      ));
+      setNodeProperty(
+        declaration,
+        "init",
+        inheritSourceLocation(
+          callExpression(this.getRuntimeHelper("$cmpnt"), [
+            functionExpression(
+              identifier(declaration.id.name),
+              arrow.params,
+              arrow.body,
+              !!arrow.generator,
+              !!arrow.async,
+            ),
+          ]),
+          arrow,
+        ),
+      );
       return true;
     }
 
@@ -1322,18 +1234,22 @@ class TransformState {
       isJSXFragment(expressionBody),
     );
     statements.push(returnStatement(transformedBody));
-    setNodeProperty(declaration, "init", inheritSourceLocation(
-      callExpression(this.getRuntimeHelper("$cmpnt"), [
-        functionExpression(
-          identifier(declaration.id.name),
-          arrow.params,
-          blockStatement(statements),
-          !!arrow.generator,
-          !!arrow.async,
-        ),
-      ]),
-      arrow,
-    ));
+    setNodeProperty(
+      declaration,
+      "init",
+      inheritSourceLocation(
+        callExpression(this.getRuntimeHelper("$cmpnt"), [
+          functionExpression(
+            identifier(declaration.id.name),
+            arrow.params,
+            blockStatement(statements),
+            !!arrow.generator,
+            !!arrow.async,
+          ),
+        ]),
+        arrow,
+      ),
+    );
     return true;
   }
 
@@ -1342,11 +1258,13 @@ class TransformState {
     rootReturn: NodeOfType<"ReturnStatement">,
     allocator: IdentifierAllocator,
   ): void {
-    setNodeProperty(body, "body", body.body.map((statement: Node) =>
-      statement === rootReturn
-        ? statement
-        : this.transformStatement(statement, allocator),
-    ));
+    setNodeProperty(
+      body,
+      "body",
+      body.body.map((statement: Node) =>
+        statement === rootReturn ? statement : this.transformStatement(statement, allocator),
+      ),
+    );
   }
 
   /**
@@ -1355,16 +1273,12 @@ class TransformState {
    */
   private isSupportedComponentPropPattern(pattern: Node): boolean {
     if (isIdentifier(pattern)) return true;
-    if (isAssignmentPattern(pattern))
-      return this.isSupportedComponentPropPattern(pattern.left);
+    if (isAssignmentPattern(pattern)) return this.isSupportedComponentPropPattern(pattern.left);
     if (isRestElement(pattern)) return isIdentifier(pattern.argument);
     if (!isObjectPattern(pattern)) return false;
-    return (pattern.properties).every((property) => {
+    return pattern.properties.every((property) => {
       if (isRestElement(property)) return isIdentifier(property.argument);
-      return (
-        isType(property, "Property") &&
-        this.isSupportedComponentPropPattern(property.value)
-      );
+      return isType(property, "Property") && this.isSupportedComponentPropPattern(property.value);
     });
   }
 
@@ -1379,11 +1293,7 @@ class TransformState {
 
     const hasDefault = isAssignmentPattern(parameter);
     const pattern = hasDefault ? parameter.left : parameter;
-    if (
-      !isObjectPattern(pattern) ||
-      !this.isSupportedComponentPropPattern(pattern)
-    )
-      return body;
+    if (!isObjectPattern(pattern) || !this.isSupportedComponentPropPattern(pattern)) return body;
 
     // Vynn components receive a single props object. If a function declares
     // later positional parameters, keep native destructuring so parameter
@@ -1396,8 +1306,7 @@ class TransformState {
     this.usedNames.add(propsName);
 
     const directBindings = new Set<string>();
-    if (isBlockStatement(body))
-      this.collectDirectBlockBindings(body, directBindings);
+    if (isBlockStatement(body)) this.collectDirectBlockBindings(body, directBindings);
     const patternBindings = this.collectBindingNames(pattern);
     if ([...patternBindings].some((name) => directBindings.has(name))) {
       // A parameter and a direct lexical declaration with the same name is
@@ -1409,14 +1318,10 @@ class TransformState {
     const props = identifier(propsName);
     const replacements = new Map<string, Node>();
     const prologue: NodeOfType<"VariableDeclaration">[] = [];
-    if (
-      !this.collectComponentPropBindings(pattern, props, replacements, prologue)
-    )
-      return body;
+    if (!this.collectComponentPropBindings(pattern, props, replacements, prologue)) return body;
 
     const functionVars = new Set<string>();
-    if (isBlockStatement(body))
-      this.collectFunctionVarBindings(body, functionVars);
+    if (isBlockStatement(body)) this.collectFunctionVarBindings(body, functionVars);
 
     const shadowed = new Set<string>(directBindings);
     for (const name of functionVars) shadowed.add(name);
@@ -1451,9 +1356,13 @@ class TransformState {
     prologue.push(...localDeclarations);
 
     if (isBlockStatement(body)) {
-      setNodeProperty(body, "body", body.body.map((statement: Node) =>
-        this.rewriteComponentPropReferences(statement, replacements, shadowed),
-      ));
+      setNodeProperty(
+        body,
+        "body",
+        body.body.map((statement: Node) =>
+          this.rewriteComponentPropReferences(statement, replacements, shadowed),
+        ),
+      );
     } else {
       body = this.rewriteComponentPropReferences(body, replacements, shadowed);
     }
@@ -1503,13 +1412,7 @@ class TransformState {
     replacements: Map<string, Node>,
     prologue: NodeOfType<"VariableDeclaration">[],
   ): boolean {
-    return this.collectComponentPropBindingsAtPath(
-      pattern,
-      access,
-      [],
-      replacements,
-      prologue,
-    );
+    return this.collectComponentPropBindingsAtPath(pattern, access, [], replacements, prologue);
   }
 
   private collectComponentPropBindingsAtPath(
@@ -1520,17 +1423,11 @@ class TransformState {
     prologue: NodeOfType<"VariableDeclaration">[],
   ): boolean {
     if (isIdentifier(pattern)) {
-      const capitalized =
-        pattern.name.charAt(0).toUpperCase() + pattern.name.slice(1);
+      const capitalized = pattern.name.charAt(0).toUpperCase() + pattern.name.slice(1);
 
       replacements.set(
         pattern.name,
-        this.createComponentPropPathAccess(
-          baseAccess,
-          path,
-          prologue,
-          `get${capitalized}`,
-        ),
+        this.createComponentPropPathAccess(baseAccess, path, prologue, `get${capitalized}`),
       );
 
       return true;
@@ -1615,18 +1512,12 @@ class TransformState {
         const computed = !!property.computed;
 
         if (computed && !isType(key, "Literal")) {
-          key = this.rewriteComponentPropReferences(
-            key,
-            replacements,
-            new Set(),
-          );
+          key = this.rewriteComponentPropReferences(key, replacements, new Set());
 
           const cachedKey = this.generateUidIdentifier("propKey");
 
           prologue.push(
-            variableDeclaration("const", [
-              variableDeclarator(cloneNode(cachedKey), key),
-            ]),
+            variableDeclaration("const", [variableDeclarator(cloneNode(cachedKey), key)]),
           );
 
           // Keep the cached key available to object-rest exclusions.
@@ -1727,11 +1618,7 @@ class TransformState {
         variableDeclaration("const", [
           variableDeclarator(
             cloneNode(value),
-            memberExpression(
-              cloneNode(current),
-              cloneNode(step.key),
-              step.computed,
-            ),
+            memberExpression(cloneNode(current), cloneNode(step.key), step.computed),
           ),
         ]),
       );
@@ -1810,11 +1697,7 @@ class TransformState {
     for (const property of excludedProperties) {
       if (!isType(property, "Property")) continue;
       const key = property.computed
-        ? this.rewriteComponentPropReferences(
-            cloneNode(property.key),
-            replacements,
-            new Set(),
-          )
+        ? this.rewriteComponentPropReferences(cloneNode(property.key), replacements, new Set())
         : cloneNode(property.key);
       properties.push(
         objectProperty(key, this.generateUidIdentifier("excluded"), {
@@ -1826,10 +1709,7 @@ class TransformState {
     const pattern = generatedNode({ type: "ObjectPattern", properties: [] });
     setNodeProperty(pattern, "properties", properties);
     return callExpression(
-      arrowFunctionExpression(
-        [pattern],
-        blockStatement([returnStatement(cloneNode(rest))]),
-      ),
+      arrowFunctionExpression([pattern], blockStatement([returnStatement(cloneNode(rest))])),
       [cloneNode(access)],
     );
   }
@@ -1841,8 +1721,7 @@ class TransformState {
         for (const declaration of statement.declarations)
           this.collectBindingNames(declaration.id, names);
       } else if (
-        (isFunctionDeclaration(statement) ||
-          isType(statement, "ClassDeclaration")) &&
+        (isFunctionDeclaration(statement) || isType(statement, "ClassDeclaration")) &&
         statement.id &&
         isIdentifier(statement.id)
       ) {
@@ -1895,17 +1774,11 @@ class TransformState {
     );
   }
 
-  private isComponentPropReference(
-    parent: Node | undefined,
-    key: string | undefined,
-  ): boolean {
+  private isComponentPropReference(parent: Node | undefined, key: string | undefined): boolean {
     if (!parent || !key) return true;
-    if (isMemberExpression(parent) && key === "property" && !parent.computed)
-      return false;
-    if (isType(parent, "Property") && key === "key" && !parent.computed)
-      return false;
-    if (isType(parent, "MethodDefinition") && key === "key" && !parent.computed)
-      return false;
+    if (isMemberExpression(parent) && key === "property" && !parent.computed) return false;
+    if (isType(parent, "Property") && key === "key" && !parent.computed) return false;
+    if (isType(parent, "MethodDefinition") && key === "key" && !parent.computed) return false;
     if (
       (isType(parent, "LabeledStatement") ||
         isType(parent, "BreakStatement") ||
@@ -1929,63 +1802,63 @@ class TransformState {
     shadowed: Set<string>,
   ): Node {
     if (isAssignmentPattern(pattern)) {
-      setNodeProperty(pattern, "left", this.rewriteComponentPropPatternExpressions(
-        pattern.left,
-        replacements,
-        shadowed,
-      ));
-      setNodeProperty(pattern, "right", this.rewriteComponentPropReferences(
-        pattern.right,
-        replacements,
-        shadowed,
-      ));
+      setNodeProperty(
+        pattern,
+        "left",
+        this.rewriteComponentPropPatternExpressions(pattern.left, replacements, shadowed),
+      );
+      setNodeProperty(
+        pattern,
+        "right",
+        this.rewriteComponentPropReferences(pattern.right, replacements, shadowed),
+      );
       return pattern;
     }
     if (isRestElement(pattern)) {
-      setNodeProperty(pattern, "argument", this.rewriteComponentPropPatternExpressions(
-        pattern.argument,
-        replacements,
-        shadowed,
-      ));
+      setNodeProperty(
+        pattern,
+        "argument",
+        this.rewriteComponentPropPatternExpressions(pattern.argument, replacements, shadowed),
+      );
       return pattern;
     }
     if (isArrayPattern(pattern)) {
-      setNodeProperty(pattern, "elements", pattern.elements.map((element: Node | null) =>
-        element
-          ? this.rewriteComponentPropPatternExpressions(
-              element,
-              replacements,
-              shadowed,
-            )
-          : null,
-      ));
+      setNodeProperty(
+        pattern,
+        "elements",
+        pattern.elements.map((element: Node | null) =>
+          element
+            ? this.rewriteComponentPropPatternExpressions(element, replacements, shadowed)
+            : null,
+        ),
+      );
       return pattern;
     }
     if (isObjectPattern(pattern)) {
       for (const property of pattern.properties) {
         if (isRestElement(property)) {
-          this.rewriteComponentPropPatternExpressions(
-            property,
-            replacements,
-            shadowed,
-          );
+          this.rewriteComponentPropPatternExpressions(property, replacements, shadowed);
           continue;
         }
         if (!isType(property, "Property")) continue;
         if (property.computed) {
-          setNodeProperty(property, "key", this.rewriteComponentPropReferences(
-            property.key,
-            replacements,
-            shadowed,
+          setNodeProperty(
             property,
             "key",
-          ));
+            this.rewriteComponentPropReferences(
+              property.key,
+              replacements,
+              shadowed,
+              property,
+              "key",
+            ),
+          );
         }
-        setNodeProperty(property, "value", this.rewriteComponentPropPatternExpressions(
-          property.value,
-          replacements,
-          shadowed,
-        ));
+        setNodeProperty(
+          property,
+          "value",
+          this.rewriteComponentPropPatternExpressions(property.value, replacements, shadowed),
+        );
       }
     }
     return pattern;
@@ -2015,12 +1888,7 @@ class TransformState {
       for (const parameter of node.params ?? [])
         this.collectBindingNames(parameter, parameterScope);
       for (const parameter of node.params ?? [])
-        this.collectWritablePatternExpressions(
-          parameter,
-          propNames,
-          writes,
-          parameterScope,
-        );
+        this.collectWritablePatternExpressions(parameter, propNames, writes, parameterScope);
 
       const local = new Set(parameterScope);
       if (isBlockStatement(node.body)) {
@@ -2028,12 +1896,7 @@ class TransformState {
         this.collectFunctionVarBindings(node.body, local);
       }
       if (isNode(node.body))
-        this.collectWritableComponentPropReferences(
-          node.body,
-          propNames,
-          writes,
-          local,
-        );
+        this.collectWritableComponentPropReferences(node.body, propNames, writes, local);
       return;
     }
 
@@ -2041,40 +1904,18 @@ class TransformState {
       const local = new Set(shadowed);
       this.collectDirectBlockBindings(node, local);
       node.body.forEach((statement: Node) =>
-        this.collectWritableComponentPropReferences(
-          statement,
-          propNames,
-          writes,
-          local,
-        ),
+        this.collectWritableComponentPropReferences(statement, propNames, writes, local),
       );
       return;
     }
 
     if (isType(node, "AssignmentExpression")) {
-      this.collectWritableComponentPropReferences(
-        node.left,
-        propNames,
-        writes,
-        shadowed,
-        true,
-      );
-      this.collectWritableComponentPropReferences(
-        node.right,
-        propNames,
-        writes,
-        shadowed,
-      );
+      this.collectWritableComponentPropReferences(node.left, propNames, writes, shadowed, true);
+      this.collectWritableComponentPropReferences(node.right, propNames, writes, shadowed);
       return;
     }
     if (isUpdateExpression(node)) {
-      this.collectWritableComponentPropReferences(
-        node.argument,
-        propNames,
-        writes,
-        shadowed,
-        true,
-      );
+      this.collectWritableComponentPropReferences(node.argument, propNames, writes, shadowed, true);
       return;
     }
 
@@ -2131,12 +1972,7 @@ class TransformState {
 
     if (isType(node, "VariableDeclarator")) {
       if (node.init)
-        this.collectWritableComponentPropReferences(
-          node.init,
-          propNames,
-          writes,
-          shadowed,
-        );
+        this.collectWritableComponentPropReferences(node.init, propNames, writes, shadowed);
       return;
     }
 
@@ -2144,52 +1980,27 @@ class TransformState {
       const local = new Set(shadowed);
       if (node.param) this.collectBindingNames(node.param, local);
       if (node.body)
-        this.collectWritableComponentPropReferences(
-          node.body,
-          propNames,
-          writes,
-          local,
-        );
+        this.collectWritableComponentPropReferences(node.body, propNames, writes, local);
       return;
     }
 
     if (isType(node, "SwitchStatement")) {
       // The discriminant runs outside the switch's lexical case scope.
-      this.collectWritableComponentPropReferences(
-        node.discriminant,
-        propNames,
-        writes,
-        shadowed,
-      );
+      this.collectWritableComponentPropReferences(node.discriminant, propNames, writes, shadowed);
       const local = new Set(shadowed);
       this.collectSwitchBindings(node, local);
       for (const switchCase of node.cases) {
         if (switchCase.test)
-          this.collectWritableComponentPropReferences(
-            switchCase.test,
-            propNames,
-            writes,
-            local,
-          );
+          this.collectWritableComponentPropReferences(switchCase.test, propNames, writes, local);
         for (const statement of switchCase.consequent)
-          this.collectWritableComponentPropReferences(
-            statement,
-            propNames,
-            writes,
-            local,
-          );
+          this.collectWritableComponentPropReferences(statement, propNames, writes, local);
       }
       return;
     }
 
     if (isType(node, "Property")) {
       if (node.computed)
-        this.collectWritableComponentPropReferences(
-          node.key,
-          propNames,
-          writes,
-          shadowed,
-        );
+        this.collectWritableComponentPropReferences(node.key, propNames, writes, shadowed);
       this.collectWritableComponentPropReferences(
         node.value,
         propNames,
@@ -2201,68 +2012,29 @@ class TransformState {
     }
     if (isType(node, "MemberExpression") && writeTarget) {
       // `value.field = x` mutates the referenced object, not the value binding.
-      this.collectWritableComponentPropReferences(
-        node.object,
-        propNames,
-        writes,
-        shadowed,
-      );
+      this.collectWritableComponentPropReferences(node.object, propNames, writes, shadowed);
       if (node.computed)
-        this.collectWritableComponentPropReferences(
-          node.property,
-          propNames,
-          writes,
-          shadowed,
-        );
+        this.collectWritableComponentPropReferences(node.property, propNames, writes, shadowed);
       return;
     }
     if (writeTarget && isType(node, "ObjectPattern")) {
       for (const property of node.properties)
-        this.collectWritableComponentPropReferences(
-          property,
-          propNames,
-          writes,
-          shadowed,
-          true,
-        );
+        this.collectWritableComponentPropReferences(property, propNames, writes, shadowed, true);
       return;
     }
     if (writeTarget && isArrayPattern(node)) {
       for (const element of node.elements as Array<Node | null>)
         if (element)
-          this.collectWritableComponentPropReferences(
-            element,
-            propNames,
-            writes,
-            shadowed,
-            true,
-          );
+          this.collectWritableComponentPropReferences(element, propNames, writes, shadowed, true);
       return;
     }
     if (writeTarget && isRestElement(node)) {
-      this.collectWritableComponentPropReferences(
-        node.argument,
-        propNames,
-        writes,
-        shadowed,
-        true,
-      );
+      this.collectWritableComponentPropReferences(node.argument, propNames, writes, shadowed, true);
       return;
     }
     if (writeTarget && isAssignmentPattern(node)) {
-      this.collectWritableComponentPropReferences(
-        node.left,
-        propNames,
-        writes,
-        shadowed,
-        true,
-      );
-      this.collectWritableComponentPropReferences(
-        node.right,
-        propNames,
-        writes,
-        shadowed,
-      );
+      this.collectWritableComponentPropReferences(node.left, propNames, writes, shadowed, true);
+      this.collectWritableComponentPropReferences(node.right, propNames, writes, shadowed);
       return;
     }
 
@@ -2272,19 +2044,9 @@ class TransformState {
       if (isNodeArray(value)) {
         for (const child of value)
           if (isNode(child))
-            this.collectWritableComponentPropReferences(
-              child,
-              propNames,
-              writes,
-              shadowed,
-            );
+            this.collectWritableComponentPropReferences(child, propNames, writes, shadowed);
       } else if (isNode(value)) {
-        this.collectWritableComponentPropReferences(
-          value,
-          propNames,
-          writes,
-          shadowed,
-        );
+        this.collectWritableComponentPropReferences(value, propNames, writes, shadowed);
       }
     }
   }
@@ -2296,57 +2058,21 @@ class TransformState {
     shadowed: Set<string>,
   ): void {
     if (isAssignmentPattern(pattern)) {
-      this.collectWritableComponentPropReferences(
-        pattern.right,
-        propNames,
-        writes,
-        shadowed,
-      );
-      this.collectWritablePatternExpressions(
-        pattern.left,
-        propNames,
-        writes,
-        shadowed,
-      );
+      this.collectWritableComponentPropReferences(pattern.right, propNames, writes, shadowed);
+      this.collectWritablePatternExpressions(pattern.left, propNames, writes, shadowed);
     } else if (isRestElement(pattern)) {
-      this.collectWritablePatternExpressions(
-        pattern.argument,
-        propNames,
-        writes,
-        shadowed,
-      );
+      this.collectWritablePatternExpressions(pattern.argument, propNames, writes, shadowed);
     } else if (isArrayPattern(pattern)) {
       for (const element of pattern.elements as Array<Node | null>)
-        if (element)
-          this.collectWritablePatternExpressions(
-            element,
-            propNames,
-            writes,
-            shadowed,
-          );
+        if (element) this.collectWritablePatternExpressions(element, propNames, writes, shadowed);
     } else if (isObjectPattern(pattern)) {
       for (const property of pattern.properties) {
         if (isRestElement(property)) {
-          this.collectWritablePatternExpressions(
-            property,
-            propNames,
-            writes,
-            shadowed,
-          );
+          this.collectWritablePatternExpressions(property, propNames, writes, shadowed);
         } else if (isType(property, "Property")) {
           if (property.computed)
-            this.collectWritableComponentPropReferences(
-              property.key,
-              propNames,
-              writes,
-              shadowed,
-            );
-          this.collectWritablePatternExpressions(
-            property.value,
-            propNames,
-            writes,
-            shadowed,
-          );
+            this.collectWritableComponentPropReferences(property.key, propNames, writes, shadowed);
+          this.collectWritablePatternExpressions(property.value, propNames, writes, shadowed);
         }
       }
     }
@@ -2369,12 +2095,7 @@ class TransformState {
         !shadowed.has(node.name) &&
         this.isComponentPropReference(parent, parentKey)
       ) {
-        if (
-          parent &&
-          isType(parent, "Property") &&
-          parentKey === "value" &&
-          parent.shorthand
-        )
+        if (parent && isType(parent, "Property") && parentKey === "value" && parent.shorthand)
           setNodeProperty(parent, "shorthand", false);
         return inheritSourceLocation(cloneNode(replacement), node);
       }
@@ -2387,11 +2108,7 @@ class TransformState {
       for (const parameter of node.params ?? [])
         this.collectBindingNames(parameter, parameterScope);
       for (const parameter of node.params ?? [])
-        this.rewriteComponentPropPatternExpressions(
-          parameter,
-          replacements,
-          parameterScope,
-        );
+        this.rewriteComponentPropPatternExpressions(parameter, replacements, parameterScope);
 
       const local = new Set(parameterScope);
       if (isBlockStatement(node.body)) {
@@ -2400,33 +2117,24 @@ class TransformState {
       }
 
       for (const key of getVisitorKeys(node)) {
-        if (
-          key === "id" ||
-          key === "params" ||
-          this.isTypeOnlyPropRewriteKey(key)
-        )
-          continue;
+        if (key === "id" || key === "params" || this.isTypeOnlyPropRewriteKey(key)) continue;
         const value = getNodeProperty(node, key);
         if (isNodeArray(value)) {
-          setNodeProperty(node, key, value.map((child) =>
-            isNode(child)
-              ? this.rewriteComponentPropReferences(
-                  child,
-                  replacements,
-                  local,
-                  node,
-                  key,
-                )
-              : child,
-          ));
-        } else if (isNode(value)) {
-          setNodeProperty(node, key, this.rewriteComponentPropReferences(
-            value,
-            replacements,
-            local,
+          setNodeProperty(
             node,
             key,
-          ));
+            value.map((child) =>
+              isNode(child)
+                ? this.rewriteComponentPropReferences(child, replacements, local, node, key)
+                : child,
+            ),
+          );
+        } else if (isNode(value)) {
+          setNodeProperty(
+            node,
+            key,
+            this.rewriteComponentPropReferences(value, replacements, local, node, key),
+          );
         }
       }
       return node;
@@ -2434,34 +2142,28 @@ class TransformState {
 
     if (isType(node, "VariableDeclarator")) {
       if (isNode(node.init))
-        setNodeProperty(node, "init", this.rewriteComponentPropReferences(
-          node.init,
-          replacements,
-          shadowed,
+        setNodeProperty(
           node,
           "init",
-        ));
+          this.rewriteComponentPropReferences(node.init, replacements, shadowed, node, "init"),
+        );
       return node;
     }
 
     if (isType(node, "Property")) {
       if (node.computed && isNode(node.key))
-        setNodeProperty(node, "key", this.rewriteComponentPropReferences(
-          node.key,
-          replacements,
-          shadowed,
+        setNodeProperty(
           node,
           "key",
-        ));
+          this.rewriteComponentPropReferences(node.key, replacements, shadowed, node, "key"),
+        );
       const oldValue = node.value;
       if (isNode(oldValue))
-        setNodeProperty(node, "value", this.rewriteComponentPropReferences(
-          oldValue,
-          replacements,
-          shadowed,
+        setNodeProperty(
           node,
           "value",
-        ));
+          this.rewriteComponentPropReferences(oldValue, replacements, shadowed, node, "value"),
+        );
       if (node.shorthand && node.value !== oldValue) node.shorthand = false;
       return node;
     }
@@ -2469,15 +2171,13 @@ class TransformState {
     if (isBlockStatement(node)) {
       const local = new Set(shadowed);
       this.collectDirectBlockBindings(node, local);
-      setNodeProperty(node, "body", node.body.map((statement: Node) =>
-        this.rewriteComponentPropReferences(
-          statement,
-          replacements,
-          local,
-          node,
-          "body",
+      setNodeProperty(
+        node,
+        "body",
+        node.body.map((statement: Node) =>
+          this.rewriteComponentPropReferences(statement, replacements, local, node, "body"),
         ),
-      ));
+      );
       return node;
     }
 
@@ -2485,35 +2185,35 @@ class TransformState {
       const local = new Set(shadowed);
       if (node.param) this.collectBindingNames(node.param, local);
       if (isNode(node.body))
-        setNodeProperty(node, "body", this.rewriteComponentPropReferences(
-          node.body,
-          replacements,
-          local,
+        setNodeProperty(
           node,
           "body",
-        ));
+          this.rewriteComponentPropReferences(node.body, replacements, local, node, "body"),
+        );
       return node;
     }
 
     if (isType(node, "SwitchStatement")) {
-      setNodeProperty(node, "discriminant", this.rewriteComponentPropReferences(
-        node.discriminant,
-        replacements,
-        shadowed,
+      setNodeProperty(
         node,
         "discriminant",
-      ));
+        this.rewriteComponentPropReferences(
+          node.discriminant,
+          replacements,
+          shadowed,
+          node,
+          "discriminant",
+        ),
+      );
       const local = new Set(shadowed);
       this.collectSwitchBindings(node, local);
-      setNodeProperty(node, "cases", node.cases.map((switchCase: Node) =>
-        this.rewriteComponentPropReferences(
-          switchCase,
-          replacements,
-          local,
-          node,
-          "cases",
+      setNodeProperty(
+        node,
+        "cases",
+        node.cases.map((switchCase: Node) =>
+          this.rewriteComponentPropReferences(switchCase, replacements, local, node, "cases"),
         ),
-      ));
+      );
       return node;
     }
 
@@ -2524,25 +2224,21 @@ class TransformState {
         if (key === "id" || this.isTypeOnlyPropRewriteKey(key)) continue;
         const value = getNodeProperty(node, key);
         if (isNodeArray(value)) {
-          setNodeProperty(node, key, value.map((child) =>
-            isNode(child)
-              ? this.rewriteComponentPropReferences(
-                  child,
-                  replacements,
-                  local,
-                  node,
-                  key,
-                )
-              : child,
-          ));
-        } else if (isNode(value)) {
-          setNodeProperty(node, key, this.rewriteComponentPropReferences(
-            value,
-            replacements,
-            local,
+          setNodeProperty(
             node,
             key,
-          ));
+            value.map((child) =>
+              isNode(child)
+                ? this.rewriteComponentPropReferences(child, replacements, local, node, key)
+                : child,
+            ),
+          );
+        } else if (isNode(value)) {
+          setNodeProperty(
+            node,
+            key,
+            this.rewriteComponentPropReferences(value, replacements, local, node, key),
+          );
         }
       }
       return node;
@@ -2563,25 +2259,21 @@ class TransformState {
         if (this.isTypeOnlyPropRewriteKey(key)) continue;
         const value = getNodeProperty(node, key);
         if (isNodeArray(value)) {
-          setNodeProperty(node, key, value.map((child) =>
-            isNode(child)
-              ? this.rewriteComponentPropReferences(
-                  child,
-                  replacements,
-                  local,
-                  node,
-                  key,
-                )
-              : child,
-          ));
-        } else if (isNode(value)) {
-          setNodeProperty(node, key, this.rewriteComponentPropReferences(
-            value,
-            replacements,
-            local,
+          setNodeProperty(
             node,
             key,
-          ));
+            value.map((child) =>
+              isNode(child)
+                ? this.rewriteComponentPropReferences(child, replacements, local, node, key)
+                : child,
+            ),
+          );
+        } else if (isNode(value)) {
+          setNodeProperty(
+            node,
+            key,
+            this.rewriteComponentPropReferences(value, replacements, local, node, key),
+          );
         }
       }
       return node;
@@ -2601,25 +2293,21 @@ class TransformState {
 
       const value = getNodeProperty(node, key);
       if (isNodeArray(value)) {
-        setNodeProperty(node, key, value.map((child) =>
-          isNode(child)
-            ? this.rewriteComponentPropReferences(
-                child,
-                replacements,
-                shadowed,
-                node,
-                key,
-              )
-            : child,
-        ));
-      } else if (isNode(value)) {
-        setNodeProperty(node, key, this.rewriteComponentPropReferences(
-          value,
-          replacements,
-          shadowed,
+        setNodeProperty(
           node,
           key,
-        ));
+          value.map((child) =>
+            isNode(child)
+              ? this.rewriteComponentPropReferences(child, replacements, shadowed, node, key)
+              : child,
+          ),
+        );
+      } else if (isNode(value)) {
+        setNodeProperty(
+          node,
+          key,
+          this.rewriteComponentPropReferences(value, replacements, shadowed, node, key),
+        );
       }
     }
     return node;
@@ -2627,8 +2315,7 @@ class TransformState {
 
   private getForIndexName(parameter: Node | null | undefined): string | null {
     if (isIdentifier(parameter)) return parameter.name;
-    if (isAssignmentPattern(parameter) && isIdentifier(parameter.left))
-      return parameter.left.name;
+    if (isAssignmentPattern(parameter) && isIdentifier(parameter.left)) return parameter.left.name;
     return null;
   }
 
@@ -2641,16 +2328,12 @@ class TransformState {
       names.add(node.name);
       return names;
     }
-    if (isRestElement(node))
-      return this.collectBindingNames(node.argument, names);
-    if (isAssignmentPattern(node))
-      return this.collectBindingNames(node.left, names);
+    if (isRestElement(node)) return this.collectBindingNames(node.argument, names);
+    if (isAssignmentPattern(node)) return this.collectBindingNames(node.left, names);
     if (isObjectPattern(node)) {
       for (const property of node.properties) {
-        if (isRestElement(property))
-          this.collectBindingNames(property.argument, names);
-        else if (isType(property, "Property"))
-          this.collectBindingNames(property.value, names);
+        if (isRestElement(property)) this.collectBindingNames(property.argument, names);
+        else if (isType(property, "Property")) this.collectBindingNames(property.value, names);
       }
       return names;
     }
@@ -2665,8 +2348,7 @@ class TransformState {
   private withForCallback<T>(parameters: Node[], callback: () => T): T {
     const previous = this.activeForIndexNames;
     const shadowed = new Set<string>();
-    for (const parameter of parameters)
-      this.collectBindingNames(parameter, shadowed);
+    for (const parameter of parameters) this.collectBindingNames(parameter, shadowed);
     const next = previous.filter((name) => !shadowed.has(name));
     const indexName = this.getForIndexName(parameters[1]);
     this.activeForIndexNames = indexName ? [...next, indexName] : next;
@@ -2680,8 +2362,7 @@ class TransformState {
   private withShadowedForIndices<T>(parameters: Node[], callback: () => T): T {
     const previous = this.activeForIndexNames;
     const shadowed = new Set<string>();
-    for (const parameter of parameters)
-      this.collectBindingNames(parameter, shadowed);
+    for (const parameter of parameters) this.collectBindingNames(parameter, shadowed);
     this.activeForIndexNames = previous.filter((name) => !shadowed.has(name));
     try {
       return callback();
@@ -2691,23 +2372,14 @@ class TransformState {
   }
 
   private transformForIndexReference(expression: ExpressionNode): ExpressionNode {
-    if (
-      !isIdentifier(expression) ||
-      !this.activeForIndexNames.includes(expression.name)
-    )
+    if (!isIdentifier(expression) || !this.activeForIndexNames.includes(expression.name))
       return expression;
-    const result = memberExpression(
-      identifier(expression.name),
-      identifier("value"),
-    );
+    const result = memberExpression(identifier(expression.name), identifier("value"));
     this.generatedForIndexReferences.add(result);
     return result;
   }
 
-  private isRuntimeHelperCall(
-    expression: Node,
-    name: RuntimeHelperName,
-  ): boolean {
+  private isRuntimeHelperCall(expression: Node, name: RuntimeHelperName): boolean {
     const helper = this.runtimeHelpers.get(name);
     return (
       !!helper &&
@@ -2741,8 +2413,7 @@ class TransformState {
     for (const key of getVisitorKeys(node)) {
       const value = getNodeProperty(node, key);
       if (isNodeArray(value)) {
-        for (const child of value)
-          if (isNode(child) && this.containsJSX(child)) return true;
+        for (const child of value) if (isNode(child) && this.containsJSX(child)) return true;
       } else if (isNode(value) && this.containsJSX(value)) return true;
     }
     return false;
@@ -2753,9 +2424,7 @@ class TransformState {
       if (callback.async) return false;
       if (isBlockStatement(callback.body)) {
         return callback.body.body.some(
-          (statement: Node) =>
-            isReturnStatement(statement) &&
-            this.containsJSX(statement.argument),
+          (statement: Node) => isReturnStatement(statement) && this.containsJSX(statement.argument),
         );
       }
       return this.containsJSX(callback.body);
@@ -2763,25 +2432,19 @@ class TransformState {
     if (isFunctionExpression(callback)) {
       if (callback.async) return false;
       return callback.body.body.some(
-        (statement: Node) =>
-          isReturnStatement(statement) && this.containsJSX(statement.argument),
+        (statement: Node) => isReturnStatement(statement) && this.containsJSX(statement.argument),
       );
     }
     return false;
   }
 
   private isJSXMapExpression(expression: Node): boolean {
-    if (!isCallExpression(expression) || expression.arguments.length !== 1)
-      return false;
+    if (!isCallExpression(expression) || expression.arguments.length !== 1) return false;
     const callee = expression.callee;
     if (!isMemberExpression(callee)) return false;
     if (callee.computed) {
-      if (!isLiteralString(callee.property) || callee.property.value !== "map")
-        return false;
-    } else if (
-      !isIdentifier(callee.property) ||
-      callee.property.name !== "map"
-    ) {
+      if (!isLiteralString(callee.property) || callee.property.value !== "map") return false;
+    } else if (!isIdentifier(callee.property) || callee.property.name !== "map") {
       return false;
     }
     if (this.namedMapCallbacks.has(expression)) return true;
@@ -2800,21 +2463,18 @@ class TransformState {
     return result;
   }
 
-  private createMapFor(expression: NodeOfType<"CallExpression">, allocator: IdentifierAllocator): ExpressionNode {
+  private createMapFor(
+    expression: NodeOfType<"CallExpression">,
+    allocator: IdentifierAllocator,
+  ): ExpressionNode {
     const callee = expression.callee;
-    if (!isMemberExpression(callee))
-      throw new Error("Vynn `$for` requires a `.map()` call.");
+    if (!isMemberExpression(callee)) throw new Error("Vynn `$for` requires a `.map()` call.");
     const source = callee.object;
     const callback = expression.arguments[0];
-    if (!isExpression(source))
-      throw new Error("Vynn `$for` map source must be an expression.");
-    if (!isExpression(callback))
-      throw new Error("Vynn `$for` requires a map callback expression.");
+    if (!isExpression(source)) throw new Error("Vynn `$for` map source must be an expression.");
+    if (!isExpression(callback)) throw new Error("Vynn `$for` requires a map callback expression.");
 
-    const transformedSource = this.transformEmbeddedExpression(
-      source,
-      allocator,
-    );
+    const transformedSource = this.transformEmbeddedExpression(source, allocator);
 
     // Named callbacks use a specialized sibling so ordinary calls to the
     // original function continue receiving ordinary numeric map indices.
@@ -2824,10 +2484,7 @@ class TransformState {
     if (namedCallback) {
       transformedCallback = cloneNode(namedCallback);
     } else {
-      if (
-        !isArrowFunctionExpression(callback) &&
-        !isFunctionExpression(callback)
-      ) {
+      if (!isArrowFunctionExpression(callback) && !isFunctionExpression(callback)) {
         throw new Error("Vynn `$for` requires a function callback.");
       }
 
@@ -2835,21 +2492,20 @@ class TransformState {
         if (isArrowFunctionExpression(callback)) {
           const callbackBody = callback.body;
           if (isBlockStatement(callbackBody)) {
-            setNodeProperty(callback, "body", this.transformBlockStatement(
-              callbackBody,
-              allocator,
-            ));
+            setNodeProperty(
+              callback,
+              "body",
+              this.transformBlockStatement(callbackBody, allocator),
+            );
           } else if (isExpression(callbackBody)) {
-            setNodeProperty(callback, "body", this.transformEmbeddedExpression(
-              callbackBody,
-              allocator,
-            ));
+            setNodeProperty(
+              callback,
+              "body",
+              this.transformEmbeddedExpression(callbackBody, allocator),
+            );
           }
         } else {
-          setNodeProperty(callback, "body", this.transformBlockStatement(
-            callback.body,
-            allocator,
-          ));
+          setNodeProperty(callback, "body", this.transformBlockStatement(callback.body, allocator));
         }
         return callback;
       });
@@ -2870,17 +2526,11 @@ class TransformState {
     dynamicExpressions = false,
   ): ExpressionNode {
     if (isJSXElement(expression)) {
-      if (isComponentElement(expression))
-        return this.createComponentCall(expression, allocator);
+      if (isComponentElement(expression)) return this.createComponentCall(expression, allocator);
       return this.createElementStatements(expression, statements, allocator);
     }
     if (isJSXFragment(expression)) {
-      return this.createFragmentInStatements(
-        expression,
-        allocator,
-        statements,
-        dynamicExpressions,
-      );
+      return this.createFragmentInStatements(expression, allocator, statements, dynamicExpressions);
     }
     return this.transformEmbeddedExpression(expression, allocator);
   }
@@ -2937,8 +2587,7 @@ class TransformState {
     dynamicExpressions = false,
   ): ExpressionNode | null {
     if (isJSXElement(child)) {
-      if (isComponentElement(child))
-        return this.createComponentCall(child, allocator);
+      if (isComponentElement(child)) return this.createComponentCall(child, allocator);
       return this.createElement(child, allocator);
     }
     if (isJSXText(child)) {
@@ -2949,12 +2598,8 @@ class TransformState {
       const expression = child.expression;
       if (isJSXEmptyExpression(expression)) return null;
       if (isExpression(expression)) {
-        if (isStringLiteral(expression))
-          return this.createTextExpression(expression.value);
-        const transformed = this.transformEmbeddedExpression(
-          expression,
-          allocator,
-        );
+        if (isStringLiteral(expression)) return this.createTextExpression(expression.value);
+        const transformed = this.transformEmbeddedExpression(expression, allocator);
         if (
           dynamicExpressions &&
           !this.isForExpression(transformed) &&
@@ -2967,12 +2612,7 @@ class TransformState {
       return null;
     }
     if (isJSXFragment(child)) {
-      return this.createFragmentInStatements(
-        child,
-        allocator,
-        statements,
-        dynamicExpressions,
-      );
+      return this.createFragmentInStatements(child, allocator, statements, dynamicExpressions);
     }
     return null;
   }
@@ -2995,15 +2635,11 @@ class TransformState {
     allocator: IdentifierAllocator,
     dynamicExpressions: boolean,
   ): ExpressionNode[] {
-    const children: ExpressionNode[] = []
+    const children: ExpressionNode[] = [];
     for (const child of fragment.children) {
       if (isJSXFragment(child)) {
         children.push(
-          ...this.collectFragmentChildrenForExpression(
-            child,
-            allocator,
-            dynamicExpressions,
-          ),
+          ...this.collectFragmentChildrenForExpression(child, allocator, dynamicExpressions),
         );
         continue;
       }
@@ -3035,12 +2671,8 @@ class TransformState {
       const expression = child.expression;
       if (isJSXEmptyExpression(expression)) return null;
       if (isExpression(expression)) {
-        if (isStringLiteral(expression))
-          return this.createTextExpression(expression.value);
-        const transformed = this.transformEmbeddedExpression(
-          expression,
-          allocator,
-        );
+        if (isStringLiteral(expression)) return this.createTextExpression(expression.value);
+        const transformed = this.transformEmbeddedExpression(expression, allocator);
         if (
           dynamicExpressions &&
           !this.isForExpression(transformed) &&
@@ -3057,17 +2689,17 @@ class TransformState {
     return null;
   }
 
-  private createElement(node: NodeOfType<"JSXElement">, allocator: IdentifierAllocator): ExpressionNode {
+  private createElement(
+    node: NodeOfType<"JSXElement">,
+    allocator: IdentifierAllocator,
+  ): ExpressionNode {
     const statements: Node[] = [];
     const tagName = getJSXIdentifierName(node.openingElement.name);
     const hoistedHead = this.isHoistableHeadElement(node, tagName);
     const elementId = this.createElementStatements(node, statements, allocator);
     statements.push(returnStatement(hoistedHead ? arrayExpression([]) : elementId));
     return inheritSourceLocation(
-      callExpression(
-        arrowFunctionExpression([], blockStatement(statements)),
-        [],
-      ),
+      callExpression(arrowFunctionExpression([], blockStatement(statements)), []),
       node,
     );
   }
@@ -3080,9 +2712,7 @@ class TransformState {
     const tagName = getJSXIdentifierName(node.openingElement.name);
     const hoistToHead = this.isHoistableHeadElement(node, tagName);
     const elementId = allocator.nextElement();
-    const headIdentity = hoistToHead
-      ? this.getStaticHeadIdentity(node, tagName)
-      : null;
+    const headIdentity = hoistToHead ? this.getStaticHeadIdentity(node, tagName) : null;
     statements.push(
       variableDeclaration("const", [
         variableDeclarator(
@@ -3090,33 +2720,18 @@ class TransformState {
           callExpression(
             this.getRuntimeHelper(hoistToHead ? "$headTmpl" : "$tmpl"),
             hoistToHead
-              ? [
-                  stringLiteral(tagName),
-                  ...(headIdentity ? [stringLiteral(headIdentity)] : []),
-                ]
+              ? [stringLiteral(tagName), ...(headIdentity ? [stringLiteral(headIdentity)] : [])]
               : [stringLiteral(tagName)],
           ),
         ),
       ]),
     );
-    this.transformAttributes(
-      node.openingElement,
-      elementId,
-      statements,
-      allocator,
-    );
-    this.transformElementChildren(
-      node.children,
-      elementId,
-      statements,
-      allocator,
-    );
+    this.transformAttributes(node.openingElement, elementId, statements, allocator);
+    this.transformElementChildren(node.children, elementId, statements, allocator);
 
     if (hoistToHead) {
       statements.push(
-        expressionStatement(
-          callExpression(this.getRuntimeHelper("$head"), [elementId]),
-        ),
+        expressionStatement(callExpression(this.getRuntimeHelper("$head"), [elementId])),
       );
     }
 
@@ -3134,43 +2749,29 @@ class TransformState {
         const text = normalizeJSXText(child.value);
         if (text)
           statements.push(
-            expressionStatement(
-              this.createInsert(elementId, this.createTextExpression(text)),
-            ),
+            expressionStatement(this.createInsert(elementId, this.createTextExpression(text))),
           );
         continue;
       }
       if (isJSXExpressionContainer(child)) {
         const expression = child.expression;
-        if (isJSXEmptyExpression(expression) || !isExpression(expression))
-          continue;
+        if (isJSXEmptyExpression(expression) || !isExpression(expression)) continue;
         const childExpression = isStringLiteral(expression)
           ? this.createTextExpression(expression.value)
           : this.transformEmbeddedExpression(expression, allocator);
-        statements.push(
-          expressionStatement(this.createInsert(elementId, childExpression)),
-        );
+        statements.push(expressionStatement(this.createInsert(elementId, childExpression)));
         continue;
       }
       if (isJSXElement(child)) {
         const childExpression = isComponentElement(child)
           ? this.createComponentCall(child, allocator)
           : this.createElement(child, allocator);
-        statements.push(
-          expressionStatement(this.createInsert(elementId, childExpression)),
-        );
+        statements.push(expressionStatement(this.createInsert(elementId, childExpression)));
         continue;
       }
       if (isJSXFragment(child)) {
-        const fragment = this.createFragmentInStatements(
-          child,
-          allocator,
-          statements,
-          false,
-        );
-        statements.push(
-          expressionStatement(this.createInsert(elementId, fragment)),
-        );
+        const fragment = this.createFragmentInStatements(child, allocator, statements, false);
+        statements.push(expressionStatement(this.createInsert(elementId, fragment)));
       }
     }
   }
@@ -3198,9 +2799,7 @@ class TransformState {
       ),
     ]);
 
-    return callExpression(this.getRuntimeHelper("$nodes"), [
-      arrowFunctionExpression([], body),
-    ]);
+    return callExpression(this.getRuntimeHelper("$nodes"), [arrowFunctionExpression([], body)]);
   }
 
   /**
@@ -3232,10 +2831,7 @@ class TransformState {
       }
 
       if (isType(source, "Literal")) {
-        if (
-          typeof source.value === "string" ||
-          typeof source.value === "number"
-        ) {
+        if (typeof source.value === "string" || typeof source.value === "number") {
           // Static primitives should be text nodes, not reactive ranges.
           return this.createTextExpression(String(source.value));
         }
@@ -3265,9 +2861,7 @@ class TransformState {
     // $if defaults the alternate to undefined. Omit the callback entirely
     // when this logical expression's false branch renders nothing.
     if (alternate !== null) {
-      args.push(
-        arrowFunctionExpression([], createBranch(alternate, alternateSource)),
-      );
+      args.push(arrowFunctionExpression([], createBranch(alternate, alternateSource)));
     }
 
     const result = callExpression(this.getRuntimeHelper("$if"), args);
@@ -3277,58 +2871,47 @@ class TransformState {
   }
 
   private createTextExpression(value: string): ExpressionNode {
-    return callExpression(this.getRuntimeHelper("$txt"), [
-      stringLiteral(value),
-    ]);
+    return callExpression(this.getRuntimeHelper("$txt"), [stringLiteral(value)]);
   }
 
   private transformEmbeddedExpression(
     expression: ExpressionNode,
     allocator: IdentifierAllocator,
   ): ExpressionNode {
-
-    if (
-      isCallExpression(expression) &&
-      this.generatedForExpressions.has(expression)
-    )
+    if (isCallExpression(expression) && this.generatedForExpressions.has(expression))
       return expression;
-    if (
-      isCallExpression(expression) &&
-      this.generatedIfExpressions.has(expression)
-    )
+    if (isCallExpression(expression) && this.generatedIfExpressions.has(expression))
       return expression;
-    if (
-      isMemberExpression(expression) &&
-      this.generatedForIndexReferences.has(expression)
-    )
+    if (isMemberExpression(expression) && this.generatedForIndexReferences.has(expression))
       return expression;
 
     const transformedForIndex = this.transformForIndexReference(expression);
     if (transformedForIndex !== expression) return transformedForIndex;
 
     if (isCallExpression(expression) && this.isJSXMapExpression(expression)) {
-      return inheritSourceLocation(
-        this.createMapFor(expression, allocator),
-        expression,
-      );
+      return inheritSourceLocation(this.createMapFor(expression, allocator), expression);
     }
 
     if (isArrayExpression(expression) && this.containsJSX(expression)) {
-      setNodeProperty(expression, "elements", expression.elements.map((element) => {
-        if (!element) return null;
-        if (isSpreadElement(element)) {
-          setNodeProperty(element, "argument", this.transformEmbeddedExpression(
-            element.argument,
-            allocator,
-          ));
-          return element;
-        }
-        return isExpression(element) ? this.transformEmbeddedExpression(element, allocator) : element;
-      }));
-      return inheritSourceLocation(
-        this.createArrayIdentityFor(expression),
+      setNodeProperty(
         expression,
+        "elements",
+        expression.elements.map((element) => {
+          if (!element) return null;
+          if (isSpreadElement(element)) {
+            setNodeProperty(
+              element,
+              "argument",
+              this.transformEmbeddedExpression(element.argument, allocator),
+            );
+            return element;
+          }
+          return isExpression(element)
+            ? this.transformEmbeddedExpression(element, allocator)
+            : element;
+        }),
       );
+      return inheritSourceLocation(this.createArrayIdentityFor(expression), expression);
     }
 
     if (isJSXElement(expression)) {
@@ -3348,8 +2931,7 @@ class TransformState {
     if (isLogicalExpression(expression)) {
       const sourceLeft = expression.left;
       const sourceRight = expression.right;
-      const hasJSX =
-        this.containsJSX(sourceLeft) || this.containsJSX(sourceRight);
+      const hasJSX = this.containsJSX(sourceLeft) || this.containsJSX(sourceRight);
 
       const left = this.transformEmbeddedExpression(sourceLeft, allocator);
       const right = this.transformEmbeddedExpression(sourceRight, allocator);
@@ -3386,28 +2968,15 @@ class TransformState {
       // <Fallback /> to Fallback(props) erases the JSX syntax itself.
       const consequentSource = expression.consequent;
       const alternateSource = expression.alternate;
-      const hasJSX =
-        this.containsJSX(consequentSource) || this.containsJSX(alternateSource);
+      const hasJSX = this.containsJSX(consequentSource) || this.containsJSX(alternateSource);
 
       const test = this.transformEmbeddedExpression(expression.test, allocator);
-      const consequent = this.transformEmbeddedExpression(
-        consequentSource,
-        allocator,
-      );
-      const alternate = this.transformEmbeddedExpression(
-        alternateSource,
-        allocator,
-      );
+      const consequent = this.transformEmbeddedExpression(consequentSource, allocator);
+      const alternate = this.transformEmbeddedExpression(alternateSource, allocator);
 
       if (hasJSX) {
         return inheritSourceLocation(
-          this.createIfExpression(
-            test,
-            consequent,
-            alternate,
-            consequentSource,
-            alternateSource,
-          ),
+          this.createIfExpression(test, consequent, alternate, consequentSource, alternateSource),
           expression,
         );
       }
@@ -3418,33 +2987,32 @@ class TransformState {
       return expression;
     }
     if (isCallExpression(expression)) {
-      setNodeProperty(expression, "arguments", expression.arguments.map((argument: Node) => {
-        if (isSpreadElement(argument)) {
-          setNodeProperty(argument, "argument", this.transformEmbeddedExpression(
-            argument.argument,
-            allocator,
-          ));
-          return argument;
-        }
-        return isExpression(argument)
-          ? this.transformEmbeddedExpression(argument, allocator)
-          : argument;
-      }));
+      setNodeProperty(
+        expression,
+        "arguments",
+        expression.arguments.map((argument: Node) => {
+          if (isSpreadElement(argument)) {
+            setNodeProperty(
+              argument,
+              "argument",
+              this.transformEmbeddedExpression(argument.argument, allocator),
+            );
+            return argument;
+          }
+          return isExpression(argument)
+            ? this.transformEmbeddedExpression(argument, allocator)
+            : argument;
+        }),
+      );
       return expression;
     }
     if (isArrowFunctionExpression(expression)) {
       const transformBody = () => {
         const body = expression.body;
         if (isBlockStatement(body)) {
-          setNodeProperty(expression, "body", this.transformBlockStatement(
-            body,
-            allocator,
-          ));
+          setNodeProperty(expression, "body", this.transformBlockStatement(body, allocator));
         } else if (isExpression(body)) {
-          setNodeProperty(expression, "body", this.transformEmbeddedExpression(
-            body,
-            allocator,
-          ));
+          setNodeProperty(expression, "body", this.transformEmbeddedExpression(body, allocator));
         }
         return expression;
       };
@@ -3455,10 +3023,11 @@ class TransformState {
     }
     if (isFunctionExpression(expression)) {
       const transformBody = () => {
-        setNodeProperty(expression, "body", this.transformBlockStatement(
-          expression.body,
-          allocator,
-        ));
+        setNodeProperty(
+          expression,
+          "body",
+          this.transformBlockStatement(expression.body, allocator),
+        );
         return expression;
       };
 
@@ -3467,117 +3036,138 @@ class TransformState {
         : this.withShadowedForIndices(expression.params, transformBody);
     }
     if (isArrayExpression(expression)) {
-      setNodeProperty(expression, "elements", expression.elements.map((element) => {
-        if (!element) return null;
-        if (isSpreadElement(element)) {
-          setNodeProperty(element, "argument", this.transformEmbeddedExpression(
-            element.argument,
-            allocator,
-          ));
-          return element;
-        }
-        return isExpression(element)
-          ? this.transformEmbeddedExpression(element, allocator)
-          : element;
-      }));
+      setNodeProperty(
+        expression,
+        "elements",
+        expression.elements.map((element) => {
+          if (!element) return null;
+          if (isSpreadElement(element)) {
+            setNodeProperty(
+              element,
+              "argument",
+              this.transformEmbeddedExpression(element.argument, allocator),
+            );
+            return element;
+          }
+          return isExpression(element)
+            ? this.transformEmbeddedExpression(element, allocator)
+            : element;
+        }),
+      );
       return expression;
     }
     if (isObjectExpression(expression)) {
-      setNodeProperty(expression, "properties", expression.properties.map((property: Node) => {
-        if (isSpreadElement(property)) {
-          setNodeProperty(property, "argument", this.transformEmbeddedExpression(
-            property.argument,
-            allocator,
-          ));
-          return property;
-        }
-        if (isObjectProperty(property)) {
-          if (isExpression(property.value)) {
-            const originalValue = property.value;
-            const transformedValue = this.transformEmbeddedExpression(
-              originalValue,
-              allocator,
+      setNodeProperty(
+        expression,
+        "properties",
+        expression.properties.map((property: Node) => {
+          if (isSpreadElement(property)) {
+            setNodeProperty(
+              property,
+              "argument",
+              this.transformEmbeddedExpression(property.argument, allocator),
             );
-            if (property.shorthand && transformedValue !== originalValue)
-              setNodeProperty(property, "shorthand", false);
-            setNodeProperty(property, "value", transformedValue);
+            return property;
+          }
+          if (isObjectProperty(property)) {
+            if (isExpression(property.value)) {
+              const originalValue = property.value;
+              const transformedValue = this.transformEmbeddedExpression(originalValue, allocator);
+              if (property.shorthand && transformedValue !== originalValue)
+                setNodeProperty(property, "shorthand", false);
+              setNodeProperty(property, "value", transformedValue);
+            }
+            return property;
+          }
+          if (isObjectMethod(property)) {
+            const value = getNodeProperty(property, "value");
+            if (isFunctionExpression(value)) {
+              setNodeProperty(
+                value,
+                "body",
+                this.withShadowedForIndices(value.params, () =>
+                  this.transformBlockStatement(value.body, allocator),
+                ),
+              );
+            }
+            return property;
           }
           return property;
-        }
-        if (isObjectMethod(property)) {
-          const value = getNodeProperty(property, "value");
-          if (isFunctionExpression(value)) {
-            setNodeProperty(value, "body", this.withShadowedForIndices(
-              value.params,
-              () => this.transformBlockStatement(value.body, allocator),
-            ));
-          }
-          return property;
-        }
-        return property;
-      }));
+        }),
+      );
       return expression;
     }
     if (isSequenceExpression(expression)) {
-      setNodeProperty(expression, "expressions", expression.expressions.map((item) =>
-        this.transformEmbeddedExpression(item, allocator),
-      ));
+      setNodeProperty(
+        expression,
+        "expressions",
+        expression.expressions.map((item) => this.transformEmbeddedExpression(item, allocator)),
+      );
       return expression;
     }
     if (isUnaryExpression(expression) || isAwaitExpression(expression)) {
-      setNodeProperty(expression, "argument", this.transformEmbeddedExpression(
-        expression.argument,
-        allocator,
-      ));
+      setNodeProperty(
+        expression,
+        "argument",
+        this.transformEmbeddedExpression(expression.argument, allocator),
+      );
       return expression;
     }
     if (isUpdateExpression(expression)) return expression;
     if (isAssignmentExpression(expression)) {
-      setNodeProperty(expression, "right", this.transformEmbeddedExpression(
-        expression.right,
-        allocator,
-      ));
+      setNodeProperty(
+        expression,
+        "right",
+        this.transformEmbeddedExpression(expression.right, allocator),
+      );
       return expression;
     }
     if (isBinaryExpression(expression)) {
       if (isExpression(expression.left))
-        setNodeProperty(expression, "left", this.transformEmbeddedExpression(
-          expression.left,
-          allocator,
-        ));
+        setNodeProperty(
+          expression,
+          "left",
+          this.transformEmbeddedExpression(expression.left, allocator),
+        );
       if (isExpression(expression.right))
-        setNodeProperty(expression, "right", this.transformEmbeddedExpression(
-          expression.right,
-          allocator,
-        ));
+        setNodeProperty(
+          expression,
+          "right",
+          this.transformEmbeddedExpression(expression.right, allocator),
+        );
       return expression;
     }
     if (isTemplateLiteral(expression)) {
-      setNodeProperty(expression, "expressions", expression.expressions.map((item) =>
-        this.transformEmbeddedExpression(item, allocator),
-      ));
+      setNodeProperty(
+        expression,
+        "expressions",
+        expression.expressions.map((item) => this.transformEmbeddedExpression(item, allocator)),
+      );
       return expression;
     }
     if (isMemberExpression(expression)) {
       if (isExpression(expression.object))
-        setNodeProperty(expression, "object", this.transformEmbeddedExpression(
-          expression.object,
-          allocator,
-        ));
+        setNodeProperty(
+          expression,
+          "object",
+          this.transformEmbeddedExpression(expression.object, allocator),
+        );
       if (expression.computed && isExpression(expression.property))
-        setNodeProperty(expression, "property", this.transformEmbeddedExpression(
-          expression.property,
-          allocator,
-        ));
+        setNodeProperty(
+          expression,
+          "property",
+          this.transformEmbeddedExpression(expression.property, allocator),
+        );
       return expression;
     }
     // Oxc's ESTree AST represents optional chains as ChainExpression, unlike
     // Babel's OptionalMemberExpression / OptionalCallExpression nodes.
     if (isType(expression, "ChainExpression")) {
-      setNodeProperty(expression, "expression", this.transformEmbeddedExpression(
-        expression.expression,
-        allocator,
-      ));
+      setNodeProperty(
+        expression,
+        "expression",
+        this.transformEmbeddedExpression(expression.expression, allocator),
+      );
       return expression;
     }
     if (
@@ -3586,10 +3176,11 @@ class TransformState {
       isType(expression, "TSSatisfiesExpression") ||
       isType(expression, "TSTypeAssertion")
     ) {
-      setNodeProperty(expression, "expression", this.transformEmbeddedExpression(
-        expression.expression,
-        allocator,
-      ));
+      setNodeProperty(
+        expression,
+        "expression",
+        this.transformEmbeddedExpression(expression.expression, allocator),
+      );
       return expression;
     }
     return expression;
@@ -3599,122 +3190,136 @@ class TransformState {
     block: NodeOfType<"BlockStatement">,
     allocator: IdentifierAllocator,
   ): NodeOfType<"BlockStatement"> {
-    setNodeProperty(block, "body", block.body.map((statement: Node) => {
-      if (isReturnStatement(statement)) {
-        if (statement.argument && isExpression(statement.argument))
-          setNodeProperty(statement, "argument", this.transformEmbeddedExpression(
-            statement.argument,
-            allocator,
-          ));
-        return statement;
-      }
-      if (isExpressionStatement(statement)) {
-        setNodeProperty(statement, "expression", this.transformEmbeddedExpression(
-          statement.expression,
-          allocator,
-        ));
-        return statement;
-      }
-      if (isVariableDeclaration(statement)) {
-        for (const declaration of statement.declarations) {
-          if (
-            isArrowComponentDeclaration(declaration) &&
-            this.transformArrowComponent(declaration)
-          )
-            continue;
-          if (!declaration.init || !isExpression(declaration.init)) continue;
-          this.assertJSXInitializerIsLazy(declaration);
-          setNodeProperty(declaration, "init", this.transformEmbeddedExpression(
-            declaration.init,
-            allocator,
-          ));
+    setNodeProperty(
+      block,
+      "body",
+      block.body.map((statement: Node) => {
+        if (isReturnStatement(statement)) {
+          if (statement.argument && isExpression(statement.argument))
+            setNodeProperty(
+              statement,
+              "argument",
+              this.transformEmbeddedExpression(statement.argument, allocator),
+            );
+          return statement;
         }
-        return statement;
-      }
-      if (isIfStatement(statement)) {
-        setNodeProperty(statement, "test", this.transformEmbeddedExpression(
-          statement.test,
-          allocator,
-        ));
-        if (isBlockStatement(statement.consequent))
-          setNodeProperty(statement, "consequent", this.transformBlockStatement(
-            statement.consequent,
-            allocator,
-          ));
-        else
-          setNodeProperty(statement, "consequent", this.transformStatement(
-            statement.consequent,
-            allocator,
-          ));
-        if (statement.alternate) {
-          setNodeProperty(statement, "alternate", isBlockStatement(statement.alternate)
-            ? this.transformBlockStatement(statement.alternate, allocator)
-            : this.transformStatement(statement.alternate, allocator));
+        if (isExpressionStatement(statement)) {
+          setNodeProperty(
+            statement,
+            "expression",
+            this.transformEmbeddedExpression(statement.expression, allocator),
+          );
+          return statement;
         }
-        return statement;
-      }
-      if (
-        isFunctionDeclaration(statement) &&
-        statement.id &&
-        isComponentName(statement.id.name)
-      ) {
-        const transformed = this.transformComponentDeclaration(statement);
-        if (transformed !== statement) return transformed;
-      }
-      return this.visitNestedDeclarations(statement);
-    }));
+        if (isVariableDeclaration(statement)) {
+          for (const declaration of statement.declarations) {
+            if (
+              isArrowComponentDeclaration(declaration) &&
+              this.transformArrowComponent(declaration)
+            )
+              continue;
+            if (!declaration.init || !isExpression(declaration.init)) continue;
+            this.assertJSXInitializerIsLazy(declaration);
+            setNodeProperty(
+              declaration,
+              "init",
+              this.transformEmbeddedExpression(declaration.init, allocator),
+            );
+          }
+          return statement;
+        }
+        if (isIfStatement(statement)) {
+          setNodeProperty(
+            statement,
+            "test",
+            this.transformEmbeddedExpression(statement.test, allocator),
+          );
+          if (isBlockStatement(statement.consequent))
+            setNodeProperty(
+              statement,
+              "consequent",
+              this.transformBlockStatement(statement.consequent, allocator),
+            );
+          else
+            setNodeProperty(
+              statement,
+              "consequent",
+              this.transformStatement(statement.consequent, allocator),
+            );
+          if (statement.alternate) {
+            setNodeProperty(
+              statement,
+              "alternate",
+              isBlockStatement(statement.alternate)
+                ? this.transformBlockStatement(statement.alternate, allocator)
+                : this.transformStatement(statement.alternate, allocator),
+            );
+          }
+          return statement;
+        }
+        if (
+          isFunctionDeclaration(statement) &&
+          statement.id &&
+          isComponentName(statement.id.name)
+        ) {
+          const transformed = this.transformComponentDeclaration(statement);
+          if (transformed !== statement) return transformed;
+        }
+        return this.visitNestedDeclarations(statement);
+      }),
+    );
     return block;
   }
 
-  private transformStatement(
-    statement: Node,
-    allocator: IdentifierAllocator,
-  ): Node {
+  private transformStatement(statement: Node, allocator: IdentifierAllocator): Node {
     if (isVariableDeclaration(statement)) {
       for (const declaration of statement.declarations) {
-        if (
-          isArrowComponentDeclaration(declaration) &&
-          this.transformArrowComponent(declaration)
-        )
+        if (isArrowComponentDeclaration(declaration) && this.transformArrowComponent(declaration))
           continue;
         if (!declaration.init || !isExpression(declaration.init)) continue;
         this.assertJSXInitializerIsLazy(declaration);
-        setNodeProperty(declaration, "init", this.transformEmbeddedExpression(
-          declaration.init,
-          allocator,
-        ));
+        setNodeProperty(
+          declaration,
+          "init",
+          this.transformEmbeddedExpression(declaration.init, allocator),
+        );
       }
       return statement;
     }
     if (isExpressionStatement(statement)) {
-      setNodeProperty(statement, "expression", this.transformEmbeddedExpression(
-        statement.expression,
-        allocator,
-      ));
+      setNodeProperty(
+        statement,
+        "expression",
+        this.transformEmbeddedExpression(statement.expression, allocator),
+      );
       return statement;
     }
-    if (isBlockStatement(statement))
-      return this.transformBlockStatement(statement, allocator);
+    if (isBlockStatement(statement)) return this.transformBlockStatement(statement, allocator);
     if (isIfStatement(statement)) {
-      setNodeProperty(statement, "test", this.transformEmbeddedExpression(
-        statement.test,
-        allocator,
-      ));
-      setNodeProperty(statement, "consequent", isBlockStatement(statement.consequent)
-        ? this.transformBlockStatement(statement.consequent, allocator)
-        : this.transformStatement(statement.consequent, allocator));
+      setNodeProperty(
+        statement,
+        "test",
+        this.transformEmbeddedExpression(statement.test, allocator),
+      );
+      setNodeProperty(
+        statement,
+        "consequent",
+        isBlockStatement(statement.consequent)
+          ? this.transformBlockStatement(statement.consequent, allocator)
+          : this.transformStatement(statement.consequent, allocator),
+      );
       if (statement.alternate) {
-        setNodeProperty(statement, "alternate", isBlockStatement(statement.alternate)
-          ? this.transformBlockStatement(statement.alternate, allocator)
-          : this.transformStatement(statement.alternate, allocator));
+        setNodeProperty(
+          statement,
+          "alternate",
+          isBlockStatement(statement.alternate)
+            ? this.transformBlockStatement(statement.alternate, allocator)
+            : this.transformStatement(statement.alternate, allocator),
+        );
       }
       return statement;
     }
-    if (
-      isFunctionDeclaration(statement) &&
-      statement.id &&
-      isComponentName(statement.id.name)
-    ) {
+    if (isFunctionDeclaration(statement) && statement.id && isComponentName(statement.id.name)) {
       const transformed = this.transformComponentDeclaration(statement);
       if (transformed !== statement) return transformed;
     }
@@ -3734,8 +3339,7 @@ class TransformState {
     for (const key of getVisitorKeys(node)) {
       const value = getNodeProperty(node, key);
       if (isNodeArray(value)) {
-        for (const child of value)
-          if (isNode(child) && this.containsEagerJSX(child)) return true;
+        for (const child of value) if (isNode(child) && this.containsEagerJSX(child)) return true;
       } else if (isNode(value) && this.containsEagerJSX(value)) return true;
     }
     return false;
@@ -3745,16 +3349,12 @@ class TransformState {
     const initializer = getNodeProperty(declaration, "init");
     if (!isNode(initializer) || !this.containsEagerJSX(initializer)) return;
     const id = getNodeProperty(declaration, "id");
-    const variableName = isIdentifier(id)
-      ? `"${id.name}"`
-      : "this variable";
+    const variableName = isIdentifier(id) ? `"${id.name}"` : "this variable";
     const message =
       `JSX in the initializer for ${variableName} must be wrapped in a function ` +
       "to preserve SSR hydration order. For example: const view = () => (<>...</>);";
     const location = declaration.loc?.start;
-    const suffix = location
-      ? ` (line ${location.line}, column ${location.column + 1})`
-      : "";
+    const suffix = location ? ` (line ${location.line}, column ${location.column + 1})` : "";
     throw new Error(`${message}${suffix} in ${this.filename}`);
   }
 
@@ -3762,9 +3362,7 @@ class TransformState {
     node: NodeOfType<"JSXElement">,
     allocator: IdentifierAllocator,
   ): ExpressionNode {
-    const componentExpression = this.createComponentExpression(
-      node.openingElement.name,
-    );
+    const componentExpression = this.createComponentExpression(node.openingElement.name);
     const props = this.createComponentProps(node, allocator);
     return callExpression(componentExpression, props ? [props] : []);
   }
@@ -3777,9 +3375,7 @@ class TransformState {
         identifier(name.property.name),
       );
     }
-    throw new Error(
-      "Vynn currently only supports simple or member-expression components.",
-    );
+    throw new Error("Vynn currently only supports simple or member-expression components.");
   }
 
   private createComponentProps(
@@ -3790,14 +3386,11 @@ class TransformState {
     for (const attribute of node.openingElement.attributes) {
       if (isJSXSpreadAttribute(attribute)) {
         properties.push(
-          spreadElement(
-            this.transformEmbeddedExpression(attribute.argument, allocator),
-          ),
+          spreadElement(this.transformEmbeddedExpression(attribute.argument, allocator)),
         );
         continue;
       }
-      if (!isJSXAttribute(attribute) || !isJSXIdentifier(attribute.name))
-        continue;
+      if (!isJSXAttribute(attribute) || !isJSXIdentifier(attribute.name)) continue;
       const name = attribute.name.name;
 
       if (name === "ref") {
@@ -3817,9 +3410,7 @@ class TransformState {
             "get",
             propertyKey(name),
             [],
-            blockStatement([
-              returnStatement(stringLiteral(attribute.value.value)),
-            ]),
+            blockStatement([returnStatement(stringLiteral(attribute.value.value))]),
           ),
         );
         continue;
@@ -3851,10 +3442,7 @@ class TransformState {
     }
 
     const children = this.createComponentChildrenGetterBody(node, allocator);
-    if (children)
-      properties.push(
-        objectMethod("get", identifier("children"), [], children),
-      );
+    if (children) properties.push(objectMethod("get", identifier("children"), [], children));
     return properties.length ? objectExpression(properties) : null;
   }
 
@@ -3864,9 +3452,7 @@ class TransformState {
     if (isIdentifier(expression)) {
       const refIdentifier = this.generateUidIdentifier("ref");
       statements.push(
-        variableDeclaration("const", [
-          variableDeclarator(refIdentifier, cloneNode(expression)),
-        ]),
+        variableDeclaration("const", [variableDeclarator(refIdentifier, cloneNode(expression))]),
       );
       statements.push(
         expressionStatement(
@@ -3877,27 +3463,14 @@ class TransformState {
               stringLiteral("function"),
             ),
             callExpression(cloneNode(refIdentifier), [cloneNode(refParameter)]),
-            assignmentExpression(
-              "=",
-              cloneNode(expression),
-              cloneNode(refParameter),
-            ),
+            assignmentExpression("=", cloneNode(expression), cloneNode(refParameter)),
           ),
         ),
       );
-      return objectMethod(
-        "method",
-        identifier("ref"),
-        [refParameter],
-        blockStatement(statements),
-      );
+      return objectMethod("method", identifier("ref"), [refParameter], blockStatement(statements));
     }
     const refIdentifier = this.generateUidIdentifier("ref");
-    statements.push(
-      variableDeclaration("const", [
-        variableDeclarator(refIdentifier, expression),
-      ]),
-    );
+    statements.push(variableDeclaration("const", [variableDeclarator(refIdentifier, expression)]));
     statements.push(
       expressionStatement(
         conditionalExpression(
@@ -3911,12 +3484,7 @@ class TransformState {
         ),
       ),
     );
-    return objectMethod(
-      "method",
-      identifier("ref"),
-      [refParameter],
-      blockStatement(statements),
-    );
+    return objectMethod("method", identifier("ref"), [refParameter], blockStatement(statements));
   }
 
   private createComponentGetterBody(
@@ -3939,7 +3507,7 @@ class TransformState {
     node: NodeOfType<"JSXElement">,
     allocator: IdentifierAllocator,
   ): Node | null {
-    const children: ExpressionNode[] = []
+    const children: ExpressionNode[] = [];
     const statements: Node[] = [];
     for (const child of node.children) {
       if (isJSXText(child)) {
@@ -3955,10 +3523,7 @@ class TransformState {
             children.push(this.createTextExpression(expression.value));
             continue;
           }
-          const transformed = this.transformEmbeddedExpression(
-            expression,
-            allocator,
-          );
+          const transformed = this.transformEmbeddedExpression(expression, allocator);
           children.push(
             this.isForExpression(transformed) ||
               this.isIfExpression(transformed) ||
@@ -3978,14 +3543,11 @@ class TransformState {
         continue;
       }
       if (isJSXFragment(child)) {
-        children.push(
-          this.createFragmentInStatements(child, allocator, statements, true),
-        );
+        children.push(this.createFragmentInStatements(child, allocator, statements, true));
       }
     }
     if (children.length === 0) return null;
-    const result =
-      children.length === 1 ? children[0] : arrayExpression(children);
+    const result = children.length === 1 ? children[0] : arrayExpression(children);
     statements.push(returnStatement(result));
     return blockStatement(statements);
   }
@@ -4008,8 +3570,7 @@ class TransformState {
         );
         continue;
       }
-      if (!isJSXAttribute(attribute) || !isJSXIdentifier(attribute.name))
-        continue;
+      if (!isJSXAttribute(attribute) || !isJSXIdentifier(attribute.name)) continue;
       const name = attribute.name.name;
 
       if (name === "ref") {
@@ -4025,8 +3586,7 @@ class TransformState {
       }
       if (this.isEventAttribute(name)) {
         const value = attribute.value;
-        if (!isJSXExpressionContainer(value) || !isExpression(value.expression))
-          continue;
+        if (!isJSXExpressionContainer(value) || !isExpression(value.expression)) continue;
         statements.push(
           expressionStatement(
             this.createEvent(
@@ -4040,8 +3600,7 @@ class TransformState {
       }
       if (isJSXExpressionContainer(attribute.value)) {
         const expression = attribute.value.expression;
-        if (isJSXEmptyExpression(expression) || !isExpression(expression))
-          continue;
+        if (isJSXEmptyExpression(expression) || !isExpression(expression)) continue;
         statements.push(
           expressionStatement(
             this.createAttribute(
@@ -4055,17 +3614,13 @@ class TransformState {
       }
       if (isLiteralString(attribute.value)) {
         statements.push(
-          expressionStatement(
-            this.createStaticAttribute(elementId, name, attribute.value),
-          ),
+          expressionStatement(this.createStaticAttribute(elementId, name, attribute.value)),
         );
         continue;
       }
       if (attribute.value === null) {
         statements.push(
-          expressionStatement(
-            this.createStaticAttribute(elementId, name, booleanLiteral(true)),
-          ),
+          expressionStatement(this.createStaticAttribute(elementId, name, booleanLiteral(true))),
         );
       }
     }
@@ -4082,28 +3637,17 @@ class TransformState {
               stringLiteral("function"),
             ),
             callExpression(cloneNode(expression), [cloneNode(elementId)]),
-            assignmentExpression(
-              "=",
-              cloneNode(expression),
-              cloneNode(elementId),
-            ),
+            assignmentExpression("=", cloneNode(expression), cloneNode(elementId)),
           ),
         ),
       ];
     }
-    if (
-      isArrowFunctionExpression(expression) ||
-      isFunctionExpression(expression)
-    ) {
-      return [
-        expressionStatement(callExpression(expression, [cloneNode(elementId)])),
-      ];
+    if (isArrowFunctionExpression(expression) || isFunctionExpression(expression)) {
+      return [expressionStatement(callExpression(expression, [cloneNode(elementId)]))];
     }
     const refIdentifier = this.generateUidIdentifier("ref");
     return [
-      variableDeclaration("const", [
-        variableDeclarator(refIdentifier, expression),
-      ]),
+      variableDeclaration("const", [variableDeclarator(refIdentifier, expression)]),
       expressionStatement(
         conditionalExpression(
           binaryExpression(
@@ -4125,11 +3669,7 @@ class TransformState {
     ]);
   }
 
-  private createAttribute(
-    elementId: Node,
-    name: string,
-    expression: Node,
-  ): Node {
+  private createAttribute(elementId: Node, name: string, expression: Node): Node {
     return callExpression(this.getRuntimeHelper("$attr"), [
       elementId,
       stringLiteral(name),
@@ -4137,16 +3677,8 @@ class TransformState {
     ]);
   }
 
-  private createStaticAttribute(
-    elementId: Node,
-    name: string,
-    value: Node,
-  ): Node {
-    return callExpression(this.getRuntimeHelper("$attr"), [
-      elementId,
-      stringLiteral(name),
-      value,
-    ]);
+  private createStaticAttribute(elementId: Node, name: string, value: Node): Node {
+    return callExpression(this.getRuntimeHelper("$attr"), [elementId, stringLiteral(name), value]);
   }
 
   private createEvent(elementId: Node, event: string, expression: Node): Node {
@@ -4158,11 +3690,7 @@ class TransformState {
   }
 
   private isEventAttribute(name: string): boolean {
-    return (
-      name.length > 2 &&
-      name.startsWith("on") &&
-      name[2] === name[2].toUpperCase()
-    );
+    return name.length > 2 && name.startsWith("on") && name[2] === name[2].toUpperCase();
   }
 
   private createInsert(elementId: Node, expression: Node): Node {

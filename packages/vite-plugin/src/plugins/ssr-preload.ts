@@ -1,6 +1,7 @@
+import type { Plugin } from "vite";
+
 import { isAbsolute, relative } from "node:path";
 import { parseSync } from "oxc-parser";
-import type { Plugin } from "vite";
 
 export type ViteSsrManifest = Record<string, string[]>;
 
@@ -42,19 +43,26 @@ export function normalizeSsrModuleId(id: string, root: string): string | undefin
 }
 
 function isAstNode(value: unknown): value is AstNode {
-  return !!value && typeof value === "object" && "type" in value &&
-    typeof (value as AstNode).type === "string";
+  return (
+    !!value &&
+    typeof value === "object" &&
+    "type" in value &&
+    typeof (value as AstNode).type === "string"
+  );
 }
 
-function visit(
-  node: AstNode,
-  callback: (node: AstNode) => void,
-): void {
+function visit(node: AstNode, callback: (node: AstNode) => void): void {
   callback(node);
 
   for (const [key, value] of Object.entries(node)) {
-    if (key === "loc" || key === "range" || key === "comments" ||
-        key === "tokens" || key === "parent") continue;
+    if (
+      key === "loc" ||
+      key === "range" ||
+      key === "comments" ||
+      key === "tokens" ||
+      key === "parent"
+    )
+      continue;
 
     if (isAstNode(value)) {
       visit(value, callback);
@@ -84,8 +92,14 @@ function findLoaderImport(loader: AstNode): ImportCandidate | undefined {
     // runs, so visit nested functions too. More than one import is ambiguous
     // and is intentionally left uninstrumented.
     for (const [key, value] of Object.entries(node)) {
-      if (key === "loc" || key === "range" || key === "comments" ||
-          key === "tokens" || key === "parent") continue;
+      if (
+        key === "loc" ||
+        key === "range" ||
+        key === "comments" ||
+        key === "tokens" ||
+        key === "parent"
+      )
+        continue;
 
       if (isAstNode(value)) {
         visitLoader(value);
@@ -220,8 +234,7 @@ export function vynnSsrPreloadPlugin(): Plugin {
         const loader = args[0];
         if (
           !loader ||
-          (loader.type !== "ArrowFunctionExpression" &&
-            loader.type !== "FunctionExpression")
+          (loader.type !== "ArrowFunctionExpression" && loader.type !== "FunctionExpression")
         ) {
           continue;
         }
@@ -250,9 +263,10 @@ export function vynnSsrPreloadPlugin(): Plugin {
 
         edits.push({
           position: lastArgument.end,
-          text: args.length === 1
-            ? `, undefined, ${JSON.stringify(moduleId)}`
-            : `, ${JSON.stringify(moduleId)}`,
+          text:
+            args.length === 1
+              ? `, undefined, ${JSON.stringify(moduleId)}`
+              : `, ${JSON.stringify(moduleId)}`,
         });
       }
 
@@ -262,9 +276,7 @@ export function vynnSsrPreloadPlugin(): Plugin {
       edits.sort((left, right) => right.position - left.position);
       for (const edit of edits) {
         transformed =
-          transformed.slice(0, edit.position) +
-          edit.text +
-          transformed.slice(edit.position);
+          transformed.slice(0, edit.position) + edit.text + transformed.slice(edit.position);
       }
 
       return { code: transformed, map: null };

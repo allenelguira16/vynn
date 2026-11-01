@@ -2,35 +2,33 @@ import { existsSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import {
-  build,
-  type PreviewServer,
-  type ResolvedConfig,
-  type ViteDevServer,
-} from "vite";
 import { parseSync } from "oxc-parser";
+import { type PreviewServer, type ResolvedConfig, type ViteDevServer, build } from "vite";
+
 import { createWebRequest, writeResponse } from "./app/http.ts";
+import { registerServerFunctionDevMiddleware } from "./server-functions/dev-middleware.ts";
+import { makeClientRuntime, makeServerRuntime } from "./server-functions/runtime.ts";
 import {
-  applyBaseToEndpoint,
-  normalizeAllowedOrigin,
   CLIENT_RUNTIME_ID,
-  SERVER_RUNTIME_ID,
-  SERVER_FUNCTIONS_API_ID,
-  RESOLVED_CLIENT_RUNTIME_ID,
-  RESOLVED_SERVER_RUNTIME_ID,
-  RESOLVED_SERVER_FUNCTIONS_API_ID,
-  SERVER_FUNCTION_IMPL_PREFIX,
-  RESOLVED_SERVER_FUNCTION_IMPL_PREFIX,
-  SERVER_FUNCTION_MANIFEST_SENTINEL,
   CREATE_SERVER_REFERENCE,
-  SCRIPT_EXTENSION_RE,
   DEFAULT_ENDPOINT,
   MAX_REQUEST_BYTES,
+  type MarkedFunction,
   type Node,
+  RESOLVED_CLIENT_RUNTIME_ID,
+  RESOLVED_SERVER_FUNCTIONS_API_ID,
+  RESOLVED_SERVER_FUNCTION_IMPL_PREFIX,
+  RESOLVED_SERVER_RUNTIME_ID,
+  SCRIPT_EXTENSION_RE,
+  SERVER_FUNCTIONS_API_ID,
+  SERVER_FUNCTION_IMPL_PREFIX,
+  SERVER_FUNCTION_MANIFEST_SENTINEL,
+  SERVER_RUNTIME_ID,
   type ServerFunctionReference,
   type VynnServerFunctionsOptions,
   type VynnServerFunctionsPlugin,
-  type MarkedFunction,
+  applyBaseToEndpoint,
+  normalizeAllowedOrigin,
 } from "./server-functions/shared.ts";
 import {
   applyEdits,
@@ -43,11 +41,6 @@ import {
   makeExtractedImplementation,
   makeReplacement,
 } from "./server-functions/transform.ts";
-import {
-  makeClientRuntime,
-  makeServerRuntime,
-} from "./server-functions/runtime.ts";
-import { registerServerFunctionDevMiddleware } from "./server-functions/dev-middleware.ts";
 
 /**
  * Function-level `"use server"` transform.
@@ -93,9 +86,7 @@ export function serverFunctionsPlugin(
     throw new Error(
       "[Vynn use server] maxRequestBytes must be a safe integer between 1 and 26214400.",
     );
-  const allowedOrigins = (options.allowedOrigins ?? []).map(
-    normalizeAllowedOrigin,
-  );
+  const allowedOrigins = (options.allowedOrigins ?? []).map(normalizeAllowedOrigin);
   let isDevelopment = false;
   let isBuild = false;
   let projectRoot = process.cwd();
@@ -106,8 +97,7 @@ export function serverFunctionsPlugin(
   const ssrEntryIds = new Set<string>();
   const registerSsrEntries = (input: unknown): void => {
     if (typeof input === "string") {
-      if (!input || input.startsWith("\0") || input.startsWith("virtual:"))
-        return;
+      if (!input || input.startsWith("\0") || input.startsWith("virtual:")) return;
       ssrEntryIds.add(resolve(projectRoot, input).replace(/\\/g, "/"));
       return;
     }
@@ -131,10 +121,7 @@ export function serverFunctionsPlugin(
   // still injected into the standalone server-functions handler bundle.
   let hasServerBuildTransform = false;
 
-  const replaceModuleRefs = (
-    moduleId: string,
-    references: ServerFunctionReference[],
-  ): void => {
+  const replaceModuleRefs = (moduleId: string, references: ServerFunctionReference[]): void => {
     const previous = refsByModule.get(moduleId) ?? [];
     for (const reference of previous) refsById.delete(reference.id);
 
@@ -193,16 +180,14 @@ export function serverFunctionsPlugin(
     resolveId(id) {
       if (id === CLIENT_RUNTIME_ID) return RESOLVED_CLIENT_RUNTIME_ID;
       if (id === SERVER_RUNTIME_ID) return RESOLVED_SERVER_RUNTIME_ID;
-      if (id === SERVER_FUNCTIONS_API_ID)
-        return RESOLVED_SERVER_FUNCTIONS_API_ID;
+      if (id === SERVER_FUNCTIONS_API_ID) return RESOLVED_SERVER_FUNCTIONS_API_ID;
       if (id.startsWith(SERVER_FUNCTION_IMPL_PREFIX))
         return `${RESOLVED_SERVER_FUNCTION_IMPL_PREFIX}${id.slice(SERVER_FUNCTION_IMPL_PREFIX.length)}`;
       return null;
     },
 
     load(id) {
-      if (id === RESOLVED_CLIENT_RUNTIME_ID)
-        return makeClientRuntime(resolvedEndpoint);
+      if (id === RESOLVED_CLIENT_RUNTIME_ID) return makeClientRuntime(resolvedEndpoint);
       if (id === RESOLVED_SERVER_RUNTIME_ID)
         return makeServerRuntime(resolvedEndpoint, {
           maxRequestBytes,
@@ -214,14 +199,10 @@ export function serverFunctionsPlugin(
       if (id === RESOLVED_SERVER_FUNCTIONS_API_ID)
         return `export { handleServerFunctionRequest } from ${JSON.stringify(SERVER_RUNTIME_ID)};`;
       if (id.startsWith(RESOLVED_SERVER_FUNCTION_IMPL_PREFIX)) {
-        const functionId = id.slice(
-          RESOLVED_SERVER_FUNCTION_IMPL_PREFIX.length,
-        );
+        const functionId = id.slice(RESOLVED_SERVER_FUNCTION_IMPL_PREFIX.length);
         const reference = refsById.get(functionId);
         if (!reference)
-          this.error(
-            `[Vynn use server] Missing implementation metadata for ${functionId}.`,
-          );
+          this.error(`[Vynn use server] Missing implementation metadata for ${functionId}.`);
         const moduleId = reference.moduleId.replace(/\\/g, "/");
         return [
           `import { ${reference.exportName} as implementation } from ${JSON.stringify(moduleId)};`,
@@ -235,8 +216,7 @@ export function serverFunctionsPlugin(
       if (options.enabled === false) return null;
 
       const cleanId = cleanModuleId(id);
-      if (id.startsWith("\0") || cleanId.includes("/node_modules/"))
-        return null;
+      if (id.startsWith("\0") || cleanId.includes("/node_modules/")) return null;
       if (!SCRIPT_EXTENSION_RE.test(cleanId)) return null;
 
       const moduleId = resolve(cleanId);
@@ -247,15 +227,10 @@ export function serverFunctionsPlugin(
       // as render(). Inject it here so application source needn't import the
       // virtual server-functions API.
       let injectedHandlerExport = false;
-      const normalizedModuleId = resolve(projectRoot, cleanId).replace(
-        /\\/g,
-        "/",
-      );
+      const normalizedModuleId = resolve(projectRoot, cleanId).replace(/\\/g, "/");
       if (isSsrBuild && ssrEntryIds.has(normalizedModuleId)) {
         const alreadyExportsHandler =
-          /\bexport\s*\{[^}]*\bhandleServerFunctionRequest\b[^}]*\}/s.test(
-            source,
-          );
+          /\bexport\s*\{[^}]*\bhandleServerFunctionRequest\b[^}]*\}/s.test(source);
 
         if (!alreadyExportsHandler) {
           const importsHandler =
@@ -263,9 +238,7 @@ export function serverFunctionsPlugin(
               source,
             );
           const declaresHandler =
-            /\b(?:const|let|var|function|class)\s+handleServerFunctionRequest\b/.test(
-              source,
-            );
+            /\b(?:const|let|var|function|class)\s+handleServerFunctionRequest\b/.test(source);
 
           if (declaresHandler && !importsHandler) {
             this.error(
@@ -306,10 +279,7 @@ export function serverFunctionsPlugin(
 
       const parseErrors: any[] = parsed.errors ?? parsed.diagnostics ?? [];
       const fatalErrors = parseErrors.filter(
-        (error) =>
-          error.severity === "Error" ||
-          error.severity === 2 ||
-          !("severity" in error),
+        (error) => error.severity === "Error" || error.severity === 2 || !("severity" in error),
       );
       if (fatalErrors.length > 0) {
         this.error(
@@ -407,25 +377,14 @@ export function serverFunctionsPlugin(
       // server bundle from the modules containing server functions so preview
       // has a real RPC handler. The SSR build's own closeBundle is skipped to
       // prevent recursive builds.
-      if (
-        !standalone ||
-        !isBuild ||
-        isSsrBuild ||
-        !resolvedConfig ||
-        refsByModule.size === 0
-      ) {
+      if (!standalone || !isBuild || isSsrBuild || !resolvedConfig || refsByModule.size === 0) {
         return;
       }
 
-      const tempDirectory = await mkdtemp(
-        resolve(projectRoot, ".vynn-server-functions-"),
-      );
+      const tempDirectory = await mkdtemp(resolve(projectRoot, ".vynn-server-functions-"));
       const entryPath = resolve(tempDirectory, "entry.ts");
       const imports = [...refsByModule.keys()].map((moduleId) => {
-        const relativeModuleId = relative(tempDirectory, moduleId).replace(
-          /\\/g,
-          "/",
-        );
+        const relativeModuleId = relative(tempDirectory, moduleId).replace(/\\/g, "/");
         const specifier = relativeModuleId.startsWith(".")
           ? relativeModuleId
           : `./${relativeModuleId}`;
@@ -473,32 +432,25 @@ export function serverFunctionsPlugin(
     },
 
     generateBundle(_outputOptions, bundle) {
-      const consumer = (
-        this as unknown as { environment?: { config?: { consumer?: string } } }
-      ).environment?.config?.consumer;
-      if (!isBuild || (consumer !== "server" && !hasServerBuildTransform))
-        return;
+      const consumer = (this as unknown as { environment?: { config?: { consumer?: string } } })
+        .environment?.config?.consumer;
+      if (!isBuild || (consumer !== "server" && !hasServerBuildTransform)) return;
       for (const output of Object.values(bundle)) {
-        if (
-          output.type !== "chunk" ||
-          !output.code.includes(SERVER_FUNCTION_MANIFEST_SENTINEL)
-        )
+        if (output.type !== "chunk" || !output.code.includes(SERVER_FUNCTION_MANIFEST_SENTINEL))
           continue;
         const manifest: Record<string, string> = {};
         for (const [functionId, fileReference] of implementationChunkRefs) {
-          let path = relative(
-            dirname(output.fileName),
-            this.getFileName(fileReference),
-          ).replace(/\\/g, "/");
+          let path = relative(dirname(output.fileName), this.getFileName(fileReference)).replace(
+            /\\/g,
+            "/",
+          );
           if (!path.startsWith(".")) path = `./${path}`;
           manifest[functionId] = path;
         }
         const marker = JSON.stringify(SERVER_FUNCTION_MANIFEST_SENTINEL);
         const markerIndex = output.code.indexOf(marker);
         if (markerIndex < 0)
-          this.error(
-            "[Vynn use server] Could not inject the production function manifest.",
-          );
+          this.error("[Vynn use server] Could not inject the production function manifest.");
         output.code =
           output.code.slice(0, markerIndex) +
           JSON.stringify(JSON.stringify(manifest)) +
@@ -522,9 +474,7 @@ export function serverFunctionsPlugin(
 
       let handlerPromise:
         | Promise<{
-            handleServerFunctionRequest: (
-              request: Request,
-            ) => Promise<Response | null>;
+            handleServerFunctionRequest: (request: Request) => Promise<Response | null>;
           }>
         | undefined;
 

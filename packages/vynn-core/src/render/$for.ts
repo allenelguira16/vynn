@@ -1,9 +1,9 @@
-import { JSX } from "../types/jsx";
-import { $state, State } from "../reactivity/$state";
-import { $nodes } from "./$nodes";
-import { untrack } from "../reactivity/untrack";
-import { $computed } from "../reactivity/$computed";
 import { isServer } from "../context/is-server-context";
+import { $computed } from "../reactivity/$computed";
+import { $state, State } from "../reactivity/$state";
+import { untrack } from "../reactivity/untrack";
+import { JSX } from "../types/jsx";
+import { $nodes } from "./$nodes";
 import { getCurrentDOMNamespace, withDOMNamespace } from "./namespace";
 
 type ForEntry<T> = {
@@ -21,9 +21,7 @@ export function $for<T>(
     withDOMNamespace(namespace, () => each(item, index));
 
   if (isServer()) {
-    return $nodes(() =>
-      items().map((item, i) => renderEach(item, { value: i })),
-    );
+    return $nodes(() => items().map((item, i) => renderEach(item, { value: i })));
   }
 
   // const result = $state<JSX.Element[]>([]);
@@ -236,10 +234,7 @@ export function isEqual(a: unknown, b: unknown): boolean {
     }
 
     if (
-      !isEqual(
-        (a as Record<PropertyKey, unknown>)[key],
-        (b as Record<PropertyKey, unknown>)[key],
-      )
+      !isEqual((a as Record<PropertyKey, unknown>)[key], (b as Record<PropertyKey, unknown>)[key])
     ) {
       return false;
     }

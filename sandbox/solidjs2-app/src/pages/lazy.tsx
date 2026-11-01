@@ -1,4 +1,4 @@
-import { lazy, Loading } from "solid-js";
+import { Loading, lazy } from "solid-js";
 
 import { Template } from "../components/template";
 

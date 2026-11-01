@@ -1,7 +1,7 @@
 {
   "name": "app",
-  "private": true,
   "version": "0.0.0",
+  "private": true,
   "type": "module",
   "scripts": {
     "start": "vite",
@@ -23,12 +23,12 @@
   "devDependencies": {
     "@types/compression": "^1.8.1",
     "@types/express": "^5.0.6",
+    "@types/node": "^26.6.3",
     "cross-env": "^10.1.0",
+    "daisyui": "^5.7.50",
     "esbuild": "^0.28.2",
     "tsx": "^4.23.15",
     "typescript": "~6.0.2",
-    "vite": "^8.1.1",
-    "@types/node": "^26.6.3",
-    "daisyui": "^5.7.50"
+    "vite": "^8.1.1"
   }
 }

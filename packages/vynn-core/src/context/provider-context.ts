@@ -1,5 +1,5 @@
-import { JSX } from "../types/jsx";
 import { getContext, setContext } from "../life-cycle/owner";
+import { JSX } from "../types/jsx";
 
 /**
  * Creates a context provider and its corresponding consumer hook.

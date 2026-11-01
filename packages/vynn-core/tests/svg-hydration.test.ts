@@ -1,6 +1,13 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
+
+import type { SSR_NODE } from "../src/render/resolve-node";
+import type { JSX } from "../src/types/jsx";
+
+import { hydrateToDOM } from "../src/client/hydrate-to-dom";
+import { withHydration } from "../src/client/hydration";
 import { createOwner, disposeOwner, runWithOwner } from "../src/life-cycle/owner";
+import { $state } from "../src/reactivity/$state";
 import { $attr } from "../src/render/$attr";
 import { $for } from "../src/render/$for";
 import { $if } from "../src/render/$if";
@@ -8,13 +15,8 @@ import { $insert } from "../src/render/$insert";
 import { $nodes } from "../src/render/$nodes";
 import { $on } from "../src/render/$on";
 import { $tmpl } from "../src/render/$tmpl";
-import { withHydration } from "../src/client/hydration";
-import { hydrateToDOM } from "../src/client/hydrate-to-dom";
-import { $state } from "../src/reactivity/$state";
-import { renderToServer } from "../src/server/render-to-server";
 import { createSSRAsync } from "../src/render/resolve-node";
-import type { SSR_NODE } from "../src/render/resolve-node";
-import type { JSX } from "../src/types/jsx";
+import { renderToServer } from "../src/server/render-to-server";
 
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 const HTML_NAMESPACE = "http://www.w3.org/1999/xhtml";
@@ -156,9 +158,9 @@ describe("SVG namespace rendering", () => {
     await flushEffects();
 
     expect(svg.querySelectorAll("circle")).toHaveLength(2);
-    expect([...svg.querySelectorAll("circle")].every(
-      (circle) => circle.namespaceURI === SVG_NAMESPACE,
-    )).toBe(true);
+    expect(
+      [...svg.querySelectorAll("circle")].every((circle) => circle.namespaceURI === SVG_NAMESPACE),
+    ).toBe(true);
 
     disposeOwner(owner);
   });
@@ -274,16 +276,18 @@ describe("SVG namespace rendering", () => {
     const rendered = renderToServer(() => {
       const svg = $tmpl("svg");
 
-      $insert(svg, () =>
-        createSSRAsync(
-          () => [],
-          () => {
-            const path = $tmpl("path");
-            $attr(path, "strokeWidth", 3);
-            return [path as unknown as SSR_NODE];
-          },
-          [Promise.resolve()],
-        ) as unknown as JSX.Element,
+      $insert(
+        svg,
+        () =>
+          createSSRAsync(
+            () => [],
+            () => {
+              const path = $tmpl("path");
+              $attr(path, "strokeWidth", 3);
+              return [path as unknown as SSR_NODE];
+            },
+            [Promise.resolve()],
+          ) as unknown as JSX.Element,
       );
 
       return svg as unknown as JSX.Element;

@@ -84,16 +84,10 @@ export const PokeDex = () => {
         <thead>
           <tr>
             <th class="w-1/3">ID</th>
-            <th
-              onClick={sortOnClick("name")}
-              class="select-none cursor-pointer w-1/3 text-center"
-            >
+            <th onClick={sortOnClick("name")} class="select-none cursor-pointer w-1/3 text-center">
               Name
             </th>
-            <th
-              onClick={sortOnClick("url")}
-              class="select-none cursor-pointer w-1/3 text-center"
-            >
+            <th onClick={sortOnClick("url")} class="select-none cursor-pointer w-1/3 text-center">
               URL
             </th>
           </tr>
@@ -134,10 +128,7 @@ export const PokeDex = () => {
                 <tr>
                   <td class="w-1/3 text-center">{index + 1}</td>
                   <td class="w-1/3 text-center truncate">{name}</td>
-                  <td
-                    class="w-1/3 text-center truncate"
-                    onClick={showUrlOnClick(url)}
-                  >
+                  <td class="w-1/3 text-center truncate" onClick={showUrlOnClick(url)}>
                     {url}
                   </td>
                 </tr>

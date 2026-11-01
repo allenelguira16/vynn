@@ -1,10 +1,7 @@
 import type { ViteDevServer } from "vite";
+
+import { createServerFunctionRequest, readLimitedBody, sendJson } from "./http.ts";
 import { SERVER_RUNTIME_ID, type ServerFunctionReference } from "./shared.ts";
-import {
-  createServerFunctionRequest,
-  readLimitedBody,
-  sendJson,
-} from "./http.ts";
 
 type ServerFunctionDevMiddlewareOptions = {
   endpoint: string;
@@ -54,14 +51,9 @@ export function registerServerFunctionDevMiddleware(
       }
 
       const origin = request.headers.origin;
-      const encrypted = Boolean(
-        (request.socket as { encrypted?: boolean }).encrypted,
-      );
+      const encrypted = Boolean((request.socket as { encrypted?: boolean }).encrypted);
       const expectedOrigin = `${encrypted ? "https" : "http"}://${request.headers.host ?? "localhost"}`;
-      if (
-        !origin ||
-        (origin !== expectedOrigin && !allowedOrigins.includes(origin))
-      ) {
+      if (!origin || (origin !== expectedOrigin && !allowedOrigins.includes(origin))) {
         sendJson(response, 403, {
           ok: false,
           error: "Cross-origin request rejected.",
@@ -75,14 +67,10 @@ export function registerServerFunctionDevMiddleware(
         requestBody = await readLimitedBody(request, maxRequestBytes);
         payload = JSON.parse(requestBody);
       } catch (error) {
-        const statusCode =
-          (error as Error & { statusCode?: number }).statusCode ?? 400;
+        const statusCode = (error as Error & { statusCode?: number }).statusCode ?? 400;
         sendJson(response, statusCode, {
           ok: false,
-          error:
-            statusCode === 413
-              ? "Request body too large."
-              : "Invalid JSON request body.",
+          error: statusCode === 413 ? "Request body too large." : "Invalid JSON request body.",
         });
         return;
       }
@@ -148,10 +136,7 @@ export function registerServerFunctionDevMiddleware(
         const invoke = runtimeModule.invokeServerFunction;
         if (typeof invoke !== "function")
           throw new Error("Vynn server-function runtime is not available.");
-        const contextRequest = createServerFunctionRequest(
-          request,
-          requestBody,
-        );
+        const contextRequest = createServerFunctionRequest(request, requestBody);
         const value = await (
           invoke as (
             id: string,
@@ -159,12 +144,7 @@ export function registerServerFunctionDevMiddleware(
             request: Request,
             implementation: (...args: unknown[]) => unknown,
           ) => Promise<unknown>
-        )(
-          functionId,
-          args,
-          contextRequest,
-          implementation as (...args: unknown[]) => unknown,
-        );
+        )(functionId, args, contextRequest, implementation as (...args: unknown[]) => unknown);
         let serialized: string;
         try {
           serialized = JSON.stringify({ ok: true, value });

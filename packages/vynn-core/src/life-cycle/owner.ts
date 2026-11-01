@@ -153,10 +153,7 @@ export function updateContext<T>(key: string | symbol, value: T): boolean {
  * @param updater A function that computes the replacement value.
  * @returns Whether an existing context entry was updated.
  */
-export function modifyContext<T>(
-  key: string | symbol,
-  updater: (current: T) => T,
-): boolean {
+export function modifyContext<T>(key: string | symbol, updater: (current: T) => T): boolean {
   let owner = currentOwner;
 
   while (owner) {

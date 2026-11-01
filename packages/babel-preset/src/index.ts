@@ -1,4 +1,5 @@
 import type { PresetAPI, PresetObject } from "@babel/core";
+
 import plugin from "./plugins/reactive-plugin.ts";
 
 type BabelPresetVynnOptions = {

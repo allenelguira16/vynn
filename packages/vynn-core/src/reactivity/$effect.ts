@@ -1,11 +1,8 @@
+import { beginHydrationClaim, rollbackHydrationClaim } from "../client/hydration";
 import { getErrorBoundary } from "../context/error-boundary-context";
 import { getOwner, runWithOwner } from "../life-cycle/owner";
 import { NotReadyError } from "../reactivity/not-ready-error";
-import { transaction, scheduleEffect } from "./transaction";
-import {
-  beginHydrationClaim,
-  rollbackHydrationClaim,
-} from "../client/hydration";
+import { scheduleEffect, transaction } from "./transaction";
 
 export type EffectPhase = "effect" | "render";
 
@@ -32,10 +29,7 @@ let lastDisposer: (() => void) | null = null;
 /**
  * Creates a reactive effect with the specified execution phase.
  */
-function createReactiveEffect(
-  callback: () => void | (() => void),
-  phase: EffectPhase,
-): () => void {
+function createReactiveEffect(callback: () => void | (() => void), phase: EffectPhase): () => void {
   const owner = getOwner();
 
   const wrappedEffect = (() => {

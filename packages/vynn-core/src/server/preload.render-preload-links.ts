@@ -60,10 +60,7 @@ export function renderSsrPreloadLinks(
 
   return [
     ...[...stylesheets].map(
-      (file) =>
-        '<link rel="stylesheet" href="' +
-        escapeAttribute(joinAssetBase(base, file)) +
-        '">',
+      (file) => '<link rel="stylesheet" href="' + escapeAttribute(joinAssetBase(base, file)) + '">',
     ),
     ...[...modules].map(
       (file) =>
@@ -99,10 +96,7 @@ function escapeAttribute(value: string): string {
     .replace(/>/g, "&gt;");
 }
 
-function findManifestAssets(
-  moduleId: string,
-  manifest: SsrClientManifest,
-): string[] {
+function findManifestAssets(moduleId: string, manifest: SsrClientManifest): string[] {
   const normalized = cleanModuleId(moduleId).replace(/^\.\//, "");
   const candidates = [
     normalized,
