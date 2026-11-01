@@ -10,6 +10,12 @@ import { runWithSsrContext } from "../src/server/ssr-request-context";
 import { vynnSsrPreloadPlugin } from "../../vite-plugin/src/plugins/ssr-preload.ts";
 
 describe("SSR lazy module tracking", () => {
+  it("starts with an empty request-local module set", async () => {
+    await runWithSsrContext((run) => {
+      expect([...run(getSsrModuleIds)]).toEqual([]);
+    });
+  });
+
   it("isolates module IDs between SSR request contexts", async () => {
     const first = await runWithSsrContext((run) => {
       run(() => {
