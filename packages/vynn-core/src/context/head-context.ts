@@ -25,7 +25,7 @@ function createHeadContext(): HeadContext {
       candidates.set(
         tag,
         Array.from(document.head.querySelectorAll<HTMLElement>(tag)).filter(
-          (element) => !element.hasAttribute("data-vynn-internal"),
+          (element) => !element.hasAttribute("_$int"),
         ),
       );
     }

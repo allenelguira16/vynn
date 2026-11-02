@@ -7,5 +7,5 @@ export function injectSsrPreloadLinks(links: string): string {
 
   const serialized = JSON.stringify(links).replace(/</g, "\\u003c");
 
-  return `<script data-vynn-internal>(()=>{const e=document.createElement("template");e.innerHTML=${serialized},e.content.querySelectorAll("link").forEach(e=>{e.setAttribute("data-vynn-internal","")}),document.head.append(e.content)})(),document.currentScript.remove();</script>`;
+  return `<script _$int>(()=>{const e=document.createElement("template");e.innerHTML=${serialized},e.content.querySelectorAll("link").forEach(e=>{e.setAttribute("_$int","")}),document.head.append(e.content)})(),document.currentScript.remove();</script>`;
 }

@@ -51,12 +51,12 @@ function DocumentApp(): JSX.Element {
 describe("document-root rendering", () => {
   it("hydrates the complete Document and ignores plugin-injected resources", () => {
     document.head.innerHTML = [
-      '<link rel="stylesheet" data-vynn-internal href="/assets/app.css">',
+      '<link rel="stylesheet" _$int href="/assets/app.css">',
       '<meta name="description" content="Application description">',
     ].join("");
     document.body.innerHTML = [
       "<main><p>Server content</p></main>",
-      '<script type="module" data-vynn-internal src="/assets/client.js"></script>',
+      '<script type="module" _$int src="/assets/client.js"></script>',
     ].join("");
 
     const serverHtml = document.documentElement;
@@ -85,11 +85,11 @@ describe("document-root rendering", () => {
   it("replaces the client-only shell while preserving its resources", () => {
     document.head.innerHTML = [
       '<meta charset="UTF-8" key="meta:charset">',
-      '<link rel="stylesheet" data-vynn-internal href="/assets/app.css">',
-      '<script type="module" data-vynn-internal src="/@vite/client"></script>',
+      '<link rel="stylesheet" _$int href="/assets/app.css">',
+      '<script type="module" _$int src="/@vite/client"></script>',
     ].join("");
     document.body.innerHTML =
-      '<script type="module" data-vynn-internal src="/assets/client.js"></script>';
+      '<script type="module" _$int src="/assets/client.js"></script>';
 
     const previousHtml = document.documentElement;
     const stylesheet = document.querySelector('link[rel="stylesheet"]');

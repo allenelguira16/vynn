@@ -350,7 +350,7 @@ function getServerRenderedNodes(root: Node) {
 
   function flattenNode(node: Node) {
     if (isElement(node)) {
-      if (node.hasAttribute("data-vynn-internal")) return;
+      if (node.hasAttribute("_$int")) return;
 
       // Metadata rendered through Vynn's head registry is claimed separately
       // by $headTmpl and must not consume the application's element queue.
