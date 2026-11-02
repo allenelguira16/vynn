@@ -2,6 +2,7 @@ import { Await, Portal, lazy } from "vynn";
 import { Route } from "vynn-router";
 
 import { ButtonPageList } from "./components/button-page-list";
+import { Params } from "./pages/params";
 import { name } from "./utils";
 
 // import { Lazy } from "./pages/lazy";
@@ -87,6 +88,10 @@ export const routes: Route[] = [
       {
         path: "/stacked-suspense",
         component: () => <StackedSuspense />,
+      },
+      {
+        path: "/params/:id",
+        component: () => <Params />,
       },
     ],
   },

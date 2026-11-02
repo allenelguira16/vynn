@@ -13,6 +13,8 @@ export type Location = {
   search: string;
 };
 
+export type RouteParams = Readonly<Record<string, string | undefined>>;
+
 type MatchedRoute = {
   route: Route;
   fullPath: string;
@@ -30,6 +32,7 @@ export const $location = $store<Location>({
 });
 
 const [LocationProvider, useRouterLocation] = createContext<Location>();
+const [RoutePathProvider, useRoutePath] = createContext<string>();
 
 if (!isServer) {
   window.addEventListener("popstate", () => {
@@ -43,10 +46,128 @@ function currentLocation(): Location {
     return useRouterLocation();
   } catch {
     // Public helpers can also be used outside a Router. Keep the original
-    // module-level store as a compatibility fallback for those callers.
+    // module-level location store as a compatibility fallback for those callers.
     return $location;
   }
 }
+
+/**
+ * Normalizes a pathname by collapsing repeated slashes and removing a
+ * trailing slash. The root path is always represented as `/`.
+ */
+function normalizePath(path: string): string {
+  if (!path || path === "/") return "/";
+  const normalized = path.replace(/\/+/g, "/").replace(/\/$/, "");
+  return normalized || "/";
+}
+
+/** Splits a pathname into its non-empty segments. */
+function toSegments(path: string): string[] {
+  return normalizePath(path).split("/").filter(Boolean);
+}
+
+/**
+ * Reads one parameter from a route pattern.
+ *
+ * Parent route patterns are prefixes of their nested routes, so matching does
+ * not require the pathname and route pattern to have the same number of
+ * segments.
+ */
+function getRouteParam(path: string, name: string, location: Location): string | undefined {
+  const routeSegments = toSegments(path);
+  const pathnameSegments = toSegments(location.pathname);
+
+  if (pathnameSegments.length < routeSegments.length) {
+    return undefined;
+  }
+
+  let value: string | undefined;
+
+  for (let index = 0; index < routeSegments.length; index++) {
+    const routeSegment = routeSegments[index];
+    const pathnameSegment = pathnameSegments[index];
+
+    if (routeSegment.startsWith(":")) {
+      if (routeSegment.slice(1) === name) {
+        try {
+          value = decodeURIComponent(pathnameSegment);
+        } catch {
+          value = pathnameSegment;
+        }
+      }
+    } else if (routeSegment !== pathnameSegment) {
+      return undefined;
+    }
+  }
+
+  return value;
+}
+
+/**
+ * Reactive, read-only parameters for the route component currently being
+ * rendered. Each property read tracks the active Router's pathname.
+ */
+export const $params = new Proxy(Object.create(null) as RouteParams, {
+  get(_target, key) {
+    if (typeof key !== "string") {
+      return undefined;
+    }
+
+    try {
+      return getRouteParam(useRoutePath(), key, currentLocation());
+    } catch {
+      // Parameters are undefined outside a matched route component.
+      return undefined;
+    }
+  },
+
+  set() {
+    throw new TypeError("Route parameters are read-only.");
+  },
+
+  deleteProperty() {
+    throw new TypeError("Route parameters are read-only.");
+  },
+
+  defineProperty() {
+    throw new TypeError("Route parameters are read-only.");
+  },
+});
+
+/**
+ * Reactive, read-only query parameters for the route component currently
+ * being rendered. Each property read tracks the active Router's search string.
+ */
+export const $search = new Proxy(Object.create(null) as RouteParams, {
+  get(_target, key) {
+    if (typeof key !== "string") {
+      return undefined;
+    }
+
+    try {
+      // Require an active route context, just like $params.
+      useRoutePath();
+
+      const searchParams = new URLSearchParams(currentLocation().search);
+      return searchParams.get(key) ?? undefined;
+    } catch {
+      // Search parameters are undefined outside a matched route component.
+      return undefined;
+    }
+  },
+
+  set() {
+    throw new TypeError("Search parameters are read-only.");
+  },
+
+  deleteProperty() {
+    throw new TypeError("Search parameters are read-only.");
+  },
+
+  defineProperty() {
+    throw new TypeError("Search parameters are read-only.");
+  },
+});
 
 function parseLocation(url?: string): Location {
   const fallback = !isServer ? `${window.location.pathname}${window.location.search}` : "/";
@@ -93,22 +214,7 @@ export function navigate(path: string, location = currentLocation()): void {
   }
 }
 
-/**
- * Normalizes a pathname by collapsing repeated slashes and removing a
- * trailing slash. The root path is always represented as `/`.
- */
-function normalizePath(path: string): string {
-  if (!path || path === "/") return "/";
-  const normalized = path.replace(/\/+/g, "/").replace(/\/$/, "");
-  return normalized || "/";
-}
-
-/** Splits a pathname into its non-empty segments. */
-function toSegments(path: string): string[] {
-  return normalizePath(path).split("/").filter(Boolean);
-}
-
-/** Checks whether the supplied pathname matches a route path. */
+/** Checks whether the supplied pathname matches the current pathname. */
 function matchRoute(targetPath: string, exact = true, location = currentLocation()): boolean {
   const pathname = normalizePath(location.pathname);
   const target = normalizePath(targetPath);
@@ -169,9 +275,13 @@ function RouteOutlet(props: { routes: Route[]; parentPath?: string }) {
 
       const Component = route.component;
       nextView = (
-        <Component>
-          {!!childRoutes.length && <RouteOutlet routes={childRoutes} parentPath={fullPath} />}
-        </Component>
+        <RoutePathProvider value={fullPath}>
+          <Component>
+            {!!childRoutes.length && (
+              <RouteOutlet routes={childRoutes} parentPath={fullPath} />
+            )}
+          </Component>
+        </RoutePathProvider>
       );
     }
 
