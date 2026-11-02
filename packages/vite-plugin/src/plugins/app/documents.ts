@@ -1,6 +1,7 @@
 import { readFile, readdir } from "node:fs/promises";
 import { relative, resolve } from "node:path";
 
+import type { RenderMode } from "vynn";
 import type { ViteSsrManifest } from "../ssr-preload.ts";
 
 import { joinAssetBase } from "./http.ts";
@@ -32,16 +33,23 @@ export function createClientEntry(
     "",
   ].join("\n");
 }
-export function createAuthoredServerEntry(serverSpecifier: string): string {
+export function createAuthoredServerEntry(
+  serverSpecifier: string,
+  ssrMode: RenderMode = "stream",
+): string {
   return [
     `import * as serverModule from ${JSON.stringify(serverSpecifier)};`,
-    `if (typeof serverModule.render !== "function") throw new Error("[Vynn App] The entry-server module must export render(url).");`,
-    `export function render(url) { return serverModule.render(url); }`,
+    `if (typeof serverModule.render !== "function") throw new Error("[Vynn App] The entry-server module must export render(url, mode) and return a Vynn SSR render result or Response.");`,
+    `export function render(url) { return serverModule.render(url, ${JSON.stringify(ssrMode)}); }`,
     "",
   ].join("\n");
 }
 
-export function createServerEntry(appSpecifier: string, styleSpecifiers: string[]): string {
+export function createServerEntry(
+  appSpecifier: string,
+  styleSpecifiers: string[],
+  ssrMode: RenderMode = "stream",
+): string {
   // Read optional exports dynamically. A direct `appModule.App` access makes
   // Rollup/Rolldown warn when the module intentionally uses a default export.
   const selected = (moduleName: string) =>
@@ -54,7 +62,7 @@ export function createServerEntry(appSpecifier: string, styleSpecifiers: string[
     `const App = ${selected("appModule")};`,
     `if (typeof App !== "function") throw new Error("[Vynn App] The app module must export a component as default or App.");`,
     `export function render(url) {`,
-    `  return renderToServer(() => App({ url }), "stream");`,
+    `  return renderToServer(() => App({ url }), ${JSON.stringify(ssrMode)});`,
     `}`,
     "",
   ].join("\n");
@@ -142,13 +150,7 @@ export function createSsrHandlerCode(options: {
   const { clientEntryUrl, css, base, dev, serverFunctions, ssrManifest } = options;
 
   return [
-    `import {`,
-    `  getSsrHead,`,
-    `  getSsrModuleIds,`,
-    `  runWithSsrContext,`,
-    `  injectSsrPreloadLinks,`,
-    `  renderSsrPreloadLinks,`,
-    `} from "vynn/server";`,
+    `import { injectSsrPreloadLinks, renderSsrPreloadLinks } from "vynn/server";`,
     `import { render } from ${JSON.stringify(SERVER_ENTRY_ID)};`,
     ...(serverFunctions
       ? [`import { handleServerFunctionRequest } from "virtual:vynn/server-functions";`]
@@ -178,7 +180,7 @@ export function createSsrHandlerCode(options: {
     `  if (value instanceof ReadableStream) return value;`,
     `  if (typeof value === "string") return new Response(value).body;`,
     `  if (value instanceof Uint8Array) return new Response(value).body;`,
-    `  throw new TypeError("[Vynn App] The server entry render() must return a string, Uint8Array, or ReadableStream.");`,
+    `  throw new TypeError("[Vynn App] The SSR render result body must be a string, Uint8Array, or ReadableStream.");`,
     `}`,
     `function withDocument(body, devCssLinks, moduleIds, headHtml) {`,
     `  const reader = body.getReader();`,
@@ -275,26 +277,25 @@ export function createSsrHandlerCode(options: {
     `  });`,
     `}`,
     `export async function handleRequest(request, devCssLinks = []) {`,
-    `  return runWithSsrContext(async () => {`,
     ...(serverFunctions
       ? [
-          `    const serverFunctionResponse = await handleServerFunctionRequest(request);`,
-          `    if (serverFunctionResponse) return serverFunctionResponse;`,
+          `  const serverFunctionResponse = await handleServerFunctionRequest(request);`,
+          `  if (serverFunctionResponse) return serverFunctionResponse;`,
         ]
       : []),
-    `    if (request.method !== "GET" && request.method !== "HEAD") {`,
-    `      return new Response("Method Not Allowed", { status: 405, headers: { Allow: "GET, HEAD" } });`,
-    `    }`,
-    `    const url = new URL(request.url);`,
-    `    const headers = { "content-type": "text/html; charset=utf-8" };`,
-    `    if (request.method === "HEAD") return new Response(null, { status: 200, headers });`,
-    `    const rendered = render(url.pathname + url.search);`,
-    `    const moduleIds = getSsrModuleIds();`,
-    `    const result = typeof rendered === "string" ? rendered : await rendered;`,
-    `    if (result instanceof Response) return result;`,
-    `    const headHtml = getSsrHead();`,
-    `    return new Response(withDocument(asReadableStream(result), devCssLinks, moduleIds, headHtml), { status: 200, headers });`,
-    `  });`,
+    `  if (request.method !== "GET" && request.method !== "HEAD") {`,
+    `    return new Response("Method Not Allowed", { status: 405, headers: { Allow: "GET, HEAD" } });`,
+    `  }`,
+    `  const url = new URL(request.url);`,
+    `  const headers = { "content-type": "text/html; charset=utf-8" };`,
+    `  if (request.method === "HEAD") return new Response(null, { status: 200, headers });`,
+    `  const rendered = await render(url.pathname + url.search);`,
+    `  if (rendered instanceof Response) return rendered;`,
+    `  if (!rendered || typeof rendered !== "object" || !("body" in rendered) || !("head" in rendered) || !("modules" in rendered) || typeof rendered.head?.render !== "function") {`,
+    `    throw new TypeError("[Vynn App] The server entry render() must return a Vynn SSR render result or Response.");`,
+    `  }`,
+    `  const headHtml = rendered.head.render();`,
+    `  return new Response(withDocument(asReadableStream(rendered.body), devCssLinks, rendered.modules, headHtml), { status: 200, headers });`,
     `}`,
     `export default { fetch(request) { return handleRequest(request); } };`,
     "",

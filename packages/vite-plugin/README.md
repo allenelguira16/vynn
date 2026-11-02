@@ -16,6 +16,7 @@ export default defineConfig({
   plugins: [
     vynn({
       ssr: true,
+      ssrMode: "async",
       serverFunctions: true,
     }),
   ],
@@ -23,8 +24,10 @@ export default defineConfig({
 ```
 
 Calling `vynn()` without options creates a client-rendered application.
-Enable `ssr: true` for server rendering, streaming, automatic hydration,
-lazy-module preloads, and a generated request handler.
+Enable `ssr: true` for server rendering, automatic hydration, lazy-module
+preloads, and a generated request handler. The SSR render mode is configured
+with `ssrMode`, which accepts `"sync"`, `"async"`, or `"stream"`. It defaults
+to `"stream"`.
 
 Vynn discovers the root component from `src/App.*` or `src/app.*`.
 The root component owns the complete HTML document, including `<html>`,
@@ -32,6 +35,29 @@ The root component owns the complete HTML document, including `<html>`,
 preloads, and the generated client entry into that document. Projects can
 provide conventional `src/entry-client.*` and `src/entry-server.*` files to
 customize their entries.
+
+An authored `src/entry-server.*` may export an async `render(url, mode)`
+function. The plugin passes the configured `ssrMode` as its second argument,
+so custom entries can use the same mode as generated entries:
+
+```tsx
+import type { RenderMode } from "vynn";
+import { renderToServer } from "vynn/server";
+
+export async function render(url: string, mode: RenderMode) {
+  const data = await loadPageData(url);
+
+  return renderToServer(() => App({ url, data }), mode);
+}
+```
+
+Every `renderToServer()` call creates one independent root Owner and returns
+an explicit result containing `body`, `head`, and `modules`. The head manager
+provides `render()` for the initial document head and `subscribe()` for
+subsequent metadata changes during streaming. The module set remains live while
+the stream resolves lazy boundaries. The generated request handler consumes
+these values directly; no request-scoped Owner or async context wrapper is
+needed.
 
 ```tsx
 // src/app.tsx
@@ -63,7 +89,7 @@ restarted Vite server and reloads the page.
 With SSR enabled, Vynn:
 
 - Runs SSR in development and builds the client and server environments.
-- Generates the document response and streams SSR output by default.
+- Generates the document response using the configured `ssrMode` (default: `"stream"`).
 - Hydrates the application automatically in the browser.
 - Tracks lazy modules and injects their required preload assets.
 - Handles server-function requests when `serverFunctions` is enabled.

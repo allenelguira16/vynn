@@ -19,3 +19,4 @@ export { Portal } from "./components/portal";
 
 export { type JSX } from "./types/jsx";
 export { type FC, type PropsWithChildren, type PropsWithRef } from "./types/props";
+export type { RenderMode } from "./context/render-mode";

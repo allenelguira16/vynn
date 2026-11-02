@@ -293,7 +293,7 @@ describe("SVG namespace rendering", () => {
       return svg as unknown as JSX.Element;
     }, "async");
 
-    const html = await (rendered as Promise<string>);
+    const html = (await rendered).body;
 
     expect(html).toContain('<svg><path stroke-width="3"></path></svg>');
   });
@@ -325,7 +325,7 @@ describe("SVG namespace rendering", () => {
       return svg as unknown as JSX.Element;
     }, "async");
 
-    const html = await (rendered as Promise<string>);
+    const html = (await rendered).body;
 
     expect(html).toContain('<svg viewBox="0 0 24 24">');
     expect(html).toContain('<path stroke-width="2" fill-rule="evenodd"></path>');

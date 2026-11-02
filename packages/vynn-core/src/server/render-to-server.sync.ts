@@ -1,6 +1,6 @@
 import type { JSX } from "../types/jsx";
 
-import { disposeOwner, getOwner, runWithOwner } from "../life-cycle/owner";
+import { getOwner, runWithOwner } from "../life-cycle/owner";
 import { type SSR_NODE, resolveNode } from "../render/resolve-node";
 import {
   joinHTMLElements,
@@ -39,10 +39,6 @@ export function resolveSync(App: () => JSX.Element): string {
     return joinHTMLElements(html);
   }
 
-  try {
-    const html = resolve(resolveNode(App) as unknown as SSR_NODE[]);
-    return html + runWithOwner(owner, renderAsyncUtilities);
-  } finally {
-    disposeOwner(owner);
-  }
+  const html = resolve(resolveNode(App) as unknown as SSR_NODE[]);
+  return html + runWithOwner(owner, renderAsyncUtilities);
 }

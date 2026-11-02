@@ -1,5 +1,6 @@
 import "./virtual.d.ts";
 import type { Plugin } from "vite";
+import type { RenderMode } from "vynn";
 
 import { vynnAppPlugin } from "./plugins/app.ts";
 import { vynnOxcPlugin } from "./plugins/jsx-transpiler.ts";
@@ -20,6 +21,8 @@ import { vynnSsrPreloadPlugin } from "./plugins/ssr-preload.ts";
 export type VynnPluginOptions = {
   /** Enable server rendering and automatic hydration. */
   ssr?: boolean;
+  /** SSR render mode. Defaults to "stream". */
+  ssrMode?: RenderMode;
   /** Enable "use server" RPC handling. */
   serverFunctions?: boolean | VynnServerFunctionsOptions;
 };
@@ -62,6 +65,7 @@ export default function vynn(options: VynnPluginOptions = {}) {
   plugins.push(
     vynnAppPlugin({
       ssr: options.ssr === true,
+      ssrMode: options.ssrMode ?? "stream",
       ssrCss,
       serverFunctions:
         options.serverFunctions && serverFunctionsOptions?.enabled !== false

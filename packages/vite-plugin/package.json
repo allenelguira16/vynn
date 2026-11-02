@@ -20,10 +20,12 @@
     "typescript": "^7.0.2"
   },
   "devDependencies": {
-    "vite": "^8.3.5"
+    "vite": "^8.3.5",
+    "vynn": "workspace:*"
   },
   "peerDependencies": {
-    "vite": "^8.3.5"
+    "vite": "^8.3.5",
+    "vynn": "workspace:*"
   },
   "devEngines": {
     "packageManager": {

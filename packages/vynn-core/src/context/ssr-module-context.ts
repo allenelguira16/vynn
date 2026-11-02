@@ -1,11 +1,22 @@
-import { getContext, setContext } from "../life-cycle/owner";
-import { setSsrRequestModuleIds } from "../server/ssr-request-context";
+import { getContext, getOwner, setContext } from "../life-cycle/owner";
 
 const SSR_MODULES = Symbol.for("vynn.ssr-modules");
 
-export function initializeSsrModuleContext(modules: Set<string>) {
+export function initializeSsrModuleContext(modules = new Set<string>()) {
+  const owner = getOwner();
+  if (!owner || owner.context.has(SSR_MODULES)) return;
   setContext(SSR_MODULES, modules);
-  setSsrRequestModuleIds(modules);
+}
+
+/** Return the module set belonging to the active SSR owner. */
+export function getSsrModuleContext(): ReadonlySet<string> {
+  const modules = getContext<Set<string>>(SSR_MODULES);
+
+  if (!modules) {
+    throw new Error("[vynn]: getSsrModuleIds must be called within an active SSR owner.");
+  }
+
+  return modules;
 }
 
 /** Record a lazy module only when its component is reached during SSR. */

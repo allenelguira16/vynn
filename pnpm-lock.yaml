@@ -271,6 +271,9 @@ importers:
       vite:
         specifier: ^8.3.5
         version: 8.3.5(@types/node@26.6.3)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)
+      vynn:
+        specifier: workspace:*
+        version: link:../vynn-core
 
   packages/vynn-core:
     dependencies:

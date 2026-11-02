@@ -4,11 +4,10 @@ import {
   FALLBACK_END_SSR_MARKER,
   FALLBACK_START_SSR_MARKER,
 } from "../const";
-import { getHeadContext } from "../context/head-context";
-import { disposeOwner, getOwner, runWithOwner } from "../life-cycle/owner";
+import { getOwner, runWithOwner } from "../life-cycle/owner";
 import { SSR_NODE, resolveNode } from "../render/resolve-node";
 import { JSX } from "../types/jsx";
-import { renderHeadPatch, renderSsrHead } from "./head";
+import { renderHeadPatch, type SsrHeadManager } from "./head";
 import {
   joinHTMLElements,
   renderAsyncUtilities,
@@ -16,9 +15,16 @@ import {
   renderText,
 } from "./render-to-server.util";
 
-export function resolveStream(App: () => JSX.Element): ReadableStream<Uint8Array> {
-  const headContext = getHeadContext();
-  const owner = getOwner()!;
+export function resolveStream(
+  App: () => JSX.Element,
+  head: SsrHeadManager,
+  disposeRenderOwner: () => void,
+): ReadableStream<Uint8Array> {
+  const owner = getOwner();
+
+  if (!owner) {
+    throw new Error("[vynn]: Streaming SSR requires an active render owner.");
+  }
   const encoder = new TextEncoder();
 
   let controller: ReadableStreamDefaultController<Uint8Array>;
@@ -26,12 +32,19 @@ export function resolveStream(App: () => JSX.Element): ReadableStream<Uint8Array
   let nextBoundaryId = 0;
   let initialSent = false;
   let closed = false;
+  let ownerReleased = false;
   let previousHead = "";
 
   const queuedPatches: string[] = [];
 
+  function releaseRenderOwner() {
+    if (ownerReleased) return;
+    ownerReleased = true;
+    disposeRenderOwner();
+  }
+
   function enqueueHeadPatch() {
-    const nextHead = renderSsrHead(headContext);
+    const nextHead = head.render();
     if (nextHead === previousHead) return;
 
     previousHead = nextHead;
@@ -45,6 +58,8 @@ export function resolveStream(App: () => JSX.Element): ReadableStream<Uint8Array
   }
 
   function enqueuePatch(html: string) {
+    if (closed) return;
+
     if (!initialSent) {
       queuedPatches.push(html);
     } else {
@@ -61,15 +76,20 @@ export function resolveStream(App: () => JSX.Element): ReadableStream<Uint8Array
   }
 
   async function finishTask() {
+    if (closed) return;
+
     pending--;
 
-    if (pending === 0 && initialSent && !closed) {
-      enqueue(runWithOwner(owner, renderAsyncUtilities));
-
-      closed = true;
-
-      controller.close();
-      disposeOwner(owner);
+    if (pending === 0 && initialSent) {
+      try {
+        enqueue(runWithOwner(owner, renderAsyncUtilities));
+        controller.close();
+      } catch (error) {
+        controller.error(error);
+      } finally {
+        closed = true;
+        releaseRenderOwner();
+      }
     }
   }
 
@@ -77,11 +97,15 @@ export function resolveStream(App: () => JSX.Element): ReadableStream<Uint8Array
     const html: string[] = [];
 
     for (const node of app.flat(Infinity).filter(Boolean)) {
+      if (closed) break;
+
       if ("promises" in node && node.type === "#async") {
         const id = nextBoundaryId++;
 
         // Render the fallback immediately instead of blocking on promises.
-        const fallbackHTML = await resolve(node.fallback());
+        const fallbackHTML = await resolve(runWithOwner(owner, node.fallback));
+        if (closed) break;
+
         enqueueHeadPatch();
         html.push(
           `<!--${FALLBACK_START_SSR_MARKER}:${id}-->${fallbackHTML}<!--${FALLBACK_END_SSR_MARKER}:${id}-->`,
@@ -93,24 +117,29 @@ export function resolveStream(App: () => JSX.Element): ReadableStream<Uint8Array
         void (async () => {
           try {
             await Promise.all(node.promises);
+            if (closed) return;
 
-            const childNodes = node.children();
+            const childNodes = runWithOwner(owner, node.children);
             enqueueHeadPatch();
 
             const children = await resolve(childNodes);
-            enqueueHeadPatch();
+            if (closed) return;
 
+            enqueueHeadPatch();
             enqueuePatch(renderPatch(id, children));
           } catch (error) {
-            console.error("[vynn]: Failed to resolve an SSR boundary", error);
+            if (!closed) {
+              console.error("[vynn]: Failed to resolve an SSR boundary", error);
+            }
           } finally {
             await finishTask();
           }
         })();
       } else if ("promises" in node && node.type === "#deferred") {
         await Promise.all(node.promises);
+        if (closed) break;
 
-        const childNodes = node.children();
+        const childNodes = runWithOwner(owner, node.children);
         enqueueHeadPatch();
         html.push(await resolve(childNodes));
         enqueueHeadPatch();
@@ -141,10 +170,11 @@ export function resolveStream(App: () => JSX.Element): ReadableStream<Uint8Array
 
       void (async () => {
         try {
-          const app = resolveNode(App) as unknown as SSR_NODE[];
-          previousHead = renderSsrHead(headContext);
+          const app = runWithOwner(owner, () => resolveNode(App)) as unknown as SSR_NODE[];
+          previousHead = head.render();
 
           const initialHTML = await resolve(app);
+          if (closed) return;
 
           enqueue(renderPatchRuntime() + initialHTML);
           flushPatches();
@@ -154,6 +184,7 @@ export function resolveStream(App: () => JSX.Element): ReadableStream<Uint8Array
             controller.error(error);
           }
 
+          releaseRenderOwner();
           return;
         } finally {
           await finishTask();
@@ -163,6 +194,7 @@ export function resolveStream(App: () => JSX.Element): ReadableStream<Uint8Array
 
     cancel() {
       closed = true;
+      releaseRenderOwner();
     },
   });
 }

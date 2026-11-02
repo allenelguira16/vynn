@@ -22,9 +22,7 @@ export default function App(props: { url: string }) {
         <meta property="og:type" content="website" />
       </head>
       <body>
-        <div id="app">
-          <Router routes={routes} url={props.url} />
-        </div>
+        <Router routes={routes} url={props.url} />
       </body>
     </html>
   );

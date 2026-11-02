@@ -10,7 +10,7 @@ import {
   subscribeHeadContext,
 } from "../context/head-context";
 import { escapeHtml } from "../utils/escape-html";
-import { getSsrRequestHead } from "./ssr-request-context";
+
 const voidElements = new Set([
   "area",
   "base",
@@ -83,18 +83,21 @@ export function renderSsrHead(context: HeadContext): string {
   return getHeadWinners(context, getServerIdentity).map(serializeHeadEntry).join("");
 }
 
-/** Serialize the head metadata collected by the active SSR request. */
-export function getSsrHead(): string {
-  const context = getSsrRequestHead();
-  return context ? renderSsrHead(context) : "";
+export interface SsrHeadManager {
+  render(): string;
+  subscribe(listener: (html: string) => void): () => void;
 }
 
-/** Subscribe to head metadata discovered after a streaming shell is emitted. */
-export function subscribeSsrHead(listener: (html: string) => void): () => void {
-  const context = getSsrRequestHead();
-  if (!context) return () => {};
+/** Creates an explicit head handle for one SSR render. */
+export function createSsrHeadManager(context: HeadContext): SsrHeadManager {
+  const render = () => renderSsrHead(context);
 
-  return subscribeHeadContext(context, () => listener(renderSsrHead(context)));
+  return {
+    render,
+    subscribe(listener) {
+      return subscribeHeadContext(context, () => listener(render()));
+    },
+  };
 }
 
 /** Encodes a complete head snapshot as a browser-side patch. */

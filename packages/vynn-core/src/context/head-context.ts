@@ -40,9 +40,14 @@ function createHeadContext(): HeadContext {
   };
 }
 
+/** Returns the head registry associated with the current owner, when present. */
+export function getOptionalHeadContext(): HeadContext | undefined {
+  return getContext<HeadContext>(HEAD_CONTEXT);
+}
+
 /** Returns the head registry associated with the current render root. */
 export function getHeadContext(): HeadContext {
-  const context = getContext<HeadContext>(HEAD_CONTEXT);
+  const context = getOptionalHeadContext();
 
   if (!context) {
     throw new Error("[vynn]: getHeadContext must be initialized with initializeHeadContext");
@@ -55,8 +60,10 @@ export function getHeadContext(): HeadContext {
  * Initializes a fresh document-head registry for a client or server render.
  * Existing matching head nodes are collected as candidates for reuse.
  */
-export function initializeHeadContext() {
-  setContext<HeadContext>(HEAD_CONTEXT, createHeadContext());
+export function initializeHeadContext(): HeadContext {
+  const context = createHeadContext();
+  setContext<HeadContext>(HEAD_CONTEXT, context);
+  return context;
 }
 
 /** Notifies subscribers that the head registry has changed. */

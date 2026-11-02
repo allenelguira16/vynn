@@ -1,49 +1,81 @@
 import { describe, expect, it } from "vitest";
 
+import type { JSX } from "../src/types/jsx";
+
 import { vynnSsrPreloadPlugin } from "../../vite-plugin/src/plugins/ssr-preload.ts";
-import {
-  getSsrModuleIds,
-  initializeSsrModuleContext,
-  registerSsrModule,
-} from "../src/context/ssr-module-context";
-import { createOwner, runWithOwner } from "../src/life-cycle/owner";
+
+import { registerSsrModule } from "../src/context/ssr-module-context";
+import { createSSRAsync } from "../src/render/resolve-node";
+import { renderToServer } from "../src/server/render-to-server";
 import { renderSsrPreloadLinks } from "../src/server/preload.render-preload-links";
-import { runWithSsrContext } from "../src/server/ssr-request-context";
 
 describe("SSR lazy module tracking", () => {
-  it("isolates module IDs between SSR request contexts", async () => {
-    const first = await runWithSsrContext(() => {
-      const owner = createOwner(null);
-      runWithOwner(owner, () => {
-        initializeSsrModuleContext(new Set<string>());
-        registerSsrModule("src/pages/a.tsx");
-      });
-      return [...getSsrModuleIds()];
-    });
+  it("isolates module IDs between independent render results", () => {
+    const first = renderToServer(() => {
+      registerSsrModule("src/pages/a.tsx");
+      return null;
+    }, "sync");
+    const second = renderToServer(() => {
+      registerSsrModule("src/pages/b.tsx");
+      return null;
+    }, "sync");
 
-    const second = await runWithSsrContext(() => {
-      const owner = createOwner(null);
-      runWithOwner(owner, () => {
-        initializeSsrModuleContext(new Set<string>());
-        registerSsrModule("src/pages/b.tsx");
-      });
-      return [...getSsrModuleIds()];
-    });
-
-    expect(first).toEqual(["src/pages/a.tsx"]);
-    expect(second).toEqual(["src/pages/b.tsx"]);
+    expect([...first.modules]).toEqual(["src/pages/a.tsx"]);
+    expect([...second.modules]).toEqual(["src/pages/b.tsx"]);
   });
 
-  it("returns a live module set for streaming SSR", async () => {
-    await runWithSsrContext(() => {
-      const modules = new Set<string>();
-      initializeSsrModuleContext(modules);
+  it("isolates module IDs between concurrent async renders", async () => {
+    const createRender = (moduleId: string) =>
+      renderToServer(
+        () =>
+          createSSRAsync(
+            () => [],
+            () => {
+              registerSsrModule(moduleId);
+              return [];
+            },
+            [Promise.resolve()],
+          ) as unknown as JSX.Element,
+        "async",
+      );
 
-      const captured = getSsrModuleIds();
-      modules.add("src/pages/lazy.tsx");
+    const [first, second] = await Promise.all([
+      createRender("src/pages/first.tsx"),
+      createRender("src/pages/second.tsx"),
+    ]);
 
-      expect([...captured]).toEqual(["src/pages/lazy.tsx"]);
+    expect([...first.modules]).toEqual(["src/pages/first.tsx"]);
+    expect([...second.modules]).toEqual(["src/pages/second.tsx"]);
+  });
+
+  it("keeps the module set live while a stream resolves lazy boundaries", async () => {
+    let resolveBoundary!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      resolveBoundary = resolve;
     });
+
+    const rendered = renderToServer(
+      () =>
+        createSSRAsync(
+          () => [],
+          () => {
+            registerSsrModule("src/pages/lazy.tsx");
+            return [];
+          },
+          [pending],
+        ) as unknown as JSX.Element,
+      "stream",
+    );
+
+    expect([...rendered.modules]).toEqual([]);
+
+    resolveBoundary();
+    const reader = rendered.body.getReader();
+    while (!(await reader.read()).done) {
+      // Drain the stream so the async boundary can finish.
+    }
+
+    expect([...rendered.modules]).toEqual(["src/pages/lazy.tsx"]);
   });
 });
 

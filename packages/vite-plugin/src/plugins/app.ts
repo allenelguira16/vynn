@@ -1,4 +1,5 @@
 import type { Plugin, PreviewServer, ResolvedConfig, UserConfig, ViteDevServer } from "vite";
+import type { RenderMode } from "vynn";
 
 import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -48,6 +49,7 @@ function normalizeFilePath(file: string): string {
 
 type PluginOptions = {
   ssr: boolean;
+  ssrMode: RenderMode;
   ssrCss?: VynnSsrCssCollector;
   serverFunctions?: VynnServerFunctionsOptions;
 };
@@ -63,7 +65,7 @@ type PluginOptions = {
  *
  * Neither mode requires a project-owned index.html or HTTP server file.
  */
-export function vynnAppPlugin({ ssr, ssrCss, serverFunctions }: PluginOptions): Plugin {
+export function vynnAppPlugin({ ssr, ssrMode, ssrCss, serverFunctions }: PluginOptions): Plugin {
   let resolvedConfig: ResolvedConfig | undefined;
   let entries = {} as ResolvedEntries;
   let clientOutDir = resolve(process.cwd(), "dist/client");
@@ -233,10 +235,10 @@ export function vynnAppPlugin({ ssr, ssrCss, serverFunctions }: PluginOptions): 
       if (id === RESOLVED_SERVER_ENTRY_ID) {
         if (!ssr) return null;
         if (entries.serverIsGenerated && entries.appSpecifier) {
-          return createServerEntry(entries.appSpecifier, entries.styleSpecifiers);
+          return createServerEntry(entries.appSpecifier, entries.styleSpecifiers, ssrMode);
         }
         if (entries.serverFile) {
-          return createAuthoredServerEntry(toAbsoluteSpecifier(entries.serverFile));
+          return createAuthoredServerEntry(toAbsoluteSpecifier(entries.serverFile), ssrMode);
         }
         return null;
       }
