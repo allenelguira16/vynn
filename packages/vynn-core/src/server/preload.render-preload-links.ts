@@ -60,11 +60,11 @@ export function renderSsrPreloadLinks(
 
   return [
     ...[...stylesheets].map(
-      (file) => '<link rel="stylesheet" _$int href="' + escapeAttribute(joinAssetBase(base, file)) + '">',
+      (file) => '<link rel="stylesheet" href="' + escapeAttribute(joinAssetBase(base, file)) + '">',
     ),
     ...[...modules].map(
       (file) =>
-        '<link rel="modulepreload" _$int crossorigin href="' +
+        '<link rel="modulepreload" crossorigin href="' +
         escapeAttribute(joinAssetBase(base, file)) +
         '">',
     ),

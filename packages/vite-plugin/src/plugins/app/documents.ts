@@ -7,6 +7,13 @@ import type { ViteSsrManifest } from "../ssr-preload.ts";
 import { joinAssetBase } from "./http.ts";
 import { type ClientAssets, SERVER_ENTRY_ID } from "./shared.ts";
 
+const INTERNAL_RANGE_START = "<!--vynn:internal:start-->";
+const INTERNAL_RANGE_END = "<!--vynn:internal:end-->";
+
+function wrapInternalRange(content: string): string {
+  return content ? INTERNAL_RANGE_START + content + INTERNAL_RANGE_END : "";
+}
+
 type ManifestEntry = {
   file: string;
   css?: string[];
@@ -161,6 +168,7 @@ export function createSsrHandlerCode(options: {
     `const IS_DEV = ${JSON.stringify(dev)};`,
     `const SSR_MANIFEST = ${JSON.stringify(ssrManifest)};`,
     `function escapeAttribute(value) { return String(value).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }`,
+    `function wrapInternalRange(value) { return value ? "<!--vynn:internal:start-->" + value + "<!--vynn:internal:end-->" : ""; }`,
     `function assetUrl(path) {`,
     `  const value = String(path).replace(/^\\/+/, "");`,
     `  if (BASE === "./") return "./" + value;`,
@@ -169,12 +177,12 @@ export function createSsrHandlerCode(options: {
     `  return prefix + "/" + value;`,
     `}`,
     `function createHeadAssets(devCssLinks, preloadLinks, headHtml, patchRuntime) {`,
-    `  const charset = headHtml.toLowerCase().includes("charset=") ? "" : '<meta charset="UTF-8" _$int>';`,
-    `  const css = IS_DEV`,
-    `    ? devCssLinks.map(({ url, id }) => '<link rel="stylesheet" _$int data-vite-dev-id="' + escapeAttribute(id) + '" href="' + escapeAttribute(assetUrl(url + "?direct")) + '">' ).join("")`,
-    `    : CSS_ASSETS.map((file) => '<link rel="stylesheet" _$int href="' + escapeAttribute(assetUrl(file)) + '">' ).join("");`,
-    `  const viteClient = IS_DEV ? '<script type="module" _$int src="' + escapeAttribute(assetUrl("/@vite/client")) + '"></script>' : "";`,
-    `  return charset + headHtml + css + preloadLinks + viteClient + patchRuntime;`,
+    `  const charset = headHtml.toLowerCase().includes("charset=") ? "" : wrapInternalRange('<meta charset="UTF-8">');`,
+    `  const css = wrapInternalRange(IS_DEV`,
+    `    ? devCssLinks.map(({ url, id }) => '<link rel="stylesheet" data-vite-dev-id="' + escapeAttribute(id) + '" href="' + escapeAttribute(assetUrl(url + "?direct")) + '">' ).join("")`,
+    `    : CSS_ASSETS.map((file) => '<link rel="stylesheet" href="' + escapeAttribute(assetUrl(file)) + '">' ).join(""));`,
+    `  const viteClient = wrapInternalRange(IS_DEV ? '<script type="module" src="' + escapeAttribute(assetUrl("/@vite/client")) + '"></script>' : "");`,
+    `  return charset + headHtml + css + wrapInternalRange(preloadLinks) + viteClient + wrapInternalRange(patchRuntime);`,
     `}`,
     `function asReadableStream(value) {`,
     `  if (value instanceof ReadableStream) return value;`,
@@ -188,7 +196,7 @@ export function createSsrHandlerCode(options: {
     `  const encoder = new TextEncoder();`,
     `  const seenPreloads = new Set(CSS_ASSETS);`,
     `  const preloadLinks = () => renderSsrPreloadLinks(moduleIds, SSR_MANIFEST, { base: BASE, dev: IS_DEV, exclude: seenPreloads });`,
-    `  const clientEntry = '<script type="module" _$int src="' + escapeAttribute(CLIENT_ENTRY_URL) + '"></script>';`,
+    `  const clientEntry = '<script type="module" src="' + escapeAttribute(CLIENT_ENTRY_URL) + '"></script>';`,
     `  let buffer = "";`,
     `  let foundHtml = false;`,
     `  let injectedHead = false;`,
@@ -239,7 +247,7 @@ export function createSsrHandlerCode(options: {
     `          const doctype = /<!doctype\\s+html[^>]*>/i.exec(prefix);`,
     `          emit(doctype ? doctype[0] : "<!doctype html>");`,
     `          if (doctype) prefix = prefix.replace(doctype[0], "");`,
-    `          const patchRuntime = prefix.trim().replace(/<script\\b/i, "<script _$int");`,
+    `          const patchRuntime = prefix.trim();`,
     `          headAssets = createHeadAssets(devCssLinks, preloadLinks(), headHtml, patchRuntime);`,
     `          buffer = buffer.slice(match.index);`,
     `          foundHtml = true;`,
@@ -268,7 +276,7 @@ export function createSsrHandlerCode(options: {
     `        if (!foundHtml || !injectedHead || !removedBodyClose || !removedHtmlClose) {`,
     `          throw new TypeError("[Vynn App] Could not inject assets into the root HTML document.");`,
     `        }`,
-    `        emit(clientEntry + "</body></html>");`,
+    `        emit(wrapInternalRange(clientEntry) + "</body></html>");`,
     `        controller.close();`,
     `      } catch (error) { controller.error(error); }`,
     `      finally { reader.releaseLock(); }`,
@@ -308,17 +316,21 @@ export function createClientShell(options: {
   css?: string[];
   dev: boolean;
 }): string {
-  const css = options.dev
-    ? ""
-    : (options.css ?? [])
-        .map(
-          (file) =>
-            `<link rel="stylesheet" _$int href="${escapeHtml(joinAssetBase(options.base, `/${file}`))}">`,
-        )
-        .join("");
-  const viteClient = options.dev
-    ? `<script type="module" _$int src="${escapeHtml(joinAssetBase(options.base, "/@vite/client"))}"></script>`
-    : "";
+  const css = wrapInternalRange(
+    options.dev
+      ? ""
+      : (options.css ?? [])
+          .map(
+            (file) =>
+              `<link rel="stylesheet" href="${escapeHtml(joinAssetBase(options.base, `/${file}`))}">`,
+          )
+          .join(""),
+  );
+  const viteClient = wrapInternalRange(
+    options.dev
+      ? `<script type="module" src="${escapeHtml(joinAssetBase(options.base, "/@vite/client"))}"></script>`
+      : "",
+  );
 
   return [
     "<!doctype html>",
@@ -329,7 +341,7 @@ export function createClientShell(options: {
     viteClient,
     "</head>",
     "<body>",
-    `<script type="module" _$int src="${escapeHtml(options.clientEntryUrl)}"></script>`,
+    wrapInternalRange(`<script type="module" src="${escapeHtml(options.clientEntryUrl)}"></script>`),
     "</body>",
     "</html>",
   ].join("");

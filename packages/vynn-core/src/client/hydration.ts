@@ -1,10 +1,13 @@
 import {
   EMPTY_TEXT_SSR_MARKER,
+  INTERNAL_RANGE_END_MARKER,
+  INTERNAL_RANGE_START_MARKER,
   LAZY_END_SSR_MARKER,
   LAZY_START_SSR_MARKER,
   TEXT_SSR_SEPARATOR,
 } from "../const";
 import { isServer } from "../context/is-server-context";
+import { removeInternalRangeMarkers } from "../dom/internal-range";
 import { type Owner, getContext, getOwner, runWithOwner, setContext } from "../life-cycle/owner";
 
 let serverRenderedElements: Element[] = [];
@@ -315,10 +318,31 @@ function isCommentNode(node: Node): node is Comment {
   return node.nodeType === 8;
 }
 
+function findInternalRangeEnd(start: Comment): Comment | undefined {
+  let depth = 0;
+  let sibling = start.nextSibling;
+
+  while (sibling) {
+    if (isCommentNode(sibling)) {
+      if (sibling.data === INTERNAL_RANGE_START_MARKER) {
+        depth++;
+      } else if (sibling.data === INTERNAL_RANGE_END_MARKER) {
+        if (depth === 0) return sibling;
+        depth--;
+      }
+    }
+
+    sibling = sibling.nextSibling;
+  }
+
+  return undefined;
+}
+
 function getServerRenderedNodes(root: Node) {
   const doms: Node[] = [];
   const lazy = new Map<string, LazyHydrationNodes>();
   const boundaryStack: string[] = [];
+  const internalRangeNodes = new WeakSet<Node>();
 
   function getOrCreateLazyNodes(id: string): LazyHydrationNodes {
     let nodes = lazy.get(id);
@@ -349,9 +373,46 @@ function getServerRenderedNodes(root: Node) {
   }
 
   function flattenNode(node: Node) {
-    if (isElement(node)) {
-      if (node.hasAttribute("_$int")) return;
+    if (internalRangeNodes.has(node)) return;
 
+    if (isCommentNode(node) && node.data === INTERNAL_RANGE_START_MARKER) {
+      const end = findInternalRangeEnd(node);
+
+      if (!end) {
+        throw new Error("[vynn] Unclosed internal SSR range during hydration.");
+      }
+
+      let current: Node | null = node.nextSibling;
+
+      while (current) {
+        const next = current.nextSibling;
+        internalRangeNodes.add(current);
+
+        if (
+          isCommentNode(current) &&
+          (current.data === INTERNAL_RANGE_START_MARKER || current.data === INTERNAL_RANGE_END_MARKER)
+        ) {
+          current.parentNode?.removeChild(current);
+        } else {
+          removeInternalRangeMarkers(current);
+        }
+
+        if (current === end) break;
+        current = next;
+      }
+
+      node.parentNode?.removeChild(node);
+      end.parentNode?.removeChild(end);
+      return;
+    }
+
+    if (isCommentNode(node) && node.data === INTERNAL_RANGE_END_MARKER) {
+      node.parentNode?.removeChild(node);
+      console.warn("[vynn] Unmatched internal SSR range end marker.");
+      return;
+    }
+
+    if (isElement(node)) {
       // Metadata rendered through Vynn's head registry is claimed separately
       // by $headTmpl and must not consume the application's element queue.
       if (

@@ -4,6 +4,7 @@ import type { JSX } from "../src/types/jsx";
 
 import {
   createAuthoredServerEntry,
+  createClientShell,
   createServerEntry,
   createSsrHandlerCode,
 } from "../../vite-plugin/src/plugins/app/documents.ts";
@@ -152,5 +153,33 @@ describe("renderToServer modes", () => {
     expect(handler).toContain("await render(url.pathname + url.search)");
     expect(handler).toContain("rendered.head.render()");
     expect(handler).toContain("rendered.modules");
+    expect(handler).toContain("vynn:internal:start");
+    expect(handler).not.toContain("_$int");
+  });
+
+  it("wraps client shell resources without adding marker attributes", () => {
+    const productionShell = createClientShell({
+      base: "/",
+      clientEntryUrl: "/assets/client.js",
+      css: ["assets/app.css"],
+      dev: false,
+    });
+    const developmentShell = createClientShell({
+      base: "/",
+      clientEntryUrl: "/src/client.ts",
+      dev: true,
+    });
+
+    expect(productionShell).toContain(
+      '<!--vynn:internal:start--><link rel="stylesheet" href="/assets/app.css"><!--vynn:internal:end-->',
+    );
+    expect(productionShell).toContain(
+      '<!--vynn:internal:start--><script type="module" src="/assets/client.js"></script><!--vynn:internal:end-->',
+    );
+    expect(developmentShell).toContain(
+      '<!--vynn:internal:start--><script type="module" src="/@vite/client"></script><!--vynn:internal:end-->',
+    );
+    expect(productionShell).not.toContain("_$int");
+    expect(developmentShell).not.toContain("_$int");
   });
 });

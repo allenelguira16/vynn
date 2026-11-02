@@ -2,6 +2,7 @@ import { initializeAsyncContext } from "../context/async-context";
 import { initializeErrorBoundaryContext } from "../context/error-boundary-context";
 import { initializeHeadContext } from "../context/head-context";
 import { initializeLazyContext } from "../context/lazy-context";
+import { removeInternalRangeMarkers } from "../dom/internal-range";
 import { JSX } from "../jsx-runtime";
 import { createOwner, disposeOwner, runWithOwner } from "../life-cycle/owner";
 import { addUnmountListener } from "../render/$cmpnt";
@@ -63,6 +64,11 @@ export function renderToDOM(
 
         // Preserve shell resources and head entries registered while
         // resolving App before replacing the browser's initial document root.
+        // Internal range comments are only hydration bookkeeping, so remove
+        // the delimiters while keeping the resource nodes they enclose.
+        removeInternalRangeMarkers(node.head);
+        removeInternalRangeMarkers(node.body);
+
         nextHead.append(...Array.from(node.head.childNodes));
         nextBody.append(...Array.from(node.body.childNodes));
 

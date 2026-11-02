@@ -180,6 +180,29 @@ describe("client head rendering", () => {
     disposeOwner(root);
   });
 
+  it("does not adopt metadata inside an internal resource range", () => {
+    document.head.innerHTML =
+      '<!--vynn:internal:start--><meta name="description" content="Injected resource"><!--vynn:internal:end-->';
+    const injectedMeta = document.head.querySelector('meta[name="description"]');
+
+    const root = createOwner();
+    runWithOwner(root, () => {
+      initializeHeadContext();
+
+      const meta = $headTmpl("meta", "meta:name:description");
+      expect(meta).not.toBe(injectedMeta);
+
+      meta.setAttribute("name", "description");
+      meta.setAttribute("content", "Application description");
+      $head(meta);
+    });
+
+    expect(injectedMeta?.getAttribute("content")).toBe("Injected resource");
+    expect(document.head.querySelectorAll('meta[name="description"]')).toHaveLength(2);
+
+    disposeOwner(root);
+  });
+
   it("preserves sibling text across separate head child insertions", () => {
     const root = createOwner();
 

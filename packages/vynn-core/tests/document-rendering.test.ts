@@ -51,12 +51,16 @@ function DocumentApp(): JSX.Element {
 describe("document-root rendering", () => {
   it("hydrates the complete Document and ignores plugin-injected resources", () => {
     document.head.innerHTML = [
-      '<link rel="stylesheet" _$int href="/assets/app.css">',
+      "<!--vynn:internal:start-->",
+      '<link rel="stylesheet" href="/assets/app.css">',
+      "<!--vynn:internal:end-->",
       '<meta name="description" content="Application description">',
     ].join("");
     document.body.innerHTML = [
       "<main><p>Server content</p></main>",
-      '<script type="module" _$int src="/assets/client.js"></script>',
+      "<!--vynn:internal:start-->",
+      '<script type="module" src="/assets/client.js"></script>',
+      "<!--vynn:internal:end-->",
     ].join("");
 
     const serverHtml = document.documentElement;
@@ -78,6 +82,8 @@ describe("document-root rendering", () => {
     expect(document.querySelector("p")?.firstChild).toBe(serverText);
     expect(document.querySelector('link[rel="stylesheet"]')).toBe(stylesheet);
     expect(document.querySelector('script[src="/assets/client.js"]')).toBe(clientEntry);
+    expect(document.documentElement.innerHTML).not.toContain("vynn:internal");
+    expect(document.documentElement.innerHTML).not.toContain("_$int");
 
     unmount();
   });
@@ -85,11 +91,18 @@ describe("document-root rendering", () => {
   it("replaces the client-only shell while preserving its resources", () => {
     document.head.innerHTML = [
       '<meta charset="UTF-8" key="meta:charset">',
-      '<link rel="stylesheet" _$int href="/assets/app.css">',
-      '<script type="module" _$int src="/@vite/client"></script>',
+      "<!--vynn:internal:start-->",
+      '<link rel="stylesheet" href="/assets/app.css">',
+      "<!--vynn:internal:end-->",
+      "<!--vynn:internal:start-->",
+      '<script type="module" src="/@vite/client"></script>',
+      "<!--vynn:internal:end-->",
     ].join("");
-    document.body.innerHTML =
-      '<script type="module" _$int src="/assets/client.js"></script>';
+    document.body.innerHTML = [
+      "<!--vynn:internal:start-->",
+      '<script type="module" src="/assets/client.js"></script>',
+      "<!--vynn:internal:end-->",
+    ].join("");
 
     const previousHtml = document.documentElement;
     const stylesheet = document.querySelector('link[rel="stylesheet"]');
@@ -103,6 +116,8 @@ describe("document-root rendering", () => {
     expect(document.querySelector('script[src="/@vite/client"]')).toBe(viteClient);
     expect(document.querySelector('script[src="/assets/client.js"]')).toBe(clientEntry);
     expect(document.querySelector("main")?.textContent).toBe("Server content");
+    expect(document.documentElement.innerHTML).not.toContain("vynn:internal");
+    expect(document.documentElement.innerHTML).not.toContain("_$int");
 
     unmount();
   });

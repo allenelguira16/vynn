@@ -1,3 +1,4 @@
+import { isWithinInternalRange } from "../dom/internal-range";
 import { getContext, setContext } from "../life-cycle/owner";
 
 export type HeadTag = "title" | "meta" | "link";
@@ -25,7 +26,7 @@ function createHeadContext(): HeadContext {
       candidates.set(
         tag,
         Array.from(document.head.querySelectorAll<HTMLElement>(tag)).filter(
-          (element) => !element.hasAttribute("_$int"),
+          (element) => !isWithinInternalRange(element),
         ),
       );
     }

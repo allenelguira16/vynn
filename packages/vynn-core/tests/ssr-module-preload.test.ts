@@ -8,6 +8,7 @@ import { registerSsrModule } from "../src/context/ssr-module-context";
 import { createSSRAsync } from "../src/render/resolve-node";
 import { renderToServer } from "../src/server/render-to-server";
 import { renderSsrPreloadLinks } from "../src/server/preload.render-preload-links";
+import { injectSsrPreloadLinks } from "../src/server/preload.inject-links";
 
 describe("SSR lazy module tracking", () => {
   it("isolates module IDs between independent render results", () => {
@@ -121,6 +122,19 @@ describe("renderSsrPreloadLinks", () => {
     });
 
     expect(links).toBe('<link rel="modulepreload" crossorigin href="/base/src/pages/a.tsx">');
+    expect(links).not.toContain("vynn:internal");
+    expect(links).not.toContain("_$int");
+  });
+
+  it("injects pre-delimited preload links without adding marker attributes", () => {
+    const links = '<link rel="modulepreload" href="/assets/lazy.js">';
+    const script = injectSsrPreloadLinks(links);
+
+    expect(script).toContain("document.createComment(\"vynn:internal:start\")");
+    expect(script).toContain("document.createComment(\"vynn:internal:end\")");
+    expect(script).toContain("document.head.append(");
+    expect(script).toContain("document.currentScript.remove()");
+    expect(script).not.toContain("_$int");
   });
 
   it("escapes paths when emitting link attributes", () => {
