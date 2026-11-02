@@ -33,6 +33,7 @@
     "typescript/no-namespace": "off",
     "no-var": "error",
     "prefer-const": "warn",
-    "no-unsafe-finally": "off"
+    "no-unsafe-finally": "off",
+    "no-unassigned-vars": "off"
   }
 }
