@@ -31,7 +31,6 @@ import {
 import {
   CLIENT_ENTRY_ID,
   type ClientAssets,
-  HTML_OUTLET_ID,
   RESOLVED_CLIENT_ENTRY_ID,
   RESOLVED_SERVER_ENTRY_ID,
   RESOLVED_SSR_HANDLER_ID,
@@ -65,10 +64,6 @@ type PluginOptions = {
  * Neither mode requires a project-owned index.html or HTTP server file.
  */
 export function vynnAppPlugin({ ssr, ssrCss, serverFunctions }: PluginOptions): Plugin {
-  const mount = `#${HTML_OUTLET_ID}`;
-  const title = "Vynn App";
-
-  const mountId = mount.slice(1);
   let resolvedConfig: ResolvedConfig | undefined;
   let entries = {} as ResolvedEntries;
   let clientOutDir = resolve(process.cwd(), "dist/client");
@@ -76,6 +71,7 @@ export function vynnAppPlugin({ ssr, ssrCss, serverFunctions }: PluginOptions): 
   let base = "/";
   let isBuild = false;
   let serverFunctionEndpoint = "/__vynn/server-function";
+  let restarting = false;
   const root = () => resolvedConfig?.root ?? process.cwd();
 
   return {
@@ -231,7 +227,7 @@ export function vynnAppPlugin({ ssr, ssrCss, serverFunctions }: PluginOptions): 
     async load(id) {
       if (id === RESOLVED_CLIENT_ENTRY_ID) {
         if (!entries.clientIsGenerated || !entries.appSpecifier) return null;
-        return createClientEntry(entries.appSpecifier, entries.styleSpecifiers, mount, ssr);
+        return createClientEntry(entries.appSpecifier, entries.styleSpecifiers, ssr);
       }
 
       if (id === RESOLVED_SERVER_ENTRY_ID) {
@@ -271,8 +267,6 @@ export function vynnAppPlugin({ ssr, ssrCss, serverFunctions }: PluginOptions): 
           clientEntryUrl,
           css: assets?.css ?? [],
           base,
-          title,
-          mountId,
           dev: !isBuild,
           serverFunctions: serverFunctions !== undefined && serverFunctions.enabled !== false,
           ssrManifest,
@@ -285,11 +279,7 @@ export function vynnAppPlugin({ ssr, ssrCss, serverFunctions }: PluginOptions): 
     hotUpdate: {
       order: "post",
 
-      handler({ file, modules, timestamp }) {
-        // The root app is rendered by the SSR environment, but the browser
-        // DOM is owned by Vynn and does not currently support component HMR.
-        // A stylesheet-only HMR update is not enough to apply app.tsx edits.
-        // Force a document reload from the client environment instead.
+      handler({ file, server }) {
         if (
           !ssr ||
           isBuild ||
@@ -300,25 +290,25 @@ export function vynnAppPlugin({ ssr, ssrCss, serverFunctions }: PluginOptions): 
           return;
         }
 
-        // The SSR environment must use Vite's normal module propagation.
-        // The generated server entry deliberately has no accept boundary, so
-        // app.tsx invalidates the server entry and SSR handler as a chain.
-        if (this.environment.name !== "client") return;
+        // Vite invokes this hook for each environment. Restart only once from
+        // the client environment; a restart rebuilds both client and SSR graphs.
+        if (this.environment.name !== "client" || restarting) return [];
 
-        // Tailwind may narrow the HMR module list to generated CSS modules.
-        // Look up the changed source file directly so app.tsx is invalidated
-        // even when the regular update payload only contains stylesheet nodes.
-        const graph = this.environment.moduleGraph;
-        const appModules = graph.getModulesByFile(file);
-        const invalidatedModules = new Set<(typeof modules)[number]>();
+        restarting = true;
+        void server
+          .restart()
+          .catch((error: unknown) => {
+            server.config.logger.error(
+              "[Vynn App] Failed to restart the dev server after the root App changed: " +
+                (error instanceof Error ? error.message : String(error)),
+            );
+          })
+          .finally(() => {
+            restarting = false;
+          });
 
-        for (const module of appModules ?? modules) {
-          graph.invalidateModule(module, invalidatedModules, timestamp, true);
-        }
-
-        // Vynn does not yet support replacing the root component's DOM tree.
-        // Force the browser to request fresh SSR HTML and hydrate it.
-        this.environment.hot.send({ type: "full-reload" });
+        // Do not send the stale module update. Vite reloads the browser after
+        // its WebSocket reconnects to the restarted server.
         return [];
       },
     },
@@ -362,8 +352,6 @@ export function vynnAppPlugin({ ssr, ssrCss, serverFunctions }: PluginOptions): 
               new Response(
                 createClientShell({
                   base,
-                  title,
-                  mountId,
                   clientEntryUrl: getClientEntryDevUrl(entries, root(), base),
                   dev: true,
                 }),
@@ -461,8 +449,6 @@ export function vynnAppPlugin({ ssr, ssrCss, serverFunctions }: PluginOptions): 
       const assets = await readClientAssets(outDir);
       const shell = createClientShell({
         base,
-        title,
-        mountId,
         clientEntryUrl: joinAssetBase(base, `/${assets.file}`),
         css: assets.css,
         dev: false,

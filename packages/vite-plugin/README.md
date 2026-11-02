@@ -26,9 +26,39 @@ Calling `vynn()` without options creates a client-rendered application.
 Enable `ssr: true` for server rendering, streaming, automatic hydration,
 lazy-module preloads, and a generated request handler.
 
-Vynn uses conventional entry names and document defaults. A root component is
-discovered from `src/App.*` or `src/app.*`. Projects can provide conventional
-`src/entry-client.*` and `src/entry-server.*` files to customize their entries.
+Vynn discovers the root component from `src/App.*` or `src/app.*`.
+The root component owns the complete HTML document, including `<html>`,
+`<head>`, and `<body>`. The plugin injects development resources, CSS,
+preloads, and the generated client entry into that document. Projects can
+provide conventional `src/entry-client.*` and `src/entry-server.*` files to
+customize their entries.
+
+```tsx
+// src/app.tsx
+export default function App() {
+  return (
+    <html>
+      <head>
+        <title>My Vynn app</title>
+        <meta name="description" content="A Vynn application." />
+      </head>
+      <body>
+        <main id="app">Hello from Vynn</main>
+      </body>
+    </html>
+  );
+}
+```
+
+The generated client entry targets the `Document` directly. With SSR enabled,
+Vynn hydrates the existing `<html>` tree instead of mounting into a generated
+container. In client-only mode, the initial shell is replaced by the document
+returned from the root component while preserving plugin and Vite resources.
+
+During development with SSR enabled, changing the root App module restarts
+the Vite dev server. This recreates the client and SSR module environments so
+the next document response uses the updated App. The browser reconnects to the
+restarted Vite server and reloads the page.
 
 With SSR enabled, Vynn:
 

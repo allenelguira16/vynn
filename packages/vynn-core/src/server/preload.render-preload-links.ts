@@ -60,11 +60,11 @@ export function renderSsrPreloadLinks(
 
   return [
     ...[...stylesheets].map(
-      (file) => '<link rel="stylesheet" href="' + escapeAttribute(joinAssetBase(base, file)) + '">',
+      (file) => '<link rel="stylesheet" data-vynn-internal href="' + escapeAttribute(joinAssetBase(base, file)) + '">',
     ),
     ...[...modules].map(
       (file) =>
-        '<link rel="modulepreload" crossorigin href="' +
+        '<link rel="modulepreload" data-vynn-internal crossorigin href="' +
         escapeAttribute(joinAssetBase(base, file)) +
         '">',
     ),

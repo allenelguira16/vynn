@@ -20,4 +20,3 @@ export const SSR_HANDLER_ID = "virtual:vynn/ssr-handler";
 export const RESOLVED_CLIENT_ENTRY_ID = `\0${CLIENT_ENTRY_ID}`;
 export const RESOLVED_SERVER_ENTRY_ID = `\0${SERVER_ENTRY_ID}`;
 export const RESOLVED_SSR_HANDLER_ID = `\0${SSR_HANDLER_ID}`;
-export const HTML_OUTLET_ID = "app";

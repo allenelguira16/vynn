@@ -94,14 +94,17 @@ export function lazy<M extends Record<string, unknown>, K extends keyof M = "def
     const component = $async(loadComponent);
 
     if (isServer()) {
-      return $nodes(
-        () =>
-          [
-            createSSRComment(`${LAZY_START_SSR_MARKER}:${lazyID}`),
-            component.value(props),
-            createSSRComment(`${LAZY_END_SSR_MARKER}:${lazyID}`),
-          ] as JSX.Element,
-      );
+      return $nodes(() => {
+        if (!cachedComponent) {
+          cachedComponent = component.value;
+        }
+
+        return [
+          createSSRComment(`${LAZY_START_SSR_MARKER}:${lazyID}`),
+          cachedComponent(props),
+          createSSRComment(`${LAZY_END_SSR_MARKER}:${lazyID}`),
+        ] as JSX.Element;
+      });
     }
 
     const existingRange = getServerRenderedLazyRange(lazyID);

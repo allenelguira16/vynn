@@ -22,7 +22,12 @@ function createHeadContext(): HeadContext {
 
   if (typeof document !== "undefined") {
     for (const tag of ["title", "meta", "link"] as const) {
-      candidates.set(tag, Array.from(document.head.querySelectorAll<HTMLElement>(tag)));
+      candidates.set(
+        tag,
+        Array.from(document.head.querySelectorAll<HTMLElement>(tag)).filter(
+          (element) => !element.hasAttribute("data-vynn-internal"),
+        ),
+      );
     }
   }
 

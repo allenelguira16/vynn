@@ -16,11 +16,8 @@ type ManifestEntry = {
 export function createClientEntry(
   appSpecifier: string,
   styleSpecifiers: string[],
-  mount: string,
   ssr: boolean,
 ): string {
-  // Read optional exports dynamically. A direct `appModule.App` access makes
-  // Rollup/Rolldown warn when the module intentionally uses a default export.
   const selected = (moduleName: string) =>
     `Reflect.get(${moduleName}, "default") ?? Reflect.get(${moduleName}, "App")`;
   const renderer = ssr ? "hydrateToDOM" : "renderToDOM";
@@ -31,11 +28,10 @@ export function createClientEntry(
     `import { ${renderer} } from "vynn/client";`,
     `const App = ${selected("appModule")};`,
     `if (typeof App !== "function") throw new Error("[Vynn App] The app module must export a component as default or App.");`,
-    `${renderer}(() => App({ url: window.location.pathname + window.location.search }), ${JSON.stringify(mount)});`,
+    `${renderer}(() => App({ url: window.location.pathname + window.location.search }), document);`,
     "",
   ].join("\n");
 }
-
 export function createAuthoredServerEntry(serverSpecifier: string): string {
   return [
     `import * as serverModule from ${JSON.stringify(serverSpecifier)};`,
@@ -139,13 +135,11 @@ export function createSsrHandlerCode(options: {
   clientEntryUrl: string;
   css: string[];
   base: string;
-  title: string;
-  mountId: string;
   dev: boolean;
   serverFunctions: boolean;
   ssrManifest: ViteSsrManifest | null;
 }): string {
-  const { clientEntryUrl, css, base, title, mountId, dev, serverFunctions, ssrManifest } = options;
+  const { clientEntryUrl, css, base, dev, serverFunctions, ssrManifest } = options;
 
   return [
     `import {`,
@@ -162,8 +156,6 @@ export function createSsrHandlerCode(options: {
     `const CLIENT_ENTRY_URL = ${JSON.stringify(clientEntryUrl)};`,
     `const CSS_ASSETS = ${JSON.stringify(css)};`,
     `const BASE = ${JSON.stringify(base)};`,
-    `const TITLE = ${JSON.stringify(title)};`,
-    `const MOUNT_ID = ${JSON.stringify(mountId)};`,
     `const IS_DEV = ${JSON.stringify(dev)};`,
     `const SSR_MANIFEST = ${JSON.stringify(ssrManifest)};`,
     `function escapeAttribute(value) { return String(value).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }`,
@@ -174,13 +166,13 @@ export function createSsrHandlerCode(options: {
     `  const prefix = BASE === "/" ? "" : BASE.replace(/\\/$/, "");`,
     `  return prefix + "/" + value;`,
     `}`,
-    `function documentPrefix(devCssLinks = [], preloadLinks = "", headHtml = "") {`,
+    `function createHeadAssets(devCssLinks, preloadLinks, headHtml, patchRuntime) {`,
+    `  const charset = headHtml.toLowerCase().includes("charset=") ? "" : '<meta charset="UTF-8" data-vynn-internal>';`,
     `  const css = IS_DEV`,
-    `    ? devCssLinks.map(({ url, id }) => '<link rel="stylesheet" data-vite-dev-id="' + escapeAttribute(id) + '" href="' + escapeAttribute(assetUrl(url + "?direct")) + '">').join("")`,
-    `    : CSS_ASSETS.map((file) => '<link rel="stylesheet" href="' + escapeAttribute(assetUrl(file)) + '">').join("");`,
-    `  const viteClient = IS_DEV ? '<script type="module" src="' + escapeAttribute(assetUrl("/@vite/client")) + '"></script>' : "";`,
-    `  const defaults = (headHtml.toLowerCase().includes("charset=") ? "" : '<meta charset="UTF-8">') + (headHtml.toLowerCase().includes('name="viewport"') ? "" : '<meta name="viewport" content="width=device-width, initial-scale=1.0">') + (headHtml.toLowerCase().includes("<title") ? "" : '<title key="title">' + TITLE.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") + '</title>');`,
-    `  return '<!doctype html><html lang="en"><head>' + defaults + headHtml + css + preloadLinks + viteClient + '</head><body><div id="' + escapeAttribute(MOUNT_ID) + '">';`,
+    `    ? devCssLinks.map(({ url, id }) => '<link rel="stylesheet" data-vynn-internal data-vite-dev-id="' + escapeAttribute(id) + '" href="' + escapeAttribute(assetUrl(url + "?direct")) + '">' ).join("")`,
+    `    : CSS_ASSETS.map((file) => '<link rel="stylesheet" data-vynn-internal href="' + escapeAttribute(assetUrl(file)) + '">' ).join("");`,
+    `  const viteClient = IS_DEV ? '<script type="module" data-vynn-internal src="' + escapeAttribute(assetUrl("/@vite/client")) + '"></script>' : "";`,
+    `  return charset + headHtml + css + preloadLinks + viteClient + patchRuntime;`,
     `}`,
     `function asReadableStream(value) {`,
     `  if (value instanceof ReadableStream) return value;`,
@@ -190,21 +182,91 @@ export function createSsrHandlerCode(options: {
     `}`,
     `function withDocument(body, devCssLinks, moduleIds, headHtml) {`,
     `  const reader = body.getReader();`,
+    `  const decoder = new TextDecoder();`,
     `  const encoder = new TextEncoder();`,
     `  const seenPreloads = new Set(CSS_ASSETS);`,
     `  const preloadLinks = () => renderSsrPreloadLinks(moduleIds, SSR_MANIFEST, { base: BASE, dev: IS_DEV, exclude: seenPreloads });`,
+    `  const clientEntry = '<script type="module" data-vynn-internal src="' + escapeAttribute(CLIENT_ENTRY_URL) + '"></script>';`,
+    `  let buffer = "";`,
+    `  let foundHtml = false;`,
+    `  let injectedHead = false;`,
+    `  let removedBodyClose = false;`,
+    `  let removedHtmlClose = false;`,
+    `  let headAssets = "";`,
     `  return new ReadableStream({`,
     `    async start(controller) {`,
-    `      try {`,
-    `        let result = await reader.read();`,
-    `        controller.enqueue(encoder.encode(documentPrefix(devCssLinks, preloadLinks(), headHtml)));`,
-    `        while (!result.done) {`,
-    `          const links = preloadLinks();`,
-    `          if (links) controller.enqueue(encoder.encode(injectSsrPreloadLinks(links)));`,
-    `          controller.enqueue(result.value);`,
-    `          result = await reader.read();`,
+    `      const emit = (value) => { if (value) controller.enqueue(encoder.encode(value)); };`,
+    `      function flushDocumentBody(final) {`,
+    `        if (!removedBodyClose) {`,
+    `          const endBody = buffer.toLowerCase().indexOf("</body>");`,
+    `          if (endBody === -1) {`,
+    `            if (final) throw new TypeError("[Vynn App] The root document is missing a closing </body> tag.");`,
+    `            const safeLength = Math.max(0, buffer.length - 7);`,
+    `            emit(buffer.slice(0, safeLength));`,
+    `            buffer = buffer.slice(safeLength);`,
+    `            return;`,
+    `          }`,
+    `          emit(buffer.slice(0, endBody));`,
+    `          buffer = buffer.slice(endBody + 7);`,
+    `          removedBodyClose = true;`,
     `        }`,
-    `        controller.enqueue(encoder.encode('</div><script type="module" src="' + escapeAttribute(CLIENT_ENTRY_URL) + '"></script></body></html>'));`,
+    `        if (!removedHtmlClose) {`,
+    `          const endHtml = buffer.toLowerCase().indexOf("</html>");`,
+    `          if (endHtml === -1) {`,
+    `            if (final) throw new TypeError("[Vynn App] The root document is missing a closing </html> tag.");`,
+    `            const safeLength = Math.max(0, buffer.length - 7);`,
+    `            emit(buffer.slice(0, safeLength));`,
+    `            buffer = buffer.slice(safeLength);`,
+    `            return;`,
+    `          }`,
+    `          emit(buffer.slice(0, endHtml));`,
+    `          buffer = buffer.slice(endHtml + 7);`,
+    `          removedHtmlClose = true;`,
+    `        }`,
+    `        if (removedHtmlClose && buffer) { emit(buffer); buffer = ""; }`,
+    `      }`,
+    `      function transform(text, final = false) {`,
+    `        buffer += text;`,
+    `        if (!foundHtml) {`,
+    `          const match = /<html(?:\\s|>)/i.exec(buffer);`,
+    `          if (!match) {`,
+    `            if (final) throw new TypeError("[Vynn App] The root component must render a complete <html> document.");`,
+    `            return;`,
+    `          }`,
+    `          let prefix = buffer.slice(0, match.index);`,
+    `          const doctype = /<!doctype\\s+html[^>]*>/i.exec(prefix);`,
+    `          emit(doctype ? doctype[0] : "<!doctype html>");`,
+    `          if (doctype) prefix = prefix.replace(doctype[0], "");`,
+    `          const patchRuntime = prefix.trim().replace(/<script\\b/i, "<script data-vynn-internal");`,
+    `          headAssets = createHeadAssets(devCssLinks, preloadLinks(), headHtml, patchRuntime);`,
+    `          buffer = buffer.slice(match.index);`,
+    `          foundHtml = true;`,
+    `        }`,
+    `        if (!injectedHead) {`,
+    `          const endHead = buffer.toLowerCase().indexOf("</head>");`,
+    `          if (endHead === -1) {`,
+    `            if (final) throw new TypeError("[Vynn App] The root document is missing a closing </head> tag.");`,
+    `            return;`,
+    `          }`,
+    `          emit(buffer.slice(0, endHead) + headAssets + "</head>");`,
+    `          buffer = buffer.slice(endHead + 7);`,
+    `          injectedHead = true;`,
+    `        }`,
+    `        flushDocumentBody(final);`,
+    `      }`,
+    `      try {`,
+    `        while (true) {`,
+    `          const result = await reader.read();`,
+    `          if (result.done) break;`,
+    `          const links = injectedHead ? preloadLinks() : "";`,
+    `          if (links) emit(injectSsrPreloadLinks(links));`,
+    `          transform(decoder.decode(result.value, { stream: true }));`,
+    `        }`,
+    `        transform(decoder.decode(), true);`,
+    `        if (!foundHtml || !injectedHead || !removedBodyClose || !removedHtmlClose) {`,
+    `          throw new TypeError("[Vynn App] Could not inject assets into the root HTML document.");`,
+    `        }`,
+    `        emit(clientEntry + "</body></html>");`,
     `        controller.close();`,
     `      } catch (error) { controller.error(error); }`,
     `      finally { reader.releaseLock(); }`,
@@ -216,22 +278,22 @@ export function createSsrHandlerCode(options: {
     `  return runWithSsrContext(async () => {`,
     ...(serverFunctions
       ? [
-          `  const serverFunctionResponse = await handleServerFunctionRequest(request);`,
-          `  if (serverFunctionResponse) return serverFunctionResponse;`,
+          `    const serverFunctionResponse = await handleServerFunctionRequest(request);`,
+          `    if (serverFunctionResponse) return serverFunctionResponse;`,
         ]
       : []),
-    `  if (request.method !== "GET" && request.method !== "HEAD") {`,
-    `    return new Response("Method Not Allowed", { status: 405, headers: { Allow: "GET, HEAD" } });`,
-    `  }`,
-    `  const url = new URL(request.url);`,
-    `  const headers = { "content-type": "text/html; charset=utf-8" };`,
-    `  if (request.method === "HEAD") return new Response(null, { status: 200, headers });`,
-    `  const rendered = render(url.pathname + url.search);`,
-    `  const moduleIds = getSsrModuleIds();`,
-    `  const result = typeof rendered === "string" ? rendered : await rendered;`,
-    `  if (result instanceof Response) return result;`,
-    `  const headHtml = getSsrHead();`,
-    `  return new Response(withDocument(asReadableStream(result), devCssLinks, moduleIds, headHtml), { status: 200, headers });`,
+    `    if (request.method !== "GET" && request.method !== "HEAD") {`,
+    `      return new Response("Method Not Allowed", { status: 405, headers: { Allow: "GET, HEAD" } });`,
+    `    }`,
+    `    const url = new URL(request.url);`,
+    `    const headers = { "content-type": "text/html; charset=utf-8" };`,
+    `    if (request.method === "HEAD") return new Response(null, { status: 200, headers });`,
+    `    const rendered = render(url.pathname + url.search);`,
+    `    const moduleIds = getSsrModuleIds();`,
+    `    const result = typeof rendered === "string" ? rendered : await rendered;`,
+    `    if (result instanceof Response) return result;`,
+    `    const headHtml = getSsrHead();`,
+    `    return new Response(withDocument(asReadableStream(result), devCssLinks, moduleIds, headHtml), { status: 200, headers });`,
     `  });`,
     `}`,
     `export default { fetch(request) { return handleRequest(request); } };`,
@@ -241,8 +303,6 @@ export function createSsrHandlerCode(options: {
 
 export function createClientShell(options: {
   base: string;
-  title: string;
-  mountId: string;
   clientEntryUrl: string;
   css?: string[];
   dev: boolean;
@@ -252,26 +312,23 @@ export function createClientShell(options: {
     : (options.css ?? [])
         .map(
           (file) =>
-            `<link rel="stylesheet" href="${escapeHtml(joinAssetBase(options.base, `/${file}`))}">`,
+            `<link rel="stylesheet" data-vynn-internal href="${escapeHtml(joinAssetBase(options.base, `/${file}`))}">`,
         )
         .join("");
   const viteClient = options.dev
-    ? `<script type="module" src="${escapeHtml(joinAssetBase(options.base, "/@vite/client"))}"></script>`
+    ? `<script type="module" data-vynn-internal src="${escapeHtml(joinAssetBase(options.base, "/@vite/client"))}"></script>`
     : "";
 
   return [
     "<!doctype html>",
-    '<html lang="en">',
+    "<html>",
     "<head>",
-    '<meta charset="UTF-8" />',
-    '<meta name="viewport" content="width=device-width, initial-scale=1.0" />',
-    `<title key="title">${escapeHtml(options.title)}</title>`,
+    '<meta charset="UTF-8" key="meta:charset">',
     css,
     viteClient,
     "</head>",
     "<body>",
-    `<div id="${escapeHtml(options.mountId)}"></div>`,
-    `<script type="module" src="${escapeHtml(options.clientEntryUrl)}"></script>`,
+    `<script type="module" data-vynn-internal src="${escapeHtml(options.clientEntryUrl)}"></script>`,
     "</body>",
     "</html>",
   ].join("");

@@ -349,6 +349,20 @@ function getServerRenderedNodes(root: Node) {
   }
 
   function flattenNode(node: Node) {
+    if (isElement(node)) {
+      if (node.hasAttribute("data-vynn-internal")) return;
+
+      // Metadata rendered through Vynn's head registry is claimed separately
+      // by $headTmpl and must not consume the application's element queue.
+      if (
+        node.parentElement?.localName === "head" &&
+        node.hasAttribute("key") &&
+        (node.localName === "title" || node.localName === "meta" || node.localName === "link")
+      ) {
+        return;
+      }
+    }
+
     if (isCommentNode(node)) {
       const value = node.data;
       const start = LAZY_START_REGEX.exec(value);

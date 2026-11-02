@@ -21,17 +21,17 @@ export function hydrateToDOM(
 ) {
   let cleanup: (() => void) | undefined;
 
-  let node: DocumentFragment | Element | null;
+  let node: Document | DocumentFragment | Element | null;
 
   if (id instanceof Element || id instanceof DocumentFragment) {
     node = id;
   } else if (id instanceof Document) {
-    node = id.documentElement;
+    node = id;
   } else {
     node = document.querySelector(id) as typeof node;
   }
 
-  if (node instanceof Element || node instanceof DocumentFragment) {
+  if (node instanceof Document || node instanceof Element || node instanceof DocumentFragment) {
     const owner = createOwner();
 
     runWithOwner(owner, () => {
@@ -56,7 +56,7 @@ export function hydrateToDOM(
 
     cleanup = () => disposeOwner(owner);
   } else {
-    throw new Error("Node must be of type Element");
+    throw new Error("Node must be a Document, Element, or DocumentFragment");
   }
 
   return (): void => {

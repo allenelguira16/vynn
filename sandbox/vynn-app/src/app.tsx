@@ -13,14 +13,19 @@ export default function App(props: { url: string }) {
   });
 
   return (
-    <>
-      <title>Vynn SSR Sandbox {counter.value}</title>
-      <meta name="description" content="A server-rendered application built with Vynn." />
-      <meta property="og:title" content="Vynn SSR Sandbox" />
-      <meta property="og:description" content="A server-rendered application built with Vynn." />
-      <meta property="og:type" content="website" />
-
-      <Router routes={routes} url={props.url} />
-    </>
+    <html>
+      <head>
+        <title>Vynn SSR Sandbox {counter.value}</title>
+        <meta name="description" content="A server-rendered application built with Vynn." />
+        <meta property="og:title" content="Vynn SSR Sandbox" />
+        <meta property="og:description" content="A server-rendered application built with Vynn." />
+        <meta property="og:type" content="website" />
+      </head>
+      <body>
+        <div id="app">
+          <Router routes={routes} url={props.url} />
+        </div>
+      </body>
+    </html>
   );
 }
