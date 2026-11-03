@@ -2,10 +2,9 @@ import { initializeAsyncContext } from "../context/async-context";
 import { initializeErrorBoundaryContext } from "../context/error-boundary-context";
 import { initializeHeadContext } from "../context/head-context";
 import { initializeLazyContext } from "../context/lazy-context";
-import { removeInternalRangeMarkers } from "../dom/internal-range";
 import { JSX } from "../jsx-runtime";
 import { createOwner, disposeOwner, runWithOwner } from "../life-cycle/owner";
-import { addUnmountListener } from "../render/$cmpnt";
+import { addUnmountListener, isRootNode } from "../render/$cmpnt";
 import { HTML_NAMESPACE, getChildDOMNamespace, withDOMNamespace } from "../render/namespace";
 import { resolveNode } from "../render/resolve-node";
 
@@ -50,8 +49,13 @@ export function renderToDOM(
 
       if (node instanceof Document) {
         const root = nodes[0];
+        const markers = nodes.slice(1);
 
-        if (nodes.length !== 1 || !(root instanceof Element) || root.localName !== "html") {
+        if (
+          !(root instanceof Element) ||
+          root.localName !== "html" ||
+          markers.some((marker) => !isRootNode(marker))
+        ) {
           throw new Error("[Vynn App] Rendering into a Document requires a single <html> root element.");
         }
 
@@ -64,13 +68,12 @@ export function renderToDOM(
 
         // Preserve shell resources and head entries registered while
         // resolving App before replacing the browser's initial document root.
-        // Internal range comments are only hydration bookkeeping, so remove
-        // the delimiters while keeping the resource nodes they enclose.
-        removeInternalRangeMarkers(node.head);
-        removeInternalRangeMarkers(node.body);
-
         nextHead.append(...Array.from(node.head.childNodes));
-        nextBody.append(...Array.from(node.body.childNodes));
+
+        // Compiled root components return a lifecycle marker after the
+        // document element. Keep those markers in the body so the unmount
+        // observer can dispose the component without adding nodes to Document.
+        nextBody.append(...Array.from(node.body.childNodes), ...markers);
 
         const previousRoot = node.documentElement;
         if (previousRoot) node.replaceChild(root, previousRoot);

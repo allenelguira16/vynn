@@ -6,6 +6,7 @@ import type { JSX } from "../src/types/jsx";
 import { hydrateToDOM } from "../src/client/hydrate-to-dom";
 import { renderToDOM } from "../src/client/render-to-dom";
 import { $attr } from "../src/render/$attr";
+import { $cmpnt, isRootNode } from "../src/render/$cmpnt";
 import { $insert } from "../src/render/$insert";
 import { $tmpl } from "../src/render/$tmpl";
 import { $txt } from "../src/render/$txt";
@@ -91,31 +92,29 @@ describe("document-root rendering", () => {
   it("replaces the client-only shell while preserving its resources", () => {
     document.head.innerHTML = [
       '<meta charset="UTF-8" key="meta:charset">',
-      "<!--vynn:internal:start-->",
       '<link rel="stylesheet" href="/assets/app.css">',
-      "<!--vynn:internal:end-->",
-      "<!--vynn:internal:start-->",
       '<script type="module" src="/@vite/client"></script>',
-      "<!--vynn:internal:end-->",
     ].join("");
-    document.body.innerHTML = [
-      "<!--vynn:internal:start-->",
-      '<script type="module" src="/assets/client.js"></script>',
-      "<!--vynn:internal:end-->",
-    ].join("");
+    document.body.innerHTML = '<script type="module" src="/assets/client.js"></script>';
 
     const previousHtml = document.documentElement;
     const stylesheet = document.querySelector('link[rel="stylesheet"]');
     const viteClient = document.querySelector('script[src="/@vite/client"]');
     const clientEntry = document.querySelector('script[src="/assets/client.js"]');
 
-    const unmount = renderToDOM(DocumentApp, document);
+    const unmount = renderToDOM($cmpnt(DocumentApp), document);
 
     expect(document.documentElement).not.toBe(previousHtml);
     expect(document.querySelector('link[rel="stylesheet"]')).toBe(stylesheet);
     expect(document.querySelector('script[src="/@vite/client"]')).toBe(viteClient);
     expect(document.querySelector('script[src="/assets/client.js"]')).toBe(clientEntry);
     expect(document.querySelector("main")?.textContent).toBe("Server content");
+
+    const rootMarker = document.body.lastChild;
+    expect(rootMarker).toBeInstanceOf(Text);
+    expect(rootMarker && isRootNode(rootMarker)).toBe(true);
+    expect(rootMarker?.parentNode).toBe(document.body);
+
     expect(document.documentElement.innerHTML).not.toContain("vynn:internal");
     expect(document.documentElement.innerHTML).not.toContain("_$int");
 

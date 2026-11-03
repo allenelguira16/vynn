@@ -154,10 +154,11 @@ describe("renderToServer modes", () => {
     expect(handler).toContain("rendered.head.render()");
     expect(handler).toContain("rendered.modules");
     expect(handler).toContain("vynn:internal:start");
+    expect(handler).toContain("vynn:internal:end");
     expect(handler).not.toContain("_$int");
   });
 
-  it("wraps client shell resources without adding marker attributes", () => {
+  it("generates CSR shell resources without SSR range markers", () => {
     const productionShell = createClientShell({
       base: "/",
       clientEntryUrl: "/assets/client.js",
@@ -171,14 +172,16 @@ describe("renderToServer modes", () => {
     });
 
     expect(productionShell).toContain(
-      '<!--vynn:internal:start--><link rel="stylesheet" href="/assets/app.css"><!--vynn:internal:end-->',
+      '<link rel="stylesheet" href="/assets/app.css">',
     );
     expect(productionShell).toContain(
-      '<!--vynn:internal:start--><script type="module" src="/assets/client.js"></script><!--vynn:internal:end-->',
+      '<script type="module" src="/assets/client.js"></script>',
     );
     expect(developmentShell).toContain(
-      '<!--vynn:internal:start--><script type="module" src="/@vite/client"></script><!--vynn:internal:end-->',
+      '<script type="module" src="/@vite/client"></script>',
     );
+    expect(productionShell).not.toContain("vynn:internal:");
+    expect(developmentShell).not.toContain("vynn:internal:");
     expect(productionShell).not.toContain("_$int");
     expect(developmentShell).not.toContain("_$int");
   });

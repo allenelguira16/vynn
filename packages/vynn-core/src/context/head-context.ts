@@ -25,9 +25,21 @@ function createHeadContext(): HeadContext {
     for (const tag of ["title", "meta", "link"] as const) {
       candidates.set(
         tag,
-        Array.from(document.head.querySelectorAll<HTMLElement>(tag)).filter(
-          (element) => !isWithinInternalRange(element),
-        ),
+        Array.from(document.head.querySelectorAll<HTMLElement>(tag)).filter((element) => {
+          if (isWithinInternalRange(element)) return false;
+
+          // Generated CSR shells contain unkeyed stylesheet links. They are
+          // framework assets, not candidates for app-owned head metadata.
+          if (
+            tag === "link" &&
+            element.getAttribute("rel")?.toLowerCase().split(/\s+/).includes("stylesheet") &&
+            !element.hasAttribute("key")
+          ) {
+            return false;
+          }
+
+          return true;
+        }),
       );
     }
   }

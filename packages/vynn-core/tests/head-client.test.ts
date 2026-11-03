@@ -180,6 +180,30 @@ describe("client head rendering", () => {
     disposeOwner(root);
   });
 
+  it("does not adopt an unkeyed stylesheet from the generated CSR shell", () => {
+    document.head.innerHTML = '<link rel="stylesheet" href="/assets/app.css">';
+    const shellStylesheet = document.head.querySelector("link");
+
+    const root = createOwner();
+    runWithOwner(root, () => {
+      initializeHeadContext();
+
+      const stylesheet = $headTmpl("link", "link:stylesheet:/assets/app.css");
+      expect(stylesheet).not.toBe(shellStylesheet);
+
+      stylesheet.setAttribute("rel", "stylesheet");
+      stylesheet.setAttribute("href", "/assets/app.css");
+      $head(stylesheet);
+
+      expect(document.head.querySelectorAll('link[rel="stylesheet"]')).toHaveLength(2);
+    });
+
+    disposeOwner(root);
+
+    expect(document.head.querySelectorAll('link[rel="stylesheet"]')).toHaveLength(1);
+    expect(document.head.querySelector("link")).toBe(shellStylesheet);
+  });
+
   it("does not adopt metadata inside an internal resource range", () => {
     document.head.innerHTML =
       '<!--vynn:internal:start--><meta name="description" content="Injected resource"><!--vynn:internal:end-->';

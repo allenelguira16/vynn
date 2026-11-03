@@ -7,13 +7,6 @@ import type { ViteSsrManifest } from "../ssr-preload.ts";
 import { joinAssetBase } from "./http.ts";
 import { type ClientAssets, SERVER_ENTRY_ID } from "./shared.ts";
 
-const INTERNAL_RANGE_START = "<!--vynn:internal:start-->";
-const INTERNAL_RANGE_END = "<!--vynn:internal:end-->";
-
-function wrapInternalRange(content: string): string {
-  return content ? INTERNAL_RANGE_START + content + INTERNAL_RANGE_END : "";
-}
-
 type ManifestEntry = {
   file: string;
   css?: string[];
@@ -316,21 +309,17 @@ export function createClientShell(options: {
   css?: string[];
   dev: boolean;
 }): string {
-  const css = wrapInternalRange(
-    options.dev
-      ? ""
-      : (options.css ?? [])
-          .map(
-            (file) =>
-              `<link rel="stylesheet" href="${escapeHtml(joinAssetBase(options.base, `/${file}`))}">`,
-          )
-          .join(""),
-  );
-  const viteClient = wrapInternalRange(
-    options.dev
-      ? `<script type="module" src="${escapeHtml(joinAssetBase(options.base, "/@vite/client"))}"></script>`
-      : "",
-  );
+  const css = options.dev
+    ? ""
+    : (options.css ?? [])
+        .map(
+          (file) =>
+            `<link rel="stylesheet" href="${escapeHtml(joinAssetBase(options.base, `/${file}`))}">`,
+        )
+        .join("");
+  const viteClient = options.dev
+    ? `<script type="module" src="${escapeHtml(joinAssetBase(options.base, "/@vite/client"))}"></script>`
+    : "";
 
   return [
     "<!doctype html>",
@@ -341,7 +330,7 @@ export function createClientShell(options: {
     viteClient,
     "</head>",
     "<body>",
-    wrapInternalRange(`<script type="module" src="${escapeHtml(options.clientEntryUrl)}"></script>`),
+    `<script type="module" src="${escapeHtml(options.clientEntryUrl)}"></script>`,
     "</body>",
     "</html>",
   ].join("");
