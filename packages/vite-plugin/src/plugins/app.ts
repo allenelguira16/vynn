@@ -79,7 +79,12 @@ export function vynnAppPlugin({ ssr, ssrMode, ssrCss, serverFunctions }: PluginO
   return {
     name: "vynn-app-mode",
 
-    config(userConfig, env): Omit<UserConfig, "plugins"> {
+    config(userConfig, env): Omit<UserConfig, "plugins"> | null {
+      // Standalone server functions trigger a separate Vite SSR build from
+      // closeBundle(). That build owns its output directory (dist/server);
+      // the CSR app's client configuration must not redirect it to dist/client.
+      if (env.isSsrBuild && !ssr) return null;
+
       const projectRoot = resolve(userConfig.root || process.cwd());
       entries = resolveEntries(projectRoot, ssr);
 
@@ -445,7 +450,10 @@ export function vynnAppPlugin({ ssr, ssrMode, ssrCss, serverFunctions }: PluginO
     async writeBundle(outputOptions) {
       // In client mode, `vite build` produces a static shell without a server
       // bundle. Emit index.html after Vite has written the client manifest.
-      if (ssr || this.environment?.config.consumer !== "client") return;
+      const consumer = this.environment?.config.consumer;
+      const isSsrBuild = this.environment?.config.build.ssr;
+
+      if (ssr || consumer !== "client" || isSsrBuild) return;
 
       const outDir = outputOptions.dir ? resolve(outputOptions.dir) : clientOutDir;
       const assets = await readClientAssets(outDir);

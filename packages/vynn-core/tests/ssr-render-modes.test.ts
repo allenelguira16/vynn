@@ -8,6 +8,7 @@ import {
   createServerEntry,
   createSsrHandlerCode,
 } from "../../vite-plugin/src/plugins/app/documents.ts";
+import { vynnAppPlugin } from "../../vite-plugin/src/plugins/app.ts";
 
 import { registerSsrModule } from "../src/context/ssr-module-context";
 import { createOwner, disposeOwner, getOwner, runWithOwner } from "../src/life-cycle/owner";
@@ -18,6 +19,30 @@ import { createSSRAsync, createSSRText } from "../src/render/resolve-node";
 import { renderToServer } from "../src/server/render-to-server";
 
 describe("renderToServer modes", () => {
+  it("does not override output configuration for a standalone server-functions build", async () => {
+    const plugin = vynnAppPlugin({
+      ssr: false,
+      ssrMode: "stream",
+    });
+    const configHook = plugin.config;
+
+    if (typeof configHook !== "function") {
+      throw new Error("Expected the Vynn app plugin to expose a config hook.");
+    }
+
+    const result = await configHook.call(
+      {} as never,
+      { root: process.cwd() } as never,
+      {
+        mode: "production",
+        command: "build",
+        isSsrBuild: true,
+      } as never,
+    );
+
+    expect(result).toBeNull();
+  });
+
   it("returns an explicit render result in sync mode", () => {
     const rendered = renderToServer(
       () => createSSRText("Synchronous content") as unknown as JSX.Element,
