@@ -21,7 +21,7 @@ import { memo } from "../utils/memo";
  * @param props The fallback content and children to render.
  * @returns The rendered content.
  */
-export const Await = $cmpnt(function Suspense(props: {
+export const Await = $cmpnt(function Await(props: {
   fallback?: JSX.Element;
   children: JSX.Element;
 }): JSX.Element {

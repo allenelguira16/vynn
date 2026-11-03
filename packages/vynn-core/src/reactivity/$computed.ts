@@ -1,6 +1,3 @@
-import { $renderEffect } from "./$effect";
-import { $state } from "./$state";
-
 export type Computed<T> = {
   readonly value: T;
 };
@@ -15,15 +12,9 @@ export type Computed<T> = {
  * @returns A read-only reactive value containing the result of the getter.
  */
 export function $computed<T>(getter: () => T): Computed<T> {
-  const result = $state<T>();
-
-  $renderEffect(() => {
-    result.value = getter();
-  });
-
   return {
     get value() {
-      return result.value as T;
+      return getter() as T;
     },
   };
 }

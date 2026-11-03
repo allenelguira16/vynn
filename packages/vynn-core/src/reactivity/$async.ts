@@ -6,6 +6,7 @@ import {
 } from "../context/async-context";
 import { isServer } from "../context/is-server-context";
 import { isAsyncGetterFromLazy } from "../context/lazy-context";
+import { getOwner, runWithOwner } from "../life-cycle/owner";
 import { withFakeAsyncApis } from "./$async.util";
 import { $renderEffect } from "./$effect";
 import { $state } from "./$state";
@@ -39,87 +40,113 @@ export function isPending(value: object): boolean {
   return context.get(value)?.() ?? false;
 }
 
+/**
+ * Creates a lazy asynchronous resource.
+ *
+ * The getter runs on the first value read. Subsequent reads share the active
+ * request or return its settled result until a reactive dependency changes.
+ */
 export function $async<T>(getter: () => Promise<T>): Async<T> {
   const isLazy = isAsyncGetterFromLazy(getter);
+  // Reserve the hydration ID at creation time so declaration order remains stable.
   const asyncID = isLazy ? undefined : getAsyncID();
+  const owner = getOwner();
   const result = $state<AsyncRecord<T> | undefined>();
+
   let version = 0;
+  let isInitialized = false;
 
-  $renderEffect(() => {
-    transaction(() => {
-      const currentVersion = ++version;
-      const asyncValues = getAsyncValues();
-      const hydrationData = isLazy || asyncID === undefined ? undefined : getAsyncValue<T>(asyncID);
+  const initialize = () => {
+    if (isInitialized) return;
 
-      let promise: Promise<T> | undefined;
+    isInitialized = true;
 
-      try {
-        if (hydrationData?.found) {
-          // Execute the getter with inert async APIs to establish the same
-          // reactive dependencies without repeating the server request.
-          withFakeAsyncApis(getter);
-        } else {
-          promise = Promise.resolve(getter());
-        }
-      } catch (error) {
-        result.value = {
-          status: "rejected",
-          error,
-          version: currentVersion,
-        };
-        return;
-      }
+    // Bind the resource effect to the creation owner, not the owner that
+    // happened to perform the first read.
+    runWithOwner(owner, () => {
+      $renderEffect(() => {
+        transaction(() => {
+          const currentVersion = ++version;
+          const asyncValues = getAsyncValues();
+          const hydrationData =
+            isLazy || asyncID === undefined ? undefined : getAsyncValue<T>(asyncID);
 
-      if (hydrationData?.found) {
-        result.value = {
-          status: "resolved",
-          value: hydrationData.value as T,
-          version: currentVersion,
-        };
-        return;
-      }
+          let promise: Promise<T> | undefined;
 
-      const pendingPromise = promise!;
-
-      result.value = {
-        status: "pending",
-        promise: pendingPromise,
-        version: currentVersion,
-      };
-
-      // Attach exactly one settlement handler for this operation.
-      pendingPromise.then(
-        (value) => {
-          if (currentVersion !== version) return;
-          if (asyncValues && asyncID !== undefined) {
-            asyncValues[asyncID] = value;
+          try {
+            if (hydrationData?.found) {
+              // Execute the getter with inert async APIs to establish the same
+              // reactive dependencies without repeating the server request.
+              withFakeAsyncApis(getter);
+            } else {
+              promise = Promise.resolve(getter());
+            }
+          } catch (error) {
+            result.value = {
+              status: "rejected",
+              error,
+              version: currentVersion,
+            };
+            return;
           }
 
-          result.value = {
-            status: "resolved",
-            value,
-            version: currentVersion,
-          };
-        },
-        (error: unknown) => {
-          if (currentVersion !== version) return;
+          if (hydrationData?.found) {
+            result.value = {
+              status: "resolved",
+              value: hydrationData.value as T,
+              version: currentVersion,
+            };
+            return;
+          }
+
+          const pendingPromise = promise!;
 
           result.value = {
-            status: "rejected",
-            error,
+            status: "pending",
+            promise: pendingPromise,
             version: currentVersion,
           };
-        },
-      );
+
+          // Attach exactly one settlement handler for this operation.
+          pendingPromise.then(
+            (value) => {
+              if (currentVersion !== version) return;
+              if (asyncValues && asyncID !== undefined) {
+                asyncValues[asyncID] = value;
+              }
+
+              result.value = {
+                status: "resolved",
+                value,
+                version: currentVersion,
+              };
+            },
+            (error: unknown) => {
+              if (currentVersion !== version) return;
+
+              result.value = {
+                status: "rejected",
+                error,
+                version: currentVersion,
+              };
+            },
+          );
+        });
+      });
     });
-  });
+  };
 
   const derived: Async<T> = {
     get value(): T {
-      const record = result.value;
+      let record = result.value;
 
       if (!record) {
-        throw new Error("$async was read before its operation was initialized.");
+        initialize();
+        record = result.value;
+      }
+
+      if (!record) {
+        throw new Error("$async failed to initialize its operation.");
       }
 
       if (record.status === "pending") {

@@ -177,6 +177,48 @@ describe("$store", () => {
 });
 
 describe("$async", () => {
+  it("does not execute until the value is first read", async () => {
+    const owner = createOwner();
+
+    try {
+      await runWithOwner(owner, async () => {
+        initializeAsyncContext();
+
+        let executions = 0;
+        const data = $async(async () => {
+          executions += 1;
+          return "test";
+        });
+
+        expect(executions).toBe(0);
+        expect(isPending(data)).toBe(false);
+        expect(executions).toBe(0);
+
+        let pendingPromise: Promise<unknown> | undefined;
+
+        try {
+          data.value;
+        } catch (error) {
+          expect(error).toBeInstanceOf(NotReadyError);
+          pendingPromise = (error as NotReadyError).promise;
+        }
+
+        expect(executions).toBe(1);
+
+        // Additional reads share the same in-flight request.
+        expect(() => data.value).toThrow(NotReadyError);
+        expect(executions).toBe(1);
+
+        await pendingPromise;
+
+        expect(data.value).toBe("test");
+        expect(executions).toBe(1);
+      });
+    } finally {
+      disposeOwner(owner);
+    }
+  });
+
   it("fetches data and tracks pending state", async () => {
     const isPendingSnapshots: boolean[] = [];
     const owner = createOwner();
@@ -192,6 +234,17 @@ describe("$async", () => {
 
         const resolved = await new Promise<string>((resolve) => {
           $effect(() => {
+            try {
+              data.value;
+            } catch (error) {
+              if (!(error instanceof NotReadyError)) {
+                throw error;
+              }
+
+              isPendingSnapshots.push(isPending(data));
+              return;
+            }
+
             isPendingSnapshots.push(isPending(data));
             resolve(data.value);
           });
@@ -260,7 +313,6 @@ describe("$async", () => {
                 throw error;
               }
 
-              // console.log();
               resolve(error as Error);
             }
           });
