@@ -1,5 +1,5 @@
 import { $async, $computed } from "vynn";
-import { $nodes } from "vynn/render";
+import { $nodes, withoutAsyncBoundary } from "vynn/render";
 
 import { RoutePathProvider } from "./context";
 import { currentLocation } from "./location";
@@ -103,9 +103,15 @@ function RouteView(props: MatchedRoute) {
     },
   );
 
-  const allowed = $async(() => guarded, { boundary: false });
+  const allowed = $async(() => guarded);
 
-  return $nodes(() => (allowed.value ? renderRoute() : null));
+  return $nodes(() => {
+    // Suppress only the guard read. Once it passes, page components must
+    // inherit their normal Await boundary behavior.
+    const canRender = withoutAsyncBoundary(() => allowed.value);
+
+    return canRender ? renderRoute() : null;
+  });
 }
 
 /** Renders one reactive routing level. Child routes use nested outlets. */
