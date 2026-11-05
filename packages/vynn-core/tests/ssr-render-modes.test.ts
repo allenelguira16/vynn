@@ -176,6 +176,9 @@ describe("renderToServer modes", () => {
     expect(entry).not.toContain("scope");
     expect(handler).not.toContain("runWithSsrContext");
     expect(handler).toContain("await render(url.pathname + url.search)");
+    expect(handler).toContain("async function peekStream(body)");
+    expect(handler).toContain("await peekStream(asReadableStream(rendered.body))");
+    expect(handler).toContain("if (error instanceof Response) return error");
     expect(handler).toContain("rendered.head.render()");
     expect(handler).toContain("rendered.modules");
     expect(handler).toContain("vynn:internal:start");
