@@ -75,6 +75,24 @@ export const ButtonPageList = () => {
             PokeDex List with Await
           </button>
         </li>
+        <li>
+          <button
+            class="btn"
+            onClick={() => navigate("/redirect")}
+            disabled={isActiveRoute("/redirect")}
+          >
+            Redirect
+          </button>
+        </li>
+        <li>
+          <button
+            class="btn"
+            onClick={() => navigate("/params/1")}
+            disabled={isActiveRoute("/params/:id")}
+          >
+            Params
+          </button>
+        </li>
       </ul>
     </Template>
   );

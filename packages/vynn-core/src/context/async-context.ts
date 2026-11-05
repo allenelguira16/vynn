@@ -1,10 +1,11 @@
 import { ASYNC_DATA_SSR_KEY } from "../const";
-import { getContext, modifyContext, setContext } from "../life-cycle/owner";
+import { getContext, getOwner, modifyContext, setContext } from "../life-cycle/owner";
 import { isServer } from "./is-server-context";
 
 export type AsyncBoundary<T = unknown> = (promise: Promise<T>) => void;
 
 const ASYNC_BOUNDARY = Symbol("vynn.async-boundary");
+const ASYNC_BOUNDARY_SUPPRESSED = Symbol("vynn.async-boundary-suppressed");
 const AWAIT_BOUNDARY = Symbol("vynn.await-boundary");
 const ASYNC_ID = Symbol("vynn.async-id");
 const ASYNC_VALUES = Symbol("vynn.async-values");
@@ -24,7 +25,41 @@ export function isInsideAwaitBoundary(): boolean {
 }
 
 export function getAsyncBoundary<T = unknown>(): AsyncBoundary<T> | undefined {
+  if (getContext<boolean>(ASYNC_BOUNDARY_SUPPRESSED)) {
+    return undefined;
+  }
+
   return getContext<AsyncBoundary<T>>(ASYNC_BOUNDARY);
+}
+
+/**
+ * Runs one read without notifying the nearest Await boundary.
+ *
+ * This is used by route guards: an unresolved guard must remain a deferred
+ * route decision instead of turning into an Await fallback that could be
+ * streamed before an SSR redirect is known.
+ */
+export function withoutAsyncBoundary<T>(callback: () => T): T {
+  const owner = getOwner();
+
+  if (!owner) {
+    return callback();
+  }
+
+  const hadLocalValue = owner.context.has(ASYNC_BOUNDARY_SUPPRESSED);
+  const previousValue = owner.context.get(ASYNC_BOUNDARY_SUPPRESSED);
+
+  owner.context.set(ASYNC_BOUNDARY_SUPPRESSED, true);
+
+  try {
+    return callback();
+  } finally {
+    if (hadLocalValue) {
+      owner.context.set(ASYNC_BOUNDARY_SUPPRESSED, previousValue);
+    } else {
+      owner.context.delete(ASYNC_BOUNDARY_SUPPRESSED);
+    }
+  }
 }
 
 /**

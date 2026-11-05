@@ -25,6 +25,7 @@ import {
   getClientEntryDevUrl,
   isFrameworkRequest,
   isHtmlNavigation,
+  isWebResponse,
   joinAssetBase,
   toDevUrl,
   writeResponse,
@@ -394,6 +395,10 @@ export function vynnAppPlugin({ ssr, ssrMode, ssrCss, serverFunctions }: PluginO
               res.destroy(error instanceof Error ? error : undefined);
               return;
             }
+            if (isWebResponse(error)) {
+              void writeResponse(res, error).catch(next);
+              return;
+            }
             const viteError = error instanceof Error ? error : new Error(String(error));
             server.ssrFixStacktrace(viteError);
             next(viteError);
@@ -439,6 +444,10 @@ export function vynnAppPlugin({ ssr, ssrMode, ssrCss, serverFunctions }: PluginO
           })().catch((error: unknown) => {
             if (res.headersSent) {
               res.destroy(error instanceof Error ? error : undefined);
+              return;
+            }
+            if (isWebResponse(error)) {
+              void writeResponse(res, error).catch(next);
               return;
             }
             next(error);

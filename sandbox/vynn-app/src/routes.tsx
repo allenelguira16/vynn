@@ -1,5 +1,5 @@
 import { Await, Portal, lazy } from "vynn";
-import { Route } from "vynn-router";
+import { redirect, type Route } from "vynn-router";
 
 import { ButtonPageList } from "./components/button-page-list";
 import { Params } from "./pages/params";
@@ -88,6 +88,14 @@ export const routes: Route[] = [
       {
         path: "/stacked-suspense",
         component: () => <StackedSuspense />,
+      },
+      {
+        path: "/redirect",
+        component: () => <div>I'm a redirecting page and shouldn't be seen in the browser</div>,
+        beforeLoad: async () => {
+          console.log("hi");
+          redirect("/params/1?id=1");
+        },
       },
       {
         path: "/params/:id",

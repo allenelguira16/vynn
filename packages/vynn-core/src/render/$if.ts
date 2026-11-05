@@ -1,6 +1,7 @@
 import type { JSX } from "../jsx-runtime";
 
 import { isHydrating } from "../client/hydration";
+import { NotReadyError } from "../reactivity/not-ready-error";
 import { isServer } from "../context/is-server-context";
 import { $renderEffect } from "../reactivity/$effect";
 import { untrack } from "../reactivity/untrack";
@@ -187,7 +188,20 @@ export function $if(
     parent.insertBefore(branch.fragment, marker);
   }
 
-  const initialValue = untrack(condition);
+  let initialValue: unknown;
+
+  try {
+    initialValue = untrack(condition);
+  } catch (error) {
+    // Async conditions can suspend on their first read. Start with the false
+    // branch and let the render effect retry when the resource settles.
+    if (!(error instanceof NotReadyError)) {
+      throw error;
+    }
+
+    initialValue = false;
+  }
+
   const initialKey = !!initialValue;
 
   let activeKey = initialKey;

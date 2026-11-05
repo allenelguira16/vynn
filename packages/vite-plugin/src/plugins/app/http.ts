@@ -57,6 +57,35 @@ export function isFrameworkRequest(url: string): boolean {
   return pathname.startsWith("/@") || pathname === VYNN_SSR_CSS_URL || pathname === "/favicon.ico";
 }
 
+/**
+ * Identifies Web Response objects across JavaScript realms.
+ *
+ * Vite's SSR Module Runner can produce a Response whose constructor differs
+ * from the host server's global Response, so instanceof is not reliable at
+ * the middleware boundary.
+ */
+export function isWebResponse(value: unknown): value is Response {
+  if (typeof value !== "object" || value === null) return false;
+
+  const candidate = value as {
+    status?: unknown;
+    headers?: { forEach?: unknown };
+    body?: { getReader?: unknown } | null;
+    arrayBuffer?: unknown;
+  };
+
+  return (
+    typeof candidate.status === "number" &&
+    typeof candidate.headers?.forEach === "function" &&
+    "body" in value &&
+    (candidate.body === null ||
+      (typeof candidate.body === "object" &&
+        candidate.body !== null &&
+        typeof candidate.body.getReader === "function")) &&
+    typeof candidate.arrayBuffer === "function"
+  );
+}
+
 export function createWebRequest(req: IncomingMessage, requestUrl: string): Request {
   const encrypted = Boolean((req.socket as { encrypted?: boolean }).encrypted);
   const origin = `${encrypted ? "https" : "http"}://${req.headers.host ?? "localhost"}`;

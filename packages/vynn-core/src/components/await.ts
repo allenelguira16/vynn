@@ -4,6 +4,7 @@ import { enterAsyncBoundary } from "../context/async-context";
 import { isServer } from "../context/is-server-context";
 import { isPromiseFromLazy } from "../context/lazy-context";
 import { getOwner, runWithOwner } from "../life-cycle/owner";
+import { NotReadyError } from "../reactivity/not-ready-error";
 import { $state } from "../reactivity/$state";
 import { untrack } from "../reactivity/untrack";
 import { $cmpnt } from "../render/$cmpnt";
@@ -49,19 +50,31 @@ export const Await = $cmpnt(function Await(props: {
       pending.push(promise);
     });
 
-    try {
-      children();
-    } finally {
-      if (!pending.length) {
-        return children();
-      }
-
-      return createSSRAsync(
+    const createBoundary = () =>
+      createSSRAsync(
         () => resolveNode(fallback) as unknown as SSR_NODE[],
         () => resolveNode(children) as unknown as SSR_NODE[],
         pending,
       ) as unknown as JSX.Element;
+
+    let renderedChildren: JSX.Element;
+
+    try {
+      renderedChildren = children();
+    } catch (error) {
+      // An async read may throw before the child tree can be returned. Keep
+      // Await's streaming behavior for that case, but never swallow redirects
+      // or other errors merely because a sibling registered a pending promise.
+      if (!(error instanceof NotReadyError) || pending.length === 0) {
+        throw error;
+      }
+
+      return createBoundary();
     }
+
+    // Keep the first evaluation. Rendering children again here duplicates
+    // synchronous side effects and can execute a throwing route guard twice.
+    return pending.length === 0 ? renderedChildren : createBoundary();
   }
 
   return untrack(() => {

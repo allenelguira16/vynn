@@ -1,4 +1,5 @@
 import { $store } from "vynn";
+import { batchRouterLocation } from "vynn/internal/router";
 
 import { useRouterLocation } from "./context";
 import { isServer } from "./environment";
@@ -13,20 +14,34 @@ export const $location = $store<Location>({
   search: !isServer ? window.location.search : "",
 });
 
+let activeLocation: Location | undefined;
+
 if (!isServer) {
   window.addEventListener("popstate", () => {
-    $location.pathname = window.location.pathname;
-    $location.search = window.location.search;
+    batchRouterLocation(() => {
+      updateLocation($location, {
+        pathname: window.location.pathname,
+        search: window.location.search,
+      });
+    });
   });
+}
+
+/**
+ * Sets the browser Router location used by callbacks that resume after an
+ * await, when the synchronous component context is no longer active.
+ */
+export function setActiveLocation(location: Location): void {
+  activeLocation = location;
 }
 
 export function currentLocation(): Location {
   try {
     return useRouterLocation();
   } catch {
-    // Public helpers can also be used outside a Router. Keep the original
-    // module-level location store as a compatibility fallback for those callers.
-    return $location;
+    // Async callbacks resume without a Vynn owner. In the browser, use the
+    // active Router store so redirects still update the Router's own location.
+    return activeLocation ?? $location;
   }
 }
 
@@ -43,18 +58,22 @@ export function parseLocation(url?: string): Location {
   };
 }
 
+/**
+ * Updates pathname and search atomically so reactive consumers observe one
+ * navigation rather than an intermediate half-updated location.
+ */
 export function updateLocation(target: Location, next: Location): void {
-  target.pathname = next.pathname;
-  target.search = next.search;
+  batchRouterLocation(() => {
+    target.pathname = next.pathname;
+    target.search = next.search;
+  });
 }
 
-/**
- * Updates the current URL and reactive location state.
- *
- * When called within a Router, it updates that Router's request-local state.
- * Calls outside a Router use the legacy $location store.
- */
-export function navigate(path: string, location = currentLocation()): void {
+function updateUrl(
+  path: string,
+  location: Location,
+  historyAction: "push" | "replace",
+): void {
   const target = new URL(
     path,
     "http://vynn.local" + location.pathname + location.search,
@@ -73,15 +92,38 @@ export function navigate(path: string, location = currentLocation()): void {
   }
 
   if (!isServer) {
-    history.pushState(null, "", target.pathname + target.search + target.hash);
-    updateLocation(location, {
+    const url = target.pathname + target.search + target.hash;
+
+    if (historyAction === "replace") {
+      history.replaceState(null, "", url);
+    } else {
+      history.pushState(null, "", url);
+    }
+
+    const current = {
       pathname: window.location.pathname,
       search: window.location.search,
+    };
+
+    // Keep the Router-scoped and legacy location stores in the same commit.
+    batchRouterLocation(() => {
+      updateLocation(location, current);
+      updateLocation($location, current);
     });
-    // Keep consumers of the old exported singleton working in browser apps.
-    $location.pathname = window.location.pathname;
-    $location.search = window.location.search;
   } else {
     updateLocation(location, next);
   }
+}
+
+/**
+ * Updates the current URL and reactive location state by pushing a history
+ * entry. Calls outside a Router use the active browser location or $location.
+ */
+export function navigate(path: string, location = currentLocation()): void {
+  updateUrl(path, location, "push");
+}
+
+/** Replaces the current URL and history entry without adding a back-button stop. */
+export function replace(path: string, location = currentLocation()): void {
+  updateUrl(path, location, "replace");
 }
