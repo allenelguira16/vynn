@@ -13,20 +13,51 @@ export const $location = $store<Location>({
   search: !isServer ? window.location.search : "",
 });
 
+// Browser routers register their request-local stores here. This allows an
+// async redirect (where Vynn's synchronous owner context is no longer active)
+// to update the Router store that RouteOutlet actually observes.
+const routerLocations = new Set<Location>();
+
+export function registerRouterLocation(location: Location): () => void {
+  if (isServer) return () => {};
+
+  routerLocations.add(location);
+
+  return () => {
+    routerLocations.delete(location);
+  };
+}
+
 if (!isServer) {
   window.addEventListener("popstate", () => {
-    $location.pathname = window.location.pathname;
-    $location.search = window.location.search;
+    const next = {
+      pathname: window.location.pathname,
+      search: window.location.search,
+    };
+
+    updateLocation($location, next);
+
+    for (const location of routerLocations) {
+      updateLocation(location, next);
+    }
   });
 }
 
+/**
+ * Returns the active Router location, or the legacy store when used outside
+ * a Router. Consumers that need to distinguish the two should use
+ * tryGetRouterLocation().
+ */
 export function currentLocation(): Location {
+  return tryGetRouterLocation() ?? $location;
+}
+
+/** Returns the context-bound Router location when an owner is active. */
+function tryGetRouterLocation(): Location | undefined {
   try {
     return useRouterLocation();
   } catch {
-    // Public helpers can also be used outside a Router. Keep the original
-    // module-level location store as a compatibility fallback for those callers.
-    return $location;
+    return undefined;
   }
 }
 
@@ -51,13 +82,17 @@ export function updateLocation(target: Location, next: Location): void {
 /**
  * Updates the current URL and reactive location state.
  *
- * When called within a Router, it updates that Router's request-local state.
- * Calls outside a Router use the legacy $location store.
+ * A synchronous call inside a Router updates that Router directly. When called
+ * after an await, the owner context may be gone; in that case all currently
+ * mounted Router stores are synchronized from the browser URL.
  */
-export function navigate(path: string, location = currentLocation()): void {
+export function navigate(path: string, location?: Location): void {
+  const contextualLocation = location ?? tryGetRouterLocation();
+  const targetLocation = contextualLocation ?? $location;
+
   const target = new URL(
     path,
-    "http://vynn.local" + location.pathname + location.search,
+    "http://vynn.local" + targetLocation.pathname + targetLocation.search,
   );
   const next = {
     pathname: target.pathname,
@@ -65,8 +100,8 @@ export function navigate(path: string, location = currentLocation()): void {
   };
 
   if (
-    next.pathname === location.pathname &&
-    next.search === location.search &&
+    next.pathname === targetLocation.pathname &&
+    next.search === targetLocation.search &&
     !target.hash
   ) {
     return;
@@ -74,15 +109,20 @@ export function navigate(path: string, location = currentLocation()): void {
 
   if (!isServer) {
     history.pushState(null, "", target.pathname + target.search + target.hash);
-    updateLocation(location, {
-      pathname: window.location.pathname,
-      search: window.location.search,
-    });
-    // Keep consumers of the old exported singleton working in browser apps.
-    $location.pathname = window.location.pathname;
-    $location.search = window.location.search;
+
+    if (contextualLocation) {
+      updateLocation(contextualLocation, next);
+    } else {
+      // No owner is active (typically an async beforeLoad continuation).
+      // Update each active Router rather than only the legacy singleton.
+      for (const routerLocation of routerLocations) {
+        updateLocation(routerLocation, next);
+      }
+    }
+
+    updateLocation($location, next);
     window.dispatchEvent(new Event("vynn:navigate"));
   } else {
-    updateLocation(location, next);
+    updateLocation(targetLocation, next);
   }
 }
