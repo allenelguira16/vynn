@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { lazy } from "../src/components/lazy";
+import { enterAsyncBoundary } from "../src/context/async-context";
 import type { JSX } from "../src/types/jsx";
 import { renderToServer } from "../src/server/render-to-server";
 import { Router } from "../../vynn-router/src/router";
@@ -114,9 +115,20 @@ describe("router beforeLoad and redirect", () => {
       },
     ];
 
-    const rendered = renderRouter("/redirect", routes, "stream");
+    let registeredWithAwait = false;
+    const rendered = renderToServer(() => {
+      // Simulate an ambient Await boundary around the Router. Guards must not
+      // register their pending promise with it, or its fallback could stream
+      // before the redirect is known.
+      enterAsyncBoundary(() => {
+        registeredWithAwait = true;
+      });
+
+      return Router({ url: "/redirect", routes }) as unknown as JSX.Element;
+    }, "stream");
     const reader = rendered.body.getReader();
 
+    expect(registeredWithAwait).toBe(false);
     await expect(reader.read()).rejects.toBeInstanceOf(Response);
   });
 });
