@@ -5,60 +5,36 @@ import { isServer } from "./environment";
 import type { Location } from "./types";
 
 /**
- * Legacy/default location store. The router uses a per-Router store in context
- * so multiple concurrent SSR requests never mutate one module-level location.
+ * Browser location shared by the active CSR router.
+ *
+ * On the server, each Router creates its own request-local store instead,
+ * preventing concurrent requests from sharing location state.
  */
 export const $location = $store<Location>({
   pathname: !isServer ? window.location.pathname : "/",
   search: !isServer ? window.location.search : "",
 });
 
-// Browser routers register their request-local stores here. This allows an
-// async redirect (where Vynn's synchronous owner context is no longer active)
-// to update the Router store that RouteOutlet actually observes.
-const routerLocations = new Set<Location>();
-
-export function registerRouterLocation(location: Location): () => void {
-  if (isServer) return () => {};
-
-  routerLocations.add(location);
-
-  return () => {
-    routerLocations.delete(location);
-  };
-}
-
 if (!isServer) {
   window.addEventListener("popstate", () => {
-    const next = {
+    updateLocation($location, {
       pathname: window.location.pathname,
       search: window.location.search,
-    };
-
-    updateLocation($location, next);
-
-    for (const location of routerLocations) {
-      updateLocation(location, next);
-    }
+    });
   });
 }
 
-/**
- * Returns the active Router location, or the legacy store when used outside
- * a Router. Consumers that need to distinguish the two should use
- * tryGetRouterLocation().
- */
-export function currentLocation(): Location {
-  return tryGetRouterLocation() ?? $location;
-}
-
-/** Returns the context-bound Router location when an owner is active. */
 function tryGetRouterLocation(): Location | undefined {
   try {
     return useRouterLocation();
   } catch {
     return undefined;
   }
+}
+
+/** Returns the active Router location, falling back to the CSR singleton. */
+export function currentLocation(): Location {
+  return tryGetRouterLocation() ?? $location;
 }
 
 /** Parses a URL into the location shape used by the router. */
@@ -80,16 +56,14 @@ export function updateLocation(target: Location, next: Location): void {
 }
 
 /**
- * Updates the current URL and reactive location state.
+ * Updates the browser URL and the active reactive location.
  *
- * A synchronous call inside a Router updates that Router directly. When called
- * after an await, the owner context may be gone; in that case all currently
- * mounted Router stores are synchronized from the browser URL.
+ * CSR always resolves to the shared $location store, including after an await
+ * when the synchronous owner context is no longer available. SSR continues to
+ * update the request-local Router store.
  */
 export function navigate(path: string, location?: Location): void {
-  const contextualLocation = location ?? tryGetRouterLocation();
-  const targetLocation = contextualLocation ?? $location;
-
+  const targetLocation = location ?? tryGetRouterLocation() ?? $location;
   const target = new URL(
     path,
     "http://vynn.local" + targetLocation.pathname + targetLocation.search,
@@ -109,20 +83,13 @@ export function navigate(path: string, location?: Location): void {
 
   if (!isServer) {
     history.pushState(null, "", target.pathname + target.search + target.hash);
+  }
 
-    if (contextualLocation) {
-      updateLocation(contextualLocation, next);
-    } else {
-      // No owner is active (typically an async beforeLoad continuation).
-      // Update each active Router rather than only the legacy singleton.
-      for (const routerLocation of routerLocations) {
-        updateLocation(routerLocation, next);
-      }
-    }
+  updateLocation(targetLocation, next);
 
+  // The legacy CSR singleton and the Router context refer to the same object.
+  // Keep this assignment for explicit external location arguments as well.
+  if (!isServer && targetLocation !== $location) {
     updateLocation($location, next);
-    window.dispatchEvent(new Event("vynn:navigate"));
-  } else {
-    updateLocation(targetLocation, next);
   }
 }
