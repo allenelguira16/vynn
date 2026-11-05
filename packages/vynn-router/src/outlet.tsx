@@ -1,4 +1,4 @@
-import { $computed } from "vynn";
+import { $nodes } from "vynn/render";
 
 import { RoutePathProvider } from "./context";
 import { RouteLoadBoundary } from "./route-load";
@@ -29,12 +29,16 @@ function findMatch(
   return undefined;
 }
 
-/** Renders one reactive routing level. Child routes use nested outlets. */
+/**
+ * Renders one reactive routing level. Each outlet owns its own render range
+ * so nested outlets continue observing location changes even when their
+ * parent evaluates children inside an untracked boundary such as Await.
+ */
 export function RouteOutlet(props: { routes: Route[]; parentPath?: string }) {
   let previousMatch: MatchedRoute | undefined;
   let previousView: ReturnType<Route["component"]> | null = null;
 
-  const view = $computed(() => {
+  return $nodes(() => {
     const next = findMatch(
       props.routes,
       currentLocation(),
@@ -42,6 +46,7 @@ export function RouteOutlet(props: { routes: Route[]; parentPath?: string }) {
     );
 
     // Keep the existing component tree when this outlet's route is unchanged.
+    // Search-param changes are handled by the components that read $search.
     if (
       previousMatch?.route === next?.route &&
       previousMatch?.fullPath === next?.fullPath
@@ -81,12 +86,11 @@ export function RouteOutlet(props: { routes: Route[]; parentPath?: string }) {
       );
     }
 
-    // Cache both the match and its rendered component tree.
+    // Cache the matched route and its component tree. The enclosing $nodes
+    // effect reruns this callback whenever this outlet's location changes.
     previousMatch = next;
     previousView = nextView;
 
     return nextView;
   });
-
-  return <>{view.value}</>;
 }
