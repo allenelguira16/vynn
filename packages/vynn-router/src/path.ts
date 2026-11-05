@@ -1,4 +1,4 @@
-import type { Location } from "./types";
+import type { Location, RouteParams } from "./types";
 
 /**
  * Normalizes a pathname by collapsing repeated slashes and removing a
@@ -6,7 +6,7 @@ import type { Location } from "./types";
  */
 export function normalizePath(path: string): string {
   if (!path || path === "/") return "/";
-  const normalized = path.replace(/\/+/g, "/").replace(/\/$/, "");
+  const normalized = path.replace(/\\/+/g, "/").replace(/\\/$/, "");
   return normalized || "/";
 }
 
@@ -54,6 +54,33 @@ export function getRouteParam(
   }
 
   return value;
+}
+
+/** Reads all dynamic parameters captured by a route pattern. */
+export function getRouteParams(path: string, location: Location): RouteParams {
+  const routeSegments = toSegments(path);
+  const pathnameSegments = toSegments(location.pathname);
+  const params: Record<string, string | undefined> = {};
+
+  if (pathnameSegments.length < routeSegments.length) {
+    return params;
+  }
+
+  for (let index = 0; index < routeSegments.length; index++) {
+    const routeSegment = routeSegments[index];
+
+    if (!routeSegment.startsWith(":")) {
+      continue;
+    }
+
+    try {
+      params[routeSegment.slice(1)] = decodeURIComponent(pathnameSegments[index]);
+    } catch {
+      params[routeSegment.slice(1)] = pathnameSegments[index];
+    }
+  }
+
+  return params;
 }
 
 /** Checks whether the supplied pathname matches the current pathname. */
