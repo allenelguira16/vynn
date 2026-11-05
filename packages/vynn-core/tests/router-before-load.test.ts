@@ -65,6 +65,34 @@ describe("router beforeLoad and redirect", () => {
     expect(rendered.body).toContain("Protected content");
   });
 
+  it("handles a synchronous redirect before invoking the route component", async () => {
+    let componentRendered = false;
+    const routes: Route[] = [
+      {
+        path: "/redirect",
+        component: (() => {
+          componentRendered = true;
+          return "This page must never render";
+        }) as unknown as Route["component"],
+        beforeLoad: () => {
+          redirect("/params/1?id=1");
+        },
+      },
+    ];
+
+    let response: unknown;
+    try {
+      await renderRouter("/redirect", routes, "async");
+    } catch (error) {
+      response = error;
+    }
+
+    expect(componentRendered).toBe(false);
+    expect(response).toBeInstanceOf(Response);
+    expect((response as Response).status).toBe(302);
+    expect((response as Response).headers.get("Location")).toBe("/params/1?id=1");
+  });
+
   it("redirects during an async guard without invoking a lazy route component", async () => {
     let lazyLoadCount = 0;
 
