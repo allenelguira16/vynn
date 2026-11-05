@@ -103,7 +103,7 @@ function RouteView(props: MatchedRoute) {
     },
   );
 
-  const allowed = $async(() => guarded);
+  const allowed = $async(() => guarded, { boundary: false });
 
   return $nodes(() => (allowed.value ? renderRoute() : null));
 }
