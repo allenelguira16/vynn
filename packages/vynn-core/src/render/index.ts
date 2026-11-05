@@ -11,6 +11,7 @@ export { $on } from "./$on";
 export { $spread } from "./$spread";
 export { $txt } from "./$txt";
 export { $tmpl } from "./$tmpl";
+export { withoutAsyncBoundary } from "../context/async-context";
 
 // export { hydrateToDOM } from "./hydrate-to-dom";
 // export { renderToDOM } from "./render-to-dom";
