@@ -1,6 +1,6 @@
 export type { BeforeLoadContext, Location, Route, RouteParams } from "./types";
 
-export { $location, navigate, replace } from "./location";
+export { $location, navigate } from "./location";
 export { $params, $search } from "./params";
 export { Router } from "./router";
 export { isActiveRoute, Link } from "./link";
