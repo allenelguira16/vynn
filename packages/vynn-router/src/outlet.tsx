@@ -1,9 +1,11 @@
-import { $computed } from "vynn";
+import { $async, $computed } from "vynn";
+import { $nodes } from "vynn/render";
 
 import { RoutePathProvider } from "./context";
 import { currentLocation } from "./location";
-import { joinPaths, matchRoute } from "./path";
-import type { Route } from "./types";
+import { getRouteParams, joinPaths, matchRoute } from "./path";
+import { isClientRedirect } from "./redirect";
+import type { Location, Route } from "./types";
 
 type MatchedRoute = {
   route: Route;
@@ -28,10 +30,88 @@ function findMatch(
   return undefined;
 }
 
+function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
+  return (
+    value !== null &&
+    (typeof value === "object" || typeof value === "function") &&
+    typeof (value as PromiseLike<unknown>).then === "function"
+  );
+}
+
+/**
+ * Runs beforeLoad before creating the matched route component. Keeping the
+ * component invocation inside the guarded region also delays lazy() imports
+ * until the guard has completed successfully.
+ */
+function RouteView(props: MatchedRoute) {
+  const { route, fullPath } = props;
+  const childRoutes = route.children ?? [];
+
+  const renderRoute = () => {
+    const Component = route.component;
+
+    return (
+      <Component>
+        {!!childRoutes.length && (
+          <RouteOutlet routes={childRoutes} parentPath={fullPath} />
+        )}
+      </Component>
+    );
+  };
+
+  if (!route.beforeLoad) {
+    return renderRoute();
+  }
+
+  const activeLocation = currentLocation();
+  const location: Location = {
+    pathname: activeLocation.pathname,
+    search: activeLocation.search,
+  };
+
+  let result: unknown;
+
+  try {
+    result = route.beforeLoad({
+      location,
+      params: getRouteParams(fullPath, location),
+      search: new URLSearchParams(location.search),
+    });
+  } catch (error) {
+    if (isClientRedirect(error)) {
+      return null;
+    }
+
+    throw error;
+  }
+
+  if (!isPromiseLike(result)) {
+    return renderRoute();
+  }
+
+  // Normalize a synchronous thenable and swallow only the private CSR
+  // redirect signal. A thrown Response remains rejected and reaches the SSR
+  // request handler.
+  const guarded = Promise.resolve(result).then(
+    () => true,
+    (error: unknown) => {
+      if (isClientRedirect(error)) {
+        return false;
+      }
+
+      throw error;
+    },
+  );
+
+  const allowed = $async(() => guarded);
+
+  return $nodes(() => (allowed.value ? renderRoute() : null));
+}
+
 /** Renders one reactive routing level. Child routes use nested outlets. */
 export function RouteOutlet(props: { routes: Route[]; parentPath?: string }) {
   let previousMatch: MatchedRoute | undefined;
-  let previousView: ReturnType<Route["component"]> | null = null;
+  let previousView: ReturnType<typeof RouteView> | null = null;
 
   const view = $computed(() => {
     const next = findMatch(
@@ -48,20 +128,14 @@ export function RouteOutlet(props: { routes: Route[]; parentPath?: string }) {
       return previousView;
     }
 
-    let nextView: ReturnType<Route["component"]> | null = null;
+    let nextView: ReturnType<typeof RouteView> | null = null;
 
     if (next) {
       const { route, fullPath } = next;
-      const childRoutes = route.children ?? [];
 
-      const Component = route.component;
       nextView = (
         <RoutePathProvider value={fullPath}>
-          <Component>
-            {!!childRoutes.length && (
-              <RouteOutlet routes={childRoutes} parentPath={fullPath} />
-            )}
-          </Component>
+          <RouteView route={route} fullPath={fullPath} />
         </RoutePathProvider>
       );
     }
