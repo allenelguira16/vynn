@@ -29,6 +29,42 @@ function findMatch(
   return undefined;
 }
 
+type RouteViewProps = {
+  route: Route;
+  fullPath: string;
+  childRoutes: Route[];
+};
+
+/**
+ * Gives every matched route its own component owner.
+ *
+ * Route definitions commonly use inline component callbacks, which are not
+ * necessarily transformed into Vynn component wrappers by the JSX compiler.
+ * Keeping the route callback inside this component gives its subtree a
+ * predictable owner and scopes route context to this matched route.
+ */
+function RouteView(props: RouteViewProps) {
+  const renderRoute = () =>
+    props.route.component({
+      children: props.childRoutes.length ? (
+        <RouteOutlet routes={props.childRoutes} parentPath={props.fullPath} />
+      ) : undefined,
+    });
+
+  return (
+    <RoutePathProvider value={props.fullPath}>
+      {props.route.beforeLoad ? (
+        <RouteLoadBoundary
+          beforeLoad={props.route.beforeLoad}
+          render={renderRoute}
+        />
+      ) : (
+        renderRoute()
+      )}
+    </RoutePathProvider>
+  );
+}
+
 /**
  * Renders one reactive routing level. Each outlet owns its own render range
  * so nested outlets continue observing location changes even when their
@@ -36,7 +72,7 @@ function findMatch(
  */
 export function RouteOutlet(props: { routes: Route[]; parentPath?: string }) {
   let previousMatch: MatchedRoute | undefined;
-  let previousView: ReturnType<Route["component"]> | null = null;
+  let previousView: ReturnType<typeof RouteView> | null = null;
 
   return $nodes(() => {
     const next = findMatch(
@@ -54,37 +90,15 @@ export function RouteOutlet(props: { routes: Route[]; parentPath?: string }) {
       return previousView;
     }
 
-    let nextView: ReturnType<Route["component"]> | null = null;
-
-    if (next) {
-      const { route, fullPath } = next;
-      const childRoutes = route.children ?? [];
-      const Component = route.component;
-
-      // Do not invoke Component or create its child outlet until the guard
-      // succeeds. Vynn components execute eagerly when their JSX expression
-      // is evaluated, so the renderer must be passed as a callback.
-      const renderRoute = () => (
-        <Component>
-          {!!childRoutes.length && (
-            <RouteOutlet routes={childRoutes} parentPath={fullPath} />
-          )}
-        </Component>
-      );
-
-      nextView = (
-        <RoutePathProvider value={fullPath}>
-          {route.beforeLoad ? (
-            <RouteLoadBoundary
-              beforeLoad={route.beforeLoad}
-              render={renderRoute}
-            />
-          ) : (
-            renderRoute()
-          )}
-        </RoutePathProvider>
-      );
-    }
+    const nextView = next
+      ? (
+          <RouteView
+            route={next.route}
+            fullPath={next.fullPath}
+            childRoutes={next.route.children ?? []}
+          />
+        )
+      : null;
 
     // Cache the matched route and its component tree. The enclosing $nodes
     // effect reruns this callback whenever this outlet's location changes.
