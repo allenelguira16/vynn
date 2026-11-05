@@ -6,7 +6,7 @@ import type { Location, RouteParams } from "./types";
  */
 export function normalizePath(path: string): string {
   if (!path || path === "/") return "/";
-  const normalized = path.replace(/\\/+/g, "/").replace(/\\/$/, "");
+  const normalized = path.replace(/\/+/g, "/").replace(/\/$/, "");
   return normalized || "/";
 }
 
