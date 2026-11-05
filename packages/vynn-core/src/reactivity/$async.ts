@@ -17,6 +17,8 @@ export type Async<T> = {
   value: T;
 };
 
+export type AsyncOptions = { boundary?: boolean };
+
 type AsyncRecord<T> =
   | {
       status: "pending";
@@ -46,7 +48,7 @@ export function isPending(value: object): boolean {
  * The getter runs on the first value read. Subsequent reads share the active
  * request or return its settled result until a reactive dependency changes.
  */
-export function $async<T>(getter: () => Promise<T>): Async<T> {
+export function $async<T>(getter: () => Promise<T>, options: AsyncOptions = {}): Async<T> {
   const isLazy = isAsyncGetterFromLazy(getter);
   // Reserve the hydration ID at creation time so declaration order remains stable.
   const asyncID = isLazy ? undefined : getAsyncID();
@@ -150,7 +152,7 @@ export function $async<T>(getter: () => Promise<T>): Async<T> {
       }
 
       if (record.status === "pending") {
-        const boundary = getAsyncBoundary();
+        const boundary = options.boundary === false ? undefined : getAsyncBoundary();
 
         if (boundary) boundary(record.promise);
         throw new NotReadyError(record.promise);
