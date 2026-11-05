@@ -1,11 +1,12 @@
 import { $computed } from "vynn";
 
 import { RoutePathProvider } from "./context";
+import { RouteLoadBoundary } from "./route-load";
 import { currentLocation } from "./location";
 import { joinPaths, matchRoute } from "./path";
 import type { Route } from "./types";
 
-type MatchedRoute = {
+export type MatchedRoute = {
   route: Route;
   fullPath: string;
 };
@@ -53,15 +54,29 @@ export function RouteOutlet(props: { routes: Route[]; parentPath?: string }) {
     if (next) {
       const { route, fullPath } = next;
       const childRoutes = route.children ?? [];
-
       const Component = route.component;
+
+      // Do not invoke Component or create its child outlet until the guard
+      // succeeds. Vynn components execute eagerly when their JSX expression
+      // is evaluated, so the renderer must be passed as a callback.
+      const renderRoute = () => (
+        <Component>
+          {!!childRoutes.length && (
+            <RouteOutlet routes={childRoutes} parentPath={fullPath} />
+          )}
+        </Component>
+      );
+
       nextView = (
         <RoutePathProvider value={fullPath}>
-          <Component>
-            {!!childRoutes.length && (
-              <RouteOutlet routes={childRoutes} parentPath={fullPath} />
-            )}
-          </Component>
+          {route.beforeLoad ? (
+            <RouteLoadBoundary
+              beforeLoad={route.beforeLoad}
+              render={renderRoute}
+            />
+          ) : (
+            renderRoute()
+          )}
         </RoutePathProvider>
       );
     }

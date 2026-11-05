@@ -81,6 +81,7 @@ export function navigate(path: string, location = currentLocation()): void {
     // Keep consumers of the old exported singleton working in browser apps.
     $location.pathname = window.location.pathname;
     $location.search = window.location.search;
+    window.dispatchEvent(new Event("vynn:navigate"));
   } else {
     updateLocation(location, next);
   }

@@ -22,8 +22,15 @@ export function Router(props: { url?: string; routes: Route[] }) {
         });
         updateLocation($location, location);
       };
+
+      // Async beforeLoad callbacks can redirect after their original owner
+      // context has ended. Sync the Router-local location from the browser URL.
       window.addEventListener("popstate", updateFromBrowser);
-      return () => window.removeEventListener("popstate", updateFromBrowser);
+      window.addEventListener("vynn:navigate", updateFromBrowser);
+      return () => {
+        window.removeEventListener("popstate", updateFromBrowser);
+        window.removeEventListener("vynn:navigate", updateFromBrowser);
+      };
     });
   }
 

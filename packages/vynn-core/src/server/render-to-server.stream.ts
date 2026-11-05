@@ -1,3 +1,4 @@
+import { isSsrBlockingTask } from "../context/ssr-blocking-tasks";
 import {
   APPLY_HEAD_PATCH_SSR_KEY,
   APPLY_PATCH_SSR_KEY,
@@ -19,7 +20,7 @@ export function resolveStream(
   App: () => JSX.Element,
   head: SsrHeadManager,
   disposeRenderOwner: () => void,
-): ReadableStream<Uint8Array> {
+): { body: ReadableStream<Uint8Array>; ready: Promise<void> } {
   const owner = getOwner();
 
   if (!owner) {
@@ -100,6 +101,20 @@ export function resolveStream(
       if (closed) break;
 
       if ("promises" in node && node.type === "#async") {
+        // Route guards affect the HTTP response status. Resolve their children
+        // inline so redirects (including redirects from component effects) are
+        // known before the first response chunk is committed.
+        if (node.promises.some(isSsrBlockingTask)) {
+          await Promise.all(node.promises);
+          if (closed) break;
+
+          const childNodes = runWithOwner(owner, node.children);
+          enqueueHeadPatch();
+          html.push(await resolve(childNodes));
+          enqueueHeadPatch();
+          continue;
+        }
+
         const id = nextBoundaryId++;
 
         // Render the fallback immediately instead of blocking on promises.
@@ -161,7 +176,17 @@ export function resolveStream(
     return joinHTMLElements(html);
   }
 
-  return new ReadableStream<Uint8Array>({
+  let resolveReady!: () => void;
+  let rejectReady!: (reason: unknown) => void;
+  const ready = new Promise<void>((resolve, reject) => {
+    resolveReady = resolve;
+    rejectReady = reject;
+  });
+  // The stream body also reports failures. Keep an unobserved ready promise
+  // from becoming an unhandled rejection for direct renderToServer callers.
+  void ready.catch(() => undefined);
+
+  const body = new ReadableStream<Uint8Array>({
     start(streamController) {
       controller = streamController;
 
@@ -178,12 +203,14 @@ export function resolveStream(
 
           enqueue(renderPatchRuntime() + initialHTML);
           flushPatches();
+          resolveReady();
         } catch (error) {
           if (!closed) {
             closed = true;
             controller.error(error);
           }
 
+          rejectReady(error);
           releaseRenderOwner();
           return;
         } finally {
@@ -194,9 +221,12 @@ export function resolveStream(
 
     cancel() {
       closed = true;
+      rejectReady(new Error("The SSR response stream was cancelled before its initial render completed."));
       releaseRenderOwner();
     },
   });
+
+  return { body, ready };
 }
 
 function renderPatch(id: number, html: string) {

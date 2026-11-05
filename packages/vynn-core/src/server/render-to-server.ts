@@ -16,6 +16,8 @@ export interface SsrRenderResult<TBody> {
   readonly body: TBody;
   readonly head: SsrHeadManager;
   readonly modules: ReadonlySet<string>;
+  /** Resolves after blocking route guards and the initial stream render complete. */
+  readonly ready?: Promise<void>;
 }
 
 export function renderToServer(App: () => JSX.Element, mode: "sync"): SsrRenderResult<string>;
@@ -70,11 +72,12 @@ export function renderToServer(App: () => JSX.Element, mode: RenderMode) {
         }
 
         case "stream": {
-          const body = resolveStream(App, head, () => disposeOwner(owner));
+          const stream = resolveStream(App, head, () => disposeOwner(owner));
           disposeOnExit = false;
 
           return {
-            body,
+            body: stream.body,
+            ready: stream.ready,
             head,
             modules,
           } satisfies SsrRenderResult<ReadableStream<Uint8Array>>;

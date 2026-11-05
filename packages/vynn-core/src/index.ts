@@ -11,6 +11,7 @@ export { untrack } from "./reactivity/untrack";
 export { getOwner, runWithOwner, createOwner, disposeOwner } from "./life-cycle/owner";
 
 export { createContext } from "./context/provider-context";
+export { registerSsrBlockingTask } from "./context/ssr-blocking-tasks";
 
 export { Await } from "./components/await";
 export { ErrorBoundary } from "./components/error-boundary";
