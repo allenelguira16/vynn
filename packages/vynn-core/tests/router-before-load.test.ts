@@ -7,11 +7,22 @@ import { Router } from "../../vynn-router/src/router";
 import { redirect } from "../../vynn-router/src/redirect";
 import type { Route } from "../../vynn-router/src/types";
 
+function renderRouter(url: string, routes: Route[], mode: "async"): Promise<{
+  body: string;
+  head: { render(): string };
+  modules: ReadonlySet<string>;
+}>;
+function renderRouter(url: string, routes: Route[], mode: "stream"): {
+  body: ReadableStream<Uint8Array>;
+  head: { render(): string };
+  modules: ReadonlySet<string>;
+};
 function renderRouter(url: string, routes: Route[], mode: "async" | "stream") {
-  return renderToServer(
-    () => Router({ url, routes }) as unknown as JSX.Element,
-    mode,
-  );
+  const App = () => Router({ url, routes }) as unknown as JSX.Element;
+
+  return mode === "async"
+    ? renderToServer(App, "async")
+    : renderToServer(App, "stream");
 }
 
 describe("router beforeLoad and redirect", () => {
@@ -37,7 +48,7 @@ describe("router beforeLoad and redirect", () => {
         component: (() => {
           componentRendered = true;
           return "Protected content";
-        }) as Route["component"],
+        }) as unknown as Route["component"],
       },
     ];
 
@@ -69,7 +80,7 @@ describe("router beforeLoad and redirect", () => {
     const routes: Route[] = [
       {
         path: "/redirect",
-        component: LazyRedirectPage as Route["component"],
+        component: LazyRedirectPage as unknown as Route["component"],
         beforeLoad: async () => {
           await Promise.resolve();
           redirect("/params/1?id=1", { status: 307 });
@@ -95,7 +106,7 @@ describe("router beforeLoad and redirect", () => {
     const routes: Route[] = [
       {
         path: "/redirect",
-        component: (() => "This page must never render") as Route["component"],
+        component: (() => "This page must never render") as unknown as Route["component"],
         beforeLoad: async () => {
           await Promise.resolve();
           redirect("/params/1?id=1");
