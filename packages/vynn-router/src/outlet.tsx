@@ -90,15 +90,17 @@ export function RouteOutlet(props: { routes: Route[]; parentPath?: string }) {
       return previousView;
     }
 
-    const nextView = next
-      ? (
-          <RouteView
-            route={next.route}
-            fullPath={next.fullPath}
-            childRoutes={next.route.children ?? []}
-          />
-        )
-      : null;
+    let nextView: ReturnType<typeof RouteView> | null = null;
+
+    if (next) {
+      nextView = (
+        <RouteView
+          route={next.route}
+          fullPath={next.fullPath}
+          childRoutes={next.route.children ?? []}
+        />
+      );
+    }
 
     // Cache the matched route and its component tree. The enclosing $nodes
     // effect reruns this callback whenever this outlet's location changes.
