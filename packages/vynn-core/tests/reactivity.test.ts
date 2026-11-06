@@ -219,6 +219,30 @@ describe("$async", () => {
     }
   });
 
+  it("preserves a value assigned before the first read", async () => {
+    const owner = createOwner();
+
+    try {
+      await runWithOwner(owner, async () => {
+        initializeAsyncContext();
+
+        let executions = 0;
+        const data = $async(async () => {
+          executions += 1;
+          return "getter value";
+        });
+
+        data.value = "manual value";
+
+        expect(data.value).toBe("manual value");
+        expect(executions).toBe(0);
+        expect(isPending(data)).toBe(false);
+      });
+    } finally {
+      disposeOwner(owner);
+    }
+  });
+
   it("fetches data and tracks pending state", async () => {
     const isPendingSnapshots: boolean[] = [];
     const owner = createOwner();

@@ -77,10 +77,23 @@ export function hasNoHTMLTags(str: string) {
 }
 
 export function renderAsyncUtilities() {
+  const asyncValues = getAsyncValues();
+  const errorValues = getErrorBoundaryValues();
+
+  // Empty hydration registries need no client bootstrap script. The client
+  // readers already handle missing globals, so keep plain SSR output free of
+  // an otherwise empty inline script.
+  if (
+    (!asyncValues || Object.keys(asyncValues).length === 0) &&
+    (!errorValues || errorValues.length === 0)
+  ) {
+    return "";
+  }
+
   const values = {
-    async: serializeForInlineScript(getAsyncValues()),
+    async: serializeForInlineScript(asyncValues),
     mode: serializeForInlineScript(getRenderMode()),
-    error: serializeForInlineScript(getErrorBoundaryValues()),
+    error: serializeForInlineScript(errorValues),
   };
   return `<script>${ASYNC_DATA_SSR_KEY}=${values.async};${ERROR_BOUNDARY_DATA_SSR_KEY}=${values.error};document.currentScript.remove();</script>`.replaceAll(
     "\n",

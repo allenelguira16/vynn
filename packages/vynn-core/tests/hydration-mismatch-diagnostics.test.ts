@@ -8,11 +8,22 @@ import {
   withHydration,
   withServerRenderedLazy,
 } from "../src/client/hydration";
-import { createOwner, disposeOwner, runWithOwner } from "../src/life-cycle/owner";
+import { initializeHeadContext } from "../src/context/head-context";
+import {
+  createOwner as createRootOwner,
+  disposeOwner,
+  runWithOwner,
+} from "../src/life-cycle/owner";
 import { $attr } from "../src/render/$attr";
 import { $tmpl } from "../src/render/$tmpl";
 import { $txt } from "../src/render/$txt";
 import { resolveElement } from "../src/render/resolve-node";
+
+function createTestOwner() {
+  const owner = createRootOwner();
+  runWithOwner(owner, initializeHeadContext);
+  return owner;
+}
 
 afterEach(() => {
   document.body.innerHTML = "";
@@ -25,7 +36,7 @@ describe("hydration mismatch diagnostics", () => {
     root.innerHTML = "<span>server</span>";
     const serverElement = root.firstElementChild;
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const owner = createOwner();
+    const owner = createTestOwner();
     let clientElement!: Element;
 
     runWithOwner(owner, () => {
@@ -50,7 +61,7 @@ describe("hydration mismatch diagnostics", () => {
     root.textContent = "server text";
     const serverText = root.firstChild as Text;
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const owner = createOwner();
+    const owner = createTestOwner();
     let clientText!: JSX.Element;
 
     runWithOwner(owner, () => {
@@ -74,7 +85,7 @@ describe("hydration mismatch diagnostics", () => {
     root.innerHTML = '<button title="server">Save</button>';
     const serverButton = root.firstElementChild as HTMLButtonElement;
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const owner = createOwner();
+    const owner = createTestOwner();
 
     runWithOwner(owner, () => {
       withHydration(() => {
@@ -96,7 +107,7 @@ describe("hydration mismatch diagnostics", () => {
     const root = document.createElement("div");
     root.innerHTML = "<span>server</span>";
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const owner = createOwner();
+    const owner = createTestOwner();
 
     runWithOwner(owner, () => {
       withHydration(() => {
@@ -115,7 +126,7 @@ describe("hydration mismatch diagnostics", () => {
   it("reports a missing server-rendered element and creates the client element", () => {
     const root = document.createElement("div");
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const owner = createOwner();
+    const owner = createTestOwner();
     let clientElement!: Element;
 
     runWithOwner(owner, () => {
@@ -137,7 +148,7 @@ describe("hydration mismatch diagnostics", () => {
     const root = document.createElement("div");
     root.innerHTML = "<!--l:999--><span>still loading</span><!--/l:999-->";
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const owner = createOwner();
+    const owner = createTestOwner();
 
     runWithOwner(owner, () => {
       withHydration(() => {
@@ -161,7 +172,7 @@ describe("hydration mismatch diagnostics", () => {
     const root = document.createElement("div");
     root.innerHTML = "<!--l:100--><span>server</span><!--/l:100-->";
     const serverSpan = root.querySelector("span");
-    const owner = createOwner();
+    const owner = createTestOwner();
     let clientSpan!: Element;
     let clientText!: JSX.Element;
 
@@ -185,7 +196,7 @@ describe("hydration mismatch diagnostics", () => {
     const root = document.createElement("div");
     root.innerHTML = "<!--l:100--><span>pending server content</span><!--/l:100-->";
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const owner = createOwner();
+    const owner = createTestOwner();
 
     runWithOwner(owner, () => {
       withHydration(() => {
@@ -208,7 +219,7 @@ describe("hydration mismatch diagnostics", () => {
     const root = document.createElement("div");
     root.innerHTML = "<!--l:100--><!--/l:100-->";
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const owner = createOwner();
+    const owner = createTestOwner();
 
     runWithOwner(owner, () => {
       withHydration(() => {
@@ -229,7 +240,7 @@ describe("hydration mismatch diagnostics", () => {
   it("does not report mismatches for a lazy component introduced by client navigation", () => {
     const root = document.createElement("div");
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const owner = createOwner();
+    const owner = createTestOwner();
 
     runWithOwner(owner, () => {
       withHydration(() => {}, root);
@@ -250,7 +261,7 @@ describe("hydration mismatch diagnostics", () => {
 
   it("does not report hydration mismatches during ordinary client rendering", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const owner = createOwner();
+    const owner = createTestOwner();
 
     runWithOwner(owner, () => {
       $tmpl("main");

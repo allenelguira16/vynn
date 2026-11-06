@@ -1,4 +1,5 @@
 import { withoutAsyncBoundary } from "../context/async-context";
+import { getOwner } from "../life-cycle/owner";
 import { transaction } from "../reactivity/transaction";
 
 /**
@@ -19,4 +20,9 @@ export function readRouteGuard<T>(read: () => T): T {
  */
 export function batchRouterLocation<T>(callback: () => T): T {
   return transaction(callback);
+}
+
+/** Registers cleanup against the current route owner without exposing a public API. */
+export function registerRouterCleanup(cleanup: () => void): void {
+  getOwner()?.cleanups.push(cleanup);
 }

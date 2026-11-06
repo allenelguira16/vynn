@@ -10,6 +10,7 @@ import { $txt } from "../src/render/$txt";
 import { Router } from "../../vynn-router/src/router";
 import { navigate } from "../../vynn-router/src/location";
 import type { Route } from "../../vynn-router/src/types";
+import { $state } from "../src/reactivity/$state";
 import { redirect } from "../../vynn-router/src/redirect";
 
 let requestAnimationFrameDescriptor: PropertyDescriptor | undefined;
@@ -67,6 +68,7 @@ describe("client router beforeLoad", () => {
     expect(componentRendered).toBe(false);
     expect(host.textContent).not.toContain("protected route content");
 
+    await Promise.resolve();
     finishGuard();
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
 
@@ -181,6 +183,7 @@ describe("client router beforeLoad", () => {
       host,
     );
 
+    await Promise.resolve();
     expect(guardResolvers.has("1")).toBe(true);
 
     navigate("/users/2");
@@ -206,12 +209,16 @@ describe("client router beforeLoad", () => {
     history.replaceState(null, "", "/users/1?tab=old");
 
     const signals: AbortSignal[] = [];
+    const guardDependency = $state(0);
     let guardRuns = 0;
 
     const routes: Route[] = [
       {
         path: "/users/:id",
         beforeLoad: async ({ signal }) => {
+          // Reading reactive state inside a guard must not subscribe the
+          // navigation resource or cause the guard to restart.
+          expect(Number.isFinite(guardDependency.value)).toBe(true);
           guardRuns++;
           signals.push(signal);
 
@@ -240,8 +247,14 @@ describe("client router beforeLoad", () => {
     expect(guardRuns).toBe(1);
     expect(signals[0].aborted).toBe(false);
 
-    // Both pathname and search change in one navigation. They must trigger
-    // one reactive guard rerun, not two intermediate reruns.
+    guardDependency.value++;
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    expect(guardRuns).toBe(1);
+    expect(signals[0].aborted).toBe(false);
+
+    // Both pathname and search change in one navigation. The outlet creates
+    // one new guard owner, rather than reactively rerunning the existing $async.
     navigate("/users/2?tab=new");
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
 
@@ -249,9 +262,17 @@ describe("client router beforeLoad", () => {
     expect(signals[0].aborted).toBe(true);
     expect(signals[1].aborted).toBe(false);
 
+    // A query-only navigation must also create exactly one new guard owner.
+    navigate("/users/2?tab=next");
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    expect(guardRuns).toBe(3);
+    expect(signals[1].aborted).toBe(true);
+    expect(signals[2].aborted).toBe(false);
+
     unmount();
 
-    expect(signals[1].aborted).toBe(true);
+    expect(signals[2].aborted).toBe(true);
   });
 
 });

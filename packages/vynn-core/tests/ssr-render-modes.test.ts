@@ -125,7 +125,8 @@ describe("renderToServer modes", () => {
     expect(renderOwner).not.toBe(child);
     expect(renderOwner?.parent).toBeNull();
     expect(renderOwner?.disposed).toBe(true);
-    expect(child?.disposed).toBe(false);
+    expect(child).not.toBeNull();
+    expect(child?.disposed).not.toBe(true);
 
     disposeOwner(root);
   });

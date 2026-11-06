@@ -1,6 +1,9 @@
 import { defineConfig } from "vitest/config";
 
+import { vynnOxcPlugin } from "../vite-plugin/src/plugins/jsx-transpiler.ts";
+
 export default defineConfig({
+  plugins: [vynnOxcPlugin()],
   test: {
     include: ["tests/**/*.test.ts"],
     environment: "node",

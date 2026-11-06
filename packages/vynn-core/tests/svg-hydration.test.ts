@@ -6,7 +6,12 @@ import type { JSX } from "../src/types/jsx";
 
 import { hydrateToDOM } from "../src/client/hydrate-to-dom";
 import { withHydration } from "../src/client/hydration";
-import { createOwner, disposeOwner, runWithOwner } from "../src/life-cycle/owner";
+import { initializeHeadContext } from "../src/context/head-context";
+import {
+  createOwner as createRootOwner,
+  disposeOwner,
+  runWithOwner,
+} from "../src/life-cycle/owner";
 import { $state } from "../src/reactivity/$state";
 import { $attr } from "../src/render/$attr";
 import { $for } from "../src/render/$for";
@@ -21,6 +26,12 @@ import { renderToServer } from "../src/server/render-to-server";
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 const HTML_NAMESPACE = "http://www.w3.org/1999/xhtml";
 const XLINK_NAMESPACE = "http://www.w3.org/1999/xlink";
+
+function createTestOwner() {
+  const owner = createRootOwner();
+  runWithOwner(owner, initializeHeadContext);
+  return owner;
+}
 
 async function flushEffects() {
   await Promise.resolve();
@@ -42,7 +53,7 @@ describe("SVG namespace rendering", () => {
     const serverPath = root.querySelector("path");
     const serverParagraph = root.querySelector("p");
 
-    const owner = createOwner();
+    const owner = createTestOwner();
     let svg!: Element;
     let group!: Element;
     let path!: Element;
@@ -80,7 +91,7 @@ describe("SVG namespace rendering", () => {
 
   it("creates SVG elements across component boundaries and handles foreignObject", () => {
     const host = document.createElement("div");
-    const owner = createOwner();
+    const owner = createTestOwner();
 
     let svg!: Element;
     let foreignObject!: Element;
@@ -129,7 +140,7 @@ describe("SVG namespace rendering", () => {
 
   it("preserves the namespace for later $nodes updates", async () => {
     const host = document.createElement("div");
-    const owner = createOwner();
+    const owner = createTestOwner();
     const items = $state([1]);
 
     let svg!: Element;
@@ -167,7 +178,7 @@ describe("SVG namespace rendering", () => {
 
   it("preserves the namespace when $if creates a branch after the initial render", async () => {
     const host = document.createElement("div");
-    const owner = createOwner();
+    const owner = createTestOwner();
     const visible = $state(false);
 
     let svg!: Element;
@@ -198,7 +209,7 @@ describe("SVG namespace rendering", () => {
 
   it("preserves the namespace when $for creates new entries", async () => {
     const host = document.createElement("div");
-    const owner = createOwner();
+    const owner = createTestOwner();
     const items = $state([1]);
 
     let svg!: Element;
@@ -229,7 +240,7 @@ describe("SVG namespace rendering", () => {
   });
 
   it("normalizes SVG attributes and supports namespaced attributes and events", () => {
-    const owner = createOwner();
+    const owner = createTestOwner();
     const svg = document.createElementNS(SVG_NAMESPACE, "use");
     const width = $state(2);
     let clicked = false;

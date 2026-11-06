@@ -57,6 +57,8 @@ describe("router beforeLoad and redirect", () => {
 
     expect(componentRendered).toBe(false);
 
+    // beforeLoad starts after the async resource leaves its hydration-tracking pass.
+    await Promise.resolve();
     finishGuard();
 
     const rendered = await pending;

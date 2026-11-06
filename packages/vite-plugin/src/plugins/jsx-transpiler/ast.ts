@@ -427,7 +427,7 @@ export function getJSXIdentifierName(name: Node): string {
   throw new Error("Vynn currently only supports simple JSX identifiers for native elements.");
 }
 
-export function isComponentElement(node: unknown): node is NodeOfType<"JSXElement"> {
+export function isComponentElement(node: unknown): boolean {
   if (!isJSXElement(node)) return false;
   const name = node.openingElement.name;
   if (isJSXIdentifier(name)) return isComponentName(name.name);

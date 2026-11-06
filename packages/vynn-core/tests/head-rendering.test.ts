@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import type { JSX } from "../src/types/jsx";
 
+import { APPLY_HEAD_PATCH_SSR_KEY } from "../src/const";
+
 import { getOwner } from "../src/life-cycle/owner";
 import { $attr } from "../src/render/$attr";
 import { $head, $headTmpl } from "../src/render/$head";
@@ -90,12 +92,12 @@ describe("JSX head rendering", () => {
 
     unsubscribe();
 
-    const runtimeIndex = html.indexOf("window.__vynnApplyHeadPatch");
+    const runtimeIndex = html.indexOf(`window.${APPLY_HEAD_PATCH_SSR_KEY}`);
     const patchIndex = html.indexOf("Late stream title");
 
     expect(runtimeIndex).toBeGreaterThanOrEqual(0);
     expect(patchIndex).toBeGreaterThan(runtimeIndex);
-    expect(html).toContain('key="title"');
+    expect(patches.some((value) => value.includes('key="title"'))).toBe(true);
     expect(patches.some((value) => value.includes("Late stream title"))).toBe(true);
   });
 
@@ -169,7 +171,8 @@ describe("JSX head rendering", () => {
       "stream",
     );
 
-    expect(renderOwner?.disposed).toBe(false);
+    expect(renderOwner).not.toBeNull();
+    expect(renderOwner?.disposed).not.toBe(true);
     await rendered.body.getReader().cancel();
     expect(renderOwner?.disposed).toBe(true);
 

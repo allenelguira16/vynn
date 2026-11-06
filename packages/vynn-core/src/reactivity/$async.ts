@@ -12,6 +12,7 @@ import { $renderEffect } from "./$effect";
 import { $state } from "./$state";
 import { NotReadyError } from "./not-ready-error";
 import { transaction } from "./transaction";
+import { untrack } from "./untrack";
 
 export type Async<T> = {
   value: T;
@@ -138,12 +139,12 @@ export function $async<T>(getter: () => Promise<T>): Async<T> {
 
   const derived: Async<T> = {
     get value(): T {
-      let record = result.value;
+      // Check for a preassigned value without tracking the initial
+      // undefined state. Initialize before the tracked read so the pending
+      // write does not schedule a redundant second consumer execution.
+      if (!isInitialized && !untrack(() => result.value)) initialize();
 
-      if (!record) {
-        initialize();
-        record = result.value;
-      }
+      const record = result.value;
 
       if (!record) {
         throw new Error("$async failed to initialize its operation.");

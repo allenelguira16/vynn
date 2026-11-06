@@ -14,6 +14,8 @@ export type BeforeLoadContext = {
   params: RouteParams;
   /** Query parameters for the pending navigation. */
   search: URLSearchParams;
+  /** Aborted when a newer navigation supersedes this guard or its route unmounts. */
+  signal: AbortSignal;
 };
 
 export type Route = {

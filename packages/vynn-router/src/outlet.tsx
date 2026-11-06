@@ -1,5 +1,5 @@
 import { $async, $computed, untrack } from "vynn";
-import { readRouteGuard } from "vynn/internal/router";
+import { readRouteGuard, registerRouterCleanup } from "vynn/internal/router";
 
 import type { Location, Route } from "./types";
 
@@ -60,34 +60,54 @@ function RouteView(props: MatchedRoute) {
   }
 
   let guardRevision = 0;
+  let activeGuardController: AbortController | undefined;
+
+  // The route owner owns the active guard just as it owns the rendered route.
+  // Disposing the route must not leave an async guard running in the background.
+  registerRouterCleanup(() => activeGuardController?.abort());
 
   const allowed = $async<RouteGuardResult>(async () => {
     const revision = ++guardRevision;
-    const route = props.route;
-    const fullPath = props.fullPath;
-    const activeLocation = currentLocation();
-
-    const location: Location = untrack(() => ({
-      pathname: activeLocation.pathname,
-      search: activeLocation.search,
+    const { route, fullPath } = untrack(() => ({
+      route: props.route,
+      fullPath: props.fullPath,
     }));
 
+    // This resource is intentionally one-shot. The outlet creates a fresh
+    // RouteView for each location change; this getter must not subscribe to
+    // navigation state or to dependencies read by the user's guard.
+    const location: Location = untrack(() => {
+      const activeLocation = currentLocation();
+
+      return {
+        pathname: activeLocation.pathname,
+        search: activeLocation.search,
+      };
+    });
+
+    const controller = new AbortController();
+    activeGuardController = controller;
+
     try {
-      // $async re-executes its getter with inert Promise/fetch APIs when it
-      // hydrates serialized data. Yield first so that tracking-only pass
-      // establishes location dependencies without invoking user guard code.
+      // Keep the actual guard outside the async resource's initial synchronous
+      // tracking pass, including when the user callback reads reactive state.
       await Promise.resolve();
 
-      await route.beforeLoad!({
-        location,
-        params: getRouteParams(fullPath, location),
-        search: new URLSearchParams(location.search),
-      });
+      if (controller.signal.aborted) {
+        return { type: "allowed" };
+      }
+
+      await untrack(() =>
+        route.beforeLoad!({
+          location,
+          params: getRouteParams(fullPath, location),
+          search: new URLSearchParams(location.search),
+          signal: controller.signal,
+        }),
+      );
 
       return { type: "allowed" };
     } catch (error) {
-      // Return the signal as data. $async discards stale executions, so an
-      // outdated guard cannot redirect after a newer navigation has started.
       if (isClientRedirect(error)) {
         return {
           type: "redirect",
@@ -109,7 +129,10 @@ function RouteView(props: MatchedRoute) {
       if (scheduledRedirect !== result.signal) {
         scheduledRedirect = result.signal;
 
-        commitClientRedirect(result.signal, () => guardRevision === result.revision);
+        commitClientRedirect(
+          result.signal,
+          () => guardRevision === result.revision && !activeGuardController?.signal.aborted,
+        );
       }
 
       return false;
@@ -128,12 +151,28 @@ function RouteView(props: MatchedRoute) {
  */
 export function RouteOutlet(props: { routes: Route[]; parentPath?: string }) {
   let previousMatch: MatchedRoute | undefined;
+  let previousLocation: Location | undefined;
   let previousView: ReturnType<typeof RouteView> | null = null;
 
   const view = $computed(() => {
-    const next = findMatch(props.routes, currentLocation(), props.parentPath ?? "");
+    // Track the complete URL here, at the routing boundary. A location change
+    // creates a new guard owner instead of rerunning the old $async resource.
+    const activeLocation = currentLocation();
+    const location: Location = {
+      pathname: activeLocation.pathname,
+      search: activeLocation.search,
+    };
+    const next = findMatch(props.routes, location, props.parentPath ?? "");
+    const sameLocation =
+      previousLocation?.pathname === location.pathname &&
+      previousLocation?.search === location.search;
 
-    if (previousMatch?.route === next?.route && previousMatch?.fullPath === next?.fullPath) {
+    if (
+      previousMatch?.route === next?.route &&
+      previousMatch?.fullPath === next?.fullPath &&
+      (sameLocation || !next?.route.beforeLoad)
+    ) {
+      previousLocation = location;
       return previousView;
     }
 
@@ -150,6 +189,7 @@ export function RouteOutlet(props: { routes: Route[]; parentPath?: string }) {
     }
 
     previousMatch = next;
+    previousLocation = location;
     previousView = nextView;
 
     return nextView;

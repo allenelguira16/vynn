@@ -2527,7 +2527,12 @@ class TransformState {
   ): ExpressionNode {
     if (isJSXElement(expression)) {
       if (isComponentElement(expression)) return this.createComponentCall(expression, allocator);
-      return this.createElementStatements(expression, statements, allocator);
+
+      const tagName = getJSXIdentifierName(expression.openingElement.name);
+      const hoistedHead = this.isHoistableHeadElement(expression, tagName);
+      const element = this.createElementStatements(expression, statements, allocator);
+
+      return hoistedHead ? arrayExpression([]) : element;
     }
     if (isJSXFragment(expression)) {
       return this.createFragmentInStatements(expression, allocator, statements, dynamicExpressions);
