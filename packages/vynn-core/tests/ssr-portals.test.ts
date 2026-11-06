@@ -268,11 +268,11 @@ describe("SSR Portals", () => {
       const boundary = Await({
         fallback: "Loading async value",
         get children() {
-          const value = data.value;
-
           return Portal({
             mount: "#portal-root",
-            children: $txt(value),
+            get children() {
+              return $txt(data.value);
+            },
           });
         },
       });
