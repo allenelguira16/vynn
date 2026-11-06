@@ -1,7 +1,7 @@
 import type { JSX } from "../types/jsx";
 
-import { getOwner, runWithOwner } from "../life-cycle/owner";
 import { flushSsrPortals } from "../context/ssr-portal-context";
+import { getOwner, runWithOwner } from "../life-cycle/owner";
 import { type SSR_NODE, resolveNode } from "../render/resolve-node";
 import {
   joinHTMLElements,
