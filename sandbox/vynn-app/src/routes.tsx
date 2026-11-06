@@ -33,7 +33,7 @@ export const routes: Route[] = [
         <div class="p-2 flex flex-col container m-auto">
           {"<div>Hi</div>"}
 
-          <Portal mount={document.body}>{name.firstName}</Portal>
+          <Portal mount="body">{name.firstName}</Portal>
           <ButtonPageList />
 
           <Await fallback="Page Is Loading">{props.children}</Await>
