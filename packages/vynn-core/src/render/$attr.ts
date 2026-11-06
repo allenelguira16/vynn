@@ -1,5 +1,7 @@
 import type { SSR_ELEMENT } from "./resolve-node";
 
+import { isHydrationClaimActive } from "../client/hydration";
+import { diagnoseHydrationAttribute } from "../client/hydration-diagnostics";
 import { isServer } from "../context/is-server-context";
 import { $renderEffect } from "../reactivity/$effect";
 import { HTML_NAMESPACE, SVG_NAMESPACE } from "./namespace";
@@ -203,8 +205,26 @@ export function $attr<E extends Element>(
   const attributeName = getAttributeName(element.namespaceURI, name);
   const isHtmlElement = element.namespaceURI === HTML_NAMESPACE && element instanceof HTMLElement;
 
+  const hydrating = isHydrationClaimActive();
+  let initial = true;
+
   $renderEffect(() => {
     const next = typeof value === "function" ? value() : value;
+
+    if (initial) {
+      initial = false;
+
+      if (hydrating) {
+        const expectedValue =
+          next == null || (isHtmlElement && typeof next === "boolean")
+            ? next == null || !next
+              ? null
+              : ""
+            : String(next);
+
+        diagnoseHydrationAttribute(element, attributeName, expectedValue);
+      }
+    }
 
     if (isHtmlElement && properties.has(name) && !booleanAttributes.has(name.toLowerCase())) {
       Reflect.set(element, name, next);

@@ -8,7 +8,7 @@ import {
 } from "../const";
 import { isServer } from "../context/is-server-context";
 import { removeInternalRangeMarkers } from "../dom/internal-range";
-import { type Owner, getContext, getOwner, runWithOwner, setContext } from "../life-cycle/owner";
+import { type Owner, createOwner, getContext, getOwner, runWithOwner, setContext } from "../life-cycle/owner";
 
 let serverRenderedElements: Element[] = [];
 let serverRenderedTexts: Text[] = [];
@@ -16,6 +16,7 @@ let serverRenderedLazy = new Map<string, LazyHydrationNodes>();
 
 let hydrationElementIndex = 0;
 let hydrationTextIndex = 0;
+let rootHydrationDepth = 0;
 
 const LAZY_HYDRATION = Symbol("vynn.lazy-hydration");
 
@@ -45,9 +46,12 @@ export function withHydration(callback: () => void, root: Node) {
 
   pendingLazyHydration = new Set(serverRenderedLazy.keys());
 
+  rootHydrationDepth++;
+
   try {
     callback();
   } finally {
+    rootHydrationDepth = Math.max(0, rootHydrationDepth - 1);
     scheduleAfterHydrationCheck();
   }
 }
@@ -57,6 +61,18 @@ function hasUnclaimedHydrationNodes(): boolean {
     hydrationElementIndex < serverRenderedElements.length ||
     hydrationTextIndex < serverRenderedTexts.length
   );
+}
+
+/**
+ * Returns whether the current render belongs to an initial hydration pass.
+ *
+ * Lazy components use their own scope so unrelated pending lazy boundaries
+ * cannot make later client-side updates look like hydration work.
+ */
+export function isHydrationClaimActive(): boolean {
+  const scope = getContext<LazyHydrationNodes>(LAZY_HYDRATION);
+
+  return scope ? scope.hydrating : rootHydrationDepth > 0;
 }
 
 /**
@@ -127,9 +143,11 @@ function scheduleAfterHydrationCheck(): void {
 function finishIfClaimed(scope: LazyHydrationNodes): void {
   if (
     scope.id !== undefined &&
+    scope.finished &&
     scope.elementIndex >= scope.elements.length &&
     scope.textIndex >= scope.texts.length
   ) {
+    scope.hydrating = false;
     pendingLazyHydration.delete(scope.id);
     scheduleAfterHydrationCheck();
   }
@@ -194,11 +212,24 @@ export type ServerRenderedLazyRange = {
  */
 export function withServerRenderedLazy<T>(lazyID: string | number, callback: () => T): T {
   const id = String(lazyID);
-  const scope = serverRenderedLazy.get(id) ?? createLazyHydrationNodes(id);
+  let scope = serverRenderedLazy.get(id);
 
-  setContext(LAZY_HYDRATION, scope);
+  if (!scope) {
+    // A lazy component mounted by client-side navigation has no SSR range.
+    // Give it an isolated, inactive scope instead of treating missing SSR
+    // nodes as hydration mismatches.
+    scope = createLazyHydrationNodes(id, rootHydrationDepth > 0);
+    serverRenderedLazy.set(id, scope);
+  }
 
-  return callback();
+  // Keep this scope on a dedicated owner. Writing it to the caller's owner
+  // would leak the lazy boundary into sibling route renders created later.
+  const owner = createOwner();
+
+  return runWithOwner(owner, () => {
+    setContext(LAZY_HYDRATION, scope);
+    return callback();
+  });
 }
 
 /** Capture the current cursor before a render-effect attempt. */
@@ -267,8 +298,8 @@ export function getServerRenderedLazyRange(
 }
 
 /**
- * Marks a lazy boundary complete only after its own element and text queues
- * have been claimed. The final claim also completes the boundary automatically.
+ * Marks a lazy component complete after its initial client render. Later
+ * reactive updates must no longer consume that boundary’s hydration queues.
  */
 export function finishServerRenderedLazy(lazyID: string | number): void {
   const id = String(lazyID);
@@ -280,6 +311,7 @@ export function finishServerRenderedLazy(lazyID: string | number): void {
     return;
   }
 
+  scope.finished = true;
   finishIfClaimed(scope);
 }
 
@@ -292,17 +324,21 @@ type LazyHydrationNodes = {
   texts: Text[];
   elementIndex: number;
   textIndex: number;
+  hydrating: boolean;
+  finished: boolean;
   start?: Text;
   end?: Text;
 };
 
-function createLazyHydrationNodes(id?: string): LazyHydrationNodes {
+function createLazyHydrationNodes(id?: string, hydrating = true): LazyHydrationNodes {
   return {
     id,
     elements: [],
     texts: [],
     elementIndex: 0,
     textIndex: 0,
+    hydrating,
+    finished: false,
   };
 }
 

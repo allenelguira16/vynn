@@ -1,6 +1,7 @@
 import type { JSX } from "../jsx-runtime";
 
-import { claimHydrationText } from "../client/hydration";
+import { claimHydrationText, isHydrationClaimActive } from "../client/hydration";
+import { synchronizeHydrationText } from "../client/hydration-diagnostics";
 import { isServer } from "../context/is-server-context";
 import { isCreatingHeadElement } from "./$head";
 import { createSSRText } from "./resolve-node";
@@ -17,12 +18,14 @@ export function $txt(value: string): JSX.Element {
     return createSSRText(value) as unknown as JSX.Element;
   }
 
-  let element = document.createTextNode(value);
+  const element = document.createTextNode(value);
 
-  if (!isCreatingHeadElement()) {
-    element = claimHydrationText() || element;
-  }
-  // console.log(element, claimHydrationText());
+  if (isCreatingHeadElement()) return element;
 
-  return element;
+  const hydrating = isHydrationClaimActive();
+  const claimed = claimHydrationText();
+
+  if (!hydrating) return claimed ?? element;
+
+  return synchronizeHydrationText(claimed, value) ? claimed : element;
 }

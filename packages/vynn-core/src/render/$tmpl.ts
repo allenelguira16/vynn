@@ -1,4 +1,5 @@
-import { claimHydrationElement } from "../client/hydration";
+import { claimHydrationElement, isHydrationClaimActive } from "../client/hydration";
+import { isHydrationElementCompatible } from "../client/hydration-diagnostics";
 import { isServer } from "../context/is-server-context";
 import { HTML_NAMESPACE, getElementNamespace } from "./namespace";
 import { createSSRNode } from "./resolve-node";
@@ -23,5 +24,10 @@ export function $tmpl(key: string): Element {
       ? document.createElement(key)
       : document.createElementNS(namespace, key);
 
-  return claimHydrationElement<Element>() || element;
+  const hydrating = isHydrationClaimActive();
+  const claimed = claimHydrationElement<Element>();
+
+  if (!hydrating) return claimed ?? element;
+
+  return isHydrationElementCompatible(claimed, key, namespace) ? claimed : element;
 }

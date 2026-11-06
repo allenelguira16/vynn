@@ -1,4 +1,5 @@
-import { claimHydrationText } from "../client/hydration";
+import { claimHydrationText, isHydrationClaimActive } from "../client/hydration";
+import { synchronizeHydrationText } from "../client/hydration-diagnostics";
 import { isServer } from "../context/is-server-context";
 import { JSX } from "../jsx-runtime";
 import { getOwner, runWithOwner } from "../life-cycle/owner";
@@ -180,12 +181,21 @@ export function resolveElement(element: JSX.Element, claimText = true): Node[] {
   }
 
   if (typeof element === "string" || typeof element === "number") {
-    element = document.createTextNode(String(element));
+    const value = String(element);
+    const text = document.createTextNode(value);
+
     if (claimText && !isCreatingHeadElement()) {
-      element = claimHydrationText() || element;
+      const hydrating = isHydrationClaimActive();
+      const claimed = claimHydrationText();
+
+      if (!hydrating) {
+        if (claimed) return [claimed];
+      } else if (synchronizeHydrationText(claimed, value)) {
+        return [claimed];
+      }
     }
-    // console.log(element, claimHydrationText());
-    return [element];
+
+    return [text];
   }
 
   if (element instanceof Node) {
