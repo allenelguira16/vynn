@@ -1,4 +1,5 @@
 import {
+  APPLY_PATCH_SSR_KEY,
   ASYNC_DATA_SSR_KEY,
   EMPTY_TEXT_SSR_MARKER,
   ERROR_BOUNDARY_DATA_SSR_KEY,
@@ -119,5 +120,5 @@ export function renderPortalPatch(id: number, selector: string, html: string): s
   const templateId = `vynn-portal-${id}`;
   const selectorJSON = JSON.stringify(selector).replace(/</g, "\\\\u003c");
 
-  return `<template id="${templateId}">${html}</template><script>(function(){var p=document.getElementById(${JSON.stringify(templateId)}),s=${selectorJSON};function a(){var t=document.querySelector(s);if(!t||!p)return!1;t.append(p.content);p.remove();return!0}if(!a()){var o=new MutationObserver(function(){if(a())o.disconnect()});o.observe(document.documentElement,{childList:!0,subtree:!0})}document.currentScript.remove()})();</script>`;
+  return `<template id="${templateId}">${html}</template><script>(function(){var p=document.getElementById(${JSON.stringify(templateId)}),s=${selectorJSON};function a(){var t=document.querySelector(s);if(!t||!p)return!1;t.append(p.content);p.remove();var f=window.${APPLY_PATCH_SSR_KEY};if(f)f(null);return!0}if(!a()){var o=new MutationObserver(function(){if(a())o.disconnect()});o.observe(document.documentElement,{childList:!0,subtree:!0})}document.currentScript.remove()})();</script>`;
 }
