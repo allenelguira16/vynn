@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import type { JSX } from "../src/types/jsx";
 
+import { Await } from "../src/components/await";
 import { Portal } from "../src/components/portal";
 import { $attr } from "../src/render/$attr";
 import { $insert } from "../src/render/$insert";
 import { $tmpl } from "../src/render/$tmpl";
 import { $txt } from "../src/render/$txt";
+import { $async } from "../src/reactivity/$async";
 import { createSSRAsync, createSSRText } from "../src/render/resolve-node";
 import { renderToServer } from "../src/server/render-to-server";
 
@@ -254,6 +256,36 @@ describe("SSR Portals", () => {
     expect(html).toContain("Loading portal child");
     expect(html).toContain("Resolved portal child");
     expect(html).toContain("t.append(p.content)");
+    expect(html).toContain("f(null)");
+  });
+  it("keeps a Portal rendered by an Await children getter after $async resolves", async () => {
+    const rendered = renderToServer(() => {
+      const root = $tmpl("div");
+      const outlet = $tmpl("aside");
+      $attr(outlet, "id", "portal-root");
+
+      const data = $async(async () => "Resolved $async value");
+      const boundary = Await({
+        fallback: "Loading async value",
+        get children() {
+          const value = data.value;
+
+          return Portal({
+            mount: "#portal-root",
+            children: $txt(value),
+          });
+        },
+      });
+
+      $insert(root, () => [boundary, outlet] as unknown as JSX.Element);
+      return root as unknown as JSX.Element;
+    }, "stream");
+
+    const html = await readStream(rendered.body);
+
+    expect(html).toContain("Loading async value");
+    expect(html).toContain("Resolved $async value");
+    expect(html).toContain("vynn-portal-0");
     expect(html).toContain("f(null)");
   });
 
