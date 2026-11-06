@@ -1,5 +1,5 @@
-import type { JSX } from "../types/jsx";
 import type { Owner } from "../life-cycle/owner";
+import type { JSX } from "../types/jsx";
 import type { SSR_ELEMENT, SSR_NODE } from "../render/resolve-node";
 
 import { getContext, getOwner, runWithOwner, setContext } from "../life-cycle/owner";
@@ -93,9 +93,6 @@ function resolvePortalTarget(root: SSR_NODE[], mount: PortalMount): SSR_ELEMENT 
   } else if (/^[a-z][a-z0-9-]*$/i.test(selector)) {
     const tagName = selector.toLowerCase();
     matches = (element) => element.type.toLowerCase() === tagName;
-  } else if (/^\\[id=["'][^"']+["']\\]$/.test(selector)) {
-    const id = selector.slice(5, -2);
-    matches = (element) => element.attributes.id === id;
   } else {
     throw new Error(
       `[vynn]: SSR Portal target "${selector}" is unsupported. Use an SSR element, an ID selector, or a tag selector.`,
