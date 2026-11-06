@@ -16,7 +16,6 @@ type ManifestEntry = {
 
 export function createClientEntry(
   appSpecifier: string,
-  styleSpecifiers: string[],
   ssr: boolean,
 ): string {
   const selected = (moduleName: string) =>
@@ -24,7 +23,6 @@ export function createClientEntry(
   const renderer = ssr ? "hydrateToDOM" : "renderToDOM";
 
   return [
-    ...styleSpecifiers.map((style) => `import ${JSON.stringify(style)};`),
     `import * as appModule from ${JSON.stringify(appSpecifier)};`,
     `import { ${renderer} } from "vynn/client";`,
     `const App = ${selected("appModule")};`,
@@ -47,7 +45,6 @@ export function createAuthoredServerEntry(
 
 export function createServerEntry(
   appSpecifier: string,
-  styleSpecifiers: string[],
   ssrMode: RenderMode = "stream",
 ): string {
   // Read optional exports dynamically. A direct `appModule.App` access makes
@@ -56,7 +53,6 @@ export function createServerEntry(
     `Reflect.get(${moduleName}, "default") ?? Reflect.get(${moduleName}, "App")`;
 
   return [
-    ...styleSpecifiers.map((style) => `import ${JSON.stringify(style)};`),
     `import * as appModule from ${JSON.stringify(appSpecifier)};`,
     `import { renderToServer } from "vynn/server";`,
     `const App = ${selected("appModule")};`,

@@ -236,13 +236,13 @@ export function vynnAppPlugin({ ssr, ssrMode, ssrCss, serverFunctions }: PluginO
     async load(id) {
       if (id === RESOLVED_CLIENT_ENTRY_ID) {
         if (!entries.clientIsGenerated || !entries.appSpecifier) return null;
-        return createClientEntry(entries.appSpecifier, entries.styleSpecifiers, ssr);
+        return createClientEntry(entries.appSpecifier, ssr);
       }
 
       if (id === RESOLVED_SERVER_ENTRY_ID) {
         if (!ssr) return null;
         if (entries.serverIsGenerated && entries.appSpecifier) {
-          return createServerEntry(entries.appSpecifier, entries.styleSpecifiers, ssrMode);
+          return createServerEntry(entries.appSpecifier, ssrMode);
         }
         if (entries.serverFile) {
           return createAuthoredServerEntry(toAbsoluteSpecifier(entries.serverFile), ssrMode);
@@ -328,8 +328,8 @@ export function vynnAppPlugin({ ssr, ssrMode, ssrCss, serverFunctions }: PluginO
           // An authored client entry imports its own application and styles.
           ssrCss.registerEntryUrl(toDevUrl(root(), entries.clientFile));
         } else {
-          // The generated virtual entry imports the root app and global styles.
-          // Register the actual modules instead of relying on the virtual entry URL.
+          // The generated virtual entry imports the root app. Register the
+          // actual module instead of relying on the virtual entry URL.
           if (
             entries.appSpecifier &&
             isAbsolute(entries.appSpecifier) &&
@@ -338,10 +338,6 @@ export function vynnAppPlugin({ ssr, ssrMode, ssrCss, serverFunctions }: PluginO
             ssrCss.registerEntryUrl(toDevUrl(root(), entries.appSpecifier));
           } else {
             ssrCss.registerEntryUrl(getClientEntryDevUrl(entries, root(), base));
-          }
-
-          for (const style of entries.styleSpecifiers) {
-            ssrCss.registerEntryUrl(toDevUrl(root(), style));
           }
         }
       }

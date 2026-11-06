@@ -42,6 +42,15 @@ export const ButtonPageList = () => {
         <li>
           <button
             class="btn"
+            onClick={() => navigate("/component-error")}
+            disabled={isActiveRoute("/component-error")}
+          >
+            Component Error
+          </button>
+        </li>
+        <li>
+          <button
+            class="btn"
             onClick={() => navigate("/non-async-suspense")}
             disabled={isActiveRoute("/non-async-suspense")}
           >

@@ -13,7 +13,6 @@ export function resolveEntries(root: string, ssr: boolean): ResolvedEntries {
 
   const needsApp = !clientFile || (ssr && !serverFile);
   const appSpecifier = needsApp ? findAppSpecifier(root) : null;
-  const styleSpecifiers = needsApp ? findConventionalStyles(root) : [];
 
   if (needsApp && !appSpecifier) {
     throw new Error(
@@ -23,7 +22,6 @@ export function resolveEntries(root: string, ssr: boolean): ResolvedEntries {
 
   return {
     appSpecifier,
-    styleSpecifiers,
     clientFile,
     serverFile,
     clientInput: clientFile ?? CLIENT_ENTRY_ID,
@@ -41,15 +39,6 @@ function findAppSpecifier(root: string): string | null {
     }
   }
   return null;
-}
-
-function findConventionalStyles(root: string): string[] {
-  // Conventional global styles are included only when generated entries are used.
-  // Projects with authored entries remain in full control of their imports.
-  return ["src/main.css", "src/index.css"]
-    .map((file) => resolve(root, file))
-    .filter((file) => existsSync(file))
-    .map(toAbsoluteSpecifier);
 }
 
 function findConventionalFile(root: string, names: string[]): string | null {

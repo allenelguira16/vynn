@@ -1,6 +1,5 @@
 export type ResolvedEntries = {
   appSpecifier: string | null;
-  styleSpecifiers: string[];
   clientFile: string | null;
   serverFile: string | null;
   clientInput: string;

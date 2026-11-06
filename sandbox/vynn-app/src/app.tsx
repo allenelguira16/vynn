@@ -1,3 +1,4 @@
+import "./main.css";
 import { $state, onMount } from "vynn";
 import { Router } from "vynn-router";
 

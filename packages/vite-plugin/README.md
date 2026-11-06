@@ -31,9 +31,10 @@ to `"stream"`.
 
 Vynn discovers the root component from `src/App.*` or `src/app.*`.
 The root component owns the complete HTML document, including `<html>`,
-`<head>`, and `<body>`. The plugin injects development resources, CSS,
-preloads, and the generated client entry into that document. Projects can
-provide conventional `src/entry-client.*` and `src/entry-server.*` files to
+`<head>`, and `<body>`. The plugin injects development resources and CSS
+imported by the application, preloads, and the generated client entry into that
+document. Stylesheets are explicit: import them from the root component or
+another module in its import graph. Vynn does not infer stylesheet paths. Projects can provide conventional `src/entry-client.*` and `src/entry-server.*` files to
 customize their entries.
 
 An authored `src/entry-server.*` may export an async `render(url, mode)`
@@ -61,6 +62,8 @@ needed.
 
 ```tsx
 // src/app.tsx
+import "./styles.css";
+
 export default function App() {
   return (
     <html>

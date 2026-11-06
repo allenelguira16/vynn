@@ -2,7 +2,6 @@ import { Await, Portal, lazy } from "vynn";
 import { redirect, type Route } from "vynn-router";
 
 import { ButtonPageList } from "./components/button-page-list";
-import { Params } from "./pages/params";
 import { name } from "./utils";
 
 // import { Lazy } from "./pages/lazy";
@@ -24,6 +23,7 @@ const PokeDex = lazy(() => import("./pages/poke-dex"), "PokeDex");
 const PokeDexAwait = lazy(() => import("./pages/poke-dex-await"), "PokeDexAwait");
 const StackedSuspense = lazy(() => import("./pages/stacked-suspense"), "StackedSuspense");
 const ComponentError = lazy(() => import("./pages/component-error"), "ComponentError");
+const Params = lazy(() => import("./pages/params"), "Params");
 
 export const routes: Route[] = [
   {
@@ -49,8 +49,8 @@ export const routes: Route[] = [
             <Forms />
             <Contexts />
             <Dropdowns />
-            <NonAsyncSuspense />
             <ComponentError />
+            <NonAsyncSuspense />
             <PokeDex />
             <PokeDexAwait />
             <StackedSuspense />
@@ -80,6 +80,10 @@ export const routes: Route[] = [
       {
         path: "/forms",
         component: () => <Forms />,
+      },
+      {
+        path: "/component-error",
+        component: () => <ComponentError />,
       },
       {
         path: "/non-async-suspense",
