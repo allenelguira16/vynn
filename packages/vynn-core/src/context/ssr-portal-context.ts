@@ -154,3 +154,22 @@ function isSsrElement(value: unknown): value is SSR_ELEMENT {
     "appendChild" in value
   );
 }
+
+function getPortalPatchSelector(mount: PortalMount, target: SSR_ELEMENT): string {
+  if (typeof mount === "string") return mount;
+
+  const id = target.attributes.id;
+  if (!id) {
+    throw new Error(
+      "[vynn]: A Portal targeting an external SSR element needs an id so its streamed content can find the client target.",
+    );
+  }
+
+  const escapedId = id
+    .replace(/\\\\/g, "\\\\\\\\")
+    .replace(/"/g, '\\\\"')
+    .replace(/\\n/g, "\\\\a ")
+    .replace(/\\r/g, "\\\\d ");
+
+  return `[id="${escapedId}"]`;
+}
