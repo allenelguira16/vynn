@@ -153,8 +153,11 @@ export function $async<T>(getter: () => Promise<T>): Async<T> {
       if (record.status === "pending") {
         const boundary = getAsyncBoundary();
 
-        if (boundary) boundary(record.promise);
-        throw new NotReadyError(record.promise);
+        if (boundary) {
+          boundary(record.promise);
+        }
+
+        throw new NotReadyError(record.promise, !!boundary);
       }
 
       if (record.status === "rejected") {
