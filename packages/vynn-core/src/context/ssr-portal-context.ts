@@ -84,13 +84,13 @@ export function flushSsrPortals(
       resolveSSRChild(() => withDOMNamespace(childNamespace, entry.children)),
     );
 
-    for (const node of nodes) {
-      target.appendChild(node);
-    }
-
-    // A target created within the boundary will be included in that boundary's
-    // HTML patch. Targets outside the boundary need their own streamed patch.
-    if (localRoot && !localTarget) {
+    if (localTarget || !localRoot) {
+      for (const node of nodes) {
+        target.appendChild(node);
+      }
+    } else {
+      // A target outside the async branch has already been or will be
+      // serialized independently. The stream must append this content there.
       patches.push({
         selector: getPortalPatchSelector(entry.mount, target),
         nodes,
@@ -165,11 +165,5 @@ function getPortalPatchSelector(mount: PortalMount, target: SSR_ELEMENT): string
     );
   }
 
-  const escapedId = id
-    .replace(/\\\\/g, "\\\\\\\\")
-    .replace(/"/g, '\\\\"')
-    .replace(/\\n/g, "\\\\a ")
-    .replace(/\\r/g, "\\\\d ");
-
-  return `[id="${escapedId}"]`;
+  return `#${id}`;
 }
