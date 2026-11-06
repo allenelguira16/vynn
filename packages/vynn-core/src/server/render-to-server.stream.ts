@@ -4,8 +4,8 @@ import {
   FALLBACK_END_SSR_MARKER,
   FALLBACK_START_SSR_MARKER,
 } from "../const";
-import { getOwner, runWithOwner } from "../life-cycle/owner";
 import { flushSsrPortals } from "../context/ssr-portal-context";
+import { getOwner, runWithOwner } from "../life-cycle/owner";
 import { SSR_NODE, resolveNode } from "../render/resolve-node";
 import { JSX } from "../types/jsx";
 import { renderHeadPatch, type SsrHeadManager } from "./head";
