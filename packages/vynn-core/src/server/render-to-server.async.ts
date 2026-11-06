@@ -1,4 +1,5 @@
 import { runWithOwner, type Owner } from "../life-cycle/owner";
+import { flushSsrPortals } from "../context/ssr-portal-context";
 import { SSR_NODE, resolveNode } from "../render/resolve-node";
 import { JSX } from "../types/jsx";
 import {
@@ -39,6 +40,8 @@ export async function resolveAsync(App: () => JSX.Element, owner: Owner): Promis
   }
 
   const app = runWithOwner(owner, () => resolveNode(App)) as unknown as SSR_NODE[];
+  runWithOwner(owner, () => flushSsrPortals(app));
+
   const resolved = await resolve(app);
   const utilities = runWithOwner(owner, renderAsyncUtilities);
 
