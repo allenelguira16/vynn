@@ -1,5 +1,5 @@
-import { runWithOwner, type Owner } from "../life-cycle/owner";
 import { flushSsrPortals } from "../context/ssr-portal-context";
+import { runWithOwner, type Owner } from "../life-cycle/owner";
 import { SSR_NODE, resolveNode } from "../render/resolve-node";
 import { JSX } from "../types/jsx";
 import {
