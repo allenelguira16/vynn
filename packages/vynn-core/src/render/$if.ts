@@ -205,7 +205,8 @@ export function $if(
   const initialKey = !!initialValue;
 
   let activeKey = initialKey;
-  // Don't detach claimed SSR nodes, but keep the original fragment behavior in CSR.
+  // Preserve claimed SSR nodes only during an active hydration pass. An unrelated
+  // pending lazy boundary must not disable fragment parking for a new CSR branch.
   let activeBranch = createBranch(initialKey, initialValue, true, !isHydrationClaimActive());
 
   $renderEffect(() => {
