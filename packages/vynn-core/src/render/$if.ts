@@ -1,6 +1,6 @@
 import type { JSX } from "../jsx-runtime";
 
-import { isHydrating } from "../client/hydration";
+import { isHydrationClaimActive } from "../client/hydration";
 import { NotReadyError } from "../reactivity/not-ready-error";
 import { isServer } from "../context/is-server-context";
 import { $renderEffect } from "../reactivity/$effect";
@@ -206,7 +206,7 @@ export function $if(
 
   let activeKey = initialKey;
   // Don't detach claimed SSR nodes, but keep the original fragment behavior in CSR.
-  let activeBranch = createBranch(initialKey, initialValue, true, !isHydrating());
+  let activeBranch = createBranch(initialKey, initialValue, true, !isHydrationClaimActive());
 
   $renderEffect(() => {
     const nextValue = condition();
