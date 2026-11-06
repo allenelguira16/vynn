@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import { Await } from "../src/components/await";
 import type { JSX } from "../src/types/jsx";
-import { createOwner, disposeOwner, runWithOwner } from "../src/life-cycle/owner";
 import { $async, isPending } from "../src/reactivity/$async";
 import { $attr } from "../src/render/$attr";
 import { $for } from "../src/render/$for";
@@ -22,20 +21,6 @@ function createRow(value: string): JSX.Element {
   $insert(cell, $txt(value));
   $insert(row, () => cell as unknown as JSX.Element);
   return row as unknown as JSX.Element;
-}
-
-async function readStream(stream: ReadableStream<Uint8Array>): Promise<string> {
-  const reader = stream.getReader();
-  const decoder = new TextDecoder();
-  let html = "";
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    html += decoder.decode(value, { stream: true });
-  }
-
-  return html + decoder.decode();
 }
 
 describe("SSR async boundaries inside dynamic children", () => {
