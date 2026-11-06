@@ -135,4 +135,90 @@ describe("SSR Portals", () => {
       '<div><aside id="portal-root">Direct target content</aside></div>',
     );
   });
+  it("patches an external portal target when the Portal is created after an async boundary resolves", async () => {
+    const rendered = renderToServer(() => {
+      const root = $tmpl("div");
+      const outlet = $tmpl("aside");
+      $attr(outlet, "id", "portal-root");
+
+      const boundary = createSSRAsync(
+        () => [createSSRText("Loading page")],
+        () =>
+          [
+            Portal({
+              mount: "#portal-root",
+              children: $txt("Resolved portal content"),
+            }),
+          ] as unknown as JSX.Element[],
+        [Promise.resolve()],
+      );
+
+      $insert(root, () => [boundary, outlet] as unknown as JSX.Element);
+      return root as unknown as JSX.Element;
+    }, "stream");
+
+    const html = await readStream(rendered.body);
+
+    expect(html).toContain("Loading page");
+    expect(html).toContain("Resolved portal content");
+    expect(html).toContain('document.querySelector(s)');
+    expect(html).toContain("vynn-portal-0");
+  });
+
+  it("includes portal targets created within the resolved async branch in its normal boundary patch", async () => {
+    const rendered = renderToServer(() => {
+      const root = $tmpl("div");
+
+      const boundary = createSSRAsync(
+        () => [createSSRText("Loading page")],
+        () => {
+          const outlet = $tmpl("aside");
+          $attr(outlet, "id", "local-portal-root");
+          const portal = Portal({
+            mount: "#local-portal-root",
+            children: $txt("Local resolved portal content"),
+          });
+
+          return [outlet, portal] as unknown as JSX.Element[];
+        },
+        [Promise.resolve()],
+      );
+
+      $insert(root, () => boundary as unknown as JSX.Element);
+      return root as unknown as JSX.Element;
+    }, "stream");
+
+    const html = await readStream(rendered.body);
+
+    expect(html).toContain("Loading page");
+    expect(html).toContain('<aside id="local-portal-root">Local resolved portal content</aside>');
+    expect(html).not.toContain("vynn-portal-0");
+  });
+
+  it("supports late portal registration in async string rendering", async () => {
+    const rendered = await renderToServer(() => {
+      const root = $tmpl("div");
+      const outlet = $tmpl("aside");
+      $attr(outlet, "id", "portal-root");
+
+      const boundary = createSSRAsync(
+        () => [createSSRText("Loading page")],
+        () =>
+          [
+            Portal({
+              mount: "#portal-root",
+              children: $txt("Async-mode portal content"),
+            }),
+          ] as unknown as JSX.Element[],
+        [Promise.resolve()],
+      );
+
+      $insert(root, () => [boundary, outlet] as unknown as JSX.Element);
+      return root as unknown as JSX.Element;
+    }, "async");
+
+    expect(rendered.body).toContain("Async-mode portal content");
+    expect(rendered.body).toContain("vynn-portal-0");
+  });
+
 });
