@@ -19,7 +19,11 @@ export const Portal = $cmpnt(function Portal(
   props: PropsWithChildren<{ mount: PortalMount }>,
 ): JSX.Element {
   if (isServer()) {
-    registerSsrPortal(props.mount, () => props.children);
+    // Evaluate the children while the declaring component's async boundary is
+    // active. If a child reads a pending $async resource, NotReadyError must
+    // reach Await instead of being deferred until the portal registry flush.
+    const children = props.children;
+    registerSsrPortal(props.mount, () => children);
     return null;
   }
 
