@@ -81,7 +81,9 @@ export function flushSsrPortals(root: SSR_NODE[]): void {
 
 function resolvePortalTarget(root: SSR_NODE[], mount: PortalMount): SSR_ELEMENT | null {
   if (typeof mount !== "string") {
-    return isSsrElement(mount) ? (mount as unknown as SSR_ELEMENT) : null;
+    return isSsrElement(mount)
+      ? findSsrElement(root, (element) => element === mount)
+      : null;
   }
 
   const selector = mount.trim();
