@@ -13,6 +13,7 @@ import {
   joinHTMLElements,
   renderAsyncUtilities,
   renderNode,
+  renderPortalPatch,
   renderText,
 } from "./render-to-server.util";
 
@@ -35,6 +36,8 @@ export function resolveStream(
   let closed = false;
   let ownerReleased = false;
   let previousHead = "";
+  let rootNodes: SSR_NODE[] = [];
+  let nextPortalPatchId = 0;
 
   const queuedPatches: string[] = [];
 
@@ -94,6 +97,19 @@ export function resolveStream(
     }
   }
 
+  async function resolvePortalPatches(
+    patches: ReturnType<typeof flushSsrPortals>,
+  ): Promise<string> {
+    const html: string[] = [];
+
+    for (const patch of patches) {
+      const portalHTML = await resolve(patch.nodes);
+      html.push(renderPortalPatch(nextPortalPatchId++, patch.selector, portalHTML));
+    }
+
+    return html.join("");
+  }
+
   async function resolve(app: SSR_NODE[]): Promise<string> {
     const html: string[] = [];
 
@@ -121,13 +137,17 @@ export function resolveStream(
             if (closed) return;
 
             const childNodes = runWithOwner(owner, node.children);
+            const portalPatches = runWithOwner(owner, () =>
+              flushSsrPortals(rootNodes, childNodes),
+            );
             enqueueHeadPatch();
 
             const children = await resolve(childNodes);
+            const portals = await resolvePortalPatches(portalPatches);
             if (closed) return;
 
             enqueueHeadPatch();
-            enqueuePatch(renderPatch(id, children));
+            enqueuePatch(renderPatch(id, children) + portals);
           } catch (error) {
             if (!closed) {
               console.error("[vynn]: Failed to resolve an SSR boundary", error);
@@ -141,8 +161,12 @@ export function resolveStream(
         if (closed) break;
 
         const childNodes = runWithOwner(owner, node.children);
+        const portalPatches = runWithOwner(owner, () =>
+          flushSsrPortals(rootNodes, childNodes),
+        );
         enqueueHeadPatch();
         html.push(await resolve(childNodes));
+        html.push(await resolvePortalPatches(portalPatches));
         enqueueHeadPatch();
       } else if ("value" in node && node.type === "#text") {
         html.push(renderText(node));
@@ -172,6 +196,7 @@ export function resolveStream(
       void (async () => {
         try {
           const app = runWithOwner(owner, () => resolveNode(App)) as unknown as SSR_NODE[];
+          rootNodes = app;
           runWithOwner(owner, () => flushSsrPortals(app));
           previousHead = head.render();
 
