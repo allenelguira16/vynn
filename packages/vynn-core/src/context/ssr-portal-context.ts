@@ -19,6 +19,11 @@ type SsrPortalContext = {
   nextEntry: number;
 };
 
+export interface SsrPortalPatch {
+  readonly selector: string;
+  readonly nodes: SSR_NODE[];
+}
+
 const SSR_PORTAL_CONTEXT = Symbol.for("vynn.ssr-portal-context");
 
 /** Creates an isolated portal registry for one server render. */
@@ -54,13 +59,19 @@ export function registerSsrPortal(mount: PortalMount, children: () => JSX.Elemen
  * Resolving arbitrary CSS selectors would require implementing a CSS selector
  * engine over Vynn's lightweight SSR tree.
  */
-export function flushSsrPortals(root: SSR_NODE[]): void {
+export function flushSsrPortals(
+  root: SSR_NODE[],
+  localRoot?: SSR_NODE[],
+): SsrPortalPatch[] {
   const context = getContext<SsrPortalContext>(SSR_PORTAL_CONTEXT);
-  if (!context) return;
+  if (!context) return [];
+
+  const patches: SsrPortalPatch[] = [];
 
   while (context.nextEntry < context.entries.length) {
     const entry = context.entries[context.nextEntry++];
-    const target = resolvePortalTarget(root, entry.mount);
+    const localTarget = localRoot ? resolvePortalTarget(localRoot, entry.mount) : null;
+    const target = localTarget ?? resolvePortalTarget(root, entry.mount);
 
     if (!target) {
       throw new Error(
@@ -76,7 +87,18 @@ export function flushSsrPortals(root: SSR_NODE[]): void {
     for (const node of nodes) {
       target.appendChild(node);
     }
+
+    // A target created within the boundary will be included in that boundary's
+    // HTML patch. Targets outside the boundary need their own streamed patch.
+    if (localRoot && !localTarget) {
+      patches.push({
+        selector: getPortalPatchSelector(entry.mount, target),
+        nodes,
+      });
+    }
   }
+
+  return patches;
 }
 
 function resolvePortalTarget(root: SSR_NODE[], mount: PortalMount): SSR_ELEMENT | null {
