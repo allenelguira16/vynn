@@ -1,3 +1,4 @@
+import { isInsideAwaitBoundary } from "../context/async-context";
 import { isServer } from "../context/is-server-context";
 import { registerSsrPortal, type PortalMount } from "../context/ssr-portal-context";
 import { onMount } from "../life-cycle/on-mount";
@@ -19,11 +20,14 @@ export const Portal = $cmpnt(function Portal(
   props: PropsWithChildren<{ mount: PortalMount }>,
 ): JSX.Element {
   if (isServer()) {
-    // Evaluate the children while the declaring component's async boundary is
-    // active. If a child reads a pending $async resource, NotReadyError must
-    // reach Await instead of being deferred until the portal registry flush.
-    const children = props.children;
-    registerSsrPortal(props.mount, () => children);
+    // Evaluate children under an active Await so pending $async reads reach
+    // that boundary. Otherwise defer evaluation until the target namespace is
+    // known during portal relocation.
+    const hasAwaitBoundary = isInsideAwaitBoundary();
+    const children = hasAwaitBoundary ? props.children : undefined;
+    registerSsrPortal(props.mount, () =>
+      hasAwaitBoundary ? children! : props.children,
+    );
     return null;
   }
 
