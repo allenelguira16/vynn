@@ -220,5 +220,41 @@ describe("SSR Portals", () => {
     expect(rendered.body).toContain("Async-mode portal content");
     expect(rendered.body).toContain("vynn-portal-0");
   });
+  it("retries a resolved async child when its portal target is appended afterward", async () => {
+    const rendered = renderToServer(() => {
+      const root = $tmpl("div");
+      const outlet = $tmpl("aside");
+      $attr(outlet, "id", "portal-root");
+
+      const boundary = createSSRAsync(
+        () => [createSSRText("Loading page")],
+        () => {
+          const nestedBoundary = createSSRAsync(
+            () => [createSSRText("Loading portal child")],
+            () => [createSSRText("Resolved portal child")],
+            [Promise.resolve()],
+          );
+
+          return [
+            Portal({
+              mount: "#portal-root",
+              children: nestedBoundary as unknown as JSX.Element,
+            }),
+          ] as unknown as JSX.Element[];
+        },
+        [Promise.resolve()],
+      );
+
+      $insert(root, () => [boundary, outlet] as unknown as JSX.Element);
+      return root as unknown as JSX.Element;
+    }, "stream");
+
+    const html = await readStream(rendered.body);
+
+    expect(html).toContain("Loading portal child");
+    expect(html).toContain("Resolved portal child");
+    expect(html).toContain("t.append(p.content)");
+    expect(html).toContain("f(null)");
+  });
 
 });
