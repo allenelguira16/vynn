@@ -17,9 +17,6 @@
     "./render": {
       "import": "./src/render/index.ts"
     },
-    "./internal/router": {
-      "import": "./src/internal/router.ts"
-    },
     "./client": {
       "import": "./src/client/index.ts"
     },

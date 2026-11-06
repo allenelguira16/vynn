@@ -253,8 +253,8 @@ describe("client router beforeLoad", () => {
     expect(guardRuns).toBe(1);
     expect(signals[0].aborted).toBe(false);
 
-    // Both pathname and search change in one navigation. The outlet creates
-    // one new guard owner, rather than reactively rerunning the existing $async.
+    // Both pathname and search change in one navigation. The route view keeps
+    // its owner while the existing $async guard revalidates against the new URL.
     navigate("/users/2?tab=new");
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
 

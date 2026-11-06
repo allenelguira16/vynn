@@ -14,11 +14,13 @@ import type { Location, Route } from "./types";
 /** Creates a Router with request-local URL state, suitable for SSR. */
 export function Router(props: { url?: string; routes: Route[] }) {
   const location = $store<Location>(parseLocation(props.url));
+
   if (!isServer) {
     // Keep legacy consumers synchronized, but never mutate the module-level
     // singleton on the server: separate requests have separate Router stores.
     setActiveLocation(location);
     updateLocation($location, location);
+
     onMount(() => {
       const updateFromBrowser = () => {
         updateLocation(location, {
@@ -27,6 +29,7 @@ export function Router(props: { url?: string; routes: Route[] }) {
         });
         updateLocation($location, location);
       };
+
       window.addEventListener("popstate", updateFromBrowser);
       return () => window.removeEventListener("popstate", updateFromBrowser);
     });

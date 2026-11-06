@@ -1,13 +1,12 @@
 import { $store } from "vynn";
-import { batchRouterLocation } from "vynn/internal/router";
 
 import { useRouterLocation } from "./context";
 import { isServer } from "./environment";
 import type { Location } from "./types";
 
 /**
- * Legacy/default location store. The router uses a per-Router store in context
- * so multiple concurrent SSR requests never mutate one module-level location.
+ * Legacy/default location store. Each Router uses its own location store so
+ * route state remains scoped to that Router and concurrent SSR render.
  */
 export const $location = $store<Location>({
   pathname: !isServer ? window.location.pathname : "/",
@@ -18,11 +17,9 @@ let activeLocation: Location | undefined;
 
 if (!isServer) {
   window.addEventListener("popstate", () => {
-    batchRouterLocation(() => {
-      updateLocation($location, {
-        pathname: window.location.pathname,
-        search: window.location.search,
-      });
+    updateLocation($location, {
+      pathname: window.location.pathname,
+      search: window.location.search,
     });
   });
 }
@@ -58,15 +55,15 @@ export function parseLocation(url?: string): Location {
   };
 }
 
-/**
- * Updates pathname and search atomically so reactive consumers observe one
- * navigation rather than an intermediate half-updated location.
- */
+/** Updates a location store from a parsed URL. */
 export function updateLocation(target: Location, next: Location): void {
-  batchRouterLocation(() => {
+  if (target.pathname !== next.pathname) {
     target.pathname = next.pathname;
+  }
+
+  if (target.search !== next.search) {
     target.search = next.search;
-  });
+  }
 }
 
 function updateUrl(
@@ -105,11 +102,10 @@ function updateUrl(
       search: window.location.search,
     };
 
-    // Keep the Router-scoped and legacy location stores in the same commit.
-    batchRouterLocation(() => {
-      updateLocation(location, current);
-      updateLocation($location, current);
-    });
+    // Router-scoped and legacy locations are separate stores. Keep both
+    // synchronized without depending on a core transaction integration.
+    updateLocation(location, current);
+    updateLocation($location, current);
   } else {
     updateLocation(location, next);
   }
