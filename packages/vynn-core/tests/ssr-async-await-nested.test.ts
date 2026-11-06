@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { Await } from "../src/components/await";
-import { initializeAsyncContext } from "../src/context/async-context";
+import type { JSX } from "../src/types/jsx";
 import { createOwner, disposeOwner, runWithOwner } from "../src/life-cycle/owner";
 import { $async, isPending } from "../src/reactivity/$async";
 import { $attr } from "../src/render/$attr";
@@ -45,7 +45,7 @@ describe("SSR async boundaries inside dynamic children", () => {
       resolveData = resolve;
     });
 
-    let data!: ReturnType<typeof $async<ListData>>;
+    let data!: { value: ListData };
 
     const rendered = renderToServer(() => {
       data = $async(() => pendingData);
@@ -113,7 +113,6 @@ describe("SSR async boundaries inside dynamic children", () => {
     });
 
     const rendered = renderToServer(() => {
-      initializeAsyncContext();
       const data = $async(() => pendingData);
       const tbody = $tmpl("tbody");
 
