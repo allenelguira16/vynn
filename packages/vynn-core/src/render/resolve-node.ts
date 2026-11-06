@@ -1,5 +1,6 @@
 import { claimHydrationText, isHydrationClaimActive } from "../client/hydration";
 import { synchronizeHydrationText } from "../client/hydration-diagnostics";
+import { getAsyncBoundary } from "../context/async-context";
 import { isServer } from "../context/is-server-context";
 import { JSX } from "../jsx-runtime";
 import { getOwner, runWithOwner } from "../life-cycle/owner";
@@ -154,6 +155,13 @@ export function resolveSSRChild(child: () => JSX.Element): SSR_NODE[] {
     return resolveNode(child) as unknown as SSR_NODE[];
   } catch (error) {
     if (!(error instanceof NotReadyError)) throw error;
+
+    // An active Await owns this suspension. Let it collect the promise and
+    // render its fallback instead of hiding the read in a generic deferred
+    // node. Outside Await, retain the deferred SSR behavior.
+    if (getAsyncBoundary()) {
+      throw error;
+    }
 
     return [
       createSSRDeferred(() => runWithOwner(owner, () => resolveSSRChild(child)), [error.promise]),
