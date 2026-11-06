@@ -4,7 +4,7 @@ import type { RenderMode } from "vynn";
 import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import type { VynnServerFunctionsOptions } from "./server-functions.ts";
 import type { VynnSsrCssCollector, VynnSsrCssLink } from "./ssr-css.ts";
@@ -14,7 +14,7 @@ import {
   createClientEntry,
   createClientShell,
   createServerEntry,
-  createSsrHandlerCode,
+  createSsrHandlerModule,
   readClientAssets,
   readSsrManifest,
 } from "./app/documents.ts";
@@ -36,6 +36,7 @@ import {
   RESOLVED_CLIENT_ENTRY_ID,
   RESOLVED_SERVER_ENTRY_ID,
   RESOLVED_SSR_HANDLER_ID,
+  SSR_HANDLER_RUNTIME_ID,
   type ResolvedEntries,
   SERVER_ENTRY_ID,
   SSR_HANDLER_ID,
@@ -192,12 +193,15 @@ export function vynnAppPlugin({ ssr, ssrMode, ssrCss, serverFunctions }: PluginO
       environmentConfig.consumer = "server";
       environmentConfig.resolve ??= {};
 
-      // Keep Vynn's framework runtime in the same SSR module graph. This is
-      // important for owner/context identity when Vynn is workspace-linked.
+      // Keep Vynn's runtime and the imported SSR handler factory in the
+      // same server bundle. Vynn's owner/context identity must also remain
+      // shared when the framework is workspace-linked.
       const current = environmentConfig.resolve.noExternal;
       if (current !== true) {
         const noExternal = current == null ? [] : Array.isArray(current) ? current : [current];
-        environmentConfig.resolve.noExternal = [...noExternal, "vynn", "vynn-router"];
+        environmentConfig.resolve.noExternal = [
+          ...new Set([...noExternal, "vynn", "vynn-router", "vite-plugin-vynn"]),
+        ];
       }
     },
 
@@ -230,6 +234,9 @@ export function vynnAppPlugin({ ssr, ssrMode, ssrCss, serverFunctions }: PluginO
       if (id === CLIENT_ENTRY_ID) return RESOLVED_CLIENT_ENTRY_ID;
       if (id === SERVER_ENTRY_ID) return RESOLVED_SERVER_ENTRY_ID;
       if (id === SSR_HANDLER_ID) return RESOLVED_SSR_HANDLER_ID;
+      if (id === SSR_HANDLER_RUNTIME_ID) {
+        return fileURLToPath(new URL("./app/ssr-handler.ts", import.meta.url));
+      }
       return null;
     },
 
@@ -272,7 +279,8 @@ export function vynnAppPlugin({ ssr, ssrMode, ssrCss, serverFunctions }: PluginO
           ? joinAssetBase(base, `/${assets.file}`)
           : getClientEntryDevUrl(entries, root(), base);
 
-        return createSsrHandlerCode({
+        return createSsrHandlerModule({
+          runtimeModuleId: SSR_HANDLER_RUNTIME_ID,
           clientEntryUrl,
           css: assets?.css ?? [],
           base,
