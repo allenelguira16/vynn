@@ -4,6 +4,7 @@ import { initializeAsyncContext } from "../context/async-context";
 import { initializeErrorBoundaryContext } from "../context/error-boundary-context";
 import { initializeHeadContext } from "../context/head-context";
 import { initializeLazyContext } from "../context/lazy-context";
+import { initializeSsrPortalContext } from "../context/ssr-portal-context";
 import { type RenderMode, setRenderMode } from "../context/render-mode";
 import { getSsrModuleContext, initializeSsrModuleContext } from "../context/ssr-module-context";
 import { createOwner, disposeOwner, runWithOwner } from "../life-cycle/owner";
@@ -48,6 +49,7 @@ export function renderToServer(App: () => JSX.Element, mode: RenderMode) {
       const headContext = initializeHeadContext();
       initializeSsrModuleContext();
       initializeLazyContext();
+      initializeSsrPortalContext();
       initializeAsyncContext();
       initializeErrorBoundaryContext();
 
