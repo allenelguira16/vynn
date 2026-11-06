@@ -135,6 +135,7 @@ export function vynnAppPlugin({ ssr, ssrMode, ssrCss, serverFunctions }: PluginO
               consumer: "server",
               build: {
                 outDir: "dist/server",
+                minify: "oxc",
                 rollupOptions: {
                   input: {
                     index: SSR_HANDLER_ID,

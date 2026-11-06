@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { parseSync } from "oxc-parser";
+import { parseSync, visitorKeys } from "oxc-parser";
 import { type PreviewServer, type ResolvedConfig, type ViteDevServer, build } from "vite";
 
 import { createWebRequest, writeResponse } from "./app/http.ts";
@@ -447,14 +447,82 @@ export function serverFunctionsPlugin(
           if (!path.startsWith(".")) path = `./${path}`;
           manifest[functionId] = path;
         }
-        const marker = JSON.stringify(SERVER_FUNCTION_MANIFEST_SENTINEL);
-        const markerIndex = output.code.indexOf(marker);
-        if (markerIndex < 0)
-          this.error("[Vynn use server] Could not inject the production function manifest.");
+        // Parse the finalized chunk instead of assuming how the minifier
+        // spells string literals (quote style, escaping, or template syntax).
+        const parsed = parseSync(output.fileName, output.code, {
+          lang: "js",
+          sourceType: "module",
+          astType: "js",
+          preserveParens: false,
+          showSemanticErrors: false,
+        } as never);
+
+        let manifestLiteral: Node | undefined;
+        const findManifestLiteral = (node: Node): void => {
+          if (manifestLiteral || !node || typeof node !== "object") return;
+
+          if (
+            (node.type === "Literal" || node.type === "StringLiteral") &&
+            typeof node.value === "string" &&
+            node.value.includes(SERVER_FUNCTION_MANIFEST_SENTINEL)
+          ) {
+            manifestLiteral = {
+              start: node.start,
+              end: node.end,
+              value: node.value,
+            };
+            return;
+          }
+
+          // Some minifiers may represent a plain string as a no-expression
+          // template literal. Treat it the same way as a quoted string.
+          if (
+            node.type === "TemplateLiteral" &&
+            node.expressions?.length === 0 &&
+            Array.isArray(node.quasis)
+          ) {
+            const value = node.quasis
+              .map((quasi: Node) => quasi.value?.cooked ?? quasi.value?.raw ?? "")
+              .join("");
+            if (value.includes(SERVER_FUNCTION_MANIFEST_SENTINEL)) {
+              manifestLiteral = {
+                start: node.start,
+                end: node.end,
+                value,
+              };
+              return;
+            }
+          }
+
+          const keys = (visitorKeys as Record<string, string[]>)[node.type] ?? [];
+          for (const key of keys) {
+            const child = node[key];
+            if (Array.isArray(child)) {
+              for (const item of child) {
+                if (item && typeof item === "object" && typeof item.type === "string") {
+                  findManifestLiteral(item);
+                  if (manifestLiteral) return;
+                }
+              }
+            } else if (child && typeof child === "object" && typeof child.type === "string") {
+              findManifestLiteral(child);
+              if (manifestLiteral) return;
+            }
+          }
+        };
+
+        findManifestLiteral(parsed.program);
+        if (!manifestLiteral)
+          this.error("[Vynn use server] Could not locate the production function manifest literal.");
+
+        const replacementValue = manifestLiteral.value.replace(
+          SERVER_FUNCTION_MANIFEST_SENTINEL,
+          JSON.stringify(manifest),
+        );
         output.code =
-          output.code.slice(0, markerIndex) +
-          JSON.stringify(JSON.stringify(manifest)) +
-          output.code.slice(markerIndex + marker.length);
+          output.code.slice(0, manifestLiteral.start) +
+          JSON.stringify(replacementValue) +
+          output.code.slice(manifestLiteral.end);
       }
     },
 
