@@ -5,6 +5,7 @@ import {
   FALLBACK_START_SSR_MARKER,
 } from "../const";
 import { getOwner, runWithOwner } from "../life-cycle/owner";
+import { flushSsrPortals } from "../context/ssr-portal-context";
 import { SSR_NODE, resolveNode } from "../render/resolve-node";
 import { JSX } from "../types/jsx";
 import { renderHeadPatch, type SsrHeadManager } from "./head";
@@ -171,6 +172,7 @@ export function resolveStream(
       void (async () => {
         try {
           const app = runWithOwner(owner, () => resolveNode(App)) as unknown as SSR_NODE[];
+          runWithOwner(owner, () => flushSsrPortals(app));
           previousHead = head.render();
 
           const initialHTML = await resolve(app);
