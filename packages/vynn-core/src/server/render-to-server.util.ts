@@ -109,3 +109,15 @@ function serializeForInlineScript(value: unknown): string {
     .replace(/\u2028/g, "\\u2028")
     .replace(/\u2029/g, "\\u2029");
 }
+
+/**
+ * Appends portal HTML to a target that is outside the currently-resolved
+ * async branch. A MutationObserver handles targets that appear later in the
+ * streamed document.
+ */
+export function renderPortalPatch(id: number, selector: string, html: string): string {
+  const templateId = `vynn-portal-${id}`;
+  const selectorJSON = JSON.stringify(selector).replace(/</g, "\\\\u003c");
+
+  return `<template id="${templateId}">${html}</template><script>(function(){var p=document.getElementById(${JSON.stringify(templateId)}),s=${selectorJSON};function a(){var t=document.querySelector(s);if(!t||!p)return!1;t.append(p.content);p.remove();return!0}if(!a()){var o=new MutationObserver(function(){if(a())o.disconnect()});o.observe(document.documentElement,{childList:!0,subtree:!0})}document.currentScript.remove()})();</script>`;
+}
