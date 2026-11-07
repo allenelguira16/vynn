@@ -1,17 +1,7 @@
 import { $async, $effect, $state, Await, isPending, onDestroy, onMount } from "vynn";
 
 import { Template } from "../components/template";
-import { name, sleep } from "../utils";
-
-type PokeDexData = {
-  count: number;
-  next: string | null;
-  previous: string | null;
-  results: {
-    name: string;
-    url: string;
-  }[];
-};
+import { getPokedex, name, PokeDexData } from "../utils";
 
 type SortKey = keyof PokeDexData["results"][number];
 type SortDirection = "asc" | "desc";
@@ -22,12 +12,7 @@ export const PokeDexAwait = () => {
   const sortDirection = $state<SortDirection>("asc");
 
   const pokeDex = $async(async () => {
-    const response = await fetch(url.value);
-    const json = (await response.json()) as PokeDexData;
-
-    await sleep(0);
-
-    return json;
+    return getPokedex(url.value);
   });
 
   const sortOnClick = (key: SortKey) => () => {

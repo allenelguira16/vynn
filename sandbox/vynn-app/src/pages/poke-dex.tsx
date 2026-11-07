@@ -1,27 +1,10 @@
 import { $store, onMount } from "vynn";
 
 import { Template } from "../components/template";
-import { name, sleep } from "../utils";
-
-type PokeDexData = {
-  count: number;
-  next: string | null;
-  previous: string | null;
-  results: {
-    name: string;
-    url: string;
-  }[];
-};
+import { getPokedex, name, PokeDexData } from "../utils";
 
 type SortKey = keyof PokeDexData["results"][number];
 type SortDirection = "asc" | "desc";
-
-async function getPokedex(url: string) {
-  "use server";
-
-  const response = await fetch(url);
-  return (await response.json()) as PokeDexData;
-}
 
 export const PokeDex = () => {
   const pokeDex = $store({
@@ -36,12 +19,7 @@ export const PokeDex = () => {
 
       this.isLoading = true;
 
-      // const response = await fetch(url, { signal: controller?.signal });
-      // const json = (await response.json()) as PokeDexData;
-
       const json = await getPokedex(url);
-
-      await sleep(0);
 
       this.pokeDexList = json.results;
       this.prevLink = json.previous?.replace(/limit=\d+/, "limit=20") ?? "";
@@ -58,7 +36,6 @@ export const PokeDex = () => {
   });
 
   onMount(() => {
-    // console.log("hi");
     const controller = new AbortController();
 
     (async () => {
@@ -93,48 +70,26 @@ export const PokeDex = () => {
           </tr>
         </thead>
         <tbody>
-          {pokeDex.isLoading && (
-            <>
-              {/* {loop(Array.from({ length: 20 }).map((_, i) => i + 1)).each((number) => (
+          {pokeDex.isLoading &&
+            Array.from({ length: 20 })
+              .map((_, i) => i + 1)
+              .map((number) => (
                 <tr>
-                  <td colSpan={3} class="h-[24px] text-center">
-                    {number === 10 && "loading..."}
-                  </td>
-                </tr>
-              ))} */}
-              {Array.from({ length: 20 })
-                .map((_, i) => i + 1)
-                .map((number) => (
-                  <tr>
-                    <td colSpan={3} class="h-6 text-center">
-                      {number === 10 ? "loading..." : <>&nbsp;</>}
-                    </td>
-                  </tr>
-                ))}
-            </>
-          )}
-          {!pokeDex.isLoading && (
-            <>
-              {/* {loop(pokeDex.pokeDexList).each(({ name, url }, index) => (
-                <tr>
-                  <td class="w-1/3 text-center">{index.value + 1}</td>
-                  <td class="w-1/3 text-center truncate">{name}</td>
-                  <td class="w-1/3 text-center truncate" onClick={showUrlOnClick(url)}>
-                    {url}
-                  </td>
-                </tr>
-              ))} */}
-              {pokeDex.pokeDexList.map(({ name, url }, index) => (
-                <tr>
-                  <td class="w-1/3 text-center">{index + 1}</td>
-                  <td class="w-1/3 text-center truncate">{name}</td>
-                  <td class="w-1/3 text-center truncate" onClick={showUrlOnClick(url)}>
-                    {url}
+                  <td colSpan={3} class="h-6 text-center">
+                    {number === 10 ? "loading..." : <>&nbsp;</>}
                   </td>
                 </tr>
               ))}
-            </>
-          )}
+          {!pokeDex.isLoading &&
+            pokeDex.pokeDexList.map(({ name, url }, index) => (
+              <tr>
+                <td class="w-1/3 text-center">{index + 1}</td>
+                <td class="w-1/3 text-center truncate">{name}</td>
+                <td class="w-1/3 text-center truncate" onClick={showUrlOnClick(url)}>
+                  {url}
+                </td>
+              </tr>
+            ))}
         </tbody>
       </table>
       <div class="flex gap-4 justify-center">
