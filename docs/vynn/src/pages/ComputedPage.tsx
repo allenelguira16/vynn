@@ -46,8 +46,9 @@ export const ComputedPage = () => {
           `}
         />
         <p>
-          <strong>Tip:</strong> <code>computed</code> is lazy—its function runs only when needed,
-          and re-runs only if its dependencies change.
+          <strong>Tip:</strong> <code>computed</code> is eager and memoized. Its function runs when
+          the computed value is created, then re-runs synchronously when a dependency changes.
+          Reading <code>.value</code> returns the cached result.
         </p>
         <h2 class="mt-6">
           Using store? You might not need <code>computed</code>

@@ -75,6 +75,12 @@ function createReactiveEffect(callback: () => void | (() => void), phase: Effect
             } catch (error) {
               if (error instanceof NotReadyError) {
                 rollbackHydrationClaim(hydrationSnapshot);
+
+                // Route guards marked as SSR-blocking must escape to the
+                // nearest SSR deferred node instead of being swallowed like
+                // ordinary render-effect suspension.
+                if (error.blocking) throw error;
+
                 return;
               }
 

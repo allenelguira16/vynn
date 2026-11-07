@@ -9,7 +9,7 @@ import { $state } from "../reactivity/$state";
 import { untrack } from "../reactivity/untrack";
 import { $cmpnt } from "../render/$cmpnt";
 import { $if } from "../render/$if";
-import { SSR_NODE, createSSRAsync, resolveNode } from "../render/resolve-node";
+import { SSR_NODE, createSSRAsync, createSSRDeferred, resolveNode, resolveSSRChild } from "../render/resolve-node";
 import { memo } from "../utils/memo";
 
 /**
@@ -50,12 +50,41 @@ export const Await = $cmpnt(function Await(props: {
       pending.push(promise);
     });
 
-    const createBoundary = () =>
+    const createBoundary = (promises: Promise<any>[]) =>
       createSSRAsync(
         () => resolveNode(fallback) as unknown as SSR_NODE[],
         () => resolveNode(children) as unknown as SSR_NODE[],
-        pending,
+        promises,
       ) as unknown as JSX.Element;
+
+    // A route guard must settle before the HTTP response starts streaming. Once
+    // it succeeds, evaluate the same Await children with a fresh promise list
+    // so ordinary page resources can still use the usual streaming fallback.
+    const renderAfterBlocking = (): SSR_NODE[] =>
+      runWithOwner(owner, () => {
+        const retryPending: Promise<any>[] = [];
+        enterAsyncBoundary((promise) => retryPending.push(promise));
+
+        let retryChildren: JSX.Element;
+
+        try {
+          retryChildren = children();
+        } catch (error) {
+          if (!(error instanceof NotReadyError)) throw error;
+
+          if (error.blocking || retryPending.length === 0) {
+            return [createSSRDeferred(renderAfterBlocking, [error.promise])];
+          }
+
+          return [createBoundary(retryPending) as unknown as SSR_NODE];
+        }
+
+        if (retryPending.length > 0) {
+          return [createBoundary(retryPending) as unknown as SSR_NODE];
+        }
+
+        return resolveSSRChild(() => retryChildren);
+      });
 
     let renderedChildren: JSX.Element;
 
@@ -65,16 +94,20 @@ export const Await = $cmpnt(function Await(props: {
       // An async read may throw before the child tree can be returned. Keep
       // Await's streaming behavior for that case, but never swallow redirects
       // or other errors merely because a sibling registered a pending promise.
-      if (!(error instanceof NotReadyError) || pending.length === 0) {
-        throw error;
+      if (!(error instanceof NotReadyError)) throw error;
+
+      if (error.blocking) {
+        return createSSRDeferred(renderAfterBlocking, [error.promise]) as unknown as JSX.Element;
       }
 
-      return createBoundary();
+      if (pending.length === 0) throw error;
+
+      return createBoundary(pending);
     }
 
     // Keep the first evaluation. Rendering children again here duplicates
     // synchronous side effects and can execute a throwing route guard twice.
-    return pending.length === 0 ? renderedChildren : createBoundary();
+    return pending.length === 0 ? renderedChildren : createBoundary(pending);
   }
 
   return untrack(() => {

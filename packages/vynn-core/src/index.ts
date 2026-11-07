@@ -3,7 +3,7 @@ export { onDestroy } from "./life-cycle/on-destroy";
 
 export { type State, $state } from "./reactivity/$state";
 export { $effect, $renderEffect } from "./reactivity/$effect";
-export { $computed, type Computed } from "./reactivity/$computed";
+export { $computed, type Computed, type ComputedOptions } from "./reactivity/$computed";
 export { $async, type Async, isPending } from "./reactivity/$async";
 export { $store } from "./reactivity/$store";
 export { untrack } from "./reactivity/untrack";

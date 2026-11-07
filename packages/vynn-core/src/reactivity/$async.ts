@@ -41,13 +41,14 @@ type AsyncRecord<T> =
     };
 
 /**
- * Creates a lazy asynchronous resource. Pending reads always suspend, even
- * when the resource has resolved previously.
+ * Creates an eager asynchronous resource. When created inside a Vynn owner,
+ * the getter starts immediately and tracks its reactive dependencies.
  *
- * Resources can be created without an active Vynn owner. Ownerless resources
- * are not automatically disposed. If first read occurs inside a render, they
- * acquire that render's async hydration scope; otherwise they work without SSR
- * serialization or hydration restoration.
+ * Ownerless module-scope resources defer their first execution until first
+ * read so they can acquire the consuming render's request-scoped hydration
+ * context instead of sharing a request across SSR renders.
+ *
+ * Pending reads always suspend, even when the resource has resolved previously.
  */
 export function $async<T>(getter: () => Promise<T>): Async<T> {
   return createAsyncResource(getter, false);
@@ -59,8 +60,8 @@ export function $async<T>(getter: () => Promise<T>): Async<T> {
  * Unlike $async, this retains the last resolved value while a replacement
  * computation is pending. It starts the first computation immediately.
  */
-export function createAsyncDerived<T>(getter: () => Promise<T>): Async<T> {
-  const derived = createAsyncResource(getter, true);
+export function createAsyncDerived<T>(getter: () => Promise<T>, blockSSR = false): Async<T> {
+  const derived = createAsyncResource(getter, true, blockSSR);
 
   // Async-derived state is eager, like an ordinary derived computation.
   // The initial read starts the owned computation; NotReadyError is expected
@@ -79,6 +80,7 @@ export function createAsyncDerived<T>(getter: () => Promise<T>): Async<T> {
 export function createAsyncResource<T>(
   getter: () => Promise<T>,
   retainPrevious: boolean,
+  blockSSR = false,
 ): Async<T> {
   const isLazy = isAsyncGetterFromLazy(getter);
   // Reserve the hydration ID at creation time when a render context exists.
@@ -90,6 +92,8 @@ export function createAsyncResource<T>(
 
   let version = 0;
   let isInitialized = false;
+  let hydrationData: { found: boolean; value: T | undefined } | undefined;
+  let hasReadHydrationData = false;
 
   const initialize = () => {
     if (isInitialized) return;
@@ -113,8 +117,14 @@ export function createAsyncResource<T>(
       $renderEffect(() => {
         transaction(() => {
           const currentVersion = ++version;
-          const hydrationData =
-            isLazy || asyncID === undefined ? undefined : getAsyncValue<T>(asyncID);
+
+          // Read the server snapshot only once. If a dependency suspends while
+          // hydration tracking runs, keep the snapshot for the retry instead
+          // of consuming the ID and accidentally starting a duplicate request.
+          if (!isLazy && asyncID !== undefined && !hasReadHydrationData) {
+            hydrationData = getAsyncValue<T>(asyncID);
+            hasReadHydrationData = true;
+          }
 
           const previousRecord = untrack(() => result.value);
           const previous =
@@ -140,6 +150,21 @@ export function createAsyncResource<T>(
               promise = Promise.resolve(getter());
             }
           } catch (error) {
+            // A getter may depend on another async resource. Keep its pending
+            // promise as the current state and let the tracked dependency
+            // trigger this computation again when it settles.
+            if (error instanceof NotReadyError) {
+              result.value = {
+                status: "pending",
+                promise: error.promise,
+                version: currentVersion,
+                previous,
+                hasPrevious,
+              };
+              return;
+            }
+
+            hydrationData = undefined;
             result.value = {
               status: "rejected",
               error,
@@ -151,9 +176,12 @@ export function createAsyncResource<T>(
           }
 
           if (hydrationData?.found) {
+            const value = hydrationData.value as T;
+            hydrationData = undefined;
+
             result.value = {
               status: "resolved",
-              value: hydrationData.value as T,
+              value,
               version: currentVersion,
             };
             return;
@@ -185,6 +213,20 @@ export function createAsyncResource<T>(
             },
             (error: unknown) => {
               if (currentVersion !== version) return;
+
+              // An async getter converts a synchronous NotReadyError from a
+              // nested resource into a rejected Promise. Preserve the pending
+              // dependency so its tracked update can retry this computation.
+              if (error instanceof NotReadyError) {
+                result.value = {
+                  status: "pending",
+                  promise: error.promise,
+                  version: currentVersion,
+                  previous,
+                  hasPrevious,
+                };
+                return;
+              }
 
               result.value = {
                 status: "rejected",
@@ -218,10 +260,13 @@ export function createAsyncResource<T>(
           return record.previous as T;
         }
 
-        const boundary = getAsyncBoundary();
+        // Route guards must settle before an SSR response starts streaming.
+        // On the client they retain the normal Await integration.
+        const blocking = blockSSR && isServer();
+        const boundary = blocking ? undefined : getAsyncBoundary();
 
         if (boundary) boundary(record.promise);
-        throw new NotReadyError(record.promise);
+        throw new NotReadyError(record.promise, boundary, blocking);
       }
 
       if (record.status === "rejected") {
@@ -244,11 +289,18 @@ export function createAsyncResource<T>(
   };
 
   registerPending(derived, () => {
-    // oxlint-disable
-    if (isServer()) derived.value; // On SSR, make this be handled by renderSSRChildren and defer it.
+    // Preserve SSR read-to-suspend behavior for ownerless resources that are
+    // activated by their first consumer rather than at creation time.
+    if (isServer()) derived.value;
 
     return result.value?.status === "pending";
   });
+
+  // A module-level resource has no request context yet. Keep its first read as
+  // the activation point so SSR can attach the correct request-local ID/data.
+  if (owner !== null || asyncID !== undefined) {
+    initialize();
+  }
 
   return derived;
 }

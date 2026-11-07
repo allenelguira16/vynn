@@ -3,16 +3,93 @@ import { describe, expect, it } from "vitest";
 
 import { ASYNC_DATA_SSR_KEY } from "../src/const";
 import {
+  enterAsyncBoundary,
   getAsyncID,
   getAsyncValue,
   getAsyncValues,
   initializeAsyncContext,
   initializeLazyAsyncScope,
 } from "../src/context/async-context";
-import { getLazyID, initializeLazyContext, initializeLazyScope } from "../src/context/lazy-context";
+import {
+  getLazyID,
+  initializeLazyContext,
+  initializeLazyScope,
+  isPromiseFromLazy,
+  registerPromiseFromLazy,
+  regsterAsyncGetterFromLazy,
+} from "../src/context/lazy-context";
 import { createOwner, disposeOwner, runWithOwner } from "../src/life-cycle/owner";
+import { $computed } from "../src/reactivity/$computed";
+import { isPending } from "../src/reactivity/$async";
+import { NotReadyError } from "../src/reactivity/not-ready-error";
 
 describe("lazy hydration identities", () => {
+  it("keeps lazy component loaders eager without consuming async hydration IDs", async () => {
+    const owner = createOwner(null);
+    const windowValues = window as unknown as Record<string, unknown>;
+    const serverSnapshot = { "lazy:0:0": "server-only-value" };
+    windowValues[ASYNC_DATA_SSR_KEY] = serverSnapshot;
+
+    let executions = 0;
+    const componentExport = () => "component";
+    const loadPromise = Promise.resolve(componentExport);
+    const loadComponent = () => {
+      executions += 1;
+      registerPromiseFromLazy(loadPromise);
+      return loadPromise;
+    };
+    let component: { readonly value: typeof componentExport } | undefined;
+
+    try {
+      runWithOwner(owner, () => {
+        initializeAsyncContext();
+        initializeLazyAsyncScope("0");
+        regsterAsyncGetterFromLazy(loadComponent);
+
+        component = $computed(loadComponent);
+
+        // The function is not declared with async syntax, so $computed must use
+        // its lazy-loader marker to recognize the returned Promise.
+        expect(executions).toBe(1);
+        expect(isPending(component!)).toBe(true);
+        expect(getAsyncValues()).toEqual({});
+
+        // A lazy module load must not consume an ID that belongs to a real
+        // async resource rendered inside the loaded component.
+        expect(getAsyncID()).toBe("lazy:0:0");
+
+        let boundaryPromise: Promise<unknown> | undefined;
+        let readError: unknown;
+
+        enterAsyncBoundary((promise) => {
+          boundaryPromise = promise;
+        });
+
+        try {
+          component!.value;
+        } catch (error) {
+          readError = error;
+        }
+
+        expect(readError).toBeInstanceOf(NotReadyError);
+        expect(boundaryPromise).toBe(loadPromise);
+        expect(isPromiseFromLazy(boundaryPromise!)).toBe(true);
+        expect(windowValues[ASYNC_DATA_SSR_KEY]).toBe(serverSnapshot);
+      });
+
+      await loadPromise;
+
+      runWithOwner(owner, () => {
+        expect(component!.value).toBe(componentExport);
+        expect(isPending(component!)).toBe(false);
+      });
+    } finally {
+      delete windowValues[ASYNC_DATA_SSR_KEY];
+      disposeOwner(owner);
+    }
+  });
+
+
   it("keeps nested lazy IDs stable when sibling parents resolve out of order", () => {
     const root = createOwner(null);
     const firstParent = createOwner(root);

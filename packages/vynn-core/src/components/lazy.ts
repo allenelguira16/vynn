@@ -15,7 +15,7 @@ import {
   regsterAsyncGetterFromLazy,
 } from "../context/lazy-context";
 import { registerSsrModule } from "../context/ssr-module-context";
-import { $async } from "../reactivity/$async";
+import { $computed } from "../reactivity/$computed";
 import { $cmpnt, $nodes } from "../render";
 import { createSSRComment } from "../render/resolve-node";
 
@@ -30,8 +30,8 @@ type ComponentExport<
  * Lazily loads a component.
  *
  * The module-loading promise is shared across all instances created
- * from this lazy declaration. Each instance retains its own $async
- * state so Vynn's existing Await integration remains intact.
+ * from this lazy declaration. Each instance retains its own eager $computed
+ * value so Vynn's existing Await and hydration integration remain intact.
  */
 export function lazy<M extends Record<string, unknown>, K extends keyof M>(
   loader: () => Promise<M>,
@@ -90,7 +90,7 @@ export function lazy<M extends Record<string, unknown>, K extends keyof M = "def
     if (isServer()) registerSsrModule(moduleId);
 
     regsterAsyncGetterFromLazy(loadComponent);
-    const component = $async(loadComponent);
+    const component = $computed(loadComponent);
 
     if (isServer()) {
       return $nodes(() => {

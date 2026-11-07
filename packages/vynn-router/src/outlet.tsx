@@ -3,6 +3,7 @@ import { $computed, $renderEffect, $state, onDestroy, runWithOwner, untrack } fr
 import type { Location, Route } from "./types";
 
 import { RoutePathProvider } from "./context";
+import { isServer } from "./environment";
 import { currentLocation } from "./location";
 import { getRouteParams, joinPaths, matchRoute } from "./path";
 import { commitClientRedirect, isClientRedirect } from "./redirect";
@@ -121,7 +122,7 @@ function RouteView(props: MatchedRoute) {
 
       throw error;
     }
-  });
+  }, { blockSSR: true });
 
   let scheduledRedirect: unknown;
 
@@ -129,7 +130,17 @@ function RouteView(props: MatchedRoute) {
     // Read outside the ambient owner so an enclosing Await cannot claim this
     // router-level decision as part of its page fallback. The async resource
     // itself is still bound to this RouteView's owner.
-    const result = runWithOwner(null, () => allowed.value);
+    let result: RouteGuardResult;
+
+    try {
+      result = runWithOwner(null, () => allowed.value);
+    } catch (error) {
+      // The blocking SSR deferred node already awaits this guard promise.
+      // Suppress the resource settlement effect's duplicate Response throw;
+      // the deferred node will propagate it to the request handler.
+      if (isServer && error instanceof Response) return false;
+      throw error;
+    }
 
     if (result.type === "redirect" && isClientRedirect(result.signal)) {
       if (scheduledRedirect !== result.signal) {

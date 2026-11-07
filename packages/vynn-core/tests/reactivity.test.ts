@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 
+import { ASYNC_DATA_SSR_KEY } from "../src/const";
 import { enterAsyncBoundary, getAsyncValues, initializeAsyncContext } from "../src/context/async-context";
 import { createOwner, disposeOwner, runWithOwner } from "../src/life-cycle/owner";
 import { $async, isPending } from "../src/reactivity/$async";
@@ -80,16 +81,76 @@ describe("$state", () => {
 });
 
 describe("$computed", () => {
-  it("updates synchronously when dependencies change", () => {
+  it("evaluates eagerly, memoizes its value, and updates synchronously", () => {
     const firstName = $state("Ada");
+    let executions = 0;
 
-    const greeting = $computed(() => `Hello, ${firstName.value}!`);
+    const greeting = $computed(() => {
+      executions += 1;
+      return `Hello, ${firstName.value}!`;
+    });
 
+    expect(executions).toBe(1);
     expect(greeting.value).toBe("Hello, Ada!");
+    expect(greeting.value).toBe("Hello, Ada!");
+    expect(executions).toBe(1);
 
     firstName.value = "Grace";
 
+    expect(executions).toBe(2);
     expect(greeting.value).toBe("Hello, Grace!");
+    expect(executions).toBe(2);
+  });
+
+  it("registers a pending async dependency with the consuming Await boundary", async () => {
+    const owner = createOwner(null);
+    let greeting: { readonly value: string } | undefined;
+    let boundaryPromise: Promise<unknown> | undefined;
+
+    try {
+      runWithOwner(owner, () => {
+        initializeAsyncContext();
+
+        const name = $async(async () => "Ada");
+        greeting = $computed(() => `Hello, ${name.value}!`);
+      });
+
+      runWithOwner(owner, () => {
+        enterAsyncBoundary((promise) => {
+          boundaryPromise = promise;
+        });
+
+        expect(() => greeting!.value).toThrow(NotReadyError);
+        expect(isPending(greeting!)).toBe(true);
+      });
+
+      expect(boundaryPromise).toBeDefined();
+      await boundaryPromise;
+
+      runWithOwner(owner, () => {
+        expect(greeting!.value).toBe("Hello, Ada!");
+        expect(isPending(greeting!)).toBe(false);
+      });
+    } finally {
+      disposeOwner(owner);
+    }
+  });
+
+  it("starts asynchronous computations immediately", async () => {
+    let executions = 0;
+
+    const doubled = $computed(async () => {
+      executions += 1;
+      return 42;
+    });
+
+    expect(executions).toBe(1);
+    expect(isPending(doubled)).toBe(true);
+
+    await Promise.resolve();
+
+    expect(doubled.value).toBe(42);
+    expect(isPending(doubled)).toBe(false);
   });
 });
 
@@ -177,7 +238,7 @@ describe("$store", () => {
 });
 
 describe("$async", () => {
-  it("does not execute until the value is first read", async () => {
+  it("executes immediately when created inside a Vynn owner", async () => {
     const owner = createOwner();
 
     try {
@@ -190,9 +251,8 @@ describe("$async", () => {
           return "test";
         });
 
-        expect(executions).toBe(0);
-        expect(isPending(data)).toBe(false);
-        expect(executions).toBe(0);
+        expect(executions).toBe(1);
+        expect(isPending(data)).toBe(true);
 
         let pendingPromise: Promise<unknown> | undefined;
 
@@ -219,7 +279,47 @@ describe("$async", () => {
     }
   });
 
-  it("preserves a value assigned before the first read", async () => {
+  it("retries an eager async resource when another async resource it reads resolves", async () => {
+    const owner = createOwner();
+
+    try {
+      await runWithOwner(owner, async () => {
+        initializeAsyncContext();
+
+        const dependency = $async(async () => 21);
+        let executions = 0;
+
+        const doubled = $async(async () => {
+          executions += 1;
+          return dependency.value * 2;
+        });
+
+        expect(executions).toBe(1);
+        expect(isPending(dependency)).toBe(true);
+        expect(isPending(doubled)).toBe(true);
+
+        let dependencyPromise: Promise<unknown> | undefined;
+
+        try {
+          dependency.value;
+        } catch (error) {
+          expect(error).toBeInstanceOf(NotReadyError);
+          dependencyPromise = (error as NotReadyError).promise;
+        }
+
+        await dependencyPromise;
+        await Promise.resolve();
+
+        expect(doubled.value).toBe(42);
+        expect(isPending(doubled)).toBe(false);
+        expect(executions).toBe(2);
+      });
+    } finally {
+      disposeOwner(owner);
+    }
+  });
+
+  it("keeps a manual assignment over an eager request", async () => {
     const owner = createOwner();
 
     try {
@@ -232,13 +332,127 @@ describe("$async", () => {
           return "getter value";
         });
 
+        expect(executions).toBe(1);
+        expect(isPending(data)).toBe(true);
+
         data.value = "manual value";
 
         expect(data.value).toBe("manual value");
-        expect(executions).toBe(0);
+        expect(executions).toBe(1);
         expect(isPending(data)).toBe(false);
+
+        // The older in-flight result must not overwrite the manual value.
+        await Promise.resolve();
+
+        expect(data.value).toBe("manual value");
       });
     } finally {
+      disposeOwner(owner);
+    }
+  });
+
+  it("restores an eager resource from its SSR snapshot without repeating the request", async () => {
+    const owner = createOwner(null);
+    const windowValues = window as unknown as Record<string, unknown>;
+    windowValues[ASYNC_DATA_SSR_KEY] = {
+      "root:0": 10,
+    };
+
+    let source: { value: number } | undefined;
+    let data: { value: number } | undefined;
+    let executions = 0;
+
+    try {
+      runWithOwner(owner, () => {
+        initializeAsyncContext();
+
+        source = $state(1);
+        data = $async(() => {
+          executions += 1;
+          return Promise.resolve(source!.value);
+        });
+
+        // The tracking pass runs eagerly, but hydration supplies the value
+        // and prevents the original request from being repeated.
+        expect(executions).toBe(1);
+        expect(data!.value).toBe(10);
+      });
+
+      expect(windowValues[ASYNC_DATA_SSR_KEY]).toEqual({});
+
+      runWithOwner(owner, () => {
+        source!.value = 2;
+      });
+
+      await Promise.resolve();
+
+      runWithOwner(owner, () => {
+        expect(data!.value).toBe(2);
+      });
+      expect(executions).toBe(2);
+    } finally {
+      delete windowValues[ASYNC_DATA_SSR_KEY];
+      disposeOwner(owner);
+    }
+  });
+
+  it("retains its hydration snapshot while an async dependency is still pending", async () => {
+    const owner = createOwner(null);
+    const windowValues = window as unknown as Record<string, unknown>;
+    windowValues[ASYNC_DATA_SSR_KEY] = {
+      "root:1": 99,
+    };
+
+    let dependency: { value: number } | undefined;
+    let derived: { value: number } | undefined;
+    let dependencyRequests = 0;
+    let derivedGetterRuns = 0;
+
+    try {
+      runWithOwner(owner, () => {
+        initializeAsyncContext();
+
+        dependency = $async(async () => {
+          dependencyRequests += 1;
+          return 2;
+        });
+
+        derived = $async(() => {
+          derivedGetterRuns += 1;
+          return Promise.resolve(dependency!.value * 2);
+        });
+
+        // The derived hydration pass waits on the dependency while retaining
+        // its own serialized value for the retry.
+        expect(isPending(dependency!)).toBe(true);
+        expect(isPending(derived!)).toBe(true);
+      });
+
+      let dependencyPromise: Promise<unknown> | undefined;
+
+      runWithOwner(owner, () => {
+        try {
+          dependency!.value;
+        } catch (error) {
+          expect(error).toBeInstanceOf(NotReadyError);
+          dependencyPromise = (error as NotReadyError).promise;
+        }
+      });
+
+      await dependencyPromise;
+      await Promise.resolve();
+
+      runWithOwner(owner, () => {
+        expect(dependency!.value).toBe(2);
+        expect(derived!.value).toBe(99);
+        expect(isPending(derived!)).toBe(false);
+      });
+
+      expect(dependencyRequests).toBe(1);
+      expect(derivedGetterRuns).toBe(2);
+      expect(windowValues[ASYNC_DATA_SSR_KEY]).toEqual({});
+    } finally {
+      delete windowValues[ASYNC_DATA_SSR_KEY];
       disposeOwner(owner);
     }
   });
