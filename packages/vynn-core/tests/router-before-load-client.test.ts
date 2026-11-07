@@ -138,10 +138,11 @@ describe("client router beforeLoad", () => {
     unmount();
   });
 
-  it("ignores a redirect from an outdated guard after the route location changes", async () => {
+  it("ignores a redirect from a guard after its route view is disposed", async () => {
     history.replaceState(null, "", "/users/1");
 
     const guardResolvers = new Map<string, () => void>();
+    const signals: AbortSignal[] = [];
     const scheduledFrames: FrameRequestCallback[] = [];
     requestAnimationFrameDescriptor = Object.getOwnPropertyDescriptor(
       window,
@@ -158,7 +159,8 @@ describe("client router beforeLoad", () => {
     const routes: Route[] = [
       {
         path: "/users/:id",
-        beforeLoad: async ({ params }) => {
+        beforeLoad: async ({ params, signal }) => {
+          signals.push(signal);
           await new Promise<void>((resolve) => {
             guardResolvers.set(params.id!, resolve);
           });
@@ -167,7 +169,11 @@ describe("client router beforeLoad", () => {
             redirect("/stale");
           }
         },
-        component: () => textNode("p", "current user"),
+        component: () => textNode("p", "user route"),
+      },
+      {
+        path: "/settings",
+        component: () => textNode("p", "current settings"),
       },
     ];
 
@@ -186,41 +192,41 @@ describe("client router beforeLoad", () => {
     await Promise.resolve();
     expect(guardResolvers.has("1")).toBe(true);
 
-    navigate("/users/2");
+    // A different matched route disposes the old RouteView and aborts its guard.
+    navigate("/settings");
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
-    expect(guardResolvers.has("2")).toBe(true);
 
-    // Resolve the older guard first. Its redirect must be discarded.
+    expect(signals[0].aborted).toBe(true);
+    expect(host.textContent).toContain("current settings");
+
+    // Resolving the disposed guard must not commit its stale redirect.
     guardResolvers.get("1")!();
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
 
-    expect(window.location.pathname).toBe("/users/2");
+    expect(window.location.pathname).toBe("/settings");
     expect(scheduledFrames).toHaveLength(0);
-
-    guardResolvers.get("2")!();
-    await new Promise<void>((resolve) => setTimeout(resolve, 0));
-
-    expect(window.location.pathname).toBe("/users/2");
-    expect(host.textContent).toContain("current user");
 
     unmount();
   });
-  it("runs beforeLoad once per atomic navigation and aborts the previous guard", async () => {
+
+  it("does not rerun beforeLoad when params or search change within the same matched route", async () => {
     history.replaceState(null, "", "/users/1?tab=old");
 
     const signals: AbortSignal[] = [];
+    const guardLocations: string[] = [];
     const guardDependency = $state(0);
     let guardRuns = 0;
 
     const routes: Route[] = [
       {
         path: "/users/:id",
-        beforeLoad: async ({ signal }) => {
+        beforeLoad: async ({ signal, location }) => {
           // Reading reactive state inside a guard must not subscribe the
           // navigation resource or cause the guard to restart.
           expect(Number.isFinite(guardDependency.value)).toBe(true);
           guardRuns++;
           signals.push(signal);
+          guardLocations.push(`${location.pathname}${location.search}`);
 
           await new Promise<void>((resolve) => {
             signal.addEventListener("abort", () => resolve(), { once: true });
@@ -253,26 +259,25 @@ describe("client router beforeLoad", () => {
     expect(guardRuns).toBe(1);
     expect(signals[0].aborted).toBe(false);
 
-    // Both pathname and search change in one navigation. The route view keeps
-    // its owner while the existing $async guard revalidates against the new URL.
+    // Params and search updates keep the same matched RouteView alive.
+    // beforeLoad receives the initial location and is not revalidated in place.
     navigate("/users/2?tab=new");
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
 
-    expect(guardRuns).toBe(2);
-    expect(signals[0].aborted).toBe(true);
-    expect(signals[1].aborted).toBe(false);
+    expect(guardRuns).toBe(1);
+    expect(signals[0].aborted).toBe(false);
 
-    // A query-only navigation must also create exactly one new guard owner.
+    // A query-only navigation also leaves the current guard untouched.
     navigate("/users/2?tab=next");
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
 
-    expect(guardRuns).toBe(3);
-    expect(signals[1].aborted).toBe(true);
-    expect(signals[2].aborted).toBe(false);
+    expect(guardRuns).toBe(1);
+    expect(signals[0].aborted).toBe(false);
+    expect(guardLocations).toEqual(["/users/1?tab=old"]);
 
     unmount();
 
-    expect(signals[2].aborted).toBe(true);
+    expect(signals[0].aborted).toBe(true);
   });
 
 });

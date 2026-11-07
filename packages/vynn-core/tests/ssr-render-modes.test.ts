@@ -2,14 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import type { JSX } from "../src/types/jsx";
 
+import { vynnAppPlugin } from "../../vite-plugin/src/plugins/app.ts";
 import {
   createAuthoredServerEntry,
   createClientShell,
   createServerEntry,
   createSsrHandlerCode,
 } from "../../vite-plugin/src/plugins/app/documents.ts";
-import { vynnAppPlugin } from "../../vite-plugin/src/plugins/app.ts";
-
 import { registerSsrModule } from "../src/context/ssr-module-context";
 import { createOwner, disposeOwner, getOwner, runWithOwner } from "../src/life-cycle/owner";
 import { $head, $headTmpl } from "../src/render/$head";
@@ -87,11 +86,11 @@ describe("renderToServer modes", () => {
 
   it("creates an independent root Owner instead of reusing the caller Owner", () => {
     const parent = createOwner();
-    let renderOwner: ReturnType<typeof getOwner> = null;
+    let renderOwner!: ReturnType<typeof getOwner>;
 
     const rendered = runWithOwner(parent, () =>
       renderToServer(() => {
-        renderOwner = getOwner();
+        renderOwner = getOwner()!;
         return "Independent render";
       }, "sync"),
     );
@@ -107,8 +106,8 @@ describe("renderToServer modes", () => {
 
   it("does not attach the render Owner to a nested caller Owner", () => {
     const root = createOwner();
-    let child: ReturnType<typeof getOwner> = null;
-    let renderOwner: ReturnType<typeof getOwner> = null;
+    let child!: NonNullable<ReturnType<typeof getOwner>>;
+    let renderOwner!: NonNullable<ReturnType<typeof getOwner>>;
 
     runWithOwner(root, () => {
       child = createOwner();
@@ -116,17 +115,17 @@ describe("renderToServer modes", () => {
 
     const rendered = runWithOwner(child, () =>
       renderToServer(() => {
-        renderOwner = getOwner();
+        renderOwner = getOwner()!;
         return "Nested caller";
       }, "sync"),
     );
 
     expect(rendered.body).toContain("Nested caller");
     expect(renderOwner).not.toBe(child);
-    expect(renderOwner?.parent).toBeNull();
-    expect(renderOwner?.disposed).toBe(true);
-    expect(child).not.toBeNull();
-    expect(child?.disposed).not.toBe(true);
+    expect(renderOwner.parent).toBeNull();
+    expect(renderOwner.disposed).toBe(true);
+    expect(child.parent).toBe(root);
+    expect(child.disposed).not.toBe(true);
 
     disposeOwner(root);
   });
@@ -146,9 +145,9 @@ describe("renderToServer modes", () => {
   });
 
   it("uses the configured SSR mode in generated server entries", () => {
-    const syncEntry = createServerEntry("/src/App.tsx", [], "sync");
-    const asyncEntry = createServerEntry("/src/App.tsx", [], "async");
-    const defaultEntry = createServerEntry("/src/App.tsx", []);
+    const syncEntry = createServerEntry("/src/App.tsx", "sync");
+    const asyncEntry = createServerEntry("/src/App.tsx", "async");
+    const defaultEntry = createServerEntry("/src/App.tsx");
 
     expect(syncEntry).toContain('renderToServer(() => App({ url }), "sync")');
     expect(asyncEntry).toContain('renderToServer(() => App({ url }), "async")');
@@ -173,7 +172,9 @@ describe("renderToServer modes", () => {
       ssrManifest: null,
     });
 
-    expect(entry).toContain('export function render(url) { return serverModule.render(url, "stream"); }');
+    expect(entry).toContain(
+      'export function render(url) { return serverModule.render(url, "stream"); }',
+    );
     expect(entry).not.toContain("scope");
     expect(handler).not.toContain("runWithSsrContext");
     expect(handler).toContain("await render(url.pathname + url.search)");
@@ -197,15 +198,9 @@ describe("renderToServer modes", () => {
       dev: true,
     });
 
-    expect(productionShell).toContain(
-      '<link rel="stylesheet" href="/assets/app.css">',
-    );
-    expect(productionShell).toContain(
-      '<script type="module" src="/assets/client.js"></script>',
-    );
-    expect(developmentShell).toContain(
-      '<script type="module" src="/@vite/client"></script>',
-    );
+    expect(productionShell).toContain('<link rel="stylesheet" href="/assets/app.css">');
+    expect(productionShell).toContain('<script type="module" src="/assets/client.js"></script>');
+    expect(developmentShell).toContain('<script type="module" src="/@vite/client"></script>');
     expect(productionShell).not.toContain("vynn:internal:");
     expect(developmentShell).not.toContain("vynn:internal:");
     expect(productionShell).not.toContain("_$int");
