@@ -1,4 +1,5 @@
 import { createAsyncDerived } from "./$async";
+import { getOwner, runWithOwner } from "../life-cycle/owner";
 import { $renderEffect } from "./$effect";
 import { $state } from "./$state";
 import { isAsyncFunction } from "./is-async-function";
@@ -9,43 +10,64 @@ export type Computed<T> = {
 };
 
 export type ComputedOptions = {
-  /** Keep an asynchronous computation outside streaming SSR Await boundaries. */
-  blockSSR?: boolean;
+  /**
+   * Defer the initial evaluation until the computed value is first read.
+   * Async lazy computations resolve their initial value before SSR streaming.
+   */
+  lazy?: boolean;
 };
 
 /**
- * Creates an eager read-only reactive value derived from other reactive values.
+ * Creates a read-only reactive value derived from other reactive values.
  *
- * Synchronous getters are memoized and rerun when dependencies change.
- * Async getters create an eager async-derived value that tracks dependencies
- * before the first await and retains its last resolved value during refresh.
+ * By default, the initial computation runs immediately. Setting lazy to true
+ * defers that first evaluation until the value is read. After initialization,
+ * both modes track dependencies and update reactively.
+ *
+ * Async getters retain their last resolved value while refreshing.
  *
  * @template T The computed value type.
  * @param getter A synchronous or asynchronous derivation.
- * @param options Configuration for async computation behavior during SSR.
  * @returns A read-only reactive value containing the derived result.
  */
-export function $computed<T>(getter: () => Promise<T>, options?: ComputedOptions): Computed<T>;
+export function $computed<T>(
+  getter: () => Promise<T>,
+  options?: ComputedOptions,
+): Computed<T>;
 export function $computed<T>(getter: () => T, options?: ComputedOptions): Computed<T>;
 export function $computed<T>(
   getter: () => T | Promise<T>,
   options: ComputedOptions = {},
 ): Computed<T> {
+  const lazy = options.lazy ?? false;
+
   if (!isAsyncFunction(getter)) {
     const resolve = $state<T>();
+    const owner = getOwner();
+    let initialized = false;
 
-    $renderEffect(() => {
-      resolve.value = getter() as T;
-    });
+    const initialize = () => {
+      if (initialized) return;
+      initialized = true;
+
+      runWithOwner(owner, () =>
+        $renderEffect(() => {
+          resolve.value = getter() as T;
+        }),
+      );
+    };
+
+    if (!lazy) initialize();
 
     return {
       get value() {
+        initialize();
         return resolve.value as T;
       },
     };
   }
 
-  const derived = createAsyncDerived(getter as () => Promise<T>, options.blockSSR);
+  const derived = createAsyncDerived(getter as () => Promise<T>, lazy);
   const computed: Computed<T> = {
     get value() {
       return derived.value;

@@ -122,7 +122,7 @@ function RouteView(props: MatchedRoute) {
 
       throw error;
     }
-  }, { blockSSR: true });
+  }, { lazy: true });
 
   let scheduledRedirect: unknown;
 

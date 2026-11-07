@@ -74,7 +74,7 @@ describe("SSR redirects under Await", () => {
         const guard = $computed(async () => {
           await guardPromise;
           return "allowed";
-        }, { blockSSR: true });
+        }, { lazy: true });
 
         return $nodes(() =>
           Await({
@@ -114,7 +114,7 @@ describe("SSR redirects under Await", () => {
     await expect(firstChunk).rejects.toBe(response);
   });
 
-  it("propagates redirects thrown after awaiting a guard in stream mode", async () => {
+  it("propagates redirects thrown after awaiting a guard in async mode", async () => {
     let guardRuns = 0;
     const routes = createRoutes(async () => {
       guardRuns++;
@@ -122,16 +122,13 @@ describe("SSR redirects under Await", () => {
       redirect("/params/1?id=1");
     });
 
-    const rendered = renderToServer(
-      () => Router({ url: "/redirect", routes }) as unknown as JSX.Element,
-      "stream",
-    );
-    const reader = rendered.body.getReader();
-
     let response: unknown;
 
     try {
-      await reader.read();
+      await renderToServer(
+        () => Router({ url: "/redirect", routes }) as unknown as JSX.Element,
+        "async",
+      );
     } catch (error) {
       response = error;
     }

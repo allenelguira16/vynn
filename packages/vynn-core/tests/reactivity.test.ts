@@ -103,6 +103,56 @@ describe("$computed", () => {
     expect(executions).toBe(2);
   });
 
+  it("defers synchronous computations until their first read when lazy", () => {
+    const firstName = $state("Ada");
+    let executions = 0;
+
+    const greeting = $computed(() => {
+      executions += 1;
+      return `Hello, ${firstName.value}!`;
+    }, { lazy: true });
+
+    expect(executions).toBe(0);
+    expect(greeting.value).toBe("Hello, Ada!");
+    expect(executions).toBe(1);
+
+    firstName.value = "Grace";
+
+    expect(executions).toBe(2);
+    expect(greeting.value).toBe("Hello, Grace!");
+  });
+
+  it("binds lazy synchronous computations to their creation owner", () => {
+    const creator = createOwner(null);
+    const consumer = createOwner(null);
+    const count = $state(0);
+    let executions = 0;
+    let doubled: { readonly value: number } | undefined;
+
+    try {
+      runWithOwner(creator, () => {
+        doubled = $computed(() => {
+          executions += 1;
+          return count.value * 2;
+        }, { lazy: true });
+      });
+
+      runWithOwner(consumer, () => {
+        expect(doubled!.value).toBe(0);
+      });
+
+      expect(executions).toBe(1);
+
+      disposeOwner(creator);
+      count.value = 1;
+
+      expect(executions).toBe(1);
+    } finally {
+      disposeOwner(creator);
+      disposeOwner(consumer);
+    }
+  });
+
   it("registers a pending async dependency with the consuming Await boundary", async () => {
     const owner = createOwner(null);
     let greeting: { readonly value: string } | undefined;
@@ -152,6 +202,55 @@ describe("$computed", () => {
 
     expect(doubled.value).toBe(42);
     expect(isPending(doubled)).toBe(false);
+  });
+
+  it("defers async computations until their first read when lazy", async () => {
+    const owner = createOwner(null);
+    let executions = 0;
+    let resolveValue!: (value: number) => void;
+    let boundaryPromise: Promise<unknown> | undefined;
+    let doubled: { readonly value: number } | undefined;
+
+    try {
+      runWithOwner(owner, () => {
+        initializeAsyncContext();
+
+        doubled = $computed(
+          async () => {
+            executions += 1;
+            return new Promise<number>((resolve) => {
+              resolveValue = resolve;
+            });
+          },
+          { lazy: true },
+        );
+      });
+
+      expect(executions).toBe(0);
+      expect(isPending(doubled!)).toBe(false);
+
+      runWithOwner(owner, () => {
+        enterAsyncBoundary((promise) => {
+          boundaryPromise = promise;
+        });
+
+        expect(() => doubled!.value).toThrow(NotReadyError);
+      });
+
+      expect(executions).toBe(1);
+      expect(boundaryPromise).toBeDefined();
+      expect(isPending(doubled!)).toBe(true);
+
+      resolveValue(42);
+      await boundaryPromise;
+
+      runWithOwner(owner, () => {
+        expect(doubled!.value).toBe(42);
+        expect(isPending(doubled!)).toBe(false);
+      });
+    } finally {
+      disposeOwner(owner);
+    }
   });
 
   it("marks the async promise returned by a lazy computed getter", async () => {

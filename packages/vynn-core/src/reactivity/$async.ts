@@ -60,32 +60,45 @@ export function $async<T>(getter: () => Promise<T>): Async<T> {
  * Unlike $async, this retains the last resolved value while a replacement
  * computation is pending. It starts the first computation immediately.
  */
-export function createAsyncDerived<T>(getter: () => Promise<T>, blockSSR = false): Async<T> {
-  const derived = createAsyncResource(getter, true, blockSSR);
+export function createAsyncDerived<T>(
+  getter: () => Promise<T>,
+  lazy = false,
+): Async<T> {
+  const derived = createAsyncResource(getter, true, {
+    lazy,
+    blockOnServer: lazy,
+  });
 
-  // Async-derived state is eager, like an ordinary derived computation.
-  // The initial read starts the owned computation; NotReadyError is expected
-  // until the first Promise settles.
-  try {
-    untrack(() => derived.value);
-  } catch (error) {
-    if (!(error instanceof NotReadyError)) {
-      throw error;
+  // Async-derived state is eager by default. Lazy computations defer resource
+  // initialization until their first value read.
+  if (!lazy) {
+    try {
+      untrack(() => derived.value);
+    } catch (error) {
+      if (!(error instanceof NotReadyError)) {
+        throw error;
+      }
     }
   }
 
   return derived;
 }
 
+type AsyncResourceOptions = {
+  lazy?: boolean;
+  blockOnServer?: boolean;
+};
+
 export function createAsyncResource<T>(
   getter: () => Promise<T>,
   retainPrevious: boolean,
-  blockSSR = false,
+  options: AsyncResourceOptions = {},
 ): Async<T> {
+  const { lazy = false, blockOnServer = false } = options;
   const isLazy = isAsyncGetterFromLazy(getter);
   // Reserve the hydration ID at creation time when a render context exists.
   // Module-level resources acquire it when first read inside a render instead.
-  let asyncID = isLazy ? undefined : getAsyncIDIfAvailable();
+  let asyncID = isLazy || lazy ? undefined : getAsyncIDIfAvailable();
   let asyncValues = getAsyncValues();
   const owner = getOwner();
   const result = createCell<AsyncRecord<T> | undefined>(undefined);
@@ -261,9 +274,9 @@ export function createAsyncResource<T>(
           return record.previous as T;
         }
 
-        // Route guards must settle before an SSR response starts streaming.
-        // On the client they retain the normal Await integration.
-        const blocking = blockSSR && isServer();
+        // Lazy async-derived values must settle their initial server read
+        // before streaming. On the client they retain normal Await integration.
+        const blocking = blockOnServer && isServer();
         const boundary = blocking ? undefined : getAsyncBoundary();
 
         if (boundary) boundary(record.promise);
@@ -293,14 +306,14 @@ export function createAsyncResource<T>(
     // Preserve SSR read-to-suspend behavior for ownerless resources that are
     // activated by their first consumer rather than at creation time.
     // oxlint-disable-next-line no-unused-expressions
-    if (isServer()) derived.value;
+    if (isServer() && !lazy) derived.value;
 
     return result.value?.status === "pending";
   });
 
   // A module-level resource has no request context yet. Keep its first read as
   // the activation point so SSR can attach the correct request-local ID/data.
-  if (owner !== null || asyncID !== undefined) {
+  if (!lazy && (owner !== null || asyncID !== undefined)) {
     initialize();
   }
 
