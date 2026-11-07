@@ -5,7 +5,7 @@ import {
   getAsyncValues,
 } from "../context/async-context";
 import { isServer } from "../context/is-server-context";
-import { isAsyncGetterFromLazy } from "../context/lazy-context";
+import { isAsyncGetterFromLazy, registerPromiseFromLazy } from "../context/lazy-context";
 import { getOwner, runWithOwner } from "../life-cycle/owner";
 import { withFakeAsyncApis } from "./$async.util";
 import { $renderEffect } from "./$effect";
@@ -148,6 +148,7 @@ export function createAsyncResource<T>(
               withFakeAsyncApis(getter);
             } else {
               promise = Promise.resolve(getter());
+              if (isLazy && !isServer()) registerPromiseFromLazy(promise);
             }
           } catch (error) {
             // A getter may depend on another async resource. Keep its pending
@@ -291,6 +292,7 @@ export function createAsyncResource<T>(
   registerPending(derived, () => {
     // Preserve SSR read-to-suspend behavior for ownerless resources that are
     // activated by their first consumer rather than at creation time.
+    // oxlint-disable-next-line no-unused-expressions
     if (isServer()) derived.value;
 
     return result.value?.status === "pending";

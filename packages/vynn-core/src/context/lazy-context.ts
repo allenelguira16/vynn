@@ -49,7 +49,7 @@ export function initializeLazyScope(lazyID: string): void {
 
 // LAZY PROMISES
 
-const promisesInLazy = new Set<Promise<unknown>>();
+const promisesInLazy = new WeakSet<Promise<unknown>>();
 
 export function registerPromiseFromLazy(promise: Promise<unknown>) {
   promisesInLazy.add(promise);

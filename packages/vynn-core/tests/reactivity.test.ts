@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { ASYNC_DATA_SSR_KEY } from "../src/const";
 import { enterAsyncBoundary, getAsyncValues, initializeAsyncContext } from "../src/context/async-context";
+import { isPromiseFromLazy, regsterAsyncGetterFromLazy } from "../src/context/lazy-context";
 import { createOwner, disposeOwner, runWithOwner } from "../src/life-cycle/owner";
 import { $async, isPending } from "../src/reactivity/$async";
 import { $computed } from "../src/reactivity/$computed";
@@ -151,6 +152,46 @@ describe("$computed", () => {
 
     expect(doubled.value).toBe(42);
     expect(isPending(doubled)).toBe(false);
+  });
+
+  it("marks the async promise returned by a lazy computed getter", async () => {
+    const owner = createOwner(null);
+    let value: { readonly value: number } | undefined;
+    let resolveValue!: (value: number) => void;
+    let boundaryPromise: Promise<unknown> | undefined;
+
+    const getter = async () =>
+      new Promise<number>((resolve) => {
+        resolveValue = resolve;
+      });
+
+    try {
+      runWithOwner(owner, () => {
+        initializeAsyncContext();
+        regsterAsyncGetterFromLazy(getter);
+        value = $computed(getter);
+      });
+
+      runWithOwner(owner, () => {
+        enterAsyncBoundary((promise) => {
+          boundaryPromise = promise;
+        });
+
+        expect(() => value!.value).toThrow(NotReadyError);
+      });
+
+      expect(boundaryPromise).toBeDefined();
+      expect(isPromiseFromLazy(boundaryPromise!)).toBe(true);
+
+      resolveValue(42);
+      await boundaryPromise;
+
+      runWithOwner(owner, () => {
+        expect(value!.value).toBe(42);
+      });
+    } finally {
+      disposeOwner(owner);
+    }
   });
 });
 

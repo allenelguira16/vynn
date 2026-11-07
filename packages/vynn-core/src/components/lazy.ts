@@ -11,7 +11,6 @@ import { isServer } from "../context/is-server-context";
 import {
   getLazyID,
   initializeLazyScope,
-  registerPromiseFromLazy,
   regsterAsyncGetterFromLazy,
 } from "../context/lazy-context";
 import { registerSsrModule } from "../context/ssr-module-context";
@@ -50,34 +49,15 @@ export function lazy<M extends Record<string, unknown>, K extends keyof M = "def
 ): ComponentExport<M, K> {
   type Component = ComponentExport<M, K>;
 
-  let loadPromise: Promise<Component> | undefined;
+  async function loadComponent(): Promise<Component> {
+    const module = await loader();
+    const component = module[namedExport] as Component | undefined;
 
-  function loadComponent(): Promise<Component> {
-    if (loadPromise) {
-      return loadPromise;
+    if (typeof component !== "function") {
+      throw new Error(`[vynn]: lazy() export "${String(namedExport)}" is not a component.`);
     }
 
-    let modulePromise: Promise<M>;
-
-    try {
-      modulePromise = loader();
-    } catch (error) {
-      modulePromise = Promise.reject(error);
-    }
-
-    loadPromise = Promise.resolve(modulePromise).then(async (module) => {
-      const component = module[namedExport];
-
-      if (typeof component !== "function") {
-        throw new Error(`[vynn]: lazy() export "${String(namedExport)}" is not a component.`);
-      }
-
-      return component as Component;
-    });
-
-    if (!isServer()) registerPromiseFromLazy(loadPromise);
-
-    return loadPromise;
+    return component;
   }
 
   return $cmpnt(function LazyComponent(props: Parameters<Component>[0]): JSX.Element {
