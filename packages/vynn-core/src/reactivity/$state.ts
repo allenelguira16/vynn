@@ -1,5 +1,6 @@
-import { track, trigger } from "./track";
-import { getCurrentTransaction, transaction } from "./transaction";
+import { createAsyncDerived } from "./$async";
+import { createCell } from "./cell";
+import { isAsyncFunction } from "./is-async-function";
 
 export type State<T> = {
   value: T;
@@ -8,57 +9,29 @@ export type State<T> = {
 /**
  * Creates a reactive state value.
  *
- * Reading `value` tracks the current reactive computation, and writing
- * `value` triggers updates when the value changes.
+ * Passing an async function creates writable async-derived state. Reactive
+ * dependencies read before the first await trigger a refresh. The latest
+ * resolved value remains writable through the same `value` property.
  *
- * Writes made outside an existing transaction are automatically wrapped
- * in a transaction.
+ * Ordinary values, including synchronous function values, remain ordinary
+ * state.
  *
- * @template T The type of the state value.
- * @param initialValue The initial value of the state.
+ * @template T The state value type.
+ * @param initialValue The initial value or async initializer.
  * @returns A reactive state object containing the current value.
  */
+export function $state<T>(initialValue: () => Promise<T>): State<T>;
+
 export function $state<T>(initialValue: T): State<T>;
 
 export function $state<T = undefined>(): State<T | undefined>;
 
-export function $state<T>(initialValue?: T): State<T | undefined> {
-  const state = {
-    value: initialValue,
-  };
+export function $state<T>(
+  initialValue?: T | (() => Promise<T>),
+): State<T | undefined> {
+  if (isAsyncFunction(initialValue)) {
+    return createAsyncDerived(initialValue as () => Promise<T>) as unknown as State<T | undefined>;
+  }
 
-  return new Proxy(state, {
-    get(target, key, receiver) {
-      track(target, key);
-      return Reflect.get(target, key, receiver);
-    },
-
-    set(target, key, newValue, receiver) {
-      const oldValue = target[key as keyof typeof target];
-
-      const write = () => {
-        const result = Reflect.set(target, key, newValue, receiver);
-
-        if (oldValue !== newValue) {
-          trigger(target, key);
-        }
-
-        return result;
-      };
-
-      // Already inside a transaction.
-      if (getCurrentTransaction()) {
-        return write();
-      }
-
-      // Automatically create a transaction for standalone writes.
-      let result!: boolean;
-
-      transaction(() => {
-        result = write();
-      });
-
-      return result;
-    },
-  });
+  return createCell(initialValue) as unknown as State<T | undefined>;
 }

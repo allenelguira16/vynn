@@ -50,7 +50,6 @@ export function lazy<M extends Record<string, unknown>, K extends keyof M = "def
 ): ComponentExport<M, K> {
   type Component = ComponentExport<M, K>;
 
-  let cachedComponent: Component | undefined;
   let loadPromise: Promise<Component> | undefined;
 
   function loadComponent(): Promise<Component> {
@@ -95,13 +94,9 @@ export function lazy<M extends Record<string, unknown>, K extends keyof M = "def
 
     if (isServer()) {
       return $nodes(() => {
-        if (!cachedComponent) {
-          cachedComponent = component.value;
-        }
-
         return [
           createSSRComment(`${LAZY_START_SSR_MARKER}:${lazyID}`),
-          cachedComponent(props),
+          component.value(props),
           createSSRComment(`${LAZY_END_SSR_MARKER}:${lazyID}`),
         ] as JSX.Element;
       });
@@ -113,11 +108,7 @@ export function lazy<M extends Record<string, unknown>, K extends keyof M = "def
     // every later retry must capture this lazy instance's independent queues.
     return withServerRenderedLazy(lazyID, () =>
       $nodes(() => {
-        if (!cachedComponent) {
-          cachedComponent = component.value;
-        }
-
-        const rendered = cachedComponent(props);
+        const rendered = component.value(props);
         finishServerRenderedLazy(lazyID);
         return rendered;
       }, existingRange),

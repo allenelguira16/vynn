@@ -1,4 +1,4 @@
-import { $async, $renderEffect, $state, onDestroy, runWithOwner, untrack } from "vynn";
+import { $computed, $renderEffect, $state, onDestroy, runWithOwner, untrack } from "vynn";
 
 import type { Location, Route } from "./types";
 
@@ -65,7 +65,7 @@ function RouteView(props: MatchedRoute) {
   // unfinished beforeLoad operation without reaching into Vynn's owner internals.
   onDestroy(() => activeGuardController?.abort());
 
-  const allowed = $async<RouteGuardResult>(async () => {
+  const allowed = $computed<RouteGuardResult>(async () => {
     const revision = ++guardRevision;
 
     // A location change reruns this resource instead of replacing RouteView.
@@ -177,10 +177,7 @@ export function RouteOutlet(props: { routes: Route[]; parentPath?: string }) {
     };
     const next = findMatch(props.routes, location, props.parentPath ?? "");
 
-    if (
-      previousMatch?.route === next?.route &&
-      previousMatch?.fullPath === next?.fullPath
-    ) {
+    if (previousMatch?.route === next?.route && previousMatch?.fullPath === next?.fullPath) {
       return;
     }
 

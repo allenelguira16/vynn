@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 
-import { initializeAsyncContext } from "../src/context/async-context";
+import { enterAsyncBoundary, getAsyncValues, initializeAsyncContext } from "../src/context/async-context";
 import { createOwner, disposeOwner, runWithOwner } from "../src/life-cycle/owner";
 import { $async, isPending } from "../src/reactivity/$async";
 import { $computed } from "../src/reactivity/$computed";
@@ -316,6 +316,139 @@ describe("$async", () => {
     }
   });
 
+
+  it("works outside an owner and initialized async context", async () => {
+    let executions = 0;
+    const data = $async(async () => {
+      executions += 1;
+      return "standalone";
+    });
+
+    expect(executions).toBe(0);
+    expect(isPending(data)).toBe(false);
+
+    let pendingPromise: Promise<unknown> | undefined;
+
+    try {
+      data.value;
+    } catch (error) {
+      expect(error).toBeInstanceOf(NotReadyError);
+      pendingPromise = (error as NotReadyError).promise;
+    }
+
+    expect(executions).toBe(1);
+    expect(isPending(data)).toBe(true);
+
+    await pendingPromise;
+
+    expect(data.value).toBe("standalone");
+    expect(isPending(data)).toBe(false);
+  });
+
+
+
+  it("uses the consuming component's Await boundary when created outside an owner", async () => {
+    const data = $async(async () => "standalone boundary");
+    const owner = createOwner(null);
+    let boundaryPromise: Promise<unknown> | undefined;
+
+    try {
+      runWithOwner(owner, () => {
+        enterAsyncBoundary((promise) => {
+          boundaryPromise = promise;
+        });
+
+        expect(() => data.value).toThrow(NotReadyError);
+      });
+
+      expect(boundaryPromise).toBeDefined();
+      await boundaryPromise;
+
+      runWithOwner(owner, () => {
+        expect(data.value).toBe("standalone boundary");
+      });
+    } finally {
+      disposeOwner(owner);
+    }
+  });
+
+  it("acquires hydration context when a standalone resource is first read in a render", async () => {
+    const data = $async(async () => "rendered");
+    const owner = createOwner(null);
+
+    let pendingPromise: Promise<unknown> | undefined;
+
+    try {
+      runWithOwner(owner, () => {
+        initializeAsyncContext();
+
+        try {
+          data.value;
+        } catch (error) {
+          expect(error).toBeInstanceOf(NotReadyError);
+          pendingPromise = (error as NotReadyError).promise;
+        }
+      });
+
+      await pendingPromise;
+
+      runWithOwner(owner, () => {
+        expect(data.value).toBe("rendered");
+        expect(getAsyncValues()).toEqual({
+          "root:0": "rendered",
+        });
+      });
+    } finally {
+      disposeOwner(owner);
+    }
+  });
+
+  it("tracks dependencies when created outside an owner", async () => {
+    const source = $state(1);
+    const resolvers = new Map<number, (value: number) => void>();
+
+    const data = $async(async () => {
+      const id = source.value;
+
+      return new Promise<number>((resolve) => {
+        resolvers.set(id, resolve);
+      });
+    });
+
+    let firstPromise: Promise<unknown> | undefined;
+
+    try {
+      data.value;
+    } catch (error) {
+      expect(error).toBeInstanceOf(NotReadyError);
+      firstPromise = (error as NotReadyError).promise;
+    }
+
+    resolvers.get(1)?.(10);
+    await firstPromise;
+
+    expect(data.value).toBe(10);
+
+    source.value = 2;
+
+    let secondPromise: Promise<unknown> | undefined;
+
+    try {
+      data.value;
+    } catch (error) {
+      expect(error).toBeInstanceOf(NotReadyError);
+      secondPromise = (error as NotReadyError).promise;
+    }
+
+    expect(isPending(data)).toBe(true);
+
+    resolvers.get(2)?.(20);
+    await secondPromise;
+
+    expect(data.value).toBe(20);
+    expect(isPending(data)).toBe(false);
+  });
+
   it("receives rejection", async () => {
     const owner = createOwner();
     const error = new Error("An Error Occured");
@@ -349,3 +482,346 @@ describe("$async", () => {
     }
   });
 });
+
+
+describe("async-derived $state", () => {
+  it("is writable and refreshes only when a dependency changes", async () => {
+    const owner = createOwner();
+
+    try {
+      await runWithOwner(owner, async () => {
+        initializeAsyncContext();
+
+        const source = $state(1);
+        const resolvers = new Map<number, (value: number) => void>();
+        let executions = 0;
+
+        const count = $state(async () => {
+          executions += 1;
+          const id = source.value;
+
+          return new Promise<number>((resolve) => {
+            resolvers.set(id, resolve);
+          });
+        });
+
+        expect(executions).toBe(1);
+        expect(isPending(count)).toBe(true);
+        expect(() => count.value).toThrow(NotReadyError);
+
+        resolvers.get(1)?.(0);
+        await Promise.resolve();
+
+        expect(count.value).toBe(0);
+        expect(isPending(count)).toBe(false);
+
+        count.value++;
+
+        expect(count.value).toBe(1);
+        expect(executions).toBe(1);
+
+        source.value = 2;
+
+        expect(executions).toBe(2);
+        expect(isPending(count)).toBe(true);
+
+        // A refresh keeps the previous resolved value readable.
+        expect(count.value).toBe(1);
+
+        resolvers.get(2)?.(20);
+        await Promise.resolve();
+
+        expect(count.value).toBe(20);
+        expect(isPending(count)).toBe(false);
+      });
+    } finally {
+      disposeOwner(owner);
+    }
+  });
+
+  it("retains the last resolved value across a failed refresh and retry", async () => {
+    const owner = createOwner();
+
+    try {
+      await runWithOwner(owner, async () => {
+        initializeAsyncContext();
+
+        const source = $state(0);
+        const resolvers = new Map<
+          number,
+          {
+            resolve: (value: number) => void;
+            reject: (error: unknown) => void;
+          }
+        >();
+
+        const value = $state(async () => {
+          const id = source.value;
+
+          return new Promise<number>((resolve, reject) => {
+            resolvers.set(id, { resolve, reject });
+          });
+        });
+
+        resolvers.get(0)?.resolve(10);
+        await Promise.resolve();
+
+        expect(value.value).toBe(10);
+
+        const error = new Error("Refresh failed");
+        source.value = 1;
+        resolvers.get(1)?.reject(error);
+        await Promise.resolve();
+
+        expect(() => value.value).toThrow(error);
+
+        // The failed request does not discard the last successful snapshot.
+        source.value = 2;
+        expect(isPending(value)).toBe(true);
+        expect(value.value).toBe(10);
+
+        resolvers.get(2)?.resolve(20);
+        await Promise.resolve();
+
+        expect(value.value).toBe(20);
+      });
+    } finally {
+      disposeOwner(owner);
+    }
+  });
+
+  it("ignores stale async results", async () => {
+    const owner = createOwner();
+
+    try {
+      await runWithOwner(owner, async () => {
+        initializeAsyncContext();
+
+        const source = $state(0);
+        const resolvers = new Map<number, (value: number) => void>();
+
+        const value = $state(async () => {
+          const id = source.value;
+
+          return new Promise<number>((resolve) => {
+            resolvers.set(id, resolve);
+          });
+        });
+
+        expect(resolvers.size).toBe(1);
+
+        source.value = 1;
+
+        expect(resolvers.size).toBe(2);
+
+        resolvers.get(1)?.(1);
+        await Promise.resolve();
+
+        expect(value.value).toBe(1);
+
+        // A slower result from the previous dependency value cannot win.
+        resolvers.get(0)?.(0);
+        await Promise.resolve();
+
+        expect(value.value).toBe(1);
+      });
+    } finally {
+      disposeOwner(owner);
+    }
+  });
+
+  it("preserves synchronous function values", () => {
+    const callback = () => 42;
+    const state = $state(callback);
+
+    expect(state.value).toBe(callback);
+  });
+});
+
+describe("async-derived $store", () => {
+  it("notifies collection consumers when a reconciled array keeps its identity", async () => {
+    type Snapshot = {
+      data: {
+        results: Array<{
+          name: string;
+        }>;
+      };
+    };
+
+    const owner = createOwner();
+
+    try {
+      await runWithOwner(owner, async () => {
+        initializeAsyncContext();
+
+        const page = $state(1);
+        const resolvers = new Map<number, (value: Snapshot) => void>();
+
+        const store = $store<Snapshot>(async () => {
+          const currentPage = page.value;
+
+          return new Promise<Snapshot>((resolve) => {
+            resolvers.set(currentPage, resolve);
+          });
+        });
+
+        resolvers.get(1)?.({
+          data: {
+            results: [{ name: "bulbasaur" }],
+          },
+        });
+        await Promise.resolve();
+
+        const originalResults = store.data.results;
+        const mappedNames: string[][] = [];
+        const dispose = $effect(() => {
+          // Match the dependency shape of a JSX .map() expression: subscribe
+          // to the collection property, then destructure item fields.
+          const results = store.data.results;
+          mappedNames.push(results.map(({ name }) => name));
+        });
+
+        try {
+          expect(mappedNames).toEqual([["bulbasaur"]]);
+
+          page.value = 2;
+
+          resolvers.get(2)?.({
+            data: {
+              results: [{ name: "ivysaur" }],
+            },
+          });
+          await Promise.resolve();
+          await flushEffects();
+
+          expect(store.data.results).toBe(originalResults);
+          expect(store.data.results[0].name).toBe("ivysaur");
+          expect(mappedNames).toEqual([["bulbasaur"], ["ivysaur"]]);
+        } finally {
+          dispose();
+        }
+      });
+    } finally {
+      disposeOwner(owner);
+    }
+  });
+
+  it("reconciles refreshes into the same deeply reactive store", async () => {
+    type Snapshot = {
+      id: number;
+      profile: {
+        name: string;
+      };
+      items: Array<{
+        label: string;
+      }>;
+      stale?: boolean;
+      active?: boolean;
+    };
+
+    const owner = createOwner();
+
+    try {
+      await runWithOwner(owner, async () => {
+        initializeAsyncContext();
+
+        const source = $state(1);
+        const resolvers = new Map<number, (value: Snapshot) => void>();
+        let executions = 0;
+
+        const user = $store<Snapshot>(async () => {
+          executions += 1;
+          const id = source.value;
+
+          return new Promise<Snapshot>((resolve) => {
+            resolvers.set(id, resolve);
+          });
+        });
+
+        const identity = user;
+
+        expect(executions).toBe(1);
+        expect(isPending(user)).toBe(true);
+        expect(() => user.profile).toThrow(NotReadyError);
+
+        resolvers.get(1)?.({
+          id: 1,
+          profile: { name: "Ada" },
+          items: [{ label: "First" }],
+          stale: true,
+        });
+        await Promise.resolve();
+
+        expect(user.id).toBe(1);
+        expect(user.profile.name).toBe("Ada");
+
+        const profile = user.profile;
+        const items = user.items;
+        const firstItem = user.items[0];
+
+        // Manual nested and root mutations remain ordinary store writes.
+        user.id = 10;
+        user.profile.name = "Local";
+
+        expect(user.id).toBe(10);
+        expect(user.profile.name).toBe("Local");
+        expect(executions).toBe(1);
+
+        source.value = 2;
+
+        expect(executions).toBe(2);
+        expect(isPending(user)).toBe(true);
+
+        // Existing values stay available during refresh.
+        expect(user.id).toBe(10);
+        expect(user.profile.name).toBe("Local");
+
+        resolvers.get(2)?.({
+          id: 2,
+          profile: { name: "Grace" },
+          items: [{ label: "Updated" }],
+          active: true,
+        });
+        await Promise.resolve();
+
+        expect(user).toBe(identity);
+        expect(user.profile).toBe(profile);
+        expect(user.items).toBe(items);
+        // Changed array entries get new identities so mapped component props
+        // captured from destructured fields are recreated with fresh values.
+        expect(user.items[0]).not.toBe(firstItem);
+        expect(user.items[0].label).toBe("Updated");
+        expect(user.id).toBe(2);
+        expect(user.profile.name).toBe("Grace");
+        expect(user.stale).toBeUndefined();
+        expect(user.active).toBe(true);
+        expect(isPending(user)).toBe(false);
+      });
+    } finally {
+      disposeOwner(owner);
+    }
+  });
+});
+
+
+describe("async-derived state without an owner", () => {
+  it("supports async $state and $store outside a component", async () => {
+    const count = $state(async () => 42);
+    const settings = $store(async () => ({
+      theme: "dark",
+      preferences: {
+        compact: true,
+      },
+    }));
+
+    expect(isPending(count)).toBe(true);
+    expect(isPending(settings)).toBe(true);
+
+    await Promise.resolve();
+
+    expect(count.value).toBe(42);
+    expect(settings.theme).toBe("dark");
+    expect(settings.preferences.compact).toBe(true);
+  });
+});
+

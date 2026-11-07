@@ -1,4 +1,4 @@
-import { $async, $effect, $state, Await, isPending, onDestroy, onMount } from "vynn";
+import { $effect, $state, $store, Await, isPending, onDestroy, onMount } from "vynn";
 
 import { Template } from "../components/template";
 import { getPokedex, name, PokeDexData } from "../utils";
@@ -11,7 +11,7 @@ export const PokeDexAwait = () => {
   const sortBy = $state<SortKey>("name");
   const sortDirection = $state<SortDirection>("asc");
 
-  const pokeDex = $async(async () => {
+  const pokeDex = $store(async () => {
     return getPokedex(url.value);
   });
 
@@ -19,13 +19,10 @@ export const PokeDexAwait = () => {
     sortDirection.value = sortDirection.value === "asc" ? "desc" : "asc";
     sortBy.value = key;
 
-    pokeDex.value = {
-      ...pokeDex.value,
-      results: [...pokeDex.value.results].sort((a, b) => {
-        const cmp = a[sortBy.value].localeCompare(b[sortBy.value]);
-        return sortDirection.value === "asc" ? cmp : -cmp;
-      }),
-    };
+    pokeDex.results = [...pokeDex.results].sort((a, b) => {
+      const cmp = a[sortBy.value].localeCompare(b[sortBy.value]);
+      return sortDirection.value === "asc" ? cmp : -cmp;
+    });
   };
 
   const changeUrl = (newUrl: string | null) => {
@@ -101,7 +98,7 @@ export const PokeDexAwait = () => {
               }
             >
               <>
-                {pokeDex.value.results.map(({ name, url }, index) => (
+                {pokeDex.results.map(({ name, url }, index) => (
                   <Row name={name} url={url} index={index} />
                 ))}
                 <tr>
@@ -110,18 +107,18 @@ export const PokeDexAwait = () => {
                       <button
                         class="btn"
                         onClick={() => {
-                          changeUrl(pokeDex.value.previous);
+                          changeUrl(pokeDex.previous);
                         }}
-                        disabled={isPending(pokeDex) || !pokeDex.value.previous}
+                        disabled={isPending(pokeDex) || !pokeDex.previous}
                       >
                         Previous
                       </button>
                       <button
                         class="btn"
                         onClick={() => {
-                          changeUrl(pokeDex.value.next);
+                          changeUrl(pokeDex.next);
                         }}
-                        disabled={isPending(pokeDex) || !pokeDex.value.next}
+                        disabled={isPending(pokeDex) || !pokeDex.next}
                       >
                         Next
                       </button>

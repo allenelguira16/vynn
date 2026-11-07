@@ -1,4 +1,4 @@
-import { $async, $state, Await, ErrorBoundary, isPending, JSX } from "vynn";
+import { $computed, $state, Await, ErrorBoundary, isPending, JSX } from "vynn";
 
 import { Template } from "../components/template";
 import { sleep } from "../utils";
@@ -17,13 +17,14 @@ function ComponentWillThrow(): JSX.Element {
 
 function ComponentWillThrowLater(): JSX.Element {
   const baseCount = $state(0);
-  const count = $async(async () => {
+  const count = $computed(async () => {
     const count = baseCount.value;
 
     await sleep(100);
 
     return count;
   });
+
   const willThrow = () => {
     throw new Error("ComponentWIllThrowLater catched, please retry again");
   };

@@ -57,13 +57,18 @@ export function initializeLazyAsyncScope(lazyID: string): void {
   });
 }
 
-export function getAsyncID(): string {
+/**
+ * Returns the next async hydration ID when an async context is available.
+ *
+ * Async resources may be created outside a component or Vynn render tree.
+ * Those resources simply skip SSR result serialization and hydration
+ * restoration because there is no request-scoped async value registry.
+ */
+export function getAsyncIDIfAvailable(): string | undefined {
   const scope = getContext<AsyncIdScope>(ASYNC_ID);
 
   if (!scope) {
-    throw new Error(
-      "[vynn]: initializeAsyncContext is not yet initialized, run it first before using getAsyncID",
-    );
+    return undefined;
   }
 
   modifyContext<AsyncIdScope>(ASYNC_ID, (current) => ({
@@ -72,6 +77,25 @@ export function getAsyncID(): string {
   }));
 
   return `${scope.prefix}:${scope.next}`;
+}
+
+/**
+ * Returns the next async hydration ID.
+ *
+ * Use this when an async ID is required by the caller. Async resource
+ * primitives should use getAsyncIDIfAvailable() so they can also be created
+ * outside a component or initialized render context.
+ */
+export function getAsyncID(): string {
+  const asyncID = getAsyncIDIfAvailable();
+
+  if (asyncID === undefined) {
+    throw new Error(
+      "[vynn]: initializeAsyncContext is not yet initialized, run it first before using getAsyncID",
+    );
+  }
+
+  return asyncID;
 }
 
 export function getAsyncValues(): Record<string, unknown> | undefined {

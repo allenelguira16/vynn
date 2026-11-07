@@ -1,15 +1,15 @@
-import { $async, Await, onDestroy, onMount } from "vynn";
+import { $state, Await, onDestroy, onMount } from "vynn";
 
 import { Template } from "../components/template";
 import { sleep } from "../utils";
 
 export const StackedSuspense = () => {
-  const msg3 = $async(async () => {
+  const msg3 = $state(async () => {
     await sleep(3000);
 
     return "hello world 3";
   });
-  const msg2 = $async(async () => {
+  const msg2 = $state(async () => {
     await sleep(2000);
 
     return "hello world 2";
@@ -42,7 +42,7 @@ export const StackedSuspense = () => {
 };
 
 const Component = () => {
-  const msg = $async(async () => {
+  const msg = $state(async () => {
     await sleep(1000);
 
     return `hello world`;
