@@ -1,6 +1,7 @@
-import { $state, ErrorBoundary, JSX } from "vynn";
+import { $async, $state, Await, ErrorBoundary, isPending, JSX } from "vynn";
 
 import { Template } from "../components/template";
+import { sleep } from "../utils";
 
 function ComponentWillThrow(): JSX.Element {
   const willThrow = () => {
@@ -15,18 +16,27 @@ function ComponentWillThrow(): JSX.Element {
 }
 
 function ComponentWillThrowLater(): JSX.Element {
-  const count = $state(0);
+  const baseCount = $state(0);
+  const count = $async(async () => {
+    const count = baseCount.value;
+
+    await sleep(100);
+
+    return count;
+  });
   const willThrow = () => {
     throw new Error("ComponentWIllThrowLater catched, please retry again");
   };
 
   return (
     <div>
-      <div>
-        Count: {count.value}
-        {count.value > 5 && willThrow()}
-      </div>
-      <button class="btn" onClick={() => count.value++}>
+      <Await fallback="Loading siya..">
+        <div>
+          Count: {count.value}
+          {count.value > 5 && willThrow()}
+        </div>
+      </Await>
+      <button class="btn" onClick={() => baseCount.value++} disabled={isPending(count)}>
         Add
       </button>
     </div>

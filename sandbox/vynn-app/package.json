@@ -28,7 +28,7 @@
     "daisyui": "^5.7.50",
     "esbuild": "^0.28.2",
     "tsx": "^4.23.15",
-    "typescript": "~6.0.2",
+    "typescript": "^7.0.2",
     "vite": "^8.1.1"
   }
 }
