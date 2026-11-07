@@ -7,7 +7,10 @@
   "author": "",
   "type": "module",
   "main": "src/index.ts",
-  "scripts": {},
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
   "dependencies": {
     "@babel/core": "^8.0.5",
     "@babel/preset-typescript": "^8.0.1",
@@ -21,6 +24,7 @@
   },
   "devDependencies": {
     "vite": "^8.3.5",
+    "vitest": "^5.0.5",
     "vynn": "workspace:*"
   },
   "peerDependencies": {

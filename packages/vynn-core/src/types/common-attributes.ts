@@ -38,7 +38,7 @@ export type CoreAttributes = {
   unselectable?: "on" | "off";
 };
 
-export type EventAttributes<T extends Element = Element> = {
+type BaseEventAttributes<T extends Element = Element> = {
   // Mouse events
   onClick?: MouseEventHandler<T>;
   onDoubleClick?: MouseEventHandler<T>;
@@ -78,6 +78,12 @@ export type EventAttributes<T extends Element = Element> = {
   onLoad?: EventHandler<Event, T>;
   onUnload?: EventHandler<Event, T>;
   onError?: EventHandler<Event, T>;
+};
+
+export type EventAttributes<T extends Element = Element> = BaseEventAttributes<T> & {
+  [K in keyof BaseEventAttributes<T> as K extends `on${infer Name}`
+    ? `on${Name}Capture`
+    : never]?: BaseEventAttributes<T>[K];
 };
 
 export type AriaAttributes = {

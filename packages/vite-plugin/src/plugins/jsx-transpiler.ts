@@ -37,11 +37,10 @@ import {
   conditionalExpression,
   createPositionLookup,
   expressionStatement,
-  findArrowReturnStatement,
-  findReturnStatement,
   forEachChild,
   functionExpression,
   generatedNode,
+  getJSXAttributeName,
   getJSXIdentifierName,
   getNodeProperty,
   getVisitorKeys,
@@ -52,7 +51,7 @@ import {
   inheritSourceLocation,
   isArrayExpression,
   isArrayPattern,
-  isArrowComponentDeclaration,
+  isComponentFunctionDeclaration,
   isArrowFunctionExpression,
   isAssignmentExpression,
   isAssignmentPattern,
@@ -262,7 +261,7 @@ class TransformState {
 
     const attributes = node.openingElement.attributes.filter(isJSXAttribute);
     const getAttributeName = (attribute: NodeOfType<"JSXAttribute">): string =>
-      isJSXIdentifier(attribute.name) ? attribute.name.name.toLowerCase() : "";
+      getJSXAttributeName(attribute.name).toLowerCase();
     const hasAttribute = (name: string): boolean =>
       attributes.some((attribute) => getAttributeName(attribute) === name);
     const getStaticValue = (name: string): string | null => {
@@ -306,8 +305,7 @@ class TransformState {
     return !node.openingElement.attributes.some(
       (attribute: Node) =>
         isJSXAttribute(attribute) &&
-        isJSXIdentifier(attribute.name) &&
-        attribute.name.name.toLowerCase() === "itemprop",
+        getJSXAttributeName(attribute.name).toLowerCase() === "itemprop",
     );
   }
 
@@ -687,7 +685,11 @@ class TransformState {
     };
 
     const isMapCall = (node: Node): node is NodeOfType<"CallExpression"> => {
-      if (!isCallExpression(node) || node.arguments.length !== 1) return false;
+      if (
+        !isCallExpression(node) ||
+        node.arguments.length < 1 ||
+        node.arguments.some((argument) => isSpreadElement(argument))
+      ) return false;
       const callee = node.callee;
       if (!isMemberExpression(callee)) return false;
       if (callee.computed) {
@@ -701,15 +703,9 @@ class TransformState {
         return false;
       }
 
-      if (isBlockStatement(callback.body)) {
-        return callback.body.body.some(
-          (statement) =>
-            isReturnStatement(statement) &&
-            statement.argument &&
-            this.containsJSX(statement.argument),
-        );
-      }
-      return this.containsJSX(callback.body);
+      return isBlockStatement(callback.body)
+        ? this.containsJSXInReturns(callback.body)
+        : this.containsJSX(callback.body);
     };
 
     const isLocalModuleSource = (specifier: string): boolean =>
@@ -996,50 +992,76 @@ class TransformState {
   }
 
   private transformTopLevelStatement(statement: Node): Node | Node[] {
-    // Export wrappers need special handling because a function declaration
-    // is replaced by `const Component = $cmpnt(...)`.
-    if (
-      isType(statement, "ExportDefaultDeclaration") &&
-      isFunctionDeclaration(statement.declaration)
-    ) {
+    if (isType(statement, "ExportDefaultDeclaration")) {
       const declaration = statement.declaration;
 
-      if (declaration.id && isComponentName(declaration.id.name)) {
-        const transformed = this.transformComponentDeclaration(declaration);
+      if (isFunctionDeclaration(declaration)) {
+        if (declaration.id && isComponentName(declaration.id.name)) {
+          const transformed = this.transformComponentDeclaration(declaration);
 
-        if (isVariableDeclaration(transformed) && transformed.declarations.length === 1) {
-          // Keep the named component in module scope so a companion export can
-          // reference the already-wrapped $cmpnt function.
-          return [
-            transformed,
-            inheritSourceLocation(
-              {
-                ...statement,
-                declaration: identifier(declaration.id.name),
-              },
-              statement,
-            ),
-          ];
+          if (isVariableDeclaration(transformed) && transformed.declarations.length === 1) {
+            // Keep the named component in module scope so a companion export can
+            // reference the already-wrapped $cmpnt function.
+            return [
+              transformed,
+              inheritSourceLocation(
+                {
+                  ...statement,
+                  declaration: identifier(declaration.id.name),
+                },
+                statement,
+              ),
+            ];
+          }
         }
+
+        if (!declaration.id) {
+          setNodeProperty(
+            statement,
+            "declaration",
+            this.createComponentFunction(
+              null,
+              declaration.params,
+              declaration.body,
+              !!declaration.generator,
+              !!declaration.async,
+              declaration,
+            ),
+          );
+          return statement;
+        }
+
+        setNodeProperty(statement, "declaration", this.visitNestedDeclarations(declaration));
+        return statement;
       }
 
-      setNodeProperty(statement, "declaration", this.visitNestedDeclarations(declaration));
-      return statement;
+      if (isArrowFunctionExpression(declaration) || isFunctionExpression(declaration)) {
+        setNodeProperty(
+          statement,
+          "declaration",
+          this.createComponentFunction(
+            null,
+            declaration.params,
+            declaration.body,
+            !!declaration.generator,
+            !!declaration.async,
+            declaration,
+          ),
+        );
+        return statement;
+      }
     }
 
-    // Transform top-level expression statements, including JSX nested
-    // inside function arguments and callbacks.
     if (isExpressionStatement(statement)) {
       setNodeProperty(
         statement,
         "expression",
         this.transformEmbeddedExpression(statement.expression, this.createIdentifierAllocator()),
       );
-
       return statement;
     }
 
-    return this.visitNestedDeclarations(statement);
+    return this.transformStatement(statement, this.createIdentifierAllocator());
   }
 
   /**
@@ -1088,7 +1110,7 @@ class TransformState {
 
     if (isVariableDeclaration(node)) {
       for (const declaration of node.declarations) {
-        if (isArrowComponentDeclaration(declaration) && this.transformArrowComponent(declaration)) {
+        if (isComponentFunctionDeclaration(declaration) && this.transformComponentVariable(declaration)) {
           continue;
         }
 
@@ -1123,148 +1145,92 @@ class TransformState {
     return node;
   }
 
+  private createComponentFunction(
+    name: Node | null,
+    params: Node[],
+    body: Node,
+    generator: boolean,
+    async: boolean,
+    source: Node,
+  ): Node {
+    const allocator = this.createIdentifierAllocator();
+    const transformedBody = this.transformComponentPropsParameter(params, body);
+    let functionBody: Node;
+
+    if (isBlockStatement(transformedBody)) {
+      this.transformComponentBody(transformedBody, allocator);
+      functionBody = transformedBody;
+    } else {
+      if (!isExpression(transformedBody)) {
+        throw new Error(`[Vynn] Unsupported component body in ${this.filename}.`);
+      }
+
+      const statements: Node[] = [];
+      const transformedExpression = this.transformStatementContextExpression(
+        transformedBody,
+        allocator,
+        statements,
+        isJSXFragment(transformedBody),
+      );
+      statements.push(returnStatement(transformedExpression));
+      functionBody = blockStatement(statements);
+    }
+
+    const component = functionExpression(
+      name ? cloneNode(name) : null,
+      params,
+      functionBody,
+      generator,
+      async,
+    );
+
+    return inheritSourceLocation(
+      callExpression(this.getRuntimeHelper("$cmpnt"), [component]),
+      source,
+    );
+  }
+
   private transformComponentDeclaration(node: NodeOfType<"FunctionDeclaration">): Node {
     const id = node.id;
     if (!id) return node;
-    const returnStatement = findReturnStatement(node);
-    if (!returnStatement?.argument) return node;
 
-    const allocator = this.createIdentifierAllocator();
-    setNodeProperty(node, "body", this.transformComponentPropsParameter(node.params, node.body));
-    this.transformComponentBody(node.body, returnStatement, allocator);
-
-    const statements: Node[] = [];
-    setNodeProperty(
-      returnStatement,
-      "argument",
-      this.transformStatementContextExpression(
-        returnStatement.argument,
-        allocator,
-        statements,
-        isJSXFragment(returnStatement.argument),
-      ),
-    );
-
-    if (statements.length > 0) {
-      const body: Node[] = node.body.body;
-      const returnIndex = body.indexOf(returnStatement);
-      if (returnIndex !== -1) body.splice(returnIndex, 0, ...statements);
-    }
-
-    const fn = functionExpression(
+    const wrapped = this.createComponentFunction(
       cloneNode(id),
       node.params,
       node.body,
       !!node.generator,
       !!node.async,
+      node,
     );
+
     return inheritSourceLocation(
-      variableDeclaration("const", [
-        variableDeclarator(
-          cloneNode(id),
-          inheritSourceLocation(callExpression(this.getRuntimeHelper("$cmpnt"), [fn]), node),
-        ),
-      ]),
+      variableDeclaration("const", [variableDeclarator(cloneNode(id), wrapped)]),
       node,
     );
   }
 
-  private transformArrowComponent(declaration: Node): boolean {
-    if (!isArrowComponentDeclaration(declaration)) return false;
-    const arrow = declaration.init;
-    const allocator = this.createIdentifierAllocator();
+  private transformComponentVariable(declaration: Node): boolean {
+    if (!isComponentFunctionDeclaration(declaration)) return false;
 
-    // Avoid mutating component parameters when this visitor won't transform the
-    // body (components without a top-level return are currently unsupported).
-    if (isBlockStatement(arrow.body) && !findArrowReturnStatement(arrow.body)?.argument)
-      return false;
-
-    setNodeProperty(arrow, "body", this.transformComponentPropsParameter(arrow.params, arrow.body));
-
-    // Props lowering can turn an expression-bodied arrow into a block when it
-    // needs lazy default/rest accessors or local mutable bindings.
-    if (isBlockStatement(arrow.body)) {
-      const returnStatement = findArrowReturnStatement(arrow.body);
-      if (!returnStatement?.argument) return false;
-
-      this.transformComponentBody(arrow.body, returnStatement, allocator);
-      const statements: Node[] = [];
-      setNodeProperty(
-        returnStatement,
-        "argument",
-        this.transformStatementContextExpression(
-          returnStatement.argument,
-          allocator,
-          statements,
-          isJSXFragment(returnStatement.argument),
-        ),
-      );
-      if (statements.length > 0) {
-        const body: Node[] = arrow.body.body;
-        const returnIndex = body.indexOf(returnStatement);
-        if (returnIndex !== -1) body.splice(returnIndex, 0, ...statements);
-      }
-
-      setNodeProperty(
-        declaration,
-        "init",
-        inheritSourceLocation(
-          callExpression(this.getRuntimeHelper("$cmpnt"), [
-            functionExpression(
-              identifier(declaration.id.name),
-              arrow.params,
-              arrow.body,
-              !!arrow.generator,
-              !!arrow.async,
-            ),
-          ]),
-          arrow,
-        ),
-      );
-      return true;
-    }
-
-    const statements: Node[] = [];
-    const expressionBody = arrow.body;
-    if (!isExpression(expressionBody)) return false;
-    const transformedBody = this.transformStatementContextExpression(
-      expressionBody,
-      allocator,
-      statements,
-      isJSXFragment(expressionBody),
+    const component = declaration.init;
+    const wrapped = this.createComponentFunction(
+      identifier(declaration.id.name),
+      component.params,
+      component.body,
+      !!component.generator,
+      !!component.async,
+      component,
     );
-    statements.push(returnStatement(transformedBody));
-    setNodeProperty(
-      declaration,
-      "init",
-      inheritSourceLocation(
-        callExpression(this.getRuntimeHelper("$cmpnt"), [
-          functionExpression(
-            identifier(declaration.id.name),
-            arrow.params,
-            blockStatement(statements),
-            !!arrow.generator,
-            !!arrow.async,
-          ),
-        ]),
-        arrow,
-      ),
-    );
+
+    setNodeProperty(declaration, "init", wrapped);
     return true;
   }
 
   private transformComponentBody(
     body: NodeOfType<"BlockStatement">,
-    rootReturn: NodeOfType<"ReturnStatement">,
     allocator: IdentifierAllocator,
   ): void {
-    setNodeProperty(
-      body,
-      "body",
-      body.body.map((statement: Node) =>
-        statement === rootReturn ? statement : this.transformStatement(statement, allocator),
-      ),
-    );
+    this.transformBlockStatement(body, allocator);
   }
 
   /**
@@ -2405,6 +2371,25 @@ class TransformState {
     return this.isRuntimeHelperCall(expression, "$txt");
   }
 
+  private containsJSXInReturns(node: Node | null | undefined): boolean {
+    if (!node || isFunctionLike(node)) return false;
+    if (isReturnStatement(node)) return this.containsJSX(node.argument);
+
+    for (const key of getVisitorKeys(node)) {
+      if (this.isTypeOnlyPropRewriteKey(key)) continue;
+      const value = getNodeProperty(node, key);
+
+      if (isNodeArray(value)) {
+        for (const child of value) {
+          if (isNode(child) && this.containsJSXInReturns(child)) return true;
+        }
+      } else if (isNode(value) && this.containsJSXInReturns(value)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   private containsJSX(node: Node | null | undefined): boolean {
     if (!node) return false;
     if (isJSXElement(node) || isJSXFragment(node)) return true;
@@ -2420,26 +2405,20 @@ class TransformState {
   }
 
   private mapCallbackReturnsJSX(callback: Node): boolean {
-    if (isArrowFunctionExpression(callback)) {
-      if (callback.async) return false;
-      if (isBlockStatement(callback.body)) {
-        return callback.body.body.some(
-          (statement: Node) => isReturnStatement(statement) && this.containsJSX(statement.argument),
-        );
-      }
-      return this.containsJSX(callback.body);
-    }
-    if (isFunctionExpression(callback)) {
-      if (callback.async) return false;
-      return callback.body.body.some(
-        (statement: Node) => isReturnStatement(statement) && this.containsJSX(statement.argument),
-      );
-    }
-    return false;
+    if (!isArrowFunctionExpression(callback) && !isFunctionExpression(callback)) return false;
+    if (callback.async || callback.generator) return false;
+
+    return isBlockStatement(callback.body)
+      ? this.containsJSXInReturns(callback.body)
+      : this.containsJSX(callback.body);
   }
 
   private isJSXMapExpression(expression: Node): boolean {
-    if (!isCallExpression(expression) || expression.arguments.length !== 1) return false;
+    if (
+      !isCallExpression(expression) ||
+      expression.arguments.length < 1 ||
+      expression.arguments.some((argument) => isSpreadElement(argument))
+    ) return false;
     const callee = expression.callee;
     if (!isMemberExpression(callee)) return false;
     if (callee.computed) {
@@ -2509,6 +2488,16 @@ class TransformState {
         }
         return callback;
       });
+    }
+
+    if (expression.arguments.length > 1) {
+      const thisArg = expression.arguments[1];
+      if (isExpression(thisArg)) {
+        transformedCallback = callExpression(
+          memberExpression(transformedCallback, identifier("bind")),
+          [this.transformEmbeddedExpression(thisArg, allocator)],
+        );
+      }
     }
 
     const result = callExpression(this.getRuntimeHelper("$for"), [
@@ -3198,89 +3187,26 @@ class TransformState {
     setNodeProperty(
       block,
       "body",
-      block.body.map((statement: Node) => {
-        if (isReturnStatement(statement)) {
-          if (statement.argument && isExpression(statement.argument))
-            setNodeProperty(
-              statement,
-              "argument",
-              this.transformEmbeddedExpression(statement.argument, allocator),
-            );
-          return statement;
-        }
-        if (isExpressionStatement(statement)) {
-          setNodeProperty(
-            statement,
-            "expression",
-            this.transformEmbeddedExpression(statement.expression, allocator),
-          );
-          return statement;
-        }
-        if (isVariableDeclaration(statement)) {
-          for (const declaration of statement.declarations) {
-            if (
-              isArrowComponentDeclaration(declaration) &&
-              this.transformArrowComponent(declaration)
-            )
-              continue;
-            if (!declaration.init || !isExpression(declaration.init)) continue;
-            this.assertJSXInitializerIsLazy(declaration);
-            setNodeProperty(
-              declaration,
-              "init",
-              this.transformEmbeddedExpression(declaration.init, allocator),
-            );
-          }
-          return statement;
-        }
-        if (isIfStatement(statement)) {
-          setNodeProperty(
-            statement,
-            "test",
-            this.transformEmbeddedExpression(statement.test, allocator),
-          );
-          if (isBlockStatement(statement.consequent))
-            setNodeProperty(
-              statement,
-              "consequent",
-              this.transformBlockStatement(statement.consequent, allocator),
-            );
-          else
-            setNodeProperty(
-              statement,
-              "consequent",
-              this.transformStatement(statement.consequent, allocator),
-            );
-          if (statement.alternate) {
-            setNodeProperty(
-              statement,
-              "alternate",
-              isBlockStatement(statement.alternate)
-                ? this.transformBlockStatement(statement.alternate, allocator)
-                : this.transformStatement(statement.alternate, allocator),
-            );
-          }
-          return statement;
-        }
-        if (
-          isFunctionDeclaration(statement) &&
-          statement.id &&
-          isComponentName(statement.id.name)
-        ) {
-          const transformed = this.transformComponentDeclaration(statement);
-          if (transformed !== statement) return transformed;
-        }
-        return this.visitNestedDeclarations(statement);
-      }),
+      block.body.map((statement: Node) => this.transformStatement(statement, allocator)),
     );
     return block;
   }
 
   private transformStatement(statement: Node, allocator: IdentifierAllocator): Node {
+    if (isReturnStatement(statement)) {
+      if (statement.argument && isExpression(statement.argument)) {
+        setNodeProperty(
+          statement,
+          "argument",
+          this.transformEmbeddedExpression(statement.argument, allocator),
+        );
+      }
+      return statement;
+    }
+
     if (isVariableDeclaration(statement)) {
       for (const declaration of statement.declarations) {
-        if (isArrowComponentDeclaration(declaration) && this.transformArrowComponent(declaration))
-          continue;
+        if (this.transformComponentVariable(declaration)) continue;
         if (!declaration.init || !isExpression(declaration.init)) continue;
         this.assertJSXInitializerIsLazy(declaration);
         setNodeProperty(
@@ -3291,6 +3217,7 @@ class TransformState {
       }
       return statement;
     }
+
     if (isExpressionStatement(statement)) {
       setNodeProperty(
         statement,
@@ -3299,36 +3226,62 @@ class TransformState {
       );
       return statement;
     }
+
     if (isBlockStatement(statement)) return this.transformBlockStatement(statement, allocator);
+
     if (isIfStatement(statement)) {
       setNodeProperty(
         statement,
         "test",
         this.transformEmbeddedExpression(statement.test, allocator),
       );
-      setNodeProperty(
-        statement,
-        "consequent",
-        isBlockStatement(statement.consequent)
-          ? this.transformBlockStatement(statement.consequent, allocator)
-          : this.transformStatement(statement.consequent, allocator),
-      );
+      setNodeProperty(statement, "consequent", this.transformStatement(statement.consequent, allocator));
       if (statement.alternate) {
-        setNodeProperty(
-          statement,
-          "alternate",
-          isBlockStatement(statement.alternate)
-            ? this.transformBlockStatement(statement.alternate, allocator)
-            : this.transformStatement(statement.alternate, allocator),
-        );
+        setNodeProperty(statement, "alternate", this.transformStatement(statement.alternate, allocator));
       }
       return statement;
     }
-    if (isFunctionDeclaration(statement) && statement.id && isComponentName(statement.id.name)) {
-      const transformed = this.transformComponentDeclaration(statement);
-      if (transformed !== statement) return transformed;
+
+    if (isFunctionDeclaration(statement)) {
+      if (statement.id && isComponentName(statement.id.name)) {
+        return this.transformComponentDeclaration(statement);
+      }
+
+      const nestedAllocator = this.createIdentifierAllocator();
+      setNodeProperty(
+        statement,
+        "body",
+        this.specializedForCallbacks.has(statement)
+          ? this.withForCallback(statement.params ?? [], () =>
+              this.transformBlockStatement(statement.body, nestedAllocator),
+            )
+          : this.transformBlockStatement(statement.body, nestedAllocator),
+      );
+      return statement;
     }
-    return this.visitNestedDeclarations(statement);
+
+    if (isExpression(statement)) {
+      return this.transformEmbeddedExpression(statement, allocator);
+    }
+
+    // Generic visitor traversal handles switch, try/catch, loops, and future
+    // ESTree statement forms while ensuring every nested return is transformed.
+    for (const key of getVisitorKeys(statement)) {
+      if (this.isTypeOnlyPropRewriteKey(key)) continue;
+
+      const value = getNodeProperty(statement, key);
+      if (isNodeArray(value)) {
+        setNodeProperty(
+          statement,
+          key,
+          value.map((child) => isNode(child) ? this.transformStatement(child, allocator) : child),
+        );
+      } else if (isNode(value)) {
+        setNodeProperty(statement, key, this.transformStatement(value, allocator));
+      }
+    }
+
+    return statement;
   }
 
   private containsEagerJSX(node: Node | null | undefined): boolean {
@@ -3395,8 +3348,8 @@ class TransformState {
         );
         continue;
       }
-      if (!isJSXAttribute(attribute) || !isJSXIdentifier(attribute.name)) continue;
-      const name = attribute.name.name;
+      if (!isJSXAttribute(attribute)) continue;
+      const name = getJSXAttributeName(attribute.name);
 
       if (name === "ref") {
         const value = attribute.value;
@@ -3575,8 +3528,8 @@ class TransformState {
         );
         continue;
       }
-      if (!isJSXAttribute(attribute) || !isJSXIdentifier(attribute.name)) continue;
-      const name = attribute.name.name;
+      if (!isJSXAttribute(attribute)) continue;
+      const name = getJSXAttributeName(attribute.name);
 
       if (name === "ref") {
         const value = attribute.value;
@@ -3589,15 +3542,17 @@ class TransformState {
         statements.push(...this.createRef(elementId, value.expression));
         continue;
       }
-      if (this.isEventAttribute(name)) {
+      const event = this.getEventAttribute(name);
+      if (event) {
         const value = attribute.value;
         if (!isJSXExpressionContainer(value) || !isExpression(value.expression)) continue;
         statements.push(
           expressionStatement(
             this.createEvent(
               elementId,
-              name.slice(2).toLowerCase(),
+              event.name,
               this.transformEmbeddedExpression(value.expression, allocator),
+              event.capture,
             ),
           ),
         );
@@ -3686,16 +3641,30 @@ class TransformState {
     return callExpression(this.getRuntimeHelper("$attr"), [elementId, stringLiteral(name), value]);
   }
 
-  private createEvent(elementId: Node, event: string, expression: Node): Node {
-    return callExpression(this.getRuntimeHelper("$on"), [
-      elementId,
-      stringLiteral(event),
-      expression,
-    ]);
+  private createEvent(
+    elementId: Node,
+    event: string,
+    expression: Node,
+    capture = false,
+  ): Node {
+    const args = [elementId, stringLiteral(event), expression];
+    if (capture) args.push(booleanLiteral(true));
+    return callExpression(this.getRuntimeHelper("$on"), args);
   }
 
-  private isEventAttribute(name: string): boolean {
-    return name.length > 2 && name.startsWith("on") && name[2] === name[2].toUpperCase();
+  private getEventAttribute(name: string): { name: string; capture: boolean } | null {
+    if (name.length <= 2 || !name.startsWith("on") || name[2] !== name[2].toUpperCase()) {
+      return null;
+    }
+
+    const capture = name.endsWith("Capture");
+    const eventName = name.slice(2, capture ? -7 : undefined).toLowerCase();
+    if (!eventName) return null;
+
+    return {
+      name: eventName === "doubleclick" ? "dblclick" : eventName,
+      capture,
+    };
   }
 
   private createInsert(elementId: Node, expression: Node): Node {

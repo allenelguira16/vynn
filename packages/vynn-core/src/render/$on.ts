@@ -23,6 +23,7 @@ export function $on<E extends Element, K extends keyof HTMLElementEventMap>(
   element: E,
   event: K,
   handler: (event: VynnEvent<E, K>) => void,
+  capture = false,
 ): void {
   if (isServer()) return;
 
@@ -38,9 +39,9 @@ export function $on<E extends Element, K extends keyof HTMLElementEventMap>(
     });
   }
 
-  element.addEventListener(event, handle);
+  element.addEventListener(event, handle, capture);
 
   owner.cleanups.push(() => {
-    element.removeEventListener(event, handle);
+    element.removeEventListener(event, handle, capture);
   });
 }

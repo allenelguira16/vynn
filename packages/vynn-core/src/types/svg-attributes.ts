@@ -90,4 +90,15 @@ export type SVGAttributes<T extends SVGElement = SVGElement> = CoreAttributes &
     viewBox?: string;
     preserveAspectRatio?: string;
     xmlns?: string;
+    "xlink:actuate"?: string;
+    "xlink:arcrole"?: string;
+    "xlink:href"?: string;
+    "xlink:role"?: string;
+    "xlink:show"?: string;
+    "xlink:title"?: string;
+    "xlink:type"?: string;
+    "xml:base"?: string;
+    "xml:lang"?: string;
+    "xml:space"?: string;
+    "xmlns:xlink"?: string;
   };

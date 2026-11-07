@@ -5,7 +5,7 @@ import { vynnOxcPlugin } from "../vite-plugin/src/plugins/jsx-transpiler.ts";
 export default defineConfig({
   plugins: [vynnOxcPlugin()],
   test: {
-    include: ["tests/**/*.test.ts"],
+    include: ["tests/**/*.test.{ts,tsx}"],
     environment: "node",
 
     clearMocks: true,

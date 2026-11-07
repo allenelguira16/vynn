@@ -424,7 +424,26 @@ export function isComponentName(name: string): boolean {
 
 export function getJSXIdentifierName(name: Node): string {
   if (isJSXIdentifier(name)) return name.name;
-  throw new Error("Vynn currently only supports simple JSX identifiers for native elements.");
+  if (isType(name, "JSXNamespacedName")) {
+    throw new Error(
+      "Vynn does not support namespaced JSX tag names. Use a supported intrinsic tag or a component instead.",
+    );
+  }
+  throw new Error("Vynn currently only supports simple or member-expression JSX tag names.");
+}
+
+export function getJSXAttributeName(name: Node): string {
+  if (isJSXIdentifier(name)) return name.name;
+
+  if (
+    isType(name, "JSXNamespacedName") &&
+    isJSXIdentifier(name.namespace) &&
+    isJSXIdentifier(name.name)
+  ) {
+    return `${name.namespace.name}:${name.name.name}`;
+  }
+
+  throw new Error("Vynn encountered an unsupported JSX attribute name.");
 }
 
 export function isComponentElement(node: unknown): boolean {
@@ -434,19 +453,19 @@ export function isComponentElement(node: unknown): boolean {
   return isJSXMemberExpression(name);
 }
 
-export type ArrowComponentDeclaration = NodeOfType<"VariableDeclarator"> & {
+export type ComponentFunctionDeclaration = NodeOfType<"VariableDeclarator"> & {
   id: NodeOfType<"Identifier">;
-  init: NodeOfType<"ArrowFunctionExpression">;
+  init: NodeOfType<"ArrowFunctionExpression" | "FunctionExpression">;
 };
 
-export function isArrowComponentDeclaration(
+export function isComponentFunctionDeclaration(
   declaration: unknown,
-): declaration is ArrowComponentDeclaration {
+): declaration is ComponentFunctionDeclaration {
   return (
     isType(declaration, "VariableDeclarator") &&
     isIdentifier(declaration.id) &&
     isComponentName(declaration.id.name) &&
-    isArrowFunctionExpression(declaration.init)
+    (isArrowFunctionExpression(declaration.init) || isFunctionExpression(declaration.init))
   );
 }
 
