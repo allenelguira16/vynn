@@ -36,10 +36,10 @@ function ComponentWillThrowLater(): JSX.Element {
           Count: {count.value}
           {count.value > 5 && willThrow()}
         </div>
+        <button class="btn" onClick={() => baseCount.value++} disabled={isPending(count)}>
+          Add
+        </button>
       </Await>
-      <button class="btn" onClick={() => baseCount.value++} disabled={isPending(count)}>
-        Add
-      </button>
     </div>
   );
 }
