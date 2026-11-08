@@ -64,10 +64,7 @@ export function createAsyncDerived<T>(
   getter: () => Promise<T>,
   lazy = false,
 ): Async<T> {
-  const derived = createAsyncResource(getter, true, {
-    lazy,
-    blockOnServer: lazy,
-  });
+  const derived = createAsyncResource(getter, true, { lazy });
 
   // Async-derived state is eager by default. Lazy computations defer resource
   // initialization until their first value read.
@@ -86,7 +83,6 @@ export function createAsyncDerived<T>(
 
 type AsyncResourceOptions = {
   lazy?: boolean;
-  blockOnServer?: boolean;
 };
 
 export function createAsyncResource<T>(
@@ -94,7 +90,7 @@ export function createAsyncResource<T>(
   retainPrevious: boolean,
   options: AsyncResourceOptions = {},
 ): Async<T> {
-  const { lazy = false, blockOnServer = false } = options;
+  const { lazy = false } = options;
   const isLazy = isAsyncGetterFromLazy(getter);
   // Reserve the hydration ID at creation time when a render context exists.
   // Module-level resources acquire it when first read inside a render instead.
@@ -140,17 +136,25 @@ export function createAsyncResource<T>(
           }
 
           const previousRecord = untrack(() => result.value);
-          const previous =
-            previousRecord?.status === "resolved"
-              ? previousRecord.value
-              : (previousRecord?.status === "pending" || previousRecord?.status === "rejected") &&
-                  previousRecord.hasPrevious
-                ? previousRecord.previous
-                : undefined;
-          const hasPrevious =
-            previousRecord?.status === "resolved" ||
-            ((previousRecord?.status === "pending" || previousRecord?.status === "rejected") &&
-              previousRecord.hasPrevious);
+          let previous: T | undefined;
+          let hasPrevious = false;
+
+          switch (previousRecord?.status) {
+            case "resolved":
+              previous = previousRecord.value;
+              hasPrevious = true;
+              break;
+
+            case "pending":
+            case "rejected":
+              previous = previousRecord.previous;
+              hasPrevious = previousRecord.hasPrevious;
+              break;
+
+            default:
+              previous = undefined;
+              break;
+          }
 
           let promise: Promise<T> | undefined;
 
@@ -274,13 +278,10 @@ export function createAsyncResource<T>(
           return record.previous as T;
         }
 
-        // Lazy async-derived values must settle their initial server read
-        // before streaming. On the client they retain normal Await integration.
-        const blocking = blockOnServer && isServer();
-        const boundary = blocking ? undefined : getAsyncBoundary();
+        const boundary = getAsyncBoundary();
 
         if (boundary) boundary(record.promise);
-        throw new NotReadyError(record.promise, boundary, blocking);
+        throw new NotReadyError(record.promise, boundary);
       }
 
       if (record.status === "rejected") {

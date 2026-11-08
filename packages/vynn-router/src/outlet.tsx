@@ -8,6 +8,20 @@ import { currentLocation } from "./location";
 import { getRouteParams, joinPaths, matchRoute } from "./path";
 import { commitClientRedirect, isClientRedirect } from "./redirect";
 
+type NotReadyErrorLike = Error & {
+  promise: Promise<unknown>;
+  blocking: boolean;
+};
+
+function isNotReadyError(error: unknown): error is NotReadyErrorLike {
+  return (
+    error instanceof Error &&
+    error.name === "NotReadyError" &&
+    "promise" in error &&
+    "blocking" in error
+  );
+}
+
 type MatchedRoute = {
   route: Route;
   fullPath: string;
@@ -122,7 +136,7 @@ function RouteView(props: MatchedRoute) {
 
       throw error;
     }
-  }, { lazy: true });
+  });
 
   let scheduledRedirect: unknown;
 
@@ -135,6 +149,14 @@ function RouteView(props: MatchedRoute) {
     try {
       result = runWithOwner(null, () => allowed.value);
     } catch (error) {
+      // A pending route guard must settle before the server commits the
+      // response. Keep this blocking behavior in the router rather than
+      // applying it to every lazy async computed value.
+      if (isServer && isNotReadyError(error)) {
+        error.blocking = true;
+        throw error;
+      }
+
       // The blocking SSR deferred node already awaits this guard promise.
       // Suppress the resource settlement effect's duplicate Response throw;
       // the deferred node will propagate it to the request handler.

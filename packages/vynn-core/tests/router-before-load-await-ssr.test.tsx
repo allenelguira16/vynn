@@ -4,7 +4,6 @@ import { describe, expect, it } from "vitest";
 import { Await } from "../src/components/await";
 import { $async } from "../src/reactivity/$async";
 import { $computed } from "../src/reactivity/$computed";
-import { $renderEffect } from "../src/reactivity/$effect";
 import { NotReadyError } from "../src/reactivity/not-ready-error";
 import { $nodes } from "../src/render/$nodes";
 import type { JSX } from "../src/types/jsx";
@@ -34,6 +33,53 @@ function createRoutes(beforeLoad: () => Promise<never>): Route[] {
 }
 
 describe("SSR redirects under Await", () => {
+  it("streams a lazy async computed through Await without blocking initial HTML", async () => {
+    let resolveValue!: (value: string) => void;
+    let getterRuns = 0;
+
+    const rendered = renderToServer(
+      () => {
+        const value = $computed(
+          async () => {
+            getterRuns += 1;
+            return new Promise<string>((resolve) => {
+              resolveValue = resolve;
+            });
+          },
+          { lazy: true },
+        );
+
+        return Await({
+          fallback: "Loading",
+          get children(): JSX.Element {
+            return value.value;
+          },
+        });
+      },
+      "stream",
+    );
+
+    const reader = rendered.body.getReader();
+    const decoder = new TextDecoder();
+    const firstChunk = await reader.read();
+
+    expect(firstChunk.done).toBe(false);
+    expect(decoder.decode(firstChunk.value)).toContain("Loading");
+    expect(getterRuns).toBe(1);
+
+    resolveValue("Ready");
+
+    let remainder = "";
+
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      remainder += decoder.decode(chunk.value);
+    }
+
+    expect(remainder).toContain("Ready");
+  });
+
   it("evaluates a synchronous redirect guard exactly once in async mode", async () => {
     let guardRuns = 0;
     const routes = createRoutes(async () => {
@@ -67,14 +113,13 @@ describe("SSR redirects under Await", () => {
       status: 302,
       headers: { Location: "/params/1?id=1" },
     });
+    const routes = createRoutes(async () => {
+      await guardPromise;
+    });
 
     const rendered = renderToServer(
       () => {
         const sibling = $async(() => new Promise<never>(() => {}));
-        const guard = $computed(async () => {
-          await guardPromise;
-          return "allowed";
-        }, { lazy: true });
 
         return $nodes(() =>
           Await({
@@ -88,17 +133,9 @@ describe("SSR redirects under Await", () => {
                 if (!(error instanceof NotReadyError)) throw error;
               }
 
-              // RouteOutlet reads its guard inside a render effect.
-              $renderEffect(() => {
-                try {
-                  guard.value;
-                } catch (error) {
-                  if (error instanceof Response) return;
-                  throw error;
-                }
-              });
-
-              return "Route";
+              // Exercise the actual router guard. It must remain blocking
+              // even though the parent Await already has a sibling promise.
+              return Router({ url: "/redirect", routes }) as unknown as JSX.Element;
             },
           }),
         ) as unknown as JSX.Element;

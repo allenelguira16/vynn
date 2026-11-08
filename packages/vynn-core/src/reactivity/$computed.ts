@@ -12,7 +12,6 @@ export type Computed<T> = {
 export type ComputedOptions = {
   /**
    * Defer the initial evaluation until the computed value is first read.
-   * Async lazy computations resolve their initial value before SSR streaming.
    */
   lazy?: boolean;
 };
@@ -24,7 +23,8 @@ export type ComputedOptions = {
  * defers that first evaluation until the value is read. After initialization,
  * both modes track dependencies and update reactively.
  *
- * Async getters retain their last resolved value while refreshing.
+ * Async getters retain their last resolved value while refreshing. Pending
+ * reads participate in the nearest Await boundary.
  *
  * @template T The computed value type.
  * @param getter A synchronous or asynchronous derivation.
