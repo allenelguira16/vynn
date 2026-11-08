@@ -80,63 +80,66 @@ function RouteView(props: MatchedRoute) {
   // unfinished beforeLoad operation without reaching into Vynn's owner internals.
   onDestroy(() => activeGuardController?.abort());
 
-  const allowed = $computed<RouteGuardResult>(async () => {
-    const revision = ++guardRevision;
+  const allowed = $computed<RouteGuardResult>(
+    async () => {
+      const revision = ++guardRevision;
 
-    // A location change reruns this resource instead of replacing RouteView.
-    // Abort the previous navigation before starting the next guard.
-    activeGuardController?.abort();
+      // A location change reruns this resource instead of replacing RouteView.
+      // Abort the previous navigation before starting the next guard.
+      activeGuardController?.abort();
 
-    const { route, fullPath } = untrack(() => ({
-      route: props.route,
-      fullPath: props.fullPath,
-    }));
+      const { route, fullPath } = untrack(() => ({
+        route: props.route,
+        fullPath: props.fullPath,
+      }));
 
-    // Snapshot the location without subscribing the guard resource to it.
-    // beforeLoad is a one-shot check for this navigation, not a reactive effect.
-    const location: Location = untrack(() => {
-      const activeLocation = currentLocation();
+      // Snapshot the location without subscribing the guard resource to it.
+      // beforeLoad is a one-shot check for this navigation, not a reactive effect.
+      const location: Location = untrack(() => {
+        const activeLocation = currentLocation();
 
-      return {
-        pathname: activeLocation.pathname,
-        search: activeLocation.search,
-      };
-    });
-
-    const controller = new AbortController();
-    activeGuardController = controller;
-
-    try {
-      // Keep the actual guard outside the async resource's initial synchronous
-      // tracking pass, including when the user callback reads reactive state.
-      await Promise.resolve();
-
-      if (controller.signal.aborted) {
-        return { type: "allowed" };
-      }
-
-      await untrack(() =>
-        route.beforeLoad!({
-          location,
-          params: getRouteParams(fullPath, location),
-          search: new URLSearchParams(location.search),
-          signal: controller.signal,
-        }),
-      );
-
-      return { type: "allowed" };
-    } catch (error) {
-      if (isClientRedirect(error)) {
         return {
-          type: "redirect",
-          signal: error,
-          revision,
+          pathname: activeLocation.pathname,
+          search: activeLocation.search,
         };
-      }
+      });
 
-      throw error;
-    }
-  });
+      const controller = new AbortController();
+      activeGuardController = controller;
+
+      try {
+        // Keep the actual guard outside the async resource's initial synchronous
+        // tracking pass, including when the user callback reads reactive state.
+        await Promise.resolve();
+
+        if (controller.signal.aborted) {
+          return { type: "allowed" };
+        }
+
+        await untrack(() =>
+          route.beforeLoad!({
+            location,
+            params: getRouteParams(fullPath, location),
+            search: new URLSearchParams(location.search),
+            signal: controller.signal,
+          }),
+        );
+
+        return { type: "allowed" };
+      } catch (error) {
+        if (isClientRedirect(error)) {
+          return {
+            type: "redirect",
+            signal: error,
+            revision,
+          };
+        }
+
+        throw error;
+      }
+    },
+    { lazy: true },
+  );
 
   let scheduledRedirect: unknown;
 
