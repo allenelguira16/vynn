@@ -34,9 +34,14 @@ export const routes: Route[] = [
           {"<div>Hi</div>"}
 
           <Portal mount={document.body}>{name.firstName}</Portal>
-          <ButtonPageList />
-
-          <Await fallback="Page Is Loading">{props.children}</Await>
+          <div class="flex">
+            <div>
+              <ButtonPageList />
+            </div>
+            <div class="flex-1">
+              <Await fallback={<div class="text-9xl">Page Is Loading</div>}>{props.children}</Await>
+            </div>
+          </div>
         </div>
       );
     },

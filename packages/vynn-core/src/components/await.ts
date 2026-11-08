@@ -1,15 +1,22 @@
 import type { JSX } from "../types/jsx";
 
+import { isHydrationClaimActive } from "../client/hydration";
 import { enterAsyncBoundary } from "../context/async-context";
 import { isServer } from "../context/is-server-context";
 import { isPromiseFromLazy } from "../context/lazy-context";
 import { getOwner, runWithOwner } from "../life-cycle/owner";
-import { NotReadyError } from "../reactivity/not-ready-error";
 import { $state } from "../reactivity/$state";
+import { NotReadyError } from "../reactivity/not-ready-error";
 import { untrack } from "../reactivity/untrack";
 import { $cmpnt } from "../render/$cmpnt";
 import { $if } from "../render/$if";
-import { SSR_NODE, createSSRAsync, createSSRDeferred, resolveNode, resolveSSRChild } from "../render/resolve-node";
+import {
+  SSR_NODE,
+  createSSRAsync,
+  createSSRDeferred,
+  resolveNode,
+  resolveSSRChild,
+} from "../render/resolve-node";
 import { memo } from "../utils/memo";
 
 /**
@@ -115,7 +122,9 @@ export const Await = $cmpnt(function Await(props: {
     const isPending = $state(false);
 
     enterAsyncBoundary((promise) => {
-      if (!isResolved && !isPromiseFromLazy(promise)) {
+      // Ignore lazy imports only while their server-rendered range is being claimed.
+      // Lazy imports started by later client-side navigation must show the fallback.
+      if (!isResolved && (!isPromiseFromLazy(promise) || !isHydrationClaimActive())) {
         isPending.value = true;
       }
 
