@@ -23,7 +23,7 @@ export type PokeDexData = {
 export async function getPokedex(url: string) {
   "use server";
 
-  await sleep(1000);
+  // await sleep(1000);
 
   const response = await fetch(url);
   return (await response.json()) as PokeDexData;

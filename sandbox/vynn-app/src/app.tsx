@@ -1,5 +1,5 @@
 import "./main.css";
-import { $state, onMount } from "vynn";
+import { $state, Await, onMount } from "vynn";
 import { Router } from "vynn-router";
 
 import { routes } from "./routes";
@@ -23,8 +23,10 @@ export default function App(props: { url: string }) {
         <meta property="og:description" content="A server-rendered application built with Vynn." />
         <meta property="og:type" content="website" />
       </head>
-      <body>
-        <Router routes={routes} url={props.url} />
+      <body class="overflow-hidden">
+        <Await fallback={<div class="text-9xl">Page Is Loading</div>}>
+          <Router routes={routes} url={props.url} />
+        </Await>
       </body>
     </html>
   );

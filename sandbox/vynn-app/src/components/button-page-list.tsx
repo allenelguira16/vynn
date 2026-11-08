@@ -1,108 +1,35 @@
-import { isActiveRoute, navigate } from "vynn-router";
+import { isActiveRoute, Link } from "vynn-router";
 
-import { Template } from "./template";
+const pages = [
+  { label: "All", path: "/" },
+  { label: "Lazy", path: "/lazy" },
+  { label: "Forms", path: "/forms" },
+  { label: "Contexts", path: "/contexts" },
+  { label: "Dropdown Lists", path: "/dropdown-list" },
+  { label: "Component Error", path: "/component-error" },
+  { label: "Non Async Suspense", path: "/non-async-suspense" },
+  { label: "Stacked Suspense", path: "/stacked-suspense" },
+  { label: "PokeDex List", path: "/poke-dex" },
+  { label: "PokeDex List with Await", path: "/poke-dex-await" },
+  { label: "Redirect", path: "/redirect" },
+  { label: "Params", path: "/params/1?id=1", activePath: "/params/:id" },
+];
 
 export const ButtonPageList = () => {
   return (
-    <Template title="Pages">
-      <ul class="flex flex-col gap-2">
-        <li>
-          <button class="btn" onClick={() => navigate("/")} disabled={isActiveRoute("/")}>
-            All
-          </button>
-        </li>
-        <li>
-          <button class="btn" onClick={() => navigate("/lazy")} disabled={isActiveRoute("/lazy")}>
-            Lazy
-          </button>
-        </li>
-        <li>
-          <button class="btn" onClick={() => navigate("/forms")} disabled={isActiveRoute("/forms")}>
-            Forms
-          </button>
-        </li>
-        <li>
-          <button
-            class="btn"
-            onClick={() => navigate("/contexts")}
-            disabled={isActiveRoute("/contexts")}
-          >
-            Contexts
-          </button>
-        </li>
-        <li>
-          <button
-            class="btn"
-            onClick={() => navigate("/dropdown-list")}
-            disabled={isActiveRoute("/dropdown-list")}
-          >
-            Dropdown Lists
-          </button>
-        </li>
-        <li>
-          <button
-            class="btn"
-            onClick={() => navigate("/component-error")}
-            disabled={isActiveRoute("/component-error")}
-          >
-            Component Error
-          </button>
-        </li>
-        <li>
-          <button
-            class="btn"
-            onClick={() => navigate("/non-async-suspense")}
-            disabled={isActiveRoute("/non-async-suspense")}
-          >
-            Non Async Suspense
-          </button>
-        </li>
-        <li>
-          <button
-            class="btn"
-            onClick={() => navigate("/stacked-suspense")}
-            disabled={isActiveRoute("/stacked-suspense")}
-          >
-            Stacked Suspense
-          </button>
-        </li>
-        <li>
-          <button
-            class="btn"
-            onClick={() => navigate("/poke-dex")}
-            disabled={isActiveRoute("/poke-dex")}
-          >
-            PokeDex List
-          </button>
-        </li>
-        <li>
-          <button
-            class="btn"
-            onClick={() => navigate("/poke-dex-await")}
-            disabled={isActiveRoute("/poke-dex-await")}
-          >
-            PokeDex List with Await
-          </button>
-        </li>
-        <li>
-          <button
-            class="btn"
-            onClick={() => navigate("/redirect")}
-            disabled={isActiveRoute("/redirect")}
-          >
-            Redirect
-          </button>
-        </li>
-        <li>
-          <button
-            class="btn"
-            onClick={() => navigate("/params/1")}
-            disabled={isActiveRoute("/params/:id")}
-          >
-            Params
-          </button>
-        </li>
-      </ul>
-    </Template>
+    <ul class="menu bg-base-200 rounded-box gap-2 w-full">
+      {pages.map(({ label, path, ...options }) => {
+        const activePath = options.activePath ?? path;
+
+        return (
+          <li>
+            <Link href={path} class={`${isActiveRoute(activePath) && "menu-active"}`}>
+              {label}
+            </Link>
+          </li>
+        );
+      })}
+      <li>{"<div>Escaped HTML</div>"}</li>
+    </ul>
   );
 };

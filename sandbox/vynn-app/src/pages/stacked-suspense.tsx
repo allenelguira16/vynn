@@ -5,12 +5,12 @@ import { sleep } from "../utils";
 
 export const StackedSuspense = () => {
   const msg3 = $state(async () => {
-    await sleep(3000);
+    await sleep(300);
 
     return "hello world 3";
   });
   const msg2 = $state(async () => {
-    await sleep(2000);
+    await sleep(200);
 
     return "hello world 2";
   });
@@ -23,9 +23,7 @@ export const StackedSuspense = () => {
           <Await fallback="Lick my ass">
             <input
               class="input w-full"
-              onInput={(event) => {
-                msg2.value = event.currentTarget.value.toString();
-              }}
+              onInput={(event) => (msg2.value = event.currentTarget.value)}
               value={msg2.value}
             ></input>
           </Await>
@@ -43,7 +41,7 @@ export const StackedSuspense = () => {
 
 const Component = () => {
   const msg = $state(async () => {
-    await sleep(1000);
+    await sleep(100);
 
     return `hello world`;
   });

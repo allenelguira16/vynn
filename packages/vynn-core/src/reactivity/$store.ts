@@ -16,10 +16,7 @@ const ASYNC_ERROR = Symbol("vynn.async-store.error");
 /**
  * Creates a deeply reactive proxy.
  */
-function createReactiveObject<U extends object>(
-  obj: U,
-  beforeRead?: () => void,
-): U {
+function createReactiveObject<U extends object>(obj: U, beforeRead?: () => void): U {
   if (proxyMap.has(obj)) {
     return proxyMap.get(obj) as U;
   }
@@ -63,6 +60,7 @@ function createReactiveObject<U extends object>(
         // value, so explicitly notify length subscribers here.
         if (
           oldLength !== undefined &&
+          Array.isArray(target) &&
           key !== "length" &&
           target.length !== oldLength
         ) {
@@ -149,9 +147,7 @@ export function $store<T extends object>(initialObject: () => Promise<T>): Store
 
 export function $store<T extends object>(initialObject: T): Store<T>;
 
-export function $store<T extends object>(
-  initialObject: T | (() => Promise<T>),
-): Store<T> {
+export function $store<T extends object>(initialObject: T | (() => Promise<T>)): Store<T> {
   if (isAsyncFunction(initialObject)) {
     return createAsyncStore(initialObject as () => Promise<T>);
   }
@@ -213,6 +209,7 @@ function createAsyncStore<T extends object>(getter: () => Promise<T>): Store<T> 
 
       if (!ready) {
         try {
+          // oxlint-disable-next-line no-unused-expressions
           resource.value;
         } catch (nextError) {
           if (!(nextError instanceof NotReadyError)) {
@@ -363,7 +360,12 @@ function reconcileArray(target: unknown[], source: unknown[]): boolean {
 }
 
 function canReconcile(current: unknown, next: unknown): current is object {
-  if (current === null || next === null || typeof current !== "object" || typeof next !== "object") {
+  if (
+    current === null ||
+    next === null ||
+    typeof current !== "object" ||
+    typeof next !== "object"
+  ) {
     return false;
   }
 

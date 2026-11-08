@@ -1,7 +1,8 @@
-import { Await, Portal, lazy } from "vynn";
+import { Portal, lazy } from "vynn";
 import { redirect, type Route } from "vynn-router";
 
 import { ButtonPageList } from "./components/button-page-list";
+import { Template } from "./components/template";
 import { name } from "./utils";
 
 // import { Lazy } from "./pages/lazy";
@@ -29,20 +30,22 @@ export const routes: Route[] = [
   {
     path: "/",
     component: (props) => {
-      return (
-        <div class="p-2 flex flex-col container m-auto">
-          {"<div>Hi</div>"}
+      let el!: HTMLDivElement;
 
-          <Portal mount={document.body}>{name.firstName}</Portal>
+      return (
+        <>
           <div class="flex">
-            <div>
+            <nav class="flex h-screen w-1/8">
               <ButtonPageList />
-            </div>
-            <div class="flex-1">
-              <Await fallback={<div class="text-9xl">Page Is Loading</div>}>{props.children}</Await>
+            </nav>
+            <div class="flex-1 overflow-auto h-screen p-4" ref={el}>
+              {props.children}
             </div>
           </div>
-        </div>
+          <Portal mount={el}>
+            <Template title="Portal">{name.firstName}</Template>
+          </Portal>
+        </>
       );
     },
     children: [
