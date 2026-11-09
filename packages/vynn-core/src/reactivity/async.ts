@@ -40,20 +40,6 @@ type AsyncRecord<T> =
     };
 
 /**
- * Creates an eager asynchronous resource. When created inside a Vynn owner,
- * the getter starts immediately and tracks its reactive dependencies.
- *
- * Ownerless module-scope resources defer their first execution until first
- * read so they can acquire the consuming render's request-scoped hydration
- * context instead of sharing a request across SSR renders.
- *
- * Pending reads always suspend, even when the resource has resolved previously.
- */
-export function $async<T>(getter: () => Promise<T>): Async<T> {
-  return createAsyncResource(getter, false);
-}
-
-/**
  * Creates writable async-derived state.
  *
  * Unlike $async, this retains the last resolved value while a replacement

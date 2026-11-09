@@ -5,7 +5,6 @@ export { $for } from "./$for";
 export { $if } from "./$if";
 export { $head, $headTmpl } from "./$head";
 export { $insert } from "./$insert";
-export { $mount } from "./$mount";
 export { $nodes } from "./$nodes";
 export { $on } from "./$on";
 export { $spread } from "./$spread";
