@@ -10,6 +10,7 @@ import {
 } from "vynn-compiler/server-functions";
 
 import { createWebRequest, writeResponse } from "../app/http.ts";
+import { SSR_HANDLER_ID } from "../app/shared.ts";
 import { registerServerFunctionDevMiddleware } from "./dev-middleware.ts";
 import { makeClientRuntime, makeServerRuntime } from "./runtime.ts";
 import {
@@ -33,6 +34,49 @@ import {
 
 const SCRIPT_EXTENSION_RE = /\.(?:[cm]?[jt]sx?)$/i;
 
+function includesSsrHandlerEntry(input: unknown): boolean {
+  if (typeof input === "string") {
+    return input === SSR_HANDLER_ID || input === `\0${SSR_HANDLER_ID}`;
+  }
+
+  if (Array.isArray(input)) {
+    return input.some(includesSsrHandlerEntry);
+  }
+
+  if (input && typeof input === "object") {
+    return Object.values(input as Record<string, unknown>).some(includesSsrHandlerEntry);
+  }
+
+  return false;
+}
+
+function getSsrEnvironment(config: unknown): {
+  build?: {
+    rolldownOptions?: {
+      input?: unknown;
+    };
+  };
+} | undefined {
+  return (
+    config as {
+      environments?: {
+        ssr?: {
+          build?: {
+            rolldownOptions?: {
+              input?: unknown;
+            };
+          };
+        };
+      };
+    }
+  ).environments?.ssr;
+}
+
+function isIntegratedSsrAppConfig(config: unknown): boolean {
+  const ssrEnvironment = getSsrEnvironment(config);
+  return includesSsrHandlerEntry(ssrEnvironment?.build?.rolldownOptions?.input);
+}
+
 function cleanModuleId(id: string): string {
   return id.split("?", 1)[0].replace(/\\/g, "/");
 }
@@ -53,14 +97,13 @@ function cleanModuleId(id: string): string {
  * server function needs.
  *
  * RPC is wired into Vite dev middleware, even when Vynn app mode and SSR are
- * disabled. In standalone mode, the client build also creates a separate
- * server-functions bundle, and Vite preview mounts its handler automatically.
- * Vynn app mode continues to integrate the handler into its own SSR server.
+ * disabled. For CSR builds, a separate server-functions bundle is generated
+ * and Vite preview mounts its handler automatically. SSR app builds integrate
+ * the handler into their application server instead.
  * Function closures are not serialized.
  */
 export function serverFunctionsPlugin(
   options: VynnServerFunctionsOptions = {},
-  { standalone = true }: { standalone?: boolean } = {},
 ): VynnServerFunctionsPlugin {
   const endpoint = options.endpoint ?? DEFAULT_ENDPOINT;
   if (
@@ -89,6 +132,7 @@ export function serverFunctionsPlugin(
   let resolvedEndpoint = endpoint;
   let resolvedConfig: ResolvedConfig | undefined;
   let isSsrBuild = false;
+  let hasIntegratedSsrApp = false;
   let serverFunctionsOutDir = resolve(projectRoot, "dist", "server");
   const ssrEntryIds = new Set<string>();
   const registerSsrEntries = (input: unknown): void => {
@@ -133,24 +177,30 @@ export function serverFunctionsPlugin(
     name: "vynn-server-functions",
     enforce: "pre",
 
-    config(config, env) {
-      // Match the standard full-stack output layout even when Vynn app mode
-      // and SSR rendering are disabled. Vite preview then serves the client
-      // from <outDir>/client while the RPC implementation stays in <outDir>/server.
-      if (!standalone || env.isSsrBuild) return null;
+    config: {
+      // Run after Vynn's app config so the SSR handler entry is visible here.
+      // Standalone use (without an integrated Vynn SSR app) owns its client
+      // output layout; Vynn CSR already configures dist/client itself.
+      order: "post",
+      handler(config, env) {
+        const integratedSsrApp =
+          isIntegratedSsrAppConfig(config) || (env.isPreview && getSsrEnvironment(config) !== undefined);
+        if (integratedSsrApp) hasIntegratedSsrApp = true;
+        if (integratedSsrApp || env.isSsrBuild) return null;
 
-      const configuredOutDir = config.build?.outDir || "dist";
-      const clientOutDir =
-        basename(configuredOutDir) === "client"
-          ? configuredOutDir
-          : resolve(configuredOutDir, "client");
+        const configuredOutDir = config.build?.outDir || "dist";
+        const clientOutDir =
+          basename(configuredOutDir) === "client"
+            ? configuredOutDir
+            : resolve(configuredOutDir, "client");
 
-      return {
-        build: {
-          outDir: clientOutDir,
-          manifest: true,
-        },
-      };
+        return {
+          build: {
+            outDir: clientOutDir,
+            manifest: true,
+          },
+        };
+      },
     },
 
     configResolved(config) {
@@ -159,6 +209,7 @@ export function serverFunctionsPlugin(
       isDevelopment = config.command === "serve";
       isBuild = config.command === "build";
       isSsrBuild = Boolean(config.build.ssr);
+      hasIntegratedSsrApp = hasIntegratedSsrApp || isIntegratedSsrAppConfig(config);
       ssrEntryIds.clear();
       if (typeof config.build.ssr === "string") {
         registerSsrEntries(config.build.ssr);
@@ -312,7 +363,7 @@ export function serverFunctionsPlugin(
       // server bundle from the modules containing server functions so preview
       // has a real RPC handler. The SSR build's own closeBundle is skipped to
       // prevent recursive builds.
-      if (!standalone || !isBuild || isSsrBuild || !resolvedConfig || refsByModule.size === 0) {
+      if (hasIntegratedSsrApp || !isBuild || isSsrBuild || !resolvedConfig || refsByModule.size === 0) {
         return;
       }
 
@@ -475,7 +526,7 @@ export function serverFunctionsPlugin(
     },
 
     configurePreviewServer(server: PreviewServer) {
-      if (!standalone) return;
+      if (hasIntegratedSsrApp) return;
 
       let handlerPromise:
         | Promise<{

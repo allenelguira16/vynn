@@ -45,13 +45,7 @@ export default function vynn(options: VynnPluginOptions = {}) {
     options.serverFunctions === true ? {} : options.serverFunctions || undefined;
 
   if (options.serverFunctions) {
-    plugins.push(
-      serverFunctionsPlugin(serverFunctionsOptions, {
-        // SSR app builds include the handler in the application server entry.
-        // Non-SSR apps can still build a standalone server-functions bundle.
-        standalone: options.ssr !== true && serverFunctionsOptions?.enabled !== false,
-      }),
-    );
+    plugins.push(serverFunctionsPlugin(serverFunctionsOptions));
   }
 
   if (ssrCss) {
@@ -83,7 +77,7 @@ export default function vynn(options: VynnPluginOptions = {}) {
 
 /** Standalone server-function integration for Vite projects. */
 export function serverFunctions(options: VynnServerFunctionsOptions = {}) {
-  return serverFunctionsPlugin(options, { standalone: true });
+  return serverFunctionsPlugin(options);
 }
 
 export type { VynnServerFunctionsOptions };
