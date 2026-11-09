@@ -84,12 +84,16 @@ export function getRouteParams(path: string, location: Location): RouteParams {
 
   for (let index = 0; index < matchedSegmentCount; index++) {
     const routeSegment = routeSegments[index];
+    const pathnameSegment = pathnameSegments[index];
 
-    if (!routeSegment.startsWith(":")) {
-      continue;
+    if (routeSegment.startsWith(":")) {
+      params[routeSegment.slice(1)] = decodePathSegment(pathnameSegment);
+    } else if (routeSegment !== pathnameSegment) {
+      // Do not expose partial params from a route that did not match its
+      // static prefix. A child route may have dynamic segments before a
+      // later static segment that fails to match.
+      return {};
     }
-
-    params[routeSegment.slice(1)] = decodePathSegment(pathnameSegments[index]);
   }
 
   if (hasWildcard) {
@@ -131,7 +135,7 @@ export function matchRoute(
 /** Combines a parent route path with a child route path. */
 export function joinPaths(parent: string, child: string): string {
   const normalizedParent = normalizePath(parent);
-  if (normalizedParent === "/") return normalizePath(child);
+  if (normalizedParent === "/") return normalizePath("/" + child);
   if (!child || child === "/") return normalizedParent;
   return normalizePath(normalizedParent + "/" + child);
 }

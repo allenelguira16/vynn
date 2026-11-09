@@ -78,7 +78,8 @@ export function parseLocation(url?: string): Location {
   const fallback = !isServer
     ? window.location.pathname + window.location.search
     : "/";
-  const parsed = new URL(url || fallback, "http://vynn.local");
+  const base = !isServer ? window.location.origin : "http://vynn.local";
+  const parsed = new URL(url || fallback, base);
 
   return {
     pathname: parsed.pathname,
@@ -107,10 +108,16 @@ function updateUrl(
   location: Location,
   historyAction: "push" | "replace",
 ): void {
-  const target = new URL(
-    path,
-    "http://vynn.local" + location.pathname + location.search,
-  );
+  const base = !isServer
+    ? window.location.origin + location.pathname + location.search
+    : "http://vynn.local" + location.pathname + location.search;
+  const target = new URL(path, base);
+
+  if (!isServer && target.origin !== window.location.origin) {
+    window.location.assign(target.href);
+    return;
+  }
+
   const next = {
     pathname: target.pathname,
     search: target.search,

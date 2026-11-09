@@ -10,6 +10,10 @@ export function isActiveRoute(
   targetPath: string,
   location = currentLocation(),
 ): boolean {
+  if (/^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(targetPath)) {
+    return false;
+  }
+
   return matchRoute(targetPath, true, location);
 }
 
@@ -19,6 +23,8 @@ export function Link(
     href: string;
     activeClass?: string;
     class?: string;
+    target?: string;
+    download?: boolean | string;
   }>,
 ) {
   props.class ??= "";
@@ -27,16 +33,41 @@ export function Link(
   return (
     <a
       href={props.href}
+      target={props.target}
+      download={props.download}
       class={(
         props.class +
         (isActiveRoute(props.href, location) ? " " + (props.activeClass ?? "") : "")
       ).trim()}
       onClick={(event) => {
-        if (!isServer) {
-          event.preventDefault();
-          event.stopPropagation();
-          navigate(props.href, location);
+        if (isServer || event.defaultPrevented) return;
+
+        // Preserve native anchor behavior for modified clicks, non-primary
+        // buttons, downloads, and links targeting another browsing context.
+        if (
+          event.button !== 0 ||
+          event.metaKey ||
+          event.ctrlKey ||
+          event.shiftKey ||
+          event.altKey ||
+          props.download !== undefined ||
+          (props.target !== undefined && props.target.toLowerCase() !== "_self")
+        ) {
+          return;
         }
+
+        const target = new URL(props.href, window.location.href);
+
+        // Let the browser handle external URLs and non-HTTP schemes.
+        if (
+          target.origin !== window.location.origin ||
+          (target.protocol !== "http:" && target.protocol !== "https:")
+        ) {
+          return;
+        }
+
+        event.preventDefault();
+        navigate(target.pathname + target.search + target.hash, location);
       }}
     >
       {props.children}

@@ -31,57 +31,53 @@ type RouteGuardResult =
   | { type: "allowed" }
   | { type: "redirect"; signal: unknown; revision: number };
 
-/** Returns whether a catch-all path is more specific than another. */
-function isMoreSpecificCatchAll(candidatePath: string, currentPath: string): boolean {
-  const candidateSegments = toSegments(candidatePath).slice(0, -1);
-  const currentSegments = toSegments(currentPath).slice(0, -1);
-  const sharedLength = Math.min(candidateSegments.length, currentSegments.length);
-
-  for (let index = 0; index < sharedLength; index++) {
-    const candidateIsStatic = !candidateSegments[index].startsWith(":");
-    const currentIsStatic = !currentSegments[index].startsWith(":");
-
-    if (candidateIsStatic !== currentIsStatic) {
-      return candidateIsStatic;
-    }
-  }
-
-  return candidateSegments.length > currentSegments.length;
+/** Assigns a lexicographic specificity score to a route pattern. */
+function getRouteSpecificity(path: string): number[] {
+  return toSegments(path).map((segment) => {
+    if (segment === "*") return 0;
+    if (segment.startsWith(":")) return 1;
+    return 2;
+  });
 }
 
-/** Finds the route selected by the current outlet. */
-function findMatch(
+function compareSpecificity(left: string, right: string): number {
+  const a = getRouteSpecificity(left);
+  const b = getRouteSpecificity(right);
+  const length = Math.max(a.length, b.length);
+
+  for (let index = 0; index < length; index++) {
+    const difference = (a[index] ?? -1) - (b[index] ?? -1);
+    if (difference !== 0) return difference;
+  }
+
+  return 0;
+}
+
+/** Finds the most specific route selected by the current outlet. */
+export function findMatch(
   routes: Route[],
   location: ReturnType<typeof currentLocation>,
   parentPath = "",
 ): MatchedRoute | undefined {
-  let catchAllMatch: MatchedRoute | undefined;
+  let bestMatch: MatchedRoute | undefined;
 
   for (const route of routes) {
     const fullPath = joinPaths(parentPath, route.path);
     const hasChildren = !!route.children?.length;
 
-    if (isCatchAllPath(fullPath)) {
-      if (matchRoute(fullPath, !hasChildren, location)) {
-        if (
-          !catchAllMatch ||
-          isMoreSpecificCatchAll(fullPath, catchAllMatch.fullPath)
-        ) {
-          catchAllMatch = { route, fullPath };
-        }
-      }
-
+    if (!matchRoute(fullPath, !hasChildren, location)) {
       continue;
     }
 
-    if (matchRoute(fullPath, !hasChildren, location)) {
-      return { route, fullPath };
+    if (
+      !bestMatch ||
+      compareSpecificity(fullPath, bestMatch.fullPath) > 0
+    ) {
+      bestMatch = { route, fullPath };
     }
   }
 
-  // Wildcards are fallbacks, so an explicit route always wins regardless
-  // of where the catch-all route appears in the route array.
-  return catchAllMatch;
+  return bestMatch;
 }
 
 /**

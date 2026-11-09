@@ -359,12 +359,25 @@ importers:
 
   packages/vynn-router:
     dependencies:
-      typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
       vynn:
         specifier: workspace:*
         version: link:../vynn-core
+    devDependencies:
+      '@vitest/coverage-v8':
+        specifier: ^5.0.5
+        version: 5.1.0(vitest@5.1.0)
+      jsdom:
+        specifier: ^30.1.3
+        version: 30.1.3
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vite:
+        specifier: ^8.3.5
+        version: 8.3.6(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)
+      vitest:
+        specifier: ^5.0.5
+        version: 5.1.0(@types/node@26.6.6)(@vitest/coverage-v8@5.1.0)(jsdom@30.1.3)(vite@8.3.6(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15))
 
   sandbox/solidjs2-app:
     dependencies:
