@@ -81,4 +81,10 @@ export default function vynn(options: VynnPluginOptions = {}) {
   return plugins;
 }
 
+
+/** Standalone server-function integration for Vite projects. */
+export function serverFunctions(options: VynnServerFunctionsOptions = {}) {
+  return serverFunctionsPlugin(options, { standalone: true });
+}
+
 export type { VynnServerFunctionsOptions };

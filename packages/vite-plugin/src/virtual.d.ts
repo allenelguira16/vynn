@@ -7,3 +7,14 @@ declare module "virtual:vynn/server-functions" {
    */
   export function handleServerFunctionRequest(request: Request): Promise<Response | null>;
 }
+
+declare module "virtual:vynn/server-functions/client-runtime" {
+  export function createServerReference<T extends (...args: never[]) => unknown>(id: string): T;
+}
+
+declare module "virtual:vynn/server-functions/server-runtime" {
+  export function createServerReference<T extends (...args: never[]) => unknown>(
+    implementation: T,
+    id: string,
+  ): T;
+}

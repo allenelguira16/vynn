@@ -17,6 +17,10 @@
     ".": {
       "types": "./src/index.ts",
       "import": "./src/index.ts"
+    },
+    "./server-functions": {
+      "types": "./src/server-functions/index.ts",
+      "import": "./src/server-functions/index.ts"
     }
   },
   "scripts": {
@@ -31,7 +35,8 @@
   },
   "devDependencies": {
     "typescript": "^7.0.2",
-    "vitest": "^5.0.5"
+    "vitest": "^5.0.5",
+    "@types/node": "^26.6.3"
   },
   "devEngines": {
     "packageManager": {

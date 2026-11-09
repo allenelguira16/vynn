@@ -40,6 +40,7 @@ import {
   SERVER_ENTRY_ID,
   SSR_HANDLER_ID,
 } from "./app/shared.ts";
+import { DEFAULT_ENDPOINT } from "./server-functions/shared.ts";
 
 export { CLIENT_ENTRY_ID, SERVER_ENTRY_ID, SSR_HANDLER_ID };
 
@@ -73,7 +74,7 @@ export function vynnAppPlugin({ ssr, ssrMode, ssrCss, serverFunctions }: PluginO
   let serverOutDir = resolve(process.cwd(), "dist/server");
   let base = "/";
   let isBuild = false;
-  let serverFunctionEndpoint = "/__vynn/server-function";
+  let serverFunctionEndpoint = DEFAULT_ENDPOINT;
   let restarting = false;
   const root = () => resolvedConfig?.root ?? process.cwd();
 
@@ -124,7 +125,7 @@ export function vynnAppPlugin({ ssr, ssrMode, ssrCss, serverFunctions }: PluginO
                 outDir: "dist/client",
                 manifest: true,
                 ssrManifest: true,
-                rollupOptions: {
+                rolldownOptions: {
                   input: {
                     client: entries.clientInput,
                   },
@@ -136,7 +137,7 @@ export function vynnAppPlugin({ ssr, ssrMode, ssrCss, serverFunctions }: PluginO
               build: {
                 outDir: "dist/server",
                 minify: "oxc",
-                rollupOptions: {
+                rolldownOptions: {
                   input: {
                     index: SSR_HANDLER_ID,
                   },
@@ -169,7 +170,7 @@ export function vynnAppPlugin({ ssr, ssrMode, ssrCss, serverFunctions }: PluginO
         build: {
           outDir: "dist/client",
           manifest: true,
-          rollupOptions: {
+          rolldownOptions: {
             input: {
               client: entries.clientInput,
             },
@@ -205,7 +206,8 @@ export function vynnAppPlugin({ ssr, ssrMode, ssrCss, serverFunctions }: PluginO
       resolvedConfig = config;
       base = config.base || "/";
       isBuild = config.command === "build";
-      const rawServerFunctionEndpoint = serverFunctions?.endpoint ?? "/__vynn/server-function";
+      const rawServerFunctionEndpoint =
+        serverFunctions?.endpoint ?? DEFAULT_ENDPOINT;
       const basePrefix =
         base === "/" || base === "./" ? "" : base.startsWith("/") ? base.replace(/\/+$/, "") : "";
       serverFunctionEndpoint = basePrefix

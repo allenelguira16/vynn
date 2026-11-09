@@ -16,3 +16,12 @@ export {
   type SsrPreloadLinkOptions,
 } from "./preload.render-preload-links";
 
+
+export {
+  createServerFunctionHandler,
+  createServerReference,
+  getServerFunctionImplementation,
+  type ServerFunctionHandlerOptions,
+  type ServerFunctionImplementation,
+  type ServerFunctionResolver,
+} from "../server-functions/server";

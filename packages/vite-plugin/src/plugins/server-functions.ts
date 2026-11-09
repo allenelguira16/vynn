@@ -10,16 +10,12 @@ import { registerServerFunctionDevMiddleware } from "./server-functions/dev-midd
 import { makeClientRuntime, makeServerRuntime } from "./server-functions/runtime.ts";
 import {
   CLIENT_RUNTIME_ID,
-  CREATE_SERVER_REFERENCE,
   DEFAULT_ENDPOINT,
-  MAX_REQUEST_BYTES,
-  type MarkedFunction,
   type Node,
   RESOLVED_CLIENT_RUNTIME_ID,
   RESOLVED_SERVER_FUNCTIONS_API_ID,
   RESOLVED_SERVER_FUNCTION_IMPL_PREFIX,
   RESOLVED_SERVER_RUNTIME_ID,
-  SCRIPT_EXTENSION_RE,
   SERVER_FUNCTIONS_API_ID,
   SERVER_FUNCTION_IMPL_PREFIX,
   SERVER_FUNCTION_MANIFEST_SENTINEL,
@@ -31,16 +27,15 @@ import {
   normalizeAllowedOrigin,
 } from "./server-functions/shared.ts";
 import {
-  applyEdits,
-  cleanModuleId,
-  collectMarkedFunctions,
-  containsNestedMarkedBoundary,
-  getDirectiveValue,
-  getModuleKey,
-  inferParserLanguage,
-  makeExtractedImplementation,
-  makeReplacement,
-} from "./server-functions/transform.ts";
+  transformServerFunctions,
+  type TransformServerFunctionsResult,
+} from "vynn-compiler/server-functions";
+
+const SCRIPT_EXTENSION_RE = /\.(?:[cm]?[jt]sx?)$/i;
+
+function cleanModuleId(id: string): string {
+  return id.split("?", 1)[0].replace(/\\/g, "/");
+}
 
 /**
  * Function-level `"use server"` transform.
@@ -77,15 +72,18 @@ export function serverFunctionsPlugin(
     throw new Error(
       "[Vynn use server] endpoint must be an absolute pathname without a query or hash.",
     );
-  const maxRequestBytes = options.maxRequestBytes ?? MAX_REQUEST_BYTES;
+  // The framework runtime owns the default and maximum request size.
+  // Passing undefined lets it apply its own default; its handler validates
+  // the configured value against the hard limit before accepting requests.
+  const maxRequestBytes = options.maxRequestBytes;
   if (
-    !Number.isSafeInteger(maxRequestBytes) ||
-    maxRequestBytes < 1 ||
-    maxRequestBytes > 25 * 1024 * 1024
-  )
+    maxRequestBytes !== undefined &&
+    (!Number.isSafeInteger(maxRequestBytes) || maxRequestBytes < 1)
+  ) {
     throw new Error(
-      "[Vynn use server] maxRequestBytes must be a safe integer between 1 and 26214400.",
+      "[Vynn use server] maxRequestBytes must be a positive safe integer.",
     );
+  }
   const allowedOrigins = (options.allowedOrigins ?? []).map(normalizeAllowedOrigin);
   let isDevelopment = false;
   let isBuild = false;
@@ -167,7 +165,7 @@ export function serverFunctionsPlugin(
       if (typeof config.build.ssr === "string") {
         registerSsrEntries(config.build.ssr);
       } else if (config.build.ssr === true) {
-        registerSsrEntries(config.build.rollupOptions.input);
+        registerSsrEntries(config.build.rolldownOptions.input);
       }
       resolvedEndpoint = applyBaseToEndpoint(config.base || "/", endpoint);
 
@@ -219,7 +217,7 @@ export function serverFunctionsPlugin(
       if (id.startsWith("\0") || cleanId.includes("/node_modules/")) return null;
       if (!SCRIPT_EXTENSION_RE.test(cleanId)) return null;
 
-      const moduleId = resolve(cleanId);
+      const moduleId = resolve(projectRoot, cleanId);
       // Clear the old HMR manifest even if the edited file removed its directive.
       replaceModuleRefs(moduleId, []);
 
@@ -262,65 +260,6 @@ export function serverFunctionsPlugin(
         return injectedHandlerExport ? { code: source, map: null } : null;
       }
 
-      let parsed: any;
-      try {
-        parsed = parseSync(cleanId, source, {
-          lang: inferParserLanguage(cleanId),
-          sourceType: "module",
-          astType: "ts",
-          preserveParens: false,
-          showSemanticErrors: false,
-        } as never);
-      } catch (error) {
-        this.error(
-          `[Vynn use server] Could not parse ${cleanId}: ${error instanceof Error ? error.message : String(error)}`,
-        );
-      }
-
-      const parseErrors: any[] = parsed.errors ?? parsed.diagnostics ?? [];
-      const fatalErrors = parseErrors.filter(
-        (error) => error.severity === "Error" || error.severity === 2 || !("severity" in error),
-      );
-      if (fatalErrors.length > 0) {
-        this.error(
-          `[Vynn use server] Could not parse ${cleanId}:\n${fatalErrors
-            .map((error) => error.message ?? String(error))
-            .join("\n")}`,
-        );
-      }
-
-      const program: Node = parsed.program;
-      let marked: MarkedFunction[] = [];
-      try {
-        marked = collectMarkedFunctions(program, source, projectRoot, moduleId);
-      } catch (error) {
-        this.error(error instanceof Error ? error.message : String(error));
-      }
-
-      let moduleDirective: Node | undefined;
-      for (const statement of program.body as Node[]) {
-        const value = getDirectiveValue(statement);
-        if (value === "use server") {
-          moduleDirective = statement;
-          break;
-        }
-        if (value === undefined) break;
-      }
-      if (moduleDirective) {
-        this.error(
-          `[Vynn use server] File-level "use server" is not supported yet. Put the directive inside a function body (${cleanId}).`,
-        );
-      }
-      if (!marked || marked.length === 0) {
-        return injectedHandlerExport ? { code: source, map: null } : null;
-      }
-
-      if (containsNestedMarkedBoundary(marked, program)) {
-        this.error(
-          `[Vynn use server] A server-marked function cannot contain another server-marked function yet (${cleanId}).`,
-        );
-      }
-
       const environmentConsumer = (
         this as unknown as { environment?: { config?: { consumer?: string } } }
       ).environment?.config?.consumer;
@@ -331,12 +270,23 @@ export function serverFunctionsPlugin(
 
       if (isBuild && isServer) hasServerBuildTransform = true;
 
-      const moduleKey = getModuleKey(projectRoot, moduleId);
-      const references = marked.map(({ id: functionId, exportName }) => ({
-        id: functionId,
-        moduleId,
-        exportName,
-      }));
+      let transformed: TransformServerFunctionsResult | null;
+      try {
+        transformed = transformServerFunctions(source, cleanId, {
+          root: projectRoot,
+          target: isServer ? "server" : "client",
+          runtimeModule: isServer ? SERVER_RUNTIME_ID : CLIENT_RUNTIME_ID,
+        });
+      } catch (error) {
+        this.error(error instanceof Error ? error.message : String(error));
+        return null;
+      }
+
+      if (!transformed) {
+        return injectedHandlerExport ? { code: source, map: null } : null;
+      }
+
+      const references = transformed.functions;
       replaceModuleRefs(moduleId, references);
 
       if (isServer && isBuild) {
@@ -352,22 +302,9 @@ export function serverFunctionsPlugin(
         }
       }
 
-      const edits = marked.map((item) => makeReplacement(item, isServer));
-      let output = applyEdits(source, edits);
-
-      if (isServer) {
-        const implementations = marked
-          .map((item) => makeExtractedImplementation(source, item))
-          .join("\n\n");
-        output += `\n\n// Vynn extracted server functions for ${moduleKey}\n${implementations}\n`;
-        output = `import { createServerReference as ${CREATE_SERVER_REFERENCE} } from ${JSON.stringify(SERVER_RUNTIME_ID)};\n${output}`;
-      } else {
-        output = `import { createServerReference as ${CREATE_SERVER_REFERENCE} } from ${JSON.stringify(CLIENT_RUNTIME_ID)};\n${output}`;
-      }
-
       return {
-        code: output,
-        map: null,
+        code: transformed.code,
+        map: transformed.map,
         meta: { vynnServerFunctions: references },
       };
     },
@@ -411,7 +348,7 @@ export function serverFunctionsPlugin(
             ssr: entryPath,
             outDir: serverFunctionsOutDir,
             emptyOutDir: true,
-            rollupOptions: {
+            rolldownOptions: {
               output: {
                 entryFileNames: "server.js",
               },
@@ -529,8 +466,8 @@ export function serverFunctionsPlugin(
     configureServer(server: ViteDevServer) {
       registerServerFunctionDevMiddleware(server, {
         endpoint: resolvedEndpoint,
-        allowedOrigins,
         maxRequestBytes,
+        allowedOrigins,
         exposeErrors: options.exposeErrors,
         isDevelopment,
         refsById,
