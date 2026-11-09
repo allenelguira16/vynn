@@ -493,7 +493,12 @@ export function normalizeJSXText(value: string): string {
   const normalized: string[] = [];
 
   for (let i = 0; i < lines.length; i++) {
-    let line = lines[i].replace(/\t/g, " ").trimStart();
+    let line = lines[i].replace(/\t/g, " ");
+
+    // The first line may begin with meaningful whitespace after an inline
+    // JSX element, such as: <strong>Vynn</strong> is a framework.
+    // Only later lines start with source indentation that should be removed.
+    if (i !== 0) line = line.trimStart();
     if (i !== lines.length - 1) line = line.trimEnd();
     if (!line.trim()) continue;
     normalized.push(line);

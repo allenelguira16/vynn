@@ -3,6 +3,23 @@ import { describe, expect, it } from "vitest";
 import { transformVynnOxc, vynnOxcPlugin } from "../src/plugins/jsx-transpiler.ts";
 
 describe("Vynn Oxc JSX compiler", () => {
+  it("preserves whitespace between an inline element and following text", () => {
+    const code = transformVynnOxc(
+      `function Intro() {
+        return (
+          <p>
+            <strong>Vynn</strong> is a TypeScript UI framework for building reactive web applications
+            with JSX. It combines familiar component composition with fine-grained reactivity,
+            updating the DOM directly when the values it depends on change.
+          </p>
+        );
+      }`,
+      "intro.tsx",
+    );
+
+    expect(code).toContain('_txt(" is a TypeScript UI framework');
+  });
+
   it("wraps function components whose returns are nested in conditional branches", () => {
     const code = transformVynnOxc(
       `function Status(props: { loading: boolean }) {

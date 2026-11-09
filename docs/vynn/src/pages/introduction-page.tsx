@@ -32,8 +32,7 @@ export const IntroductionPage = () => {
           </li>
           <li>Organize shared logic and application state using contexts.</li>
           <li>
-            Handle asynchronous resources with <code>$async()</code> and
-            <code>&lt;Await&gt;</code>.
+            Handle asynchronous resources with <code>$async()</code> and <code>&lt;Await&gt;</code>.
           </li>
           <li>
             Handle rendering errors with <code>&lt;ErrorBoundary&gt;</code>.
