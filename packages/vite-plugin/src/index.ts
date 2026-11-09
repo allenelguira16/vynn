@@ -2,13 +2,13 @@ import "./virtual.d.ts";
 import type { Plugin } from "vite";
 import type { RenderMode } from "vynn";
 
-import { vynnAppPlugin } from "./plugins/app.ts";
+import { vynnAppPlugin } from "./plugins/app/index.ts";
 import { vynnOxcPlugin } from "./plugins/jsx-transpiler.ts";
 import { vynnNodeAdapterPlugin } from "./plugins/node-adapter.ts";
 import {
   type VynnServerFunctionsOptions,
   serverFunctionsPlugin,
-} from "./plugins/server-functions.ts";
+} from "./plugins/server-functions/index.ts";
 import { createVynnSsrCssPlugin } from "./plugins/ssr-css.ts";
 import { vynnSsrPreloadPlugin } from "./plugins/ssr-preload.ts";
 
@@ -80,7 +80,6 @@ export default function vynn(options: VynnPluginOptions = {}) {
 
   return plugins;
 }
-
 
 /** Standalone server-function integration for Vite projects. */
 export function serverFunctions(options: VynnServerFunctionsOptions = {}) {

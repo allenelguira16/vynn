@@ -4,10 +4,14 @@ import { basename, dirname, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseSync, visitorKeys } from "oxc-parser";
 import { type PreviewServer, type ResolvedConfig, type ViteDevServer, build } from "vite";
+import {
+  transformServerFunctions,
+  type TransformServerFunctionsResult,
+} from "vynn-compiler/server-functions";
 
-import { createWebRequest, writeResponse } from "./app/http.ts";
-import { registerServerFunctionDevMiddleware } from "./server-functions/dev-middleware.ts";
-import { makeClientRuntime, makeServerRuntime } from "./server-functions/runtime.ts";
+import { createWebRequest, writeResponse } from "../app/http.ts";
+import { registerServerFunctionDevMiddleware } from "./dev-middleware.ts";
+import { makeClientRuntime, makeServerRuntime } from "./runtime.ts";
 import {
   CLIENT_RUNTIME_ID,
   DEFAULT_ENDPOINT,
@@ -25,11 +29,7 @@ import {
   type VynnServerFunctionsPlugin,
   applyBaseToEndpoint,
   normalizeAllowedOrigin,
-} from "./server-functions/shared.ts";
-import {
-  transformServerFunctions,
-  type TransformServerFunctionsResult,
-} from "vynn-compiler/server-functions";
+} from "./shared.ts";
 
 const SCRIPT_EXTENSION_RE = /\.(?:[cm]?[jt]sx?)$/i;
 
@@ -80,9 +80,7 @@ export function serverFunctionsPlugin(
     maxRequestBytes !== undefined &&
     (!Number.isSafeInteger(maxRequestBytes) || maxRequestBytes < 1)
   ) {
-    throw new Error(
-      "[Vynn use server] maxRequestBytes must be a positive safe integer.",
-    );
+    throw new Error("[Vynn use server] maxRequestBytes must be a positive safe integer.");
   }
   const allowedOrigins = (options.allowedOrigins ?? []).map(normalizeAllowedOrigin);
   let isDevelopment = false;
@@ -450,7 +448,9 @@ export function serverFunctionsPlugin(
 
         findManifestLiteral(parsed.program);
         if (!manifestLiteral)
-          this.error("[Vynn use server] Could not locate the production function manifest literal.");
+          this.error(
+            "[Vynn use server] Could not locate the production function manifest literal.",
+          );
 
         const replacementValue = manifestLiteral.value.replace(
           SERVER_FUNCTION_MANIFEST_SENTINEL,

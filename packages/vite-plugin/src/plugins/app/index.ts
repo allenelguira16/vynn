@@ -6,9 +6,10 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import type { VynnServerFunctionsOptions } from "./server-functions.ts";
-import type { VynnSsrCssCollector, VynnSsrCssLink } from "./ssr-css.ts";
+import type { VynnServerFunctionsOptions } from "../server-functions/index.ts";
+import type { VynnSsrCssCollector, VynnSsrCssLink } from "../ssr-css.ts";
 
+import { DEFAULT_ENDPOINT } from "../server-functions/shared.ts";
 import {
   createAuthoredServerEntry,
   createClientEntry,
@@ -17,8 +18,8 @@ import {
   createSsrHandlerCode,
   readClientAssets,
   readSsrManifest,
-} from "./app/documents.ts";
-import { resolveEntries, toAbsoluteSpecifier } from "./app/entries.ts";
+} from "./documents.ts";
+import { resolveEntries, toAbsoluteSpecifier } from "./entries.ts";
 import {
   addBaseToRequestUrl,
   createWebRequest,
@@ -29,7 +30,7 @@ import {
   joinAssetBase,
   toDevUrl,
   writeResponse,
-} from "./app/http.ts";
+} from "./http.ts";
 import {
   CLIENT_ENTRY_ID,
   type ClientAssets,
@@ -39,8 +40,7 @@ import {
   type ResolvedEntries,
   SERVER_ENTRY_ID,
   SSR_HANDLER_ID,
-} from "./app/shared.ts";
-import { DEFAULT_ENDPOINT } from "./server-functions/shared.ts";
+} from "./shared.ts";
 
 export { CLIENT_ENTRY_ID, SERVER_ENTRY_ID, SSR_HANDLER_ID };
 
@@ -206,8 +206,7 @@ export function vynnAppPlugin({ ssr, ssrMode, ssrCss, serverFunctions }: PluginO
       resolvedConfig = config;
       base = config.base || "/";
       isBuild = config.command === "build";
-      const rawServerFunctionEndpoint =
-        serverFunctions?.endpoint ?? DEFAULT_ENDPOINT;
+      const rawServerFunctionEndpoint = serverFunctions?.endpoint ?? DEFAULT_ENDPOINT;
       const basePrefix =
         base === "/" || base === "./" ? "" : base.startsWith("/") ? base.replace(/\/+$/, "") : "";
       serverFunctionEndpoint = basePrefix
