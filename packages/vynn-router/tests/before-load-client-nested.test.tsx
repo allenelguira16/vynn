@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
-
 import { Await, type JSX } from "vynn";
 import { hydrateToDOM, renderToDOM } from "vynn/client";
 import { $insert, $tmpl, $txt } from "vynn/render";
-import { redirect, Router, type Route } from "../src";
 import { renderToServer } from "vynn/server";
+
+import { redirect, Router, type Route } from "../src";
 
 let requestAnimationFrameDescriptor: PropertyDescriptor | undefined;
 
@@ -175,5 +175,4 @@ describe("client router redirects", () => {
 
     unmount();
   });
-
 });

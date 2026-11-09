@@ -4,10 +4,10 @@ import type { SSR_ELEMENT } from "./resolve-node";
 import { isHydrating } from "../client/hydration";
 import { isServer } from "../context/is-server-context";
 import { $renderEffect } from "../reactivity/$effect";
+import { hasRawHTMLContent } from "./$attr";
 import { isCreatingHeadElement, runWithHeadElementContext } from "./$head";
 import { getChildDOMNamespace, withDOMNamespace } from "./namespace";
 import { resolveNode, resolveSSRChild } from "./resolve-node";
-import { hasRawHTMLContent } from "./$attr";
 
 const initializedHeadChildren = new WeakSet<Element>();
 

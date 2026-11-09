@@ -44,8 +44,8 @@ describe("resolver configuration", () => {
   });
 
   it("rejects non-HTTP allowed origins", () => {
-    expect(() =>
-      createServerFunctionHandler({ allowedOrigins: ["file:///tmp"] }),
-    ).toThrow(/must use http or https/);
+    expect(() => createServerFunctionHandler({ allowedOrigins: ["file:///tmp"] })).toThrow(
+      /must use http or https/,
+    );
   });
 });

@@ -20,7 +20,7 @@ import {
 } from "../src/context/lazy-context";
 import { createOwner, disposeOwner, runWithOwner } from "../src/life-cycle/owner";
 import { $computed } from "../src/reactivity/$computed";
-import { isPending } from "../src/reactivity/$async";
+import { isPending } from "../src/reactivity/async";
 import { NotReadyError } from "../src/reactivity/not-ready-error";
 
 describe("lazy hydration identities", () => {
@@ -66,6 +66,7 @@ describe("lazy hydration identities", () => {
         });
 
         try {
+          // oxlint-disable-next-line no-unused-expressions
           component!.value;
         } catch (error) {
           readError = error;
@@ -88,7 +89,6 @@ describe("lazy hydration identities", () => {
       disposeOwner(owner);
     }
   });
-
 
   it("keeps nested lazy IDs stable when sibling parents resolve out of order", () => {
     const root = createOwner(null);

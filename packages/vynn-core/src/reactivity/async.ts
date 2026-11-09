@@ -7,13 +7,13 @@ import {
 import { isServer } from "../context/is-server-context";
 import { isAsyncGetterFromLazy, registerPromiseFromLazy } from "../context/lazy-context";
 import { getOwner, runWithOwner } from "../life-cycle/owner";
-import { withFakeAsyncApis } from "./$async.util";
 import { $renderEffect } from "./$effect";
 import { createCell } from "./cell";
 import { NotReadyError } from "./not-ready-error";
 import { registerPending } from "./pending";
 import { transaction } from "./transaction";
 import { untrack } from "./untrack";
+import { withFakeAsyncApis } from "./with-fake-async-apis";
 
 export type Async<T> = {
   value: T;
@@ -60,10 +60,7 @@ export function $async<T>(getter: () => Promise<T>): Async<T> {
  * Unlike $async, this retains the last resolved value while a replacement
  * computation is pending. It starts the first computation immediately.
  */
-export function createAsyncDerived<T>(
-  getter: () => Promise<T>,
-  lazy = false,
-): Async<T> {
+export function createAsyncDerived<T>(getter: () => Promise<T>, lazy = false): Async<T> {
   const derived = createAsyncResource(getter, true, { lazy });
 
   // Async-derived state is eager by default. Lazy computations defer resource

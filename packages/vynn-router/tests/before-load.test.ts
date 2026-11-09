@@ -1,17 +1,25 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-
 import { lazy, type JSX } from "vynn";
-import { enterAsyncBoundary } from "../../vynn-core/src/context/async-context";
 import { renderToServer } from "vynn/server";
+
+import { enterAsyncBoundary } from "../../vynn-core/src/context/async-context";
 import { redirect, Router, type Route } from "../src";
 
-function renderRouter(url: string, routes: Route[], mode: "async"): Promise<{
+function renderRouter(
+  url: string,
+  routes: Route[],
+  mode: "async",
+): Promise<{
   body: string;
   head: { render(): string };
   modules: ReadonlySet<string>;
 }>;
-function renderRouter(url: string, routes: Route[], mode: "stream"): {
+function renderRouter(
+  url: string,
+  routes: Route[],
+  mode: "stream",
+): {
   body: ReadableStream<Uint8Array>;
   head: { render(): string };
   modules: ReadonlySet<string>;
@@ -19,9 +27,7 @@ function renderRouter(url: string, routes: Route[], mode: "stream"): {
 function renderRouter(url: string, routes: Route[], mode: "async" | "stream") {
   const App = () => Router({ url, routes }) as unknown as JSX.Element;
 
-  return mode === "async"
-    ? renderToServer(App, "async")
-    : renderToServer(App, "stream");
+  return mode === "async" ? renderToServer(App, "async") : renderToServer(App, "stream");
 }
 
 describe("router beforeLoad and redirect", () => {
@@ -96,15 +102,12 @@ describe("router beforeLoad and redirect", () => {
   it("redirects during an async guard without invoking a lazy route component", async () => {
     let lazyLoadCount = 0;
 
-    const LazyRedirectPage = lazy(
-      () => {
-        lazyLoadCount++;
-        return Promise.resolve({
-          RedirectPage: () => "This page must never render",
-        });
-      },
-      "RedirectPage",
-    );
+    const LazyRedirectPage = lazy(() => {
+      lazyLoadCount++;
+      return Promise.resolve({
+        RedirectPage: () => "This page must never render",
+      });
+    }, "RedirectPage");
 
     const routes: Route[] = [
       {

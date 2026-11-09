@@ -1,7 +1,8 @@
 import type { ViteDevServer } from "vite";
 
-import { createWebRequest, writeResponse } from "../app/http.ts";
 import type { ServerFunctionReference } from "./shared.ts";
+
+import { createWebRequest, writeResponse } from "../app/http.ts";
 
 type ServerFunctionDevMiddlewareOptions = {
   endpoint: string;

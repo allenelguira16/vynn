@@ -1,7 +1,8 @@
+import type { RouteParams } from "./types";
+
 import { useRoutePath } from "./context";
 import { currentLocation } from "./location";
 import { getRouteParam } from "./path";
-import type { RouteParams } from "./types";
 
 /**
  * Reactive, read-only parameters for the route component currently being

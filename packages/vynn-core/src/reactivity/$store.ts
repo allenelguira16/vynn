@@ -1,5 +1,5 @@
-import { createAsyncDerived } from "./$async";
 import { $renderEffect } from "./$effect";
+import { createAsyncDerived } from "./async";
 import { isAsyncFunction } from "./is-async-function";
 import { NotReadyError } from "./not-ready-error";
 import { isPending as getPending, registerPending } from "./pending";

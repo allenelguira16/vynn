@@ -59,9 +59,7 @@ describe("Vynn server-function compiler", () => {
       },
     );
 
-    expect(result?.code).toContain(
-      'from "virtual:vynn/server-functions/client-runtime"',
-    );
+    expect(result?.code).toContain('from "virtual:vynn/server-functions/client-runtime"');
   });
 
   it("ignores modules without a server directive", () => {

@@ -1,9 +1,6 @@
 import type { Plugin, Rolldown } from "vite";
 
-import {
-  transformVynnOxcWithMap,
-  type VynnCompilerOptions,
-} from "vynn-compiler";
+import { transformVynnOxcWithMap, type VynnCompilerOptions } from "vynn-compiler";
 
 export type VynnOxcPluginOptions = VynnCompilerOptions & {
   /** Set false to disable the transform for matching files. */

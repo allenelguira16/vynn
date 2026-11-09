@@ -50,13 +50,15 @@ function includesSsrHandlerEntry(input: unknown): boolean {
   return false;
 }
 
-function getSsrEnvironment(config: unknown): {
-  build?: {
-    rolldownOptions?: {
-      input?: unknown;
-    };
-  };
-} | undefined {
+function getSsrEnvironment(config: unknown):
+  | {
+      build?: {
+        rolldownOptions?: {
+          input?: unknown;
+        };
+      };
+    }
+  | undefined {
   return (
     config as {
       environments?: {
@@ -184,7 +186,8 @@ export function serverFunctionsPlugin(
       order: "post",
       handler(config, env) {
         const integratedSsrApp =
-          isIntegratedSsrAppConfig(config) || (env.isPreview && getSsrEnvironment(config) !== undefined);
+          isIntegratedSsrAppConfig(config) ||
+          (env.isPreview && getSsrEnvironment(config) !== undefined);
         if (integratedSsrApp) hasIntegratedSsrApp = true;
         if (integratedSsrApp || env.isSsrBuild) return null;
 
@@ -363,7 +366,13 @@ export function serverFunctionsPlugin(
       // server bundle from the modules containing server functions so preview
       // has a real RPC handler. The SSR build's own closeBundle is skipped to
       // prevent recursive builds.
-      if (hasIntegratedSsrApp || !isBuild || isSsrBuild || !resolvedConfig || refsByModule.size === 0) {
+      if (
+        hasIntegratedSsrApp ||
+        !isBuild ||
+        isSsrBuild ||
+        !resolvedConfig ||
+        refsByModule.size === 0
+      ) {
         return;
       }
 

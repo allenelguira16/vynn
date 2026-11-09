@@ -3,8 +3,5 @@
  * function value stored in $state.
  */
 export function isAsyncFunction(value: unknown): value is () => Promise<unknown> {
-  return (
-    typeof value === "function" &&
-    value.constructor?.name === "AsyncFunction"
-  );
+  return typeof value === "function" && value.constructor?.name === "AsyncFunction";
 }

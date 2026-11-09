@@ -17,8 +17,8 @@ export default defineConfig({
       reportsDirectory: "./coverage",
 
       // Include untested modules as well.
-      include: ["src/**/*.ts"],
-      exclude: ["src/**/*.test.ts", "src/**/*.d.ts"],
+      include: ["src/**/*.ts", "tests/**/*.ts"],
+      exclude: ["src/**/*.d.ts"],
     },
   },
 });

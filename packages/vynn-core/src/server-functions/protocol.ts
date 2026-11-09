@@ -43,9 +43,7 @@ export function normalizeServerFunctionOrigin(value: string): string {
   }
 
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    throw new Error(
-      "[Vynn server functions] Allowed origins must use http or https: " + value,
-    );
+    throw new Error("[Vynn server functions] Allowed origins must use http or https: " + value);
   }
 
   return parsed.origin;
@@ -62,10 +60,7 @@ export function isAllowedServerFunctionOrigin(
     const parsed = new URL(origin);
     if (parsed.origin !== origin) return false;
 
-    return (
-      parsed.origin === new URL(requestUrl).origin ||
-      allowedOrigins.has(parsed.origin)
-    );
+    return parsed.origin === new URL(requestUrl).origin || allowedOrigins.has(parsed.origin);
   } catch {
     return false;
   }

@@ -2,14 +2,18 @@
 import { describe, expect, it } from "vitest";
 
 import { ASYNC_DATA_SSR_KEY } from "../src/const";
-import { enterAsyncBoundary, getAsyncValues, initializeAsyncContext } from "../src/context/async-context";
+import {
+  enterAsyncBoundary,
+  getAsyncValues,
+  initializeAsyncContext,
+} from "../src/context/async-context";
 import { isPromiseFromLazy, regsterAsyncGetterFromLazy } from "../src/context/lazy-context";
 import { createOwner, disposeOwner, runWithOwner } from "../src/life-cycle/owner";
-import { $async, isPending } from "../src/reactivity/$async";
 import { $computed } from "../src/reactivity/$computed";
 import { $effect } from "../src/reactivity/$effect";
 import { $state } from "../src/reactivity/$state";
 import { $store } from "../src/reactivity/$store";
+import { $async, isPending } from "../src/reactivity/async";
 import { NotReadyError } from "../src/reactivity/not-ready-error";
 import { transaction } from "../src/reactivity/transaction";
 import { untrack } from "../src/reactivity/untrack";
@@ -107,10 +111,13 @@ describe("$computed", () => {
     const firstName = $state("Ada");
     let executions = 0;
 
-    const greeting = $computed(() => {
-      executions += 1;
-      return `Hello, ${firstName.value}!`;
-    }, { lazy: true });
+    const greeting = $computed(
+      () => {
+        executions += 1;
+        return `Hello, ${firstName.value}!`;
+      },
+      { lazy: true },
+    );
 
     expect(executions).toBe(0);
     expect(greeting.value).toBe("Hello, Ada!");
@@ -131,10 +138,13 @@ describe("$computed", () => {
 
     try {
       runWithOwner(creator, () => {
-        doubled = $computed(() => {
-          executions += 1;
-          return count.value * 2;
-        }, { lazy: true });
+        doubled = $computed(
+          () => {
+            executions += 1;
+            return count.value * 2;
+          },
+          { lazy: true },
+        );
       });
 
       runWithOwner(consumer, () => {
@@ -670,7 +680,6 @@ describe("$async", () => {
     }
   });
 
-
   it("works outside an owner and initialized async context", async () => {
     let executions = 0;
     const data = $async(async () => {
@@ -698,8 +707,6 @@ describe("$async", () => {
     expect(data.value).toBe("standalone");
     expect(isPending(data)).toBe(false);
   });
-
-
 
   it("uses the consuming component's Await boundary when created outside an owner", async () => {
     const data = $async(async () => "standalone boundary");
@@ -836,7 +843,6 @@ describe("$async", () => {
     }
   });
 });
-
 
 describe("async-derived $state", () => {
   it("is writable and refreshes only when a dependency changes", async () => {
@@ -1157,7 +1163,6 @@ describe("async-derived $store", () => {
   });
 });
 
-
 describe("async-derived state without an owner", () => {
   it("supports async $state and $store outside a component", async () => {
     const count = $state(async () => 42);
@@ -1178,4 +1183,3 @@ describe("async-derived state without an owner", () => {
     expect(settings.preferences.compact).toBe(true);
   });
 });
-

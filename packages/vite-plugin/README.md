@@ -47,6 +47,7 @@ so custom entries can use the same mode as generated entries:
 
 ```tsx
 import type { RenderMode } from "vynn";
+
 import { renderToServer } from "vynn/server";
 
 export async function render(url: string, mode: RenderMode) {

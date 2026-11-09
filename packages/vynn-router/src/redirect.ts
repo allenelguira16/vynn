@@ -18,10 +18,7 @@ class ClientRedirectSignal extends Error {
 
     this.sourcePathname = location.pathname;
     this.sourceSearch = location.search;
-    this.target = new URL(
-      to,
-      window.location.origin + location.pathname + location.search,
-    );
+    this.target = new URL(to, window.location.origin + location.pathname + location.search);
   }
 }
 
@@ -37,10 +34,7 @@ export function isClientRedirect(error: unknown): error is ClientRedirectSignal 
  * navigation. The caller's revision check also invalidates redirects when
  * the guard resource is superseded before this frame runs.
  */
-export function commitClientRedirect(
-  error: unknown,
-  isCurrent: () => boolean = () => true,
-): void {
+export function commitClientRedirect(error: unknown, isCurrent: () => boolean = () => true): void {
   if (!isClientRedirect(error)) {
     return;
   }
@@ -52,20 +46,14 @@ export function commitClientRedirect(
 
     const location = currentLocation();
 
-    if (
-      location.pathname !== error.sourcePathname ||
-      location.search !== error.sourceSearch
-    ) {
+    if (location.pathname !== error.sourcePathname || location.search !== error.sourceSearch) {
       return;
     }
 
     if (error.target.origin !== window.location.origin) {
       window.location.replace(error.target.href);
     } else {
-      replace(
-        error.target.pathname + error.target.search + error.target.hash,
-        location,
-      );
+      replace(error.target.pathname + error.target.search + error.target.hash, location);
     }
   };
 
@@ -90,9 +78,7 @@ export function redirect(to: string, options: RedirectOptions = {}): never {
   const status = options.status ?? 302;
 
   if (![301, 302, 303, 307, 308].includes(status)) {
-    throw new RangeError(
-      "[vynn-router] Redirect status must be 301, 302, 303, 307, or 308.",
-    );
+    throw new RangeError("[vynn-router] Redirect status must be 301, 302, 303, 307, or 308.");
   }
 
   if (isServer) {

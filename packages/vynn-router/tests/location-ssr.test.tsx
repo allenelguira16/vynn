@@ -1,9 +1,9 @@
-// @vitest-environment node
-import { describe, expect, it } from "vitest";
-
 import type { JSX } from "vynn";
 
+// @vitest-environment node
+import { describe, expect, it } from "vitest";
 import { renderToServer } from "vynn/server";
+
 import { $location, Router, type Route } from "../src";
 
 async function renderRouter(url: string, routes: Route[]): Promise<string> {

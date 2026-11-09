@@ -9,7 +9,14 @@ import {
 } from "../const";
 import { isServer } from "../context/is-server-context";
 import { removeInternalRangeMarkers } from "../dom/internal-range";
-import { type Owner, createOwner, getContext, getOwner, runWithOwner, setContext } from "../life-cycle/owner";
+import {
+  type Owner,
+  createOwner,
+  getContext,
+  getOwner,
+  runWithOwner,
+  setContext,
+} from "../life-cycle/owner";
 
 let serverRenderedElements: Element[] = [];
 let serverRenderedTexts: Text[] = [];
@@ -429,7 +436,8 @@ function getServerRenderedNodes(root: Node) {
 
         if (
           isCommentNode(current) &&
-          (current.data === INTERNAL_RANGE_START_MARKER || current.data === INTERNAL_RANGE_END_MARKER)
+          (current.data === INTERNAL_RANGE_START_MARKER ||
+            current.data === INTERNAL_RANGE_END_MARKER)
         ) {
           current.parentNode?.removeChild(current);
         } else {

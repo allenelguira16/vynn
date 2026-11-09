@@ -56,14 +56,18 @@ export function renderToDOM(
           root.localName !== "html" ||
           markers.some((marker) => !isRootNode(marker))
         ) {
-          throw new Error("[Vynn App] Rendering into a Document requires a single <html> root element.");
+          throw new Error(
+            "[Vynn App] Rendering into a Document requires a single <html> root element.",
+          );
         }
 
         const nextHead = root.querySelector("head");
         const nextBody = root.querySelector("body");
 
         if (!nextHead || !nextBody) {
-          throw new Error("[Vynn App] Rendering into a Document requires both <head> and <body> elements.");
+          throw new Error(
+            "[Vynn App] Rendering into a Document requires both <head> and <body> elements.",
+          );
         }
 
         // Preserve shell resources and head entries registered while

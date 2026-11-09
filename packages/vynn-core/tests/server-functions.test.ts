@@ -66,9 +66,7 @@ describe("server-function runtime", () => {
 
   it("returns null for requests outside the configured endpoint", async () => {
     const handler = createServerFunctionHandler();
-    const response = await handler(
-      makeRequest("{}", { url: "https://app.test/other" }),
-    );
+    const response = await handler(makeRequest("{}", { url: "https://app.test/other" }));
 
     expect(response).toBeNull();
   });
@@ -83,9 +81,7 @@ describe("server-function runtime", () => {
 
   it("rejects cross-origin requests", async () => {
     const handler = createServerFunctionHandler();
-    const response = await handler(
-      makeRequest("{}", { origin: "https://evil.test" }),
-    );
+    const response = await handler(makeRequest("{}", { origin: "https://evil.test" }));
 
     expect(response?.status).toBe(403);
   });
@@ -111,9 +107,7 @@ describe("server-function runtime", () => {
 
   it("rejects unsupported content types", async () => {
     const handler = createServerFunctionHandler();
-    const response = await handler(
-      makeRequest("{}", { contentType: "text/plain" }),
-    );
+    const response = await handler(makeRequest("{}", { contentType: "text/plain" }));
 
     expect(response?.status).toBe(415);
   });
@@ -135,9 +129,7 @@ describe("server-function runtime", () => {
   it("rejects malformed function IDs and argument lists", async () => {
     const handler = createServerFunctionHandler();
 
-    const invalidId = await handler(
-      makeRequest(JSON.stringify({ id: "not-an-id", args: [] })),
-    );
+    const invalidId = await handler(makeRequest(JSON.stringify({ id: "not-an-id", args: [] })));
     const invalidArgs = await handler(
       makeRequest(JSON.stringify({ id: createId(), args: "not-an-array" })),
     );
@@ -148,9 +140,7 @@ describe("server-function runtime", () => {
 
   it("returns 404 for unknown server functions", async () => {
     const handler = createServerFunctionHandler();
-    const response = await handler(
-      makeRequest(JSON.stringify({ id: createId(), args: [] })),
-    );
+    const response = await handler(makeRequest(JSON.stringify({ id: createId(), args: [] })));
 
     expect(response?.status).toBe(404);
   });
@@ -161,9 +151,7 @@ describe("server-function runtime", () => {
       throw new Error("private database detail");
     }, id);
     const handler = createServerFunctionHandler();
-    const response = await handler(
-      makeRequest(JSON.stringify({ id, args: [] })),
-    );
+    const response = await handler(makeRequest(JSON.stringify({ id, args: [] })));
 
     expect(response?.status).toBe(500);
     await expect(response?.json()).resolves.toEqual({
@@ -178,9 +166,7 @@ describe("server-function runtime", () => {
       throw new Error("useful development detail");
     }, id);
     const handler = createServerFunctionHandler({ exposeErrors: true });
-    const response = await handler(
-      makeRequest(JSON.stringify({ id, args: [] })),
-    );
+    const response = await handler(makeRequest(JSON.stringify({ id, args: [] })));
 
     await expect(response?.json()).resolves.toEqual({
       ok: false,
@@ -194,9 +180,7 @@ describe("server-function runtime", () => {
     circular.self = circular;
     createServerReference(() => circular, id);
     const handler = createServerFunctionHandler();
-    const response = await handler(
-      makeRequest(JSON.stringify({ id, args: [] })),
-    );
+    const response = await handler(makeRequest(JSON.stringify({ id, args: [] })));
 
     expect(response?.status).toBe(500);
     await expect(response?.json()).resolves.toEqual({

@@ -6,8 +6,6 @@
  * their own adapters.
  */
 
-
-
 import { print } from "esrap";
 import tsx from "esrap/languages/tsx";
 import { parseSync } from "oxc-parser";
@@ -701,7 +699,8 @@ class TransformState {
         !isCallExpression(node) ||
         node.arguments.length < 1 ||
         node.arguments.some((argument) => isSpreadElement(argument))
-      ) return false;
+      )
+        return false;
       const callee = node.callee;
       if (!isMemberExpression(callee)) return false;
       if (callee.computed) {
@@ -1122,7 +1121,10 @@ class TransformState {
 
     if (isVariableDeclaration(node)) {
       for (const declaration of node.declarations) {
-        if (isComponentFunctionDeclaration(declaration) && this.transformComponentVariable(declaration)) {
+        if (
+          isComponentFunctionDeclaration(declaration) &&
+          this.transformComponentVariable(declaration)
+        ) {
           continue;
         }
 
@@ -2430,7 +2432,8 @@ class TransformState {
       !isCallExpression(expression) ||
       expression.arguments.length < 1 ||
       expression.arguments.some((argument) => isSpreadElement(argument))
-    ) return false;
+    )
+      return false;
     const callee = expression.callee;
     if (!isMemberExpression(callee)) return false;
     if (callee.computed) {
@@ -3247,9 +3250,17 @@ class TransformState {
         "test",
         this.transformEmbeddedExpression(statement.test, allocator),
       );
-      setNodeProperty(statement, "consequent", this.transformStatement(statement.consequent, allocator));
+      setNodeProperty(
+        statement,
+        "consequent",
+        this.transformStatement(statement.consequent, allocator),
+      );
       if (statement.alternate) {
-        setNodeProperty(statement, "alternate", this.transformStatement(statement.alternate, allocator));
+        setNodeProperty(
+          statement,
+          "alternate",
+          this.transformStatement(statement.alternate, allocator),
+        );
       }
       return statement;
     }
@@ -3286,7 +3297,7 @@ class TransformState {
         setNodeProperty(
           statement,
           key,
-          value.map((child) => isNode(child) ? this.transformStatement(child, allocator) : child),
+          value.map((child) => (isNode(child) ? this.transformStatement(child, allocator) : child)),
         );
       } else if (isNode(value)) {
         setNodeProperty(statement, key, this.transformStatement(value, allocator));
@@ -3653,12 +3664,7 @@ class TransformState {
     return callExpression(this.getRuntimeHelper("$attr"), [elementId, stringLiteral(name), value]);
   }
 
-  private createEvent(
-    elementId: Node,
-    event: string,
-    expression: Node,
-    capture = false,
-  ): Node {
+  private createEvent(elementId: Node, event: string, expression: Node, capture = false): Node {
     const args = [elementId, stringLiteral(event), expression];
     if (capture) args.push(booleanLiteral(true));
     return callExpression(this.getRuntimeHelper("$on"), args);

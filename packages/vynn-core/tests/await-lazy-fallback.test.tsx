@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
 
+import type { JSX } from "../src/types/jsx";
+
 import { hydrateToDOM } from "../src/client/hydrate-to-dom";
 import { renderToDOM } from "../src/client/render-to-dom";
 import { Await } from "../src/components/await";
 import { lazy } from "../src/components/lazy";
-import type { JSX } from "../src/types/jsx";
 
 afterEach(() => {
   document.body.innerHTML = "";

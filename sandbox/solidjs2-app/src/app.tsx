@@ -30,7 +30,7 @@ export default function App(props: { url: string }) {
   return (
     <>
       <Loading fallback="Page Is Loading">
-        <Router>
+        <Router url={props.url}>
           {(props) => {
             return (
               <div class="p-2 flex flex-col container m-auto">

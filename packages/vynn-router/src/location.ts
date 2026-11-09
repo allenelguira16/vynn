@@ -1,8 +1,9 @@
 import { $store } from "vynn";
 
+import type { Location } from "./types";
+
 import { useRouterLocation } from "./context";
 import { isServer } from "./environment";
-import type { Location } from "./types";
 
 /**
  * Fallback location store for consumers outside a Router. Each Router has its
@@ -75,9 +76,7 @@ export function currentLocation(): Location {
 
 /** Parses a URL into the location shape used by the router. */
 export function parseLocation(url?: string): Location {
-  const fallback = !isServer
-    ? window.location.pathname + window.location.search
-    : "/";
+  const fallback = !isServer ? window.location.pathname + window.location.search : "/";
   const base = !isServer ? window.location.origin : "http://vynn.local";
   const parsed = new URL(url || fallback, base);
 
@@ -103,11 +102,7 @@ export function updateDefaultLocation(next: Location): void {
   updateLocation(defaultLocation, next);
 }
 
-function updateUrl(
-  path: string,
-  location: Location,
-  historyAction: "push" | "replace",
-): void {
+function updateUrl(path: string, location: Location, historyAction: "push" | "replace"): void {
   const base = !isServer
     ? window.location.origin + location.pathname + location.search
     : "http://vynn.local" + location.pathname + location.search;
@@ -123,11 +118,7 @@ function updateUrl(
     search: target.search,
   };
 
-  if (
-    next.pathname === location.pathname &&
-    next.search === location.search &&
-    !target.hash
-  ) {
+  if (next.pathname === location.pathname && next.search === location.search && !target.hash) {
     return;
   }
 

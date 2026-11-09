@@ -1,5 +1,7 @@
 import { $store, onMount } from "vynn";
 
+import type { Location, Route } from "./types";
+
 import { LocationProvider } from "./context";
 import { isServer } from "./environment";
 import {
@@ -9,7 +11,6 @@ import {
   updateLocation,
 } from "./location";
 import { RouteOutlet } from "./outlet";
-import type { Location, Route } from "./types";
 
 /** Creates a Router with request-local URL state, suitable for SSR. */
 export function Router(props: { url?: string; routes: Route[] }) {

@@ -55,9 +55,7 @@ describe("path utilities", () => {
   });
 
   it("does not throw on malformed percent escapes", () => {
-    expect(getRouteParam("/users/:id", "id", location("/users/%E0%A4%A"))).toBe(
-      "%E0%A4%A",
-    );
+    expect(getRouteParam("/users/:id", "id", location("/users/%E0%A4%A"))).toBe("%E0%A4%A");
   });
 
   it("returns no parameter when the route prefix does not match", () => {

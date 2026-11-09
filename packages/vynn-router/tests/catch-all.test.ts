@@ -1,9 +1,9 @@
-// @vitest-environment node
-import { describe, expect, it } from "vitest";
-
 import type { JSX } from "vynn";
 
+// @vitest-environment node
+import { describe, expect, it } from "vitest";
 import { renderToServer } from "vynn/server";
+
 import { $params, isActiveRoute, Router, type Route } from "../src";
 
 async function renderRouter(url: string, routes: Route[]): Promise<string> {
@@ -16,35 +16,32 @@ async function renderRouter(url: string, routes: Route[]): Promise<string> {
 }
 
 describe("router catch-all routes", () => {
-  it(
-    "matches unmatched paths after trying explicit routes, regardless of declaration order",
-    async () => {
-      const routes: Route[] = [
-        {
-          path: "*",
-          component: () => "Not found",
-        },
-        {
-          path: "/docs/*",
-          component: () => "Documentation not found",
-        },
-        {
-          path: "/users/:id",
-          component: () => "User page",
-        },
-      ];
+  it("matches unmatched paths after trying explicit routes, regardless of declaration order", async () => {
+    const routes: Route[] = [
+      {
+        path: "*",
+        component: () => "Not found",
+      },
+      {
+        path: "/docs/*",
+        component: () => "Documentation not found",
+      },
+      {
+        path: "/users/:id",
+        component: () => "User page",
+      },
+    ];
 
-      const userPage = await renderRouter("/users/42", routes);
-      const documentationFallback = await renderRouter("/docs/missing/page", routes);
-      const notFoundPage = await renderRouter("/missing/nested/path", routes);
+    const userPage = await renderRouter("/users/42", routes);
+    const documentationFallback = await renderRouter("/docs/missing/page", routes);
+    const notFoundPage = await renderRouter("/missing/nested/path", routes);
 
-      expect(userPage).toContain("User page");
-      expect(userPage).not.toContain("Not found");
-      expect(documentationFallback).toContain("Documentation not found");
-      expect(documentationFallback).not.toContain("Not found");
-      expect(notFoundPage).toContain("Not found");
-    },
-  );
+    expect(userPage).toContain("User page");
+    expect(userPage).not.toContain("Not found");
+    expect(documentationFallback).toContain("Documentation not found");
+    expect(documentationFallback).not.toContain("Not found");
+    expect(notFoundPage).toContain("Not found");
+  });
 
   it("captures the remaining path in the catch-all parameter", async () => {
     const capturedPaths: string[] = [];

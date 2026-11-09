@@ -55,10 +55,7 @@ function compareSpecificity(left: string, right: string): number {
 
 /** Returns whether a catch-all route matches without consuming a path segment. */
 function isEmptyCatchAllMatch(path: string, pathname: string): boolean {
-  return (
-    isCatchAllPath(path) &&
-    toSegments(pathname).length === toSegments(path).length - 1
-  );
+  return isCatchAllPath(path) && toSegments(pathname).length === toSegments(path).length - 1;
 }
 
 /** Finds the most specific route selected by the current outlet. */
@@ -79,10 +76,7 @@ export function findMatch(
 
     if (bestMatch) {
       const nextIsEmptyCatchAll = isEmptyCatchAllMatch(fullPath, location.pathname);
-      const bestIsEmptyCatchAll = isEmptyCatchAllMatch(
-        bestMatch.fullPath,
-        location.pathname,
-      );
+      const bestIsEmptyCatchAll = isEmptyCatchAllMatch(bestMatch.fullPath, location.pathname);
 
       // A terminal wildcard may match without capturing any segments. In that
       // case it is only a fallback and must not shadow an exact route such as

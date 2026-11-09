@@ -158,9 +158,7 @@ function collectMarkedFunctions(
 
   return found.map((item, ordinal) => {
     if (item.fn.generator) {
-      throw new Error(
-        `[Vynn use server] Generator functions are not supported (${moduleKey}).`,
-      );
+      throw new Error(`[Vynn use server] Generator functions are not supported (${moduleKey}).`);
     }
 
     const digest = stableDigest(`${moduleKey}#${ordinal}`);
@@ -174,10 +172,7 @@ function collectMarkedFunctions(
   });
 }
 
-function containsNestedMarkedBoundary(
-  marked: MarkedFunction[],
-  program: AstNode,
-): boolean {
+function containsNestedMarkedBoundary(marked: MarkedFunction[], program: AstNode): boolean {
   const markedNodes = new Set(marked.map((item) => item.fn));
   const parentMap = new WeakMap<object, AstNode>();
 
@@ -241,8 +236,7 @@ function getTypeParametersSource(source: string, fn: AstNode): string {
 function makeExtractedImplementation(source: string, marked: MarkedFunction): string {
   const body = marked.fn.body as AstNode;
   const bodySource =
-    source.slice(body.start, marked.directive.start) +
-    source.slice(marked.directive.end, body.end);
+    source.slice(body.start, marked.directive.start) + source.slice(marked.directive.end, body.end);
   const typeParameters = getTypeParametersSource(source, marked.fn);
   const params = getParamsSource(source, marked.fn);
   const asyncPrefix = marked.fn.async ? "async " : "";
@@ -321,17 +315,21 @@ export function transformServerFunctions(
     );
   }
 
-  const diagnostics = (parsed as unknown as {
-    errors?: Array<{ severity?: string | number; message?: string }>;
-    diagnostics?: Array<{ severity?: string | number; message?: string }>;
-  }).errors ?? (parsed as unknown as {
-    diagnostics?: Array<{ severity?: string | number; message?: string }>;
-  }).diagnostics ?? [];
+  const diagnostics =
+    (
+      parsed as unknown as {
+        errors?: Array<{ severity?: string | number; message?: string }>;
+        diagnostics?: Array<{ severity?: string | number; message?: string }>;
+      }
+    ).errors ??
+    (
+      parsed as unknown as {
+        diagnostics?: Array<{ severity?: string | number; message?: string }>;
+      }
+    ).diagnostics ??
+    [];
   const fatalErrors = diagnostics.filter(
-    (error) =>
-      error.severity === "Error" ||
-      error.severity === 2 ||
-      !("severity" in error),
+    (error) => error.severity === "Error" || error.severity === 2 || !("severity" in error),
   );
   if (fatalErrors.length > 0) {
     throw new Error(
@@ -372,9 +370,7 @@ export function transformServerFunctions(
   }
 
   const defaultRuntime =
-    options.target === "server"
-      ? "vynn/server-functions/server"
-      : "vynn/server-functions/client";
+    options.target === "server" ? "vynn/server-functions/server" : "vynn/server-functions/client";
   const runtimeModule = options.runtimeModule ?? defaultRuntime;
   code =
     `import { createServerReference as ${CREATE_SERVER_REFERENCE} } from ${JSON.stringify(runtimeModule)};\n` +

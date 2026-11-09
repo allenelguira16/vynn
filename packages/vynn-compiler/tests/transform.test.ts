@@ -82,10 +82,7 @@ describe("Vynn Oxc JSX compiler", () => {
   });
 
   it("wraps anonymous default arrow components", () => {
-    const code = transformVynnOxc(
-      `export default () => <main>Anonymous</main>;`,
-      "app.tsx",
-    );
+    const code = transformVynnOxc(`export default () => <main>Anonymous</main>;`, "app.tsx");
 
     expect(code).toMatch(/export default _cmpnt\(function\s*\(/);
     expect(code).toContain('_tmpl("main")');
@@ -149,9 +146,9 @@ describe("Vynn Oxc JSX compiler", () => {
   });
 
   it("reports namespaced JSX tag names instead of failing with an opaque error", () => {
-    expect(() =>
-      transformVynnOxc(`function Icon() { return <svg:path />; }`, "icon.tsx"),
-    ).toThrow("does not support namespaced JSX tag names");
+    expect(() => transformVynnOxc(`function Icon() { return <svg:path />; }`, "icon.tsx")).toThrow(
+      "does not support namespaced JSX tag names",
+    );
   });
 
   it("preserves ordinary source comments while lowering JSX wrappers", () => {

@@ -31,9 +31,9 @@ describe("Vynn Vite JSX adapter", () => {
       throw new Error("Expected the Vynn Oxc plugin to expose a transform hook.");
     }
 
-    expect(transform.call({} as never, "<main />", "/project/node_modules/lib/index.tsx"))
-      .toBeNull();
-    expect(transform.call({} as never, "const value = 1;", "/project/src/value.ts"))
-      .toBeNull();
+    expect(
+      transform.call({} as never, "<main />", "/project/node_modules/lib/index.tsx"),
+    ).toBeNull();
+    expect(transform.call({} as never, "const value = 1;", "/project/src/value.ts")).toBeNull();
   });
 });

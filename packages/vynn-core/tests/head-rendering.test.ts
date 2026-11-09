@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import type { JSX } from "../src/types/jsx";
 
 import { APPLY_HEAD_PATCH_SSR_KEY } from "../src/const";
-
 import { getOwner } from "../src/life-cycle/owner";
 import { $attr } from "../src/render/$attr";
 import { $head, $headTmpl } from "../src/render/$head";
@@ -130,18 +129,15 @@ describe("JSX head rendering", () => {
   it("disposes the render Owner after a streamed render completes", async () => {
     let renderOwner: ReturnType<typeof getOwner> = null;
 
-    const rendered = renderToServer(
-      () => {
-        renderOwner = getOwner();
+    const rendered = renderToServer(() => {
+      renderOwner = getOwner();
 
-        return createSSRAsync(
-          () => [],
-          () => [],
-          [Promise.resolve()],
-        ) as unknown as JSX.Element;
-      },
-      "stream",
-    );
+      return createSSRAsync(
+        () => [],
+        () => [],
+        [Promise.resolve()],
+      ) as unknown as JSX.Element;
+    }, "stream");
 
     const reader = rendered.body.getReader();
     while (!(await reader.read()).done) {
@@ -158,18 +154,15 @@ describe("JSX head rendering", () => {
     });
     let renderOwner: ReturnType<typeof getOwner> = null;
 
-    const rendered = renderToServer(
-      () => {
-        renderOwner = getOwner();
+    const rendered = renderToServer(() => {
+      renderOwner = getOwner();
 
-        return createSSRAsync(
-          () => [],
-          () => [],
-          [pending],
-        ) as unknown as JSX.Element;
-      },
-      "stream",
-    );
+      return createSSRAsync(
+        () => [],
+        () => [],
+        [pending],
+      ) as unknown as JSX.Element;
+    }, "stream");
 
     expect(renderOwner).not.toBeNull();
     expect(renderOwner?.disposed).not.toBe(true);

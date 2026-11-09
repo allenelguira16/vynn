@@ -81,9 +81,9 @@ type BaseEventAttributes<T extends Element = Element> = {
 };
 
 export type EventAttributes<T extends Element = Element> = BaseEventAttributes<T> & {
-  [K in keyof BaseEventAttributes<T> as K extends `on${infer Name}`
-    ? `on${Name}Capture`
-    : never]?: BaseEventAttributes<T>[K];
+  [
+    K in keyof BaseEventAttributes<T> as K extends `on${infer Name}` ? `on${Name}Capture` : never
+  ]?: BaseEventAttributes<T>[K];
 };
 
 export type AriaAttributes = {

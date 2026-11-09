@@ -12,8 +12,7 @@ import { $tmpl } from "../src/render/$tmpl";
 import { $txt } from "../src/render/$txt";
 import { renderToServer } from "../src/server/render-to-server";
 
-const parsedCode =
-  '<pre><code class="language-ts">const value = 1 &amp; 2;</code></pre>';
+const parsedCode = '<pre><code class="language-ts">const value = 1 &amp; 2;</code></pre>';
 
 function RawHtmlApp(): JSX.Element {
   const main = $tmpl("main");

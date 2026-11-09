@@ -1,7 +1,7 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+
 // @vitest-environment jsdom
 import type { JSX } from "../src/types/jsx";
-
-import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   finishServerRenderedLazy,

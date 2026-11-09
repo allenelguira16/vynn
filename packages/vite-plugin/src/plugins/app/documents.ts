@@ -1,7 +1,8 @@
+import type { RenderMode } from "vynn";
+
 import { readFile, readdir } from "node:fs/promises";
 import { relative, resolve } from "node:path";
 
-import type { RenderMode } from "vynn";
 import type { ViteSsrManifest } from "../ssr-preload.ts";
 
 import { joinAssetBase } from "./http.ts";
@@ -14,10 +15,7 @@ type ManifestEntry = {
   name?: string;
 };
 
-export function createClientEntry(
-  appSpecifier: string,
-  ssr: boolean,
-): string {
+export function createClientEntry(appSpecifier: string, ssr: boolean): string {
   const selected = (moduleName: string) =>
     `Reflect.get(${moduleName}, "default") ?? Reflect.get(${moduleName}, "App")`;
   const renderer = ssr ? "hydrateToDOM" : "renderToDOM";
@@ -43,10 +41,7 @@ export function createAuthoredServerEntry(
   ].join("\n");
 }
 
-export function createServerEntry(
-  appSpecifier: string,
-  ssrMode: RenderMode = "stream",
-): string {
+export function createServerEntry(appSpecifier: string, ssrMode: RenderMode = "stream"): string {
   // Read optional exports dynamically. A direct `appModule.App` access makes
   // Rollup/Rolldown warn when the module intentionally uses a default export.
   const selected = (moduleName: string) =>

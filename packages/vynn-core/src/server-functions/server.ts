@@ -50,10 +50,7 @@ export function createServerReference<T extends (...args: never[]) => unknown>(
     throw new TypeError("[Vynn] Invalid server-function implementation or ID.");
   }
 
-  implementations.set(
-    id,
-    implementation as unknown as ServerFunctionImplementation,
-  );
+  implementations.set(id, implementation as unknown as ServerFunctionImplementation);
   return implementation;
 }
 
@@ -134,8 +131,7 @@ export function createServerFunctionHandler(
   const endpoint = options.endpoint ?? DEFAULT_SERVER_FUNCTION_ENDPOINT;
   validateEndpoint(endpoint);
 
-  const maxRequestBytes =
-    options.maxRequestBytes ?? DEFAULT_MAX_SERVER_FUNCTION_REQUEST_BYTES;
+  const maxRequestBytes = options.maxRequestBytes ?? DEFAULT_MAX_SERVER_FUNCTION_REQUEST_BYTES;
   if (
     !Number.isSafeInteger(maxRequestBytes) ||
     maxRequestBytes < 1 ||
@@ -146,9 +142,7 @@ export function createServerFunctionHandler(
     );
   }
 
-  const allowedOrigins = new Set(
-    (options.allowedOrigins ?? []).map(normalizeServerFunctionOrigin),
-  );
+  const allowedOrigins = new Set((options.allowedOrigins ?? []).map(normalizeServerFunctionOrigin));
   const exposeErrors = options.exposeErrors ?? options.development ?? false;
 
   return async (request: Request): Promise<Response | null> => {
@@ -162,26 +156,19 @@ export function createServerFunctionHandler(
     if (url.pathname !== endpoint) return null;
 
     if (request.method !== "POST") {
-      return new Response(
-        JSON.stringify({ ok: false, error: "Method Not Allowed" }),
-        {
-          status: 405,
-          headers: {
-            allow: "POST",
-            "content-type": "application/json; charset=utf-8",
-            "cache-control": "no-store",
-            "x-content-type-options": "nosniff",
-          },
+      return new Response(JSON.stringify({ ok: false, error: "Method Not Allowed" }), {
+        status: 405,
+        headers: {
+          allow: "POST",
+          "content-type": "application/json; charset=utf-8",
+          "cache-control": "no-store",
+          "x-content-type-options": "nosniff",
         },
-      );
+      });
     }
 
     if (
-      !isAllowedServerFunctionOrigin(
-        request.headers.get("origin"),
-        request.url,
-        allowedOrigins,
-      )
+      !isAllowedServerFunctionOrigin(request.headers.get("origin"), request.url, allowedOrigins)
     ) {
       return createServerFunctionResponse(403, {
         ok: false,
@@ -208,14 +195,10 @@ export function createServerFunctionHandler(
         await readRequestBody(request, maxRequestBytes),
       ) as ServerFunctionRequestPayload;
     } catch (error) {
-      const statusCode =
-        (error as Error & { statusCode?: number }).statusCode === 413 ? 413 : 400;
+      const statusCode = (error as Error & { statusCode?: number }).statusCode === 413 ? 413 : 400;
       return createServerFunctionResponse(statusCode, {
         ok: false,
-        error:
-          statusCode === 413
-            ? "Request body too large."
-            : "Invalid JSON request body.",
+        error: statusCode === 413 ? "Request body too large." : "Invalid JSON request body.",
       });
     }
 
@@ -271,15 +254,10 @@ export function createServerFunctionHandler(
     } catch (error) {
       return createServerFunctionResponse(500, {
         ok: false,
-        error:
-          exposeErrors && error instanceof Error
-            ? error.message
-            : "Server function failed.",
+        error: exposeErrors && error instanceof Error ? error.message : "Server function failed.",
       });
     }
   };
 }
 
-export type {
-  ServerFunctionRequestPayload,
-} from "./protocol.ts";
+export type { ServerFunctionRequestPayload } from "./protocol.ts";

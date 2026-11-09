@@ -31,11 +31,7 @@ function decodePathSegment(segment: string): string {
 }
 
 /** Reads one parameter from a route pattern. */
-export function getRouteParam(
-  path: string,
-  name: string,
-  location: Location,
-): string | undefined {
+export function getRouteParam(path: string, name: string, location: Location): string | undefined {
   const routeSegments = toSegments(path);
   const pathnameSegments = toSegments(location.pathname);
   const hasWildcard = isCatchAllPath(path);
@@ -61,10 +57,7 @@ export function getRouteParam(
   }
 
   if (name === "*" && hasWildcard) {
-    return pathnameSegments
-      .slice(matchedSegmentCount)
-      .map(decodePathSegment)
-      .join("/");
+    return pathnameSegments.slice(matchedSegmentCount).map(decodePathSegment).join("/");
   }
 
   return value;
@@ -97,21 +90,14 @@ export function getRouteParams(path: string, location: Location): RouteParams {
   }
 
   if (hasWildcard) {
-    params["*"] = pathnameSegments
-      .slice(matchedSegmentCount)
-      .map(decodePathSegment)
-      .join("/");
+    params["*"] = pathnameSegments.slice(matchedSegmentCount).map(decodePathSegment).join("/");
   }
 
   return params;
 }
 
 /** Checks whether the supplied pathname matches the current pathname. */
-export function matchRoute(
-  targetPath: string,
-  exact: boolean,
-  location: Location,
-): boolean {
+export function matchRoute(targetPath: string, exact: boolean, location: Location): boolean {
   const pathname = normalizePath(location.pathname);
   const target = normalizePath(targetPath);
   const pathnameSegments = toSegments(pathname);
@@ -127,9 +113,9 @@ export function matchRoute(
     return false;
   }
 
-  return targetSegments.slice(0, matchedSegmentCount).every(
-    (segment, index) => segment.startsWith(":") || segment === pathnameSegments[index],
-  );
+  return targetSegments
+    .slice(0, matchedSegmentCount)
+    .every((segment, index) => segment.startsWith(":") || segment === pathnameSegments[index]);
 }
 
 /** Combines a parent route path with a child route path. */

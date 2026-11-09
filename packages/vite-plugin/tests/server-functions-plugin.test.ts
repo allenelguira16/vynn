@@ -1,12 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { serverFunctions } from "../src/index.ts";
-import { DEFAULT_ENDPOINT } from "../src/plugins/server-functions/shared.ts";
 import { DEFAULT_SERVER_FUNCTION_ENDPOINT } from "../../vynn-core/src/server-functions/constants.ts";
-import {
-  makeClientRuntime,
-  makeServerRuntime,
-} from "../src/plugins/server-functions/runtime.ts";
+import { serverFunctions } from "../src/index.ts";
+import { makeClientRuntime, makeServerRuntime } from "../src/plugins/server-functions/runtime.ts";
+import { DEFAULT_ENDPOINT } from "../src/plugins/server-functions/shared.ts";
 
 describe("standalone server-function Vite integration", () => {
   it("keeps the Vite endpoint default aligned with the core runtime", () => {
@@ -22,9 +19,7 @@ describe("standalone server-function Vite integration", () => {
   it("configures the framework client runtime with the selected endpoint", () => {
     const code = makeClientRuntime("/rpc");
 
-    expect(code).toContain(
-      'from "vynn/server-functions/client"',
-    );
+    expect(code).toContain('from "vynn/server-functions/client"');
     expect(code).toContain('endpoint: "/rpc"');
     expect(code).not.toContain("async function invokeServerFunction");
   });
@@ -38,9 +33,7 @@ describe("standalone server-function Vite integration", () => {
       manifestSentinel: "__manifest__",
     });
 
-    expect(code).toContain(
-      'from "vynn/server-functions/server"',
-    );
+    expect(code).toContain('from "vynn/server-functions/server"');
     expect(code).toContain("createServerFunctionHandler");
     expect(code).toContain("resolve: development ? undefined : resolveImplementation");
     expect(code).toContain("new URL(path, import.meta.url)");

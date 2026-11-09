@@ -3,10 +3,10 @@
   "version": "0.0.0",
   "description": "Build-tool-independent Oxc-powered JSX compiler for Vynn",
   "keywords": [
-    "vynn",
-    "jsx",
     "compiler",
-    "oxc"
+    "jsx",
+    "oxc",
+    "vynn"
   ],
   "license": "ISC",
   "author": "",
@@ -34,9 +34,9 @@
     "oxc-parser": "^0.155.0"
   },
   "devDependencies": {
+    "@types/node": "^26.6.3",
     "typescript": "^7.0.2",
-    "vitest": "^5.0.5",
-    "@types/node": "^26.6.3"
+    "vitest": "^5.0.5"
   },
   "devEngines": {
     "packageManager": {

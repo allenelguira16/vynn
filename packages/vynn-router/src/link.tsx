@@ -1,15 +1,13 @@
 import type { PropsWithChildren } from "vynn";
 
+import type { Location } from "./types";
+
 import { isServer } from "./environment";
 import { currentLocation, navigate } from "./location";
 import { matchRoute } from "./path";
-import type { Location } from "./types";
 
 /** Checks whether a path matches the current pathname. */
-export function isActiveRoute(
-  targetPath: string,
-  location = currentLocation(),
-): boolean {
+export function isActiveRoute(targetPath: string, location = currentLocation()): boolean {
   if (/^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(targetPath)) {
     return false;
   }
@@ -36,8 +34,7 @@ export function Link(
       target={props.target}
       download={props.download}
       class={(
-        props.class +
-        (isActiveRoute(props.href, location) ? " " + (props.activeClass ?? "") : "")
+        props.class + (isActiveRoute(props.href, location) ? " " + (props.activeClass ?? "") : "")
       ).trim()}
       onClick={(event) => {
         if (isServer || event.defaultPrevented) return;

@@ -1,9 +1,8 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
-
 import { Await, lazy, type JSX } from "vynn";
-
 import { renderToDOM } from "vynn/client";
+
 import { $params, $search, navigate, Router, type Route } from "../src";
 
 afterEach(() => {

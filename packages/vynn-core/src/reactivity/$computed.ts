@@ -1,7 +1,7 @@
-import { createAsyncDerived } from "./$async";
 import { getOwner, runWithOwner } from "../life-cycle/owner";
 import { $renderEffect } from "./$effect";
 import { $state } from "./$state";
+import { createAsyncDerived } from "./async";
 import { isAsyncFunction } from "./is-async-function";
 import { isPending as getPending, registerPending } from "./pending";
 
@@ -30,10 +30,7 @@ export type ComputedOptions = {
  * @param getter A synchronous or asynchronous derivation.
  * @returns A read-only reactive value containing the derived result.
  */
-export function $computed<T>(
-  getter: () => Promise<T>,
-  options?: ComputedOptions,
-): Computed<T>;
+export function $computed<T>(getter: () => Promise<T>, options?: ComputedOptions): Computed<T>;
 export function $computed<T>(getter: () => T, options?: ComputedOptions): Computed<T>;
 export function $computed<T>(
   getter: () => T | Promise<T>,

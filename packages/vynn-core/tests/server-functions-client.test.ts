@@ -24,10 +24,7 @@ describe("client server-function references", () => {
     await expect(load("input")).resolves.toBe("result");
     expect(fetchMock).toHaveBeenCalledOnce();
 
-    const [url, init] = fetchMock.mock.calls[0] as [
-      string,
-      RequestInit,
-    ];
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("/custom-rpc");
     expect(init).toMatchObject({
       method: "POST",
@@ -51,16 +48,12 @@ describe("client server-function references", () => {
       ),
     );
 
-    const load = createServerReference<() => Promise<unknown>>(
-      "vynn_00000000000000000003",
-    );
+    const load = createServerReference<() => Promise<unknown>>("vynn_00000000000000000003");
 
     await expect(load()).rejects.toThrow("Server function failed.");
   });
 
   it("rejects invalid generated IDs", () => {
-    expect(() =>
-      createServerReference("invalid" as never),
-    ).toThrow(/Invalid server-function ID/);
+    expect(() => createServerReference("invalid" as never)).toThrow(/Invalid server-function ID/);
   });
 });

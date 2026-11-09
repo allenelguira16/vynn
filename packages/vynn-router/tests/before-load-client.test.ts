@@ -1,10 +1,9 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
-
 import { $state, type JSX } from "vynn";
-
 import { renderToDOM } from "vynn/client";
 import { $insert, $tmpl, $txt } from "vynn/render";
+
 import { navigate, redirect, Router, type Route } from "../src";
 
 let requestAnimationFrameDescriptor: PropertyDescriptor | undefined;
@@ -273,5 +272,4 @@ describe("client router beforeLoad", () => {
 
     expect(signals[0].aborted).toBe(true);
   });
-
 });

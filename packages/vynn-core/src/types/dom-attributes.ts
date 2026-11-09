@@ -10,7 +10,10 @@ export type HTMLAttributes<T extends Element = Element> = CoreAttributes &
     html?: string;
   };
 
-export type HTMLVoidAttributes<T extends Element = Element> = Omit<HTMLAttributes<T>, "children" | "html">;
+export type HTMLVoidAttributes<T extends Element = Element> = Omit<
+  HTMLAttributes<T>,
+  "children" | "html"
+>;
 
 export type HTMLAnchorAttributes<T extends Element = HTMLAnchorElement> = HTMLAttributes<T> & {
   download?: any;

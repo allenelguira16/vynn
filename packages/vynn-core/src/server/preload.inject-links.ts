@@ -1,7 +1,4 @@
-import {
-  INTERNAL_RANGE_END_MARKER,
-  INTERNAL_RANGE_START_MARKER,
-} from "../const";
+import { INTERNAL_RANGE_END_MARKER, INTERNAL_RANGE_START_MARKER } from "../const";
 
 /**
  * Place newly discovered preload links in document.head from a streamed HTML

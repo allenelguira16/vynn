@@ -1,4 +1,4 @@
-import { createAsyncDerived } from "./$async";
+import { createAsyncDerived } from "./async";
 import { createCell } from "./cell";
 import { isAsyncFunction } from "./is-async-function";
 
@@ -26,9 +26,7 @@ export function $state<T>(initialValue: T): State<T>;
 
 export function $state<T = undefined>(): State<T | undefined>;
 
-export function $state<T>(
-  initialValue?: T | (() => Promise<T>),
-): State<T | undefined> {
+export function $state<T>(initialValue?: T | (() => Promise<T>)): State<T | undefined> {
   if (isAsyncFunction(initialValue)) {
     return createAsyncDerived(initialValue as () => Promise<T>) as unknown as State<T | undefined>;
   }
