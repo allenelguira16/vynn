@@ -11,7 +11,6 @@
     "stats": "vite-bundle-visualizer -o stats.html"
   },
   "dependencies": {
-    "@babel/preset-vynn": "workspace:^",
     "@shikijs/langs": "^4.6.0",
     "@shikijs/themes": "^4.6.0",
     "@shikijs/transformers": "^4.6.0",

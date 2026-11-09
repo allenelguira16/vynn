@@ -1,5 +1,9 @@
 # Vynn Vite plugin
 
+The JSX transform is implemented in the separate, build-tool-independent
+`vynn-compiler` package. This package supplies the Vite adapter and the
+integrated application/SSR plugins.
+
 ## Application integration
 
 The Vynn Vite plugin is the application integration. App handling is enabled

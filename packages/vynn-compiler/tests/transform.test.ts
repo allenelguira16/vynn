@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { transformVynnOxc, vynnOxcPlugin } from "../src/plugins/jsx-transpiler.ts";
+import { transformVynnOxc, transformVynnOxcWithMap } from "../src/index.ts";
 
 describe("Vynn Oxc JSX compiler", () => {
   it("preserves whitespace between an inline element and following text", () => {
@@ -187,24 +187,29 @@ describe("Vynn Oxc JSX compiler", () => {
     expect(code).not.toContain("JSX-only comment");
     expect(code).toContain("_cmpnt(function Page");
   });
+});
 
-  it("returns a source map from the Vite transform hook", () => {
-    const plugin = vynnOxcPlugin();
-    const transform = plugin.transform;
-
-    if (typeof transform !== "function") {
-      throw new Error("Expected the Vynn Oxc plugin to expose a transform hook.");
-    }
-
-    const result = transform.call(
-      {} as never,
-      `function Page() { return <main>Content</main>; }`,
-      "/project/src/page.tsx",
+describe("Vynn compiler output", () => {
+  it("returns a source map for transformed JSX", () => {
+    const result = transformVynnOxcWithMap(
+      "function Page() { return <main>Content</main>; }",
+      "page.tsx",
     );
 
-    expect(result).toMatchObject({
-      code: expect.any(String),
-      map: expect.any(Object),
+    expect(result.code).toContain("_tmpl");
+    expect(result.map).toMatchObject({
+      version: expect.any(Number),
+      sources: expect.any(Array),
+      names: expect.any(Array),
+      mappings: expect.any(String),
+    });
+  });
+
+  it("returns the original source when no JSX is present", () => {
+    const source = "export const answer: number = 42;";
+    expect(transformVynnOxcWithMap(source, "answer.ts")).toEqual({
+      code: source,
+      map: null,
     });
   });
 });

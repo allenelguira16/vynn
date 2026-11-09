@@ -1,0 +1,43 @@
+{
+  "name": "vynn-compiler",
+  "version": "0.0.0",
+  "description": "Build-tool-independent Oxc-powered JSX compiler for Vynn",
+  "keywords": [
+    "vynn",
+    "jsx",
+    "compiler",
+    "oxc"
+  ],
+  "license": "ISC",
+  "author": "",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@typescript-eslint/types": "^8.72.0",
+    "entities": "^8.1.0",
+    "esrap": "^2.4.0",
+    "oxc-parser": "^0.155.0"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
+  },
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "version": "^11.17.0",
+      "onFail": "download"
+    }
+  }
+}
