@@ -8,13 +8,13 @@ export type Location = {
 export type RouteParams = Readonly<Record<string, string | undefined>>;
 
 export type BeforeLoadContext = {
-  /** The pathname and query string for the pending navigation. */
+  /** The pathname and query string captured when this route view is created. */
   location: Location;
-  /** Dynamic and catch-all parameters captured by this route and its parent routes. */
+  /** Dynamic and catch-all parameters captured for this route entry. */
   params: RouteParams;
-  /** Query parameters for the pending navigation. */
+  /** Query parameters captured for this route entry. */
   search: URLSearchParams;
-  /** Aborted when a newer navigation supersedes this guard or its route unmounts. */
+  /** Aborted when the RouteView that owns this guard is disposed. */
   signal: AbortSignal;
 };
 

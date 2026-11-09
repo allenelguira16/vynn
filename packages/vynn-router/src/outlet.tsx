@@ -106,10 +106,11 @@ export function findMatch(
 }
 
 /**
- * Evaluates the route guard as a reactive async resource.
+ * Runs the route guard once when its matched RouteView is created.
  *
  * The route component remains mounted when only its params or search string
- * change. The guard resource tracks the location and revalidates in place.
+ * change, so the guard uses the location snapshot from route entry and does
+ * not revalidate for those in-place URL updates.
  */
 function RouteView(props: MatchedRoute) {
   const RenderRoute = () => {
@@ -140,8 +141,8 @@ function RouteView(props: MatchedRoute) {
     async () => {
       const revision = ++guardRevision;
 
-      // A location change reruns this resource instead of replacing RouteView.
-      // Abort the previous navigation before starting the next guard.
+      // This resource represents the one-time guard for this RouteView.
+      // Ensure any earlier invocation is no longer active if it is restarted.
       activeGuardController?.abort();
 
       const { route, fullPath } = untrack(() => ({
@@ -149,8 +150,8 @@ function RouteView(props: MatchedRoute) {
         fullPath: props.fullPath,
       }));
 
-      // Snapshot the location without subscribing the guard resource to it.
-      // beforeLoad is a one-shot check for this navigation, not a reactive effect.
+      // Capture the location from when this RouteView was created.
+      // Later params or search changes must not rerun this route-entry check.
       const location: Location = untrack(() => {
         const activeLocation = currentLocation();
 
@@ -253,7 +254,8 @@ function RouteView(props: MatchedRoute) {
  * reconciling that stale array would remove those live nested nodes.
  *
  * Descendant route content tracks pathname/search itself through $params and
- * $search, while RouteView's beforeLoad resource tracks location separately.
+ * $search. A RouteView's beforeLoad uses the location snapshot from its creation
+ * and does not revalidate when those values change.
  */
 export function RouteOutlet(props: { routes: Route[]; parentPath?: string }) {
   let previousMatch: MatchedRoute | undefined;
