@@ -1,17 +1,11 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
 
-import { Await } from "../src/components/await";
-import type { JSX } from "../src/types/jsx";
-import { hydrateToDOM } from "../src/client/hydrate-to-dom";
-import { renderToDOM } from "../src/client/render-to-dom";
-import { $insert } from "../src/render/$insert";
-import { $tmpl } from "../src/render/$tmpl";
-import { $txt } from "../src/render/$txt";
-import { Router } from "../../vynn-router/src/router";
-import type { Route } from "../../vynn-router/src/types";
-import { renderToServer } from "../src/server/render-to-server";
-import { redirect } from "../../vynn-router/src/redirect";
+import { Await, type JSX } from "vynn";
+import { hydrateToDOM, renderToDOM } from "vynn/client";
+import { $insert, $tmpl, $txt } from "vynn/render";
+import { redirect, Router, type Route } from "../src";
+import { renderToServer } from "vynn/server";
 
 let requestAnimationFrameDescriptor: PropertyDescriptor | undefined;
 

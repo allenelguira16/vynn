@@ -1,12 +1,10 @@
+// @vitest-environment node
 import { describe, expect, it } from "vitest";
 
-import type { JSX } from "../src/types/jsx";
+import type { JSX } from "vynn";
 
-import { renderToServer } from "../src/server/render-to-server";
-import { isActiveRoute } from "../../vynn-router/src/link";
-import { $params } from "../../vynn-router/src/params";
-import { Router } from "../../vynn-router/src/router";
-import type { Route } from "../../vynn-router/src/types";
+import { renderToServer } from "vynn/server";
+import { $params, isActiveRoute, Router, type Route } from "../src";
 
 async function renderRouter(url: string, routes: Route[]): Promise<string> {
   const rendered = await renderToServer(

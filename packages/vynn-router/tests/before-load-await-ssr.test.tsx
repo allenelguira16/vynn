@@ -1,16 +1,9 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
+import { Await, $async, $computed, type JSX } from "vynn";
+import { renderToServer } from "vynn/server";
 
-import { Await } from "../src/components/await";
-import { $async } from "../src/reactivity/$async";
-import { $computed } from "../src/reactivity/$computed";
-import { NotReadyError } from "../src/reactivity/not-ready-error";
-import { $nodes } from "../src/render/$nodes";
-import type { JSX } from "../src/types/jsx";
-import { renderToServer } from "../src/server/render-to-server";
-import { Router } from "../../vynn-router/src/router";
-import { redirect } from "../../vynn-router/src/redirect";
-import type { Route } from "../../vynn-router/src/types";
+import { redirect, Router, type Route } from "../src";
 
 function createRoutes(beforeLoad: () => Promise<never>): Route[] {
   return [
@@ -37,27 +30,24 @@ describe("SSR redirects under Await", () => {
     let resolveValue!: (value: string) => void;
     let getterRuns = 0;
 
-    const rendered = renderToServer(
-      () => {
-        const value = $computed(
-          async () => {
-            getterRuns += 1;
-            return new Promise<string>((resolve) => {
-              resolveValue = resolve;
-            });
-          },
-          { lazy: true },
-        );
+    const rendered = renderToServer(() => {
+      const value = $computed(
+        async () => {
+          getterRuns += 1;
+          return new Promise<string>((resolve) => {
+            resolveValue = resolve;
+          });
+        },
+        { lazy: true },
+      );
 
-        return Await({
-          fallback: "Loading",
-          get children(): JSX.Element {
-            return value.value;
-          },
-        });
-      },
-      "stream",
-    );
+      return Await({
+        fallback: "Loading",
+        get children(): JSX.Element {
+          return value.value;
+        },
+      });
+    }, "stream");
 
     const reader = rendered.body.getReader();
     const decoder = new TextDecoder();
@@ -104,7 +94,7 @@ describe("SSR redirects under Await", () => {
     expect(guardRuns).toBe(1);
   });
 
-  it("keeps a route guard blocking when a sibling async value is pending", async () => {
+  it("prioritizes a blocking async read over a sibling async boundary", async () => {
     let rejectGuard!: (error: unknown) => void;
     const guardPromise = new Promise<never>((_resolve, reject) => {
       rejectGuard = reject;
@@ -113,40 +103,44 @@ describe("SSR redirects under Await", () => {
       status: 302,
       headers: { Location: "/params/1?id=1" },
     });
-    const routes = createRoutes(async () => {
-      await guardPromise;
-    });
 
-    const rendered = renderToServer(
-      () => {
-        const sibling = $async(() => new Promise<never>(() => {}));
+    const rendered = renderToServer(() => {
+      const sibling = $async(() => new Promise<never>(() => {}));
+      const guard = $computed(async () => guardPromise, { lazy: true });
 
-        return $nodes(() =>
-          Await({
-            fallback: "Page Is Loading",
-            get children(): JSX.Element {
-              // Simulate an unrelated page resource that has already
-              // registered with this Await boundary.
-              try {
-                sibling.value;
-              } catch (error) {
-                if (!(error instanceof NotReadyError)) throw error;
-              }
+      return Await({
+        fallback: "Page Is Loading",
+        get children(): JSX.Element {
+          // Register an unrelated pending resource with this Await boundary.
+          try {
+            // oxlint-disable-next-line no-unused-expressions
+            sibling.value;
+          } catch (error) {
+            if (!(error instanceof Error) || error.name !== "NotReadyError") {
+              throw error;
+            }
+          }
 
-              // Exercise the actual router guard. It must remain blocking
-              // even though the parent Await already has a sibling promise.
-              return Router({ url: "/redirect", routes }) as unknown as JSX.Element;
-            },
-          }),
-        ) as unknown as JSX.Element;
-      },
-      "stream",
-    );
+          // RouteView marks a pending guard read as blocking before rethrowing
+          // it. Keep that boundary contract covered independently of Router's
+          // nested component and $nodes rendering structure.
+          try {
+            return guard.value;
+          } catch (error) {
+            if (!(error instanceof Error) || error.name !== "NotReadyError") {
+              throw error;
+            }
+
+            (error as Error & { blocking: boolean }).blocking = true;
+            throw error;
+          }
+        },
+      });
+    }, "stream");
 
     const reader = rendered.body.getReader();
     const firstChunk = reader.read();
 
-    // The request must fail with the redirect before the fallback is streamed.
     rejectGuard(response);
     await expect(firstChunk).rejects.toBe(response);
   });

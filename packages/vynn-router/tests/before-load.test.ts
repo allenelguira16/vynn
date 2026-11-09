@@ -1,12 +1,10 @@
+// @vitest-environment node
 import { describe, expect, it } from "vitest";
 
-import { lazy } from "../src/components/lazy";
-import { enterAsyncBoundary } from "../src/context/async-context";
-import type { JSX } from "../src/types/jsx";
-import { renderToServer } from "../src/server/render-to-server";
-import { Router } from "../../vynn-router/src/router";
-import { redirect } from "../../vynn-router/src/redirect";
-import type { Route } from "../../vynn-router/src/types";
+import { lazy, type JSX } from "vynn";
+import { enterAsyncBoundary } from "../../vynn-core/src/context/async-context";
+import { renderToServer } from "vynn/server";
+import { redirect, Router, type Route } from "../src";
 
 function renderRouter(url: string, routes: Route[], mode: "async"): Promise<{
   body: string;

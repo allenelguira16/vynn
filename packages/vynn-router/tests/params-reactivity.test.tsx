@@ -1,15 +1,10 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { JSX } from "../src/types/jsx";
+import { Await, lazy, type JSX } from "vynn";
 
-import { renderToDOM } from "../src/client/render-to-dom";
-import { Await } from "../src/components/await";
-import { lazy } from "../src/components/lazy";
-import { Router } from "../../vynn-router/src/router";
-import { $params, $search } from "../../vynn-router/src/params";
-import { navigate } from "../../vynn-router/src/location";
-import type { Route } from "../../vynn-router/src/types";
+import { renderToDOM } from "vynn/client";
+import { $params, $search, navigate, Router, type Route } from "../src";
 
 afterEach(() => {
   document.body.innerHTML = "";

@@ -1,11 +1,10 @@
+// @vitest-environment node
 import { describe, expect, it } from "vitest";
 
-import type { JSX } from "../src/types/jsx";
+import type { JSX } from "vynn";
 
-import { renderToServer } from "../src/server/render-to-server";
-import { $location } from "../../vynn-router/src/location";
-import { Router } from "../../vynn-router/src/router";
-import type { Route } from "../../vynn-router/src/types";
+import { renderToServer } from "vynn/server";
+import { $location, Router, type Route } from "../src";
 
 async function renderRouter(url: string, routes: Route[]): Promise<string> {
   const rendered = await renderToServer(
@@ -41,7 +40,12 @@ describe("router location SSR", () => {
       renderRouter("/second/missing?source=second", routes),
     ]);
 
-    expect(firstRequest).toContain("Page /first/missing?source=first");
-    expect(secondRequest).toContain("Page /second/missing?source=second");
+    // SSR inserts marker comments between dynamic text nodes. They are
+    // renderer metadata, not part of the rendered text content.
+    const firstText = firstRequest.replace(/<!--[\s\S]*?-->/g, "");
+    const secondText = secondRequest.replace(/<!--[\s\S]*?-->/g, "");
+
+    expect(firstText).toContain("Page /first/missing?source=first");
+    expect(secondText).toContain("Page /second/missing?source=second");
   });
 });
