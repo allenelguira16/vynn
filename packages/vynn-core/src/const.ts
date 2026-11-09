@@ -7,6 +7,7 @@ export const LAZY_END_SSR_MARKER = "/l";
 
 export const INTERNAL_RANGE_START_MARKER = "vynn:internal:start";
 export const INTERNAL_RANGE_END_MARKER = "vynn:internal:end";
+export const RAW_HTML_SSR_ATTRIBUTE = "data-vynn-raw-html";
 
 export const APPLY_PATCH_SSR_KEY = "$AP";
 export const APPLY_HEAD_PATCH_SSR_KEY = "$AHP";

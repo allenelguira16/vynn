@@ -29,6 +29,7 @@ export async function resolveAsync(App: () => JSX.Element, owner: Owner): Promis
           renderNode({
             type: node.type,
             attributes: node.attributes,
+            innerHTML: node.innerHTML,
             children: await resolve(node.children),
           }),
         );

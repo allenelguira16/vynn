@@ -7,6 +7,7 @@ import { $renderEffect } from "../reactivity/$effect";
 import { isCreatingHeadElement, runWithHeadElementContext } from "./$head";
 import { getChildDOMNamespace, withDOMNamespace } from "./namespace";
 import { resolveNode, resolveSSRChild } from "./resolve-node";
+import { hasRawHTMLContent } from "./$attr";
 
 const initializedHeadChildren = new WeakSet<Element>();
 
@@ -67,6 +68,10 @@ export function $insert<E extends Element>(
   if (isServer()) {
     const parent = element as unknown as SSR_ELEMENT;
 
+    if (parent.innerHTML !== undefined) {
+      throw new Error("[vynn]: An element cannot have both the `html` prop and children.");
+    }
+
     const renderChild = typeof child === "function" ? child : () => child;
 
     const childNamespace = getChildDOMNamespace(parent.namespaceURI, parent.type);
@@ -78,6 +83,10 @@ export function $insert<E extends Element>(
     }
 
     return;
+  }
+
+  if (hasRawHTMLContent(element)) {
+    throw new Error("[vynn]: An element cannot have both the `html` prop and children.");
   }
 
   const headChildren = isCreatingHeadElement();

@@ -30,6 +30,7 @@ export function resolveSync(App: () => JSX.Element): string {
           renderNode({
             type: node.type,
             attributes: node.attributes,
+            innerHTML: node.innerHTML,
             children: resolve(node.children),
           }),
         );

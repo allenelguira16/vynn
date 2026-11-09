@@ -4,6 +4,7 @@ import {
   INTERNAL_RANGE_START_MARKER,
   LAZY_END_SSR_MARKER,
   LAZY_START_SSR_MARKER,
+  RAW_HTML_SSR_ATTRIBUTE,
   TEXT_SSR_SEPARATOR,
 } from "../const";
 import { isServer } from "../context/is-server-context";
@@ -447,6 +448,14 @@ function getServerRenderedNodes(root: Node) {
     if (isCommentNode(node) && node.data === INTERNAL_RANGE_END_MARKER) {
       node.parentNode?.removeChild(node);
       console.warn("[vynn] Unmatched internal SSR range end marker.");
+      return;
+    }
+
+    if (isElement(node) && node.hasAttribute(RAW_HTML_SSR_ATTRIBUTE)) {
+      // Raw HTML is opaque to Vynn. Claim its host element, but do not add any
+      // of its unmanaged descendants to the hydration queues.
+      node.removeAttribute(RAW_HTML_SSR_ATTRIBUTE);
+      addNode(node);
       return;
     }
 

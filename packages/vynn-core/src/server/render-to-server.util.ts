@@ -3,6 +3,7 @@ import {
   EMPTY_TEXT_SSR_MARKER,
   ERROR_BOUNDARY_DATA_SSR_KEY,
   TEXT_SSR_SEPARATOR,
+  RAW_HTML_SSR_ATTRIBUTE,
 } from "../const";
 import { getAsyncValues } from "../context/async-context";
 import { getErrorBoundaryValues } from "../context/error-boundary-context";
@@ -33,6 +34,7 @@ export function renderText(node: SSR_TEXT) {
 export function renderNode(props: {
   type: string;
   attributes: SSR_ELEMENT["attributes"];
+  innerHTML?: string;
   children: string;
 }) {
   let attributes = Object.entries(props.attributes)
@@ -40,16 +42,21 @@ export function renderNode(props: {
     .join(" ");
   attributes = attributes ? ` ${attributes}` : "";
 
+  const hasRawHTML = props.innerHTML !== undefined;
+
   if (voidElements.has(props.type)) {
-    if (props.children.length > 0) {
+    if (props.children.length > 0 || hasRawHTML) {
       console.warn(
-        `[vynn]: <${props.type}> is a void element and cannot have children therefore it will ignore the children`,
+        `[vynn]: <${props.type}> is a void element and cannot have children or raw HTML therefore it will ignore the content`,
       );
     }
 
     return `<${props.type}${attributes}>`;
   } else {
-    return `<${props.type}${attributes}>${props.children}</${props.type}>`;
+    const marker = hasRawHTML ? ` ${RAW_HTML_SSR_ATTRIBUTE}=""` : "";
+    const children = hasRawHTML ? props.innerHTML : props.children;
+
+    return `<${props.type}${attributes}${marker}>${children}</${props.type}>`;
   }
 }
 

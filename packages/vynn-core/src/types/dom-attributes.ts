@@ -6,10 +6,11 @@ export type HTMLAttributes<T extends Element = Element> = CoreAttributes &
   AriaAttributes & {
     children?: JSX.Element;
     ref?: ((element: T) => void) | T;
+    /** Injects raw HTML without escaping. Sanitize untrusted input and do not combine this with children. */
     html?: string;
   };
 
-export type HTMLVoidAttributes<T extends Element = Element> = Omit<HTMLAttributes<T>, "children">;
+export type HTMLVoidAttributes<T extends Element = Element> = Omit<HTMLAttributes<T>, "children" | "html">;
 
 export type HTMLAnchorAttributes<T extends Element = HTMLAnchorElement> = HTMLAttributes<T> & {
   download?: any;

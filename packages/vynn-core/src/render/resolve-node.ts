@@ -14,6 +14,7 @@ export type SSR_ELEMENT = {
   children: SSR_NODE[];
   parent: SSR_ELEMENT | null;
   attributes: Record<string, string>;
+  innerHTML?: string;
   namespaceURI: string;
 
   insertBefore(node: SSR_NODE, before: SSR_NODE | null): void;

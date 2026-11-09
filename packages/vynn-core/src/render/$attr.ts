@@ -8,6 +8,12 @@ import { HTML_NAMESPACE, SVG_NAMESPACE } from "./namespace";
 
 type AttributeValue = string | number | boolean | null | undefined;
 
+const rawHTMLContentElements = new WeakSet<Element>();
+
+export function hasRawHTMLContent(element: Element): boolean {
+  return rawHTMLContentElements.has(element);
+}
+
 const XLINK_NAMESPACE = "http://www.w3.org/1999/xlink";
 const XML_NAMESPACE = "http://www.w3.org/XML/1998/namespace";
 const XMLNS_NAMESPACE = "http://www.w3.org/2000/xmlns/";
@@ -183,8 +189,22 @@ export function $attr<E extends Element>(
 ): void {
   if (isServer()) {
     const node = element as unknown as SSR_ELEMENT;
-    const key = getAttributeName(node.namespaceURI, name);
     const next = typeof value === "function" ? value() : value;
+
+    if (name === "html") {
+      if (next == null) {
+        delete node.innerHTML;
+      } else {
+        if (node.children.length > 0) {
+          throw new Error("[vynn]: An element cannot have both the `html` prop and children.");
+        }
+
+        node.innerHTML = String(next);
+      }
+      return;
+    }
+
+    const key = getAttributeName(node.namespaceURI, name);
 
     if (next == null) {
       delete node.attributes[key];
@@ -199,6 +219,36 @@ export function $attr<E extends Element>(
       // as values instead of treating them as HTML boolean attributes.
       node.attributes[key] = String(next);
     }
+    return;
+  }
+
+  if (name === "html") {
+    $renderEffect(() => {
+      const next = typeof value === "function" ? value() : value;
+
+      if (
+        next != null &&
+        !rawHTMLContentElements.has(element) &&
+        !isHydrationClaimActive() &&
+        element.childNodes.length > 0
+      ) {
+        throw new Error("[vynn]: An element cannot have both the `html` prop and children.");
+      }
+
+      const html = next == null ? "" : String(next);
+
+      // Avoid replacing server-rendered descendants when the content already
+      // matches, which also preserves any existing DOM identity.
+      if (element.innerHTML !== html) {
+        element.innerHTML = html;
+      }
+
+      if (next == null) {
+        rawHTMLContentElements.delete(element);
+      } else {
+        rawHTMLContentElements.add(element);
+      }
+    });
     return;
   }
 

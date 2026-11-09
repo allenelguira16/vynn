@@ -152,6 +152,7 @@ export function resolveStream(
           renderNode({
             type: node.type,
             attributes: node.attributes,
+            innerHTML: node.innerHTML,
             children: await resolve(node.children),
           }),
         );
