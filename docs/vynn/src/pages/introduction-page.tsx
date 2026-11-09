@@ -89,7 +89,7 @@ renderToDOM(App, "#app");
             <strong>
               <code>$store()</code>
             </strong>{" "}
-            - Creates a deeply reactive object or array.
+            - Creates deeply reactive objects and arrays, with native collection support.
           </li>
           <li>
             <strong>

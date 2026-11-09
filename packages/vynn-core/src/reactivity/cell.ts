@@ -1,9 +1,8 @@
+import { markRef, type VynnRef } from "./ref";
 import { track, trigger } from "./track";
 import { getCurrentTransaction, transaction } from "./transaction";
 
-export type Cell<T> = {
-  value: T;
-};
+export type Cell<T> = VynnRef<T>;
 
 /**
  * Creates a small reactive cell used by state and internal resource records.
@@ -13,7 +12,7 @@ export function createCell<T>(initialValue: T): Cell<T> {
     value: initialValue,
   };
 
-  return new Proxy(state, {
+  const cell = new Proxy(state, {
     get(target, key, receiver) {
       track(target, key);
       return Reflect.get(target, key, receiver);
@@ -45,4 +44,6 @@ export function createCell<T>(initialValue: T): Cell<T> {
       return result;
     },
   });
+
+  return markRef(cell) as Cell<T>;
 }

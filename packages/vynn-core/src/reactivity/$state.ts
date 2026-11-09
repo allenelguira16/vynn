@@ -1,17 +1,16 @@
 import { createAsyncDerived } from "./async";
 import { createCell } from "./cell";
 import { isAsyncFunction } from "./is-async-function";
+import type { VynnRef } from "./ref";
 
-export type State<T> = {
-  value: T;
-};
+export type State<T> = VynnRef<T>;
 
 /**
  * Creates a reactive state value.
  *
  * Passing an async function creates writable async-derived state. Reactive
  * dependencies read before the first await trigger a refresh. The latest
- * resolved value remains writable through the same `value` property.
+ * resolved value remains writable through the same value property.
  *
  * Ordinary values, including synchronous function values, remain ordinary
  * state.

@@ -7,10 +7,11 @@ export const StorePage = () => {
 
       <section>
         <p>
-          <code>$store()</code> creates a deeply reactive object or array. Unlike{" "}
-          <code>$state()</code>, which tracks its value as a whole,
-          <code>$store()</code> tracks individual properties, including properties inside nested
-          objects and arrays.
+          <code>$store()</code> creates a deeply reactive proxy for plain objects and arrays. It
+          also supports native <code>Map</code>, <code>Set</code>, <code>WeakMap</code>, and
+          <code>WeakSet</code> collections with collection-specific reactivity. Unlike
+          <code>$state()</code>, which tracks its value as a whole, <code>$store()</code> tracks
+          individual properties, entries, and iteration dependencies.
         </p>
 
         <p>
@@ -72,7 +73,8 @@ renderToDOM(Counter, "#app");
         <p>
           Nested objects and arrays are reactive too. You don't need to create separate{" "}
           <code>$state()</code> or <code>$store()</code>
-          values for every property.
+          values for every property. Nested values are converted to reactive proxies when they are
+          accessed.
         </p>
 
         <CodeBlock
@@ -120,6 +122,119 @@ function Profile() {
           Assigning a nested property or modifying an array automatically notifies the computations
           that depend on the affected properties. The same applies to adding and deleting object
           properties.
+        </p>
+
+        <h2 class="mt-6">Structural reactivity</h2>
+
+        <p>
+          A store tracks more than property values. Checking whether a property exists and
+          enumerating an object's keys are reactive too. Adding or deleting a property updates
+          computations that depend on the object's structure.
+        </p>
+
+        <CodeBlock
+          lang="tsx"
+          code={`
+import { $effect, $store } from "vynn";
+
+function UserFields() {
+  const user = $store<{ name?: string }>({});
+
+  $effect(() => {
+    console.log("Has name:", "name" in user);
+  });
+
+  $effect(() => {
+    console.log("Fields:", Object.keys(user));
+  });
+
+  return (
+    <button onClick={() => (user.name = "Allen")}>
+      Add name
+    </button>
+  );
+}
+          `}
+        />
+
+        <p>
+          These dependencies are distinct from reading <code>user.name</code>. For example,
+          adding <code>name</code> with a value of <code>undefined</code> still changes the result
+          of the <code>in</code> check and the object's key list.
+        </p>
+
+        <h2 class="mt-6">Native collections</h2>
+
+        <p>
+          <code>$store()</code> also supports <code>Map</code>, <code>Set</code>,
+          <code>WeakMap</code>, and <code>WeakSet</code>. Collection methods keep their native
+          calling conventions while tracking the keys or entries used by reactive computations.
+        </p>
+
+        <CodeBlock
+          lang="tsx"
+          code={`
+import { $effect, $store } from "vynn";
+
+const users = $store(new Map<string, { name: string }>());
+const selectedIds = $store(new Set<string>());
+
+$effect(() => {
+  console.log([...users.values()].map((user) => user.name));
+});
+
+users.set("1", { name: "Ada" });
+selectedIds.add("1");
+
+users.get("1")!.name = "Grace";
+          `}
+        />
+
+        <p>
+          <code>Map</code> and <code>Set</code> support reactive iteration. <code>WeakMap</code>
+          and <code>WeakSet</code> track individual key access and membership, but remain
+          non-iterable as required by JavaScript. Built-ins such as <code>Date</code>,
+          <code>RegExp</code>, and <code>Promise</code> are left unproxied.
+        </p>
+
+        <h2 class="mt-6">Ref unwrapping</h2>
+
+        <p>
+          When a Vynn state or computed ref is stored in an ordinary object property,
+          <code>$store()</code> exposes its value directly. Assigning a non-ref value to that
+          property updates the original writable ref. Refs inside arrays and collections are
+          preserved and must still be accessed through <code>.value</code>.
+        </p>
+
+        <CodeBlock
+          lang="tsx"
+          code={`
+import { $computed, $state, $store } from "vynn";
+
+const count = $state(1);
+const double = $computed(() => count.value * 2);
+
+const state = $store({
+  count,
+  double,
+  history: [count],
+  values: new Map([["count", count]]),
+});
+
+console.log(state.count); // 1
+console.log(state.double); // 2
+console.log(state.history[0].value); // 1
+console.log(state.values.get("count")!.value); // 1
+
+state.count = 2; // Updates count.value
+console.log(state.double); // 4
+          `}
+        />
+
+        <p>
+          This follows Vue-style ref unwrapping for object properties without changing how
+          standalone <code>$state()</code> and <code>$computed()</code> values are read.
+          Those values continue to use <code>.value</code>.
         </p>
 
         <h2 class="mt-6">Derived values with getters</h2>
@@ -226,8 +341,9 @@ function Header() {
         <h2 class="mt-6">Refreshing async stores</h2>
 
         <p>
-          An async store can depend on other reactive values. When a dependency changes, Vynn runs
-          the async function again and reconciles the new result into the existing store.
+          An async store can depend on other reactive values. Dependencies read before the first
+          <code>await</code> are tracked. When one changes, Vynn runs the async function again and
+          reconciles the new result into the existing store.
         </p>
 
         <CodeBlock
@@ -354,8 +470,10 @@ export function Header() {
         <h3>$store(initialObject)</h3>
 
         <p>
-          Creates a deeply reactive proxy from an object or array. Property reads are tracked, and
-          writes notify dependent computations.
+          Creates a deeply reactive proxy from a plain object or array, or a reactive wrapper for
+          <code>Map</code>, <code>Set</code>, <code>WeakMap</code>, and <code>WeakSet</code>.
+          Property reads, existence checks, and iteration are tracked, and writes notify the
+          computations that depend on the affected data.
         </p>
 
         <CodeBlock
@@ -377,8 +495,8 @@ state.user.name = "Michael";
 
         <p>
           Creates a reactive store from an async function that resolves to a plain object. Reactive
-          dependencies read before the first
-          <code>await</code> trigger subsequent refreshes.
+          dependencies read before the first <code>await</code> trigger subsequent refreshes. Each
+          resolved snapshot is reconciled into the existing store proxy.
         </p>
 
         <CodeBlock

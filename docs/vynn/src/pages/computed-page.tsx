@@ -199,9 +199,9 @@ function UserProfile() {
         />
 
         <p>
-          The asynchronous computation runs when it is created and whenever its reactive
-          dependencies change. During the initial request, reading <code>user.value</code> suspends
-          until the result is ready.
+          The asynchronous computation runs when it is created and whenever a reactive dependency
+          read before the first <code>await</code> changes. During the initial request, reading
+          <code>user.value</code> suspends until the result is ready.
           <code>Await</code> can display a fallback during this time.
         </p>
 

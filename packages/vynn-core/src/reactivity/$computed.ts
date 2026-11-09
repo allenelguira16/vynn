@@ -4,10 +4,9 @@ import { $state } from "./$state";
 import { createAsyncDerived } from "./async";
 import { isAsyncFunction } from "./is-async-function";
 import { isPending as getPending, registerPending } from "./pending";
+import { markRef, type VynnReadonlyRef } from "./ref";
 
-export type Computed<T> = {
-  readonly value: T;
-};
+export type Computed<T> = VynnReadonlyRef<T>;
 
 export type ComputedOptions = {
   /**
@@ -56,20 +55,20 @@ export function $computed<T>(
 
     if (!lazy) initialize();
 
-    return {
+    return markRef({
       get value() {
         initialize();
         return resolve.value as T;
       },
-    };
+    }) as Computed<T>;
   }
 
   const derived = createAsyncDerived(getter as () => Promise<T>, lazy);
-  const computed: Computed<T> = {
+  const computed = markRef({
     get value() {
       return derived.value;
     },
-  };
+  }) as Computed<T>;
 
   registerPending(computed, () => getPending(derived));
 

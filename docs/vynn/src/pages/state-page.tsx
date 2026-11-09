@@ -24,6 +24,12 @@ export const StatePage = () => {
           <code>.value</code> and assign a new value whenever you need to update it.
         </p>
 
+        <p>
+          A normal function is stored as a function value. Only an <code>async</code> function is
+          treated as an asynchronous initializer, so callbacks can still be stored in state without
+          being invoked.
+        </p>
+
         <CodeBlock
           lang="tsx"
           code={`
@@ -117,8 +123,9 @@ function Counter() {
         <h2 class="mt-6">Async state</h2>
 
         <p>
-          <code>$state()</code> also accepts an async function. This creates an async-derived state
-          that runs immediately and tracks reactive dependencies used by the function.
+          <code>$state()</code> also accepts an async function. This creates writable async-derived
+          state that runs immediately and tracks reactive dependencies read before the first
+          <code>await</code>. When one of those dependencies changes, the initializer runs again.
         </p>
 
         <CodeBlock
@@ -200,6 +207,12 @@ function UserProfile() {
           Unlike the initial request, subsequent requests keep the last resolved value available
           while the new request is running. This means your UI can continue showing the previous
           user while the next one loads.
+        </p>
+
+        <p>
+          Async state remains writable through <code>.value</code>. Assigning a value manually
+          replaces the current result and prevents an older in-flight request from overwriting that
+          assignment when it finishes.
         </p>
 
         <p>

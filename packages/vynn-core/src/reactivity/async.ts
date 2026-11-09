@@ -11,13 +11,12 @@ import { $renderEffect } from "./$effect";
 import { createCell } from "./cell";
 import { NotReadyError } from "./not-ready-error";
 import { registerPending } from "./pending";
+import { markRef, type VynnRef } from "./ref";
 import { transaction } from "./transaction";
 import { untrack } from "./untrack";
 import { withFakeAsyncApis } from "./with-fake-async-apis";
 
-export type Async<T> = {
-  value: T;
-};
+export type Async<T> = VynnRef<T>;
 
 type AsyncRecord<T> =
   | {
@@ -257,7 +256,7 @@ export function createAsyncResource<T>(
     });
   };
 
-  const derived: Async<T> = {
+  const derived = markRef({
     get value(): T {
       // Check for a preassigned value without tracking the initial
       // undefined state. Initialize before the tracked read so the pending
@@ -298,7 +297,7 @@ export function createAsyncResource<T>(
         version: currentVersion,
       };
     },
-  };
+  });
 
   registerPending(derived, () => {
     // Preserve SSR read-to-suspend behavior for ownerless resources that are
@@ -315,7 +314,7 @@ export function createAsyncResource<T>(
     initialize();
   }
 
-  return derived;
+  return derived as Async<T>;
 }
 
 export { isPending } from "./pending";
