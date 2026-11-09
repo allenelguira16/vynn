@@ -31,7 +31,7 @@ export default defineConfig({
       external: ["vscode-oniguruma"],
     },
   },
-  plugins: [vynn(), tailwindcss(), sitemap({ hostname: "http://localhost:3000/" })],
+  plugins: [vynn({ ssr: true }), tailwindcss(), sitemap({ hostname: "http://localhost:3000/" })],
   resolve: {
     tsconfigPaths: true,
   },

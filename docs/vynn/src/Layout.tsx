@@ -3,8 +3,51 @@ import { Link } from "vynn-router";
 
 import vynnLogo from "./assets/vynn.svg";
 
+// const getStartedLinks = ;
+
+const links = [
+  {
+    title: "Getting Started",
+    items: [
+      { label: "Introduction", href: "/docs/getting-started/introduction" },
+      { label: "Installation", href: "/docs/getting-started/installation" },
+      { label: "Things to know", href: "/docs/getting-started/things-to-know" },
+    ],
+  },
+  {
+    title: "Life Cycles",
+    items: [
+      { label: "onMount", href: "/docs/life-cycles/on-mount" },
+      { label: "onDestroy", href: "/docs/life-cycles/on-destroy" },
+    ],
+  },
+  {
+    title: "Reactivity",
+    items: [
+      { label: "$state", href: "/docs/reactivity/state" },
+      { label: "$store", href: "/docs/reactivity/store" },
+      { label: "$computed", href: "/docs/reactivity/computed" },
+      { label: "$effect", href: "/docs/reactivity/effect" },
+    ],
+  },
+  {
+    title: "Components",
+    items: [
+      { label: "Await", href: "/docs/components/await" },
+      { label: "ErrorBoundary", href: "/docs/components/error-boundary" },
+    ],
+  },
+  {
+    title: "Utilities",
+    items: [
+      { label: "lazy", href: "/docs/utilities/lazy" },
+      { label: "isPending", href: "/docs/utilities/is-pending" },
+      { label: "context", href: "/docs/utilities/context" },
+    ],
+  },
+];
+
 export default function Layout({ children }: PropsWithChildren) {
-  console.log("Layout Rerender");
   return (
     <div class="drawer max-w-screen-2xl mx-auto lg:drawer-open">
       <input id="home-drawer" type="checkbox" class="drawer-toggle" />
@@ -15,114 +58,28 @@ export default function Layout({ children }: PropsWithChildren) {
             <img src={vynnLogo} class="w-5" alt="Vynn logo" />
             <span>Vynn</span>
           </Link>
+
           <ul class="menu text-base-content min-h-full w-80 p-4">
-            <li>
-              <details open>
-                <summary>Get Started</summary>
-                <ul>
-                  <li>
-                    <Link href="/docs/introduction" activeClass="menu-active">
-                      Introduction
-                    </Link>
-                  </li>
-                  <li>
-                    <Link href="/docs/installation" activeClass="menu-active">
-                      Installation
-                    </Link>
-                  </li>
-                  <li>
-                    <Link href="/docs/things-to-know" activeClass="menu-active">
-                      Things to know
-                    </Link>
-                  </li>
-                </ul>
-              </details>
-            </li>
-            <li>
-              <details open>
-                <summary>Core concepts</summary>
-                <ul>
-                  <li>
-                    <h2 class="menu-title">Lifecycle</h2>
-                    <ul>
+            {links.map(({ items, title }) => (
+              <li>
+                <details open>
+                  <summary>{title}</summary>
+                  <ul>
+                    {items.map(({ label, href }) => (
                       <li>
-                        <Link href="/docs/core-concepts/on-mount" activeClass="menu-active">
-                          onMount
+                        <Link href={href} activeClass="menu-active">
+                          {label}
                         </Link>
                       </li>
-                      <li>
-                        <Link href="/docs/core-concepts/on-destroy" activeClass="menu-active">
-                          onDestroy
-                        </Link>
-                      </li>
-                    </ul>
-                  </li>
-                  <li>
-                    <h2 class="menu-title">Reactivity</h2>
-                    <ul>
-                      <li>
-                        <Link href="/docs/core-concepts/state" activeClass="menu-active">
-                          state
-                        </Link>
-                      </li>
-                      <li>
-                        <Link href="/docs/core-concepts/store" activeClass="menu-active">
-                          store
-                        </Link>
-                      </li>
-                      <li>
-                        <Link href="/docs/core-concepts/computed" activeClass="menu-active">
-                          computed
-                        </Link>
-                      </li>
-                      <li>
-                        <Link href="/docs/core-concepts/effect" activeClass="menu-active">
-                          effect
-                        </Link>
-                      </li>
-                    </ul>
-                  </li>
-                  <li>
-                    <h2 class="menu-title">Async</h2>
-                    <ul>
-                      <li>
-                        <Link href="/docs/core-concepts/resource" activeClass="menu-active">
-                          resource
-                        </Link>
-                      </li>
-                      <li>
-                        <Link href="/docs/core-concepts/suspense" activeClass="menu-active">
-                          Suspense
-                        </Link>
-                      </li>
-                      <li>
-                        <Link href="/docs/core-concepts/lazy" activeClass="menu-active">
-                          lazy
-                        </Link>
-                      </li>
-                    </ul>
-                  </li>
-                  <li>
-                    <h2 class="menu-title">Utilities</h2>
-                    <ul>
-                      <li>
-                        <Link href="/docs/core-concepts/loop" activeClass="menu-active">
-                          loop
-                        </Link>
-                      </li>
-                      <li>
-                        <Link href="/docs/core-concepts/memo" activeClass="menu-active">
-                          memo
-                        </Link>
-                      </li>
-                    </ul>
-                  </li>
-                </ul>
-              </details>
-            </li>
+                    ))}
+                  </ul>
+                </details>
+              </li>
+            ))}
           </ul>
         </aside>
       </div>
+
       <div class="drawer-content prose max-w-full">
         <div class="navbar bg-base-100 shadow-sm lg:invisible">
           <label class="btn btn-square btn-ghost drawer-button" for="home-drawer">
@@ -142,6 +99,7 @@ export default function Layout({ children }: PropsWithChildren) {
               ></path>
             </svg>
           </label>
+
           <Link href="/" class="flex items-center gap-2 p-4 text-xl not-prose">
             <img src={vynnLogo} class="w-4" alt="Vynn logo" />
             <span>Vynn</span>

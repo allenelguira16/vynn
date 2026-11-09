@@ -44,17 +44,7 @@ export const CodeBlock = ({ code: rawCode, lang }: CodeBlockProps) => {
 
   return (
     <div class="relative">
-      <div class="not-prose multiline-mockup-code" html={parsedCode}>
-        {(() => {
-          const htmlString = parsedCode;
-
-          const parser = new DOMParser();
-
-          const doc = parser.parseFromString(htmlString, "text/html");
-
-          return doc.body.firstChild;
-        })()}
-      </div>
+      <div class="not-prose multiline-mockup-code" html={parsedCode}></div>
       <button
         onClick={copyToClipboard}
         onMouseLeave={onMouseLeave}

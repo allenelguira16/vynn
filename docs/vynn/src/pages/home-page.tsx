@@ -14,13 +14,13 @@ export const HomePage = () => {
           </h1>
 
           <p>
-            Vynn is a fast, minimal frontend framework that feels like React—but skips the virtual
+            Vynn is a fast, minimal frontend framework that feels like React-but skips the virtual
             DOM. It gives you direct, reactive access to the DOM with smart updates, built-in
             lifecycle hooks, and JSX that just works.
           </p>
 
           <p>
-            Designed for performance and simplicity, vynn helps you focus on your UI—not the
+            Designed for performance and simplicity, vynn helps you focus on your UI-not the
             framework. Whether you're building a tiny widget or a full application, it scales
             effortlessly with you.
           </p>
@@ -31,7 +31,7 @@ export const HomePage = () => {
           </p>
 
           <div class="flex gap-4">
-            <Link href="/docs/introduction" class="btn btn-soft">
+            <Link href="/docs/getting-started/introduction" class="btn btn-soft">
               Get Started
             </Link>
             <a href="https://github.com/allenelguira16/vynn" class="btn btn-soft" target="_blank">
@@ -44,7 +44,7 @@ export const HomePage = () => {
           <CodeBlock
             lang="tsx"
             code={`
-              import { createApp } from "vynn";
+              import { renderToDOM } from "vynn";
 
               function App() {
                 return (
@@ -55,7 +55,7 @@ export const HomePage = () => {
                 );
               }
 
-              createApp(App).mount("#app");
+              renderToDOM(App, '#app');
             `}
           />
         </div>
