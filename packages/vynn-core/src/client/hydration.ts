@@ -93,7 +93,9 @@ export function runAfterHydration<T>(callback: () => T, waitForLazy = true): voi
 
   const owner = getOwner();
 
-  if (!isHydrating(waitForLazy)) {
+  // The root pass can still be active after its final SSR node was claimed.
+  // Client-only mounts must wait until withHydration() has fully exited.
+  if (rootHydrationDepth === 0 && !isHydrating(waitForLazy)) {
     runWithOwner(owner, callback);
     return;
   }

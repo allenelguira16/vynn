@@ -3,9 +3,9 @@ import { $store, onMount } from "vynn";
 import { LocationProvider } from "./context";
 import { isServer } from "./environment";
 import {
-  $location,
   parseLocation,
   setActiveLocation,
+  updateDefaultLocation,
   updateLocation,
 } from "./location";
 import { RouteOutlet } from "./outlet";
@@ -16,18 +16,20 @@ export function Router(props: { url?: string; routes: Route[] }) {
   const location = $store<Location>(parseLocation(props.url));
 
   if (!isServer) {
-    // Keep legacy consumers synchronized, but never mutate the module-level
-    // singleton on the server: separate requests have separate Router stores.
+    // Keep the fallback store synchronized for consumers outside a Router.
+    // Route components read the request-local store through the $location facade.
     setActiveLocation(location);
-    updateLocation($location, location);
+    updateDefaultLocation(location);
 
     onMount(() => {
       const updateFromBrowser = () => {
-        updateLocation(location, {
+        const next = {
           pathname: window.location.pathname,
           search: window.location.search,
-        });
-        updateLocation($location, location);
+        };
+
+        updateLocation(location, next);
+        updateDefaultLocation(next);
       };
 
       window.addEventListener("popstate", updateFromBrowser);

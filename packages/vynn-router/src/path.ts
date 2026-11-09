@@ -15,13 +15,22 @@ export function toSegments(path: string): string[] {
   return normalizePath(path).split("/").filter(Boolean);
 }
 
-/**
- * Reads one parameter from a route pattern.
- *
- * Parent route patterns are prefixes of their nested routes, so matching does
- * not require the pathname and route pattern to have the same number of
- * segments.
- */
+/** Returns whether a route pattern ends with a catch-all segment. */
+export function isCatchAllPath(path: string): boolean {
+  const segments = toSegments(path);
+  return segments[segments.length - 1] === "*";
+}
+
+/** Decodes a path segment without failing on malformed percent escapes. */
+function decodePathSegment(segment: string): string {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return segment;
+  }
+}
+
+/** Reads one parameter from a route pattern. */
 export function getRouteParam(
   path: string,
   name: string,
@@ -29,55 +38,65 @@ export function getRouteParam(
 ): string | undefined {
   const routeSegments = toSegments(path);
   const pathnameSegments = toSegments(location.pathname);
+  const hasWildcard = isCatchAllPath(path);
+  const matchedSegmentCount = routeSegments.length - (hasWildcard ? 1 : 0);
 
-  if (pathnameSegments.length < routeSegments.length) {
+  if (pathnameSegments.length < matchedSegmentCount) {
     return undefined;
   }
 
   let value: string | undefined;
 
-  for (let index = 0; index < routeSegments.length; index++) {
+  for (let index = 0; index < matchedSegmentCount; index++) {
     const routeSegment = routeSegments[index];
     const pathnameSegment = pathnameSegments[index];
 
     if (routeSegment.startsWith(":")) {
       if (routeSegment.slice(1) === name) {
-        try {
-          value = decodeURIComponent(pathnameSegment);
-        } catch {
-          value = pathnameSegment;
-        }
+        value = decodePathSegment(pathnameSegment);
       }
     } else if (routeSegment !== pathnameSegment) {
       return undefined;
     }
   }
 
+  if (name === "*" && hasWildcard) {
+    return pathnameSegments
+      .slice(matchedSegmentCount)
+      .map(decodePathSegment)
+      .join("/");
+  }
+
   return value;
 }
 
-/** Reads all dynamic parameters captured by a route pattern. */
+/** Reads all dynamic and catch-all parameters captured by a route pattern. */
 export function getRouteParams(path: string, location: Location): RouteParams {
   const routeSegments = toSegments(path);
   const pathnameSegments = toSegments(location.pathname);
+  const hasWildcard = isCatchAllPath(path);
+  const matchedSegmentCount = routeSegments.length - (hasWildcard ? 1 : 0);
   const params: Record<string, string | undefined> = {};
 
-  if (pathnameSegments.length < routeSegments.length) {
+  if (pathnameSegments.length < matchedSegmentCount) {
     return params;
   }
 
-  for (let index = 0; index < routeSegments.length; index++) {
+  for (let index = 0; index < matchedSegmentCount; index++) {
     const routeSegment = routeSegments[index];
 
     if (!routeSegment.startsWith(":")) {
       continue;
     }
 
-    try {
-      params[routeSegment.slice(1)] = decodeURIComponent(pathnameSegments[index]);
-    } catch {
-      params[routeSegment.slice(1)] = pathnameSegments[index];
-    }
+    params[routeSegment.slice(1)] = decodePathSegment(pathnameSegments[index]);
+  }
+
+  if (hasWildcard) {
+    params["*"] = pathnameSegments
+      .slice(matchedSegmentCount)
+      .map(decodePathSegment)
+      .join("/");
   }
 
   return params;
@@ -95,10 +114,16 @@ export function matchRoute(
   const targetSegments = toSegments(target);
 
   if (target === "/") return exact ? pathname === "/" : true;
-  if (exact && pathnameSegments.length !== targetSegments.length) return false;
-  if (!exact && pathnameSegments.length < targetSegments.length) return false;
 
-  return targetSegments.every(
+  const hasWildcard = targetSegments[targetSegments.length - 1] === "*";
+  const matchedSegmentCount = targetSegments.length - (hasWildcard ? 1 : 0);
+
+  if (pathnameSegments.length < matchedSegmentCount) return false;
+  if (exact && !hasWildcard && pathnameSegments.length !== matchedSegmentCount) {
+    return false;
+  }
+
+  return targetSegments.slice(0, matchedSegmentCount).every(
     (segment, index) => segment.startsWith(":") || segment === pathnameSegments[index],
   );
 }

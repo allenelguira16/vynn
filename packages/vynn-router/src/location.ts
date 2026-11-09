@@ -5,19 +5,50 @@ import { isServer } from "./environment";
 import type { Location } from "./types";
 
 /**
- * Legacy/default location store. Each Router uses its own location store so
- * route state remains scoped to that Router and concurrent SSR render.
+ * Fallback location store for consumers outside a Router. Each Router has its
+ * own store so route state remains scoped to that Router and concurrent SSR
+ * renders never share request-specific state.
  */
-export const $location = $store<Location>({
+const defaultLocation = $store<Location>({
   pathname: !isServer ? window.location.pathname : "/",
   search: !isServer ? window.location.search : "",
+});
+
+/**
+ * Reactive location facade. Inside a Router it reads and writes that Router's
+ * request-local store; outside a Router it uses the browser/default store.
+ */
+export const $location = new Proxy(defaultLocation, {
+  get(target, property) {
+    let location: Location;
+
+    try {
+      location = useRouterLocation();
+    } catch {
+      location = target;
+    }
+
+    return Reflect.get(location, property, location);
+  },
+
+  set(target, property, value) {
+    let location: Location;
+
+    try {
+      location = useRouterLocation();
+    } catch {
+      location = target;
+    }
+
+    return Reflect.set(location, property, value, location);
+  },
 });
 
 let activeLocation: Location | undefined;
 
 if (!isServer) {
   window.addEventListener("popstate", () => {
-    updateLocation($location, {
+    updateDefaultLocation({
       pathname: window.location.pathname,
       search: window.location.search,
     });
@@ -66,6 +97,11 @@ export function updateLocation(target: Location, next: Location): void {
   }
 }
 
+/** Synchronizes the fallback store without resolving the Router context. */
+export function updateDefaultLocation(next: Location): void {
+  updateLocation(defaultLocation, next);
+}
+
 function updateUrl(
   path: string,
   location: Location,
@@ -102,10 +138,9 @@ function updateUrl(
       search: window.location.search,
     };
 
-    // Router-scoped and legacy locations are separate stores. Keep both
-    // synchronized without depending on a core transaction integration.
+    // Keep both the active Router and fallback location up to date.
     updateLocation(location, current);
-    updateLocation($location, current);
+    updateDefaultLocation(current);
   } else {
     updateLocation(location, next);
   }

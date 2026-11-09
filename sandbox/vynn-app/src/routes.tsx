@@ -1,5 +1,5 @@
 import { Portal, lazy } from "vynn";
-import { redirect, type Route } from "vynn-router";
+import { $location, redirect, type Route } from "vynn-router";
 
 import { ButtonPageList } from "./components/button-page-list";
 import { Template } from "./components/template";
@@ -112,6 +112,16 @@ export const routes: Route[] = [
       {
         path: "/params/:id",
         component: () => <Params />,
+      },
+      {
+        path: "/*",
+        component: () => {
+          return (
+            <Template title="Page not found!">
+              <div>Page {$location.pathname} does not exist</div>
+            </Template>
+          );
+        },
       },
     ],
   },
