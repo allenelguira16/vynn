@@ -37,6 +37,23 @@ describe("route matching", () => {
       .toBe(childLike);
   });
 
+  it("does not let an empty catch-all match shadow an exact route", () => {
+    const home = route("/");
+    const wildcard = route("/*");
+
+    expect(findMatch([wildcard], { pathname: "/", search: "" })?.route).toBe(wildcard);
+    expect(findMatch([home, wildcard], { pathname: "/", search: "" })?.route).toBe(home);
+    expect(findMatch([wildcard, home], { pathname: "/", search: "" })?.route).toBe(home);
+
+    const users = route("/users");
+    const usersWildcard = route("/users/*");
+
+    expect(findMatch([users, usersWildcard], { pathname: "/users", search: "" })?.route)
+      .toBe(users);
+    expect(findMatch([usersWildcard, users], { pathname: "/users", search: "" })?.route)
+      .toBe(users);
+  });
+
   it("uses catch-all routes only when no more specific route matches", () => {
     const wildcard = route("/*");
     const dynamic = route("/:id");
