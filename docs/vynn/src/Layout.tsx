@@ -1,5 +1,5 @@
 import { PropsWithChildren } from "vynn";
-import { Link } from "vynn-router";
+import { isActiveRoute, Link } from "vynn-router";
 
 import vynnLogo from "./assets/vynn.svg";
 
@@ -67,6 +67,11 @@ export default function Layout({ children }: PropsWithChildren) {
                   <ul>
                     {items.map(({ label, href }) => (
                       <li>
+                        {isActiveRoute(href) && (
+                          <title>
+                            Vynn {">"} {title} {">"} {label}
+                          </title>
+                        )}
                         <Link href={href} activeClass="menu-active">
                           {label}
                         </Link>
