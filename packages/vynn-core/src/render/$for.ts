@@ -78,7 +78,7 @@ export function $for<T>(
             continue;
           }
 
-          if (isEqual(newItem, oldEntries[j].item)) {
+          if (Object.is(newItem, oldEntries[j].item)) {
             oldIndex = j;
             break;
           }

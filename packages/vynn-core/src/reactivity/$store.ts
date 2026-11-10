@@ -420,6 +420,9 @@ function createArrayHandlers(beforeRead?: () => void): ProxyHandler<object> {
 
     ownKeys(target) {
       beforeRead?.();
+      // Enumeration depends on both indexed keys and array length. Deleting an
+      // index does not change length, so the dedicated iteration key is needed.
+      track(target, ARRAY_ITERATE_KEY);
       track(target, "length");
       return Reflect.ownKeys(target);
     },

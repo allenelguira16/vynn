@@ -6,7 +6,7 @@ import { isServer } from "../context/is-server-context";
 import { $renderEffect } from "../reactivity/$effect";
 import { HTML_NAMESPACE, SVG_NAMESPACE } from "./namespace";
 
-type AttributeValue = string | number | boolean | null | undefined;
+export type AttributeValue = string | number | boolean | Partial<CSSStyleDeclaration> | null | undefined;
 
 const rawHTMLContentElements = new WeakSet<Element>();
 
@@ -175,28 +175,49 @@ function removeDOMAttribute(element: Element, name: string): void {
   }
 }
 
+/** Converts a style prop into a CSS declaration string for SSR and hydration. */
+export function serializeStyleValue(value: AttributeValue): string {
+  if (value == null) return "";
+  if (typeof value !== "object") return String(value);
+
+  const declarations: string[] = [];
+
+  for (const [property, rawValue] of Object.entries(value)) {
+    if (rawValue == null || rawValue === "") continue;
+
+    const name = property === "cssFloat"
+      ? "float"
+      : property.startsWith("--")
+        ? property
+        : property.replace(/[A-Z]/g, (character) => "-" + character.toLowerCase())
+            .replace(/^ms-/, "-ms-");
+
+    declarations.push(name + ":" + String(rawValue).trim());
+  }
+
+  return declarations.join(";");
+}
+
 /**
- * Sets a reactive DOM attribute or property.
+ * Applies one DOM attribute synchronously.
  *
- * HTML form-control properties retain their property behavior. SVG elements
- * receive namespace-aware attribute names, including presentation attributes
- * such as strokeWidth -> stroke-width and namespaced xlink/xml attributes.
+ * This is shared by direct JSX attributes and spread props so spreads do not
+ * need to create a new reactive effect for every property on every update.
  */
-export function $attr<E extends Element>(
+export function setDOMAttributeValue<E extends Element>(
   element: E,
   name: string,
-  value: AttributeValue | (() => AttributeValue),
+  next: AttributeValue,
 ): void {
   if (isServer()) {
     const node = element as unknown as SSR_ELEMENT;
-    const next = typeof value === "function" ? value() : value;
 
     if (name === "html") {
       if (next == null) {
         delete node.innerHTML;
       } else {
         if (node.children.length > 0) {
-          throw new Error("[vynn]: An element cannot have both the `html` prop and children.");
+          throw new Error("[vynn]: An element cannot have both the html prop and children.");
         }
 
         node.innerHTML = String(next);
@@ -208,6 +229,8 @@ export function $attr<E extends Element>(
 
     if (next == null) {
       delete node.attributes[key];
+    } else if (key === "style") {
+      node.attributes[key] = serializeStyleValue(next);
     } else if (node.namespaceURI === HTML_NAMESPACE && booleanAttributes.has(key.toLowerCase())) {
       if (next) {
         node.attributes[key] = "";
@@ -215,45 +238,89 @@ export function $attr<E extends Element>(
         delete node.attributes[key];
       }
     } else {
-      // Preserve SVG's case-sensitive names and serialize non-HTML booleans
-      // as values instead of treating them as HTML boolean attributes.
       node.attributes[key] = String(next);
     }
     return;
   }
 
   if (name === "html") {
-    $renderEffect(() => {
-      const next = typeof value === "function" ? value() : value;
+    if (
+      next != null &&
+      !rawHTMLContentElements.has(element) &&
+      !isHydrationClaimActive() &&
+      element.childNodes.length > 0
+    ) {
+      throw new Error("[vynn]: An element cannot have both the html prop and children.");
+    }
 
-      if (
-        next != null &&
-        !rawHTMLContentElements.has(element) &&
-        !isHydrationClaimActive() &&
-        element.childNodes.length > 0
-      ) {
-        throw new Error("[vynn]: An element cannot have both the `html` prop and children.");
-      }
+    const html = next == null ? "" : String(next);
+    if (element.innerHTML !== html) element.innerHTML = html;
 
-      const html = next == null ? "" : String(next);
-
-      // Avoid replacing server-rendered descendants when the content already
-      // matches, which also preserves any existing DOM identity.
-      if (element.innerHTML !== html) {
-        element.innerHTML = html;
-      }
-
-      if (next == null) {
-        rawHTMLContentElements.delete(element);
-      } else {
-        rawHTMLContentElements.add(element);
-      }
-    });
+    if (next == null) {
+      rawHTMLContentElements.delete(element);
+    } else {
+      rawHTMLContentElements.add(element);
+    }
     return;
   }
 
   const attributeName = getAttributeName(element.namespaceURI, name);
   const isHtmlElement = element.namespaceURI === HTML_NAMESPACE && element instanceof HTMLElement;
+
+  if (name === "style") {
+    const styleValue = serializeStyleValue(next);
+    const style = "style" in element ? (element as HTMLElement | SVGElement).style : undefined;
+
+    if (style) style.cssText = styleValue;
+    if (next == null) {
+      removeDOMAttribute(element, attributeName);
+    } else {
+      setDOMAttribute(element, attributeName, styleValue);
+    }
+    return;
+  }
+
+  if (isHtmlElement && properties.has(name) && !booleanAttributes.has(name.toLowerCase())) {
+    Reflect.set(element, name, next);
+
+    if (next == null) {
+      removeDOMAttribute(element, attributeName);
+    } else {
+      setDOMAttribute(element, attributeName, String(next));
+    }
+    return;
+  }
+
+  if (next == null) {
+    removeDOMAttribute(element, attributeName);
+    return;
+  }
+
+  if (isHtmlElement && typeof next === "boolean") {
+    (element as HTMLElement).toggleAttribute(attributeName, next);
+    return;
+  }
+
+  setDOMAttribute(element, attributeName, String(next));
+}
+
+
+/**
+ * Sets a reactive DOM attribute or property.
+ *
+ * Attribute updates run in the render phase so DOM state is synchronized with
+ * the reactive transaction that produced it.
+ */
+export function $attr<E extends Element>(
+  element: E,
+  name: string,
+  value: AttributeValue | (() => AttributeValue),
+): void {
+  if (isServer()) {
+    const next = typeof value === "function" ? value() : value;
+    setDOMAttributeValue(element, name, next);
+    return;
+  }
 
   const hydrating = isHydrationClaimActive();
   let initial = true;
@@ -264,39 +331,22 @@ export function $attr<E extends Element>(
     if (initial) {
       initial = false;
 
-      if (hydrating) {
+      if (hydrating && name !== "html") {
+        const isHtmlElement =
+          element.namespaceURI === HTML_NAMESPACE && element instanceof HTMLElement;
         const expectedValue =
           next == null || (isHtmlElement && typeof next === "boolean")
             ? next == null || !next
               ? null
               : ""
-            : String(next);
+            : name === "style"
+              ? serializeStyleValue(next)
+              : String(next);
 
-        diagnoseHydrationAttribute(element, attributeName, expectedValue);
+        diagnoseHydrationAttribute(element, getAttributeName(element.namespaceURI, name), expectedValue);
       }
     }
 
-    if (isHtmlElement && properties.has(name) && !booleanAttributes.has(name.toLowerCase())) {
-      Reflect.set(element, name, next);
-
-      if (next == null) {
-        removeDOMAttribute(element, attributeName);
-      } else {
-        setDOMAttribute(element, attributeName, String(next));
-      }
-      return;
-    }
-
-    if (next == null) {
-      removeDOMAttribute(element, attributeName);
-      return;
-    }
-
-    if (isHtmlElement && typeof next === "boolean") {
-      (element as HTMLElement).toggleAttribute(attributeName, next);
-      return;
-    }
-
-    setDOMAttribute(element, attributeName, String(next));
+    setDOMAttributeValue(element, name, next);
   });
 }

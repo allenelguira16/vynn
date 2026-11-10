@@ -118,7 +118,12 @@ function updateUrl(path: string, location: Location, historyAction: "push" | "re
     search: target.search,
   };
 
-  if (next.pathname === location.pathname && next.search === location.search && !target.hash) {
+  const currentHash = isServer ? "" : window.location.hash;
+  if (
+    next.pathname === location.pathname &&
+    next.search === location.search &&
+    target.hash === currentHash
+  ) {
     return;
   }
 
@@ -139,6 +144,23 @@ function updateUrl(path: string, location: Location, historyAction: "push" | "re
     // Keep both the active Router and fallback location up to date.
     updateLocation(location, current);
     updateDefaultLocation(current);
+
+    // pushState/replaceState do not perform native fragment scrolling.
+    // Route updates commit synchronously, so the target can be resolved here.
+    if (target.hash) {
+      let id = target.hash.slice(1);
+      try {
+        id = decodeURIComponent(id);
+      } catch {
+        // Keep the literal fragment when it contains malformed escapes.
+      }
+
+      const targetElement =
+        document.getElementById(id) ?? document.getElementsByName(id).item(0);
+      if (targetElement && typeof targetElement.scrollIntoView === "function") {
+        targetElement.scrollIntoView();
+      }
+    }
   } else {
     updateLocation(location, next);
   }

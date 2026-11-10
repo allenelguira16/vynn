@@ -163,6 +163,44 @@ function UserFields() {
           of the <code>in</code> check and the object's key list.
         </p>
 
+        <h3 class="mt-4">Array key enumeration</h3>
+
+        <p>
+          Array enumeration is structural too. Calls such as <code>Object.keys()</code>,
+          <code>Reflect.ownKeys()</code>, and <code>for...in</code> track the array's indexed
+          properties, not just its <code>length</code>. Adding or deleting an index therefore
+          updates an effect that enumerates the array, even when deleting an index leaves the
+          array length unchanged.
+        </p>
+
+        <CodeBlock
+          lang="tsx"
+          code={`
+import { $effect, $store } from "vynn";
+
+const items = $store(["first", "second", "third"]);
+
+$effect(() => {
+  console.log("Indexes:", Object.keys(items));
+  console.log("Own keys:", Reflect.ownKeys(items));
+});
+
+// Removes index "1" but does not change items.length.
+delete items[1];
+
+// The enumeration effect runs again:
+// Indexes: ["0", "2"]
+// Own keys: ["0", "2", "length"]
+          `}
+        />
+
+        <p>
+          This is different from reading <code>items.length</code>. The length can stay the same
+          after deleting an array slot, but the set of own keys has still changed. Use array
+          enumeration when the UI depends on which indexes actually exist, and use
+          <code>length</code> when it only depends on the array's size.
+        </p>
+
         <h2 class="mt-6">Native collections</h2>
 
         <p>

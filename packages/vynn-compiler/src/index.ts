@@ -3424,7 +3424,7 @@ class TransformState {
 
     const children = this.createComponentChildrenGetterBody(node, allocator);
     if (children) properties.push(objectMethod("get", identifier("children"), [], children));
-    return properties.length ? objectExpression(properties) : null;
+    return objectExpression(properties);
   }
 
   private createComponentRef(expression: Node): Node {
