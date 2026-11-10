@@ -195,7 +195,6 @@ function containsNestedMarkedBoundary(marked: MarkedFunction[], program: AstNode
   return false;
 }
 
-
 type LexicalScope = {
   parent: LexicalScope | null;
   kind: "module" | "function" | "block";
@@ -230,17 +229,11 @@ type CaptureAnalysis = {
   parentByNode: WeakMap<object, ParentInfo>;
 };
 
-function createLexicalScope(
-  parent: LexicalScope | null,
-  kind: LexicalScope["kind"],
-): LexicalScope {
+function createLexicalScope(parent: LexicalScope | null, kind: LexicalScope["kind"]): LexicalScope {
   return { parent, kind, bindings: new Map() };
 }
 
-function declarePattern(
-  pattern: AstNode | undefined,
-  scope: LexicalScope,
-): void {
+function declarePattern(pattern: AstNode | undefined, scope: LexicalScope): void {
   if (!pattern) return;
 
   if (pattern.type === "Identifier" && typeof pattern.name === "string") {
@@ -350,8 +343,7 @@ function buildScopeAnalysis(program: AstNode): ScopeAnalysis {
     scopeByNode.set(node, scope);
 
     if (node.type === "VariableDeclaration") {
-      const declarationScope =
-        node.kind === "var" ? nearestFunctionScope(scope) : scope;
+      const declarationScope = node.kind === "var" ? nearestFunctionScope(scope) : scope;
 
       for (const declaration of (node.declarations ?? []) as AstNode[]) {
         declarePattern(declaration.id as AstNode | undefined, declarationScope);
@@ -406,8 +398,7 @@ function buildScopeAnalysis(program: AstNode): ScopeAnalysis {
     const scope = scopeByNode.get(node) ?? moduleScope;
 
     if (node.type === "VariableDeclaration") {
-      const declarationScope =
-        node.kind === "var" ? nearestFunctionScope(scope) : scope;
+      const declarationScope = node.kind === "var" ? nearestFunctionScope(scope) : scope;
 
       for (const declaration of (node.declarations ?? []) as AstNode[]) {
         declarePattern(declaration.id as AstNode | undefined, declarationScope);
@@ -416,7 +407,7 @@ function buildScopeAnalysis(program: AstNode): ScopeAnalysis {
       const parent = parentByNode.get(node)?.parent;
       declarePattern(
         node.id as AstNode | undefined,
-        parent ? scopeByNode.get(parent) ?? moduleScope : moduleScope,
+        parent ? (scopeByNode.get(parent) ?? moduleScope) : moduleScope,
       );
     } else if (
       node.type === "TSInterfaceDeclaration" ||
@@ -463,10 +454,7 @@ function isScopeInside(scope: LexicalScope, ancestor: LexicalScope): boolean {
   return false;
 }
 
-function isReferenceIdentifier(
-  parent: AstNode | undefined,
-  key: string | undefined,
-): boolean {
+function isReferenceIdentifier(parent: AstNode | undefined, key: string | undefined): boolean {
   if (!parent || !key) return false;
 
   if (
@@ -479,15 +467,18 @@ function isReferenceIdentifier(
     (parent.type === "ImportNamespaceSpecifier" && key === "local") ||
     (parent.type === "ExportSpecifier" && key === "exported") ||
     (parent.type === "LabeledStatement" && key === "label") ||
-    ((parent.type === "BreakStatement" || parent.type === "ContinueStatement") && key === "label") ||
+    ((parent.type === "BreakStatement" || parent.type === "ContinueStatement") &&
+      key === "label") ||
     (parent.type === "MetaProperty" && (key === "meta" || key === "property"))
   ) {
     return false;
   }
 
   if (
-    (parent.type === "Property" || parent.type === "MethodDefinition" ||
-      parent.type === "PropertyDefinition" || parent.type === "FieldDefinition") &&
+    (parent.type === "Property" ||
+      parent.type === "MethodDefinition" ||
+      parent.type === "PropertyDefinition" ||
+      parent.type === "FieldDefinition") &&
     key === "key" &&
     !parent.computed
   ) {
@@ -606,10 +597,7 @@ function getUniqueIdentifier(source: string, base: string): string {
   return candidate;
 }
 
-function isAssignmentTargetReference(
-  node: AstNode,
-  parents: WeakMap<object, ParentInfo>,
-): boolean {
+function isAssignmentTargetReference(node: AstNode, parents: WeakMap<object, ParentInfo>): boolean {
   let current = node;
 
   while (true) {
@@ -621,16 +609,12 @@ function isAssignmentTargetReference(
     if (
       (parent.type === "AssignmentExpression" && key === "left") ||
       (parent.type === "UpdateExpression" && key === "argument") ||
-      ((parent.type === "ForInStatement" || parent.type === "ForOfStatement") &&
-        key === "left")
+      ((parent.type === "ForInStatement" || parent.type === "ForOfStatement") && key === "left")
     ) {
       return true;
     }
 
-    if (
-      parent.type === "MemberExpression" ||
-      parent.type === "OptionalMemberExpression"
-    ) {
+    if (parent.type === "MemberExpression" || parent.type === "OptionalMemberExpression") {
       return false;
     }
 
@@ -716,9 +700,7 @@ function analyzeServerFunctionCaptures(
     if (node.type === "ThisExpression") {
       if (isLexicalThisReference(node, markedFunction, scopeAnalysis.parentByNode)) {
         addCapture(markedFunction, "this", node);
-      } else if (
-        isRootThisReference(node, markedFunction, scopeAnalysis.parentByNode)
-      ) {
+      } else if (isRootThisReference(node, markedFunction, scopeAnalysis.parentByNode)) {
         throw new Error(
           "[Vynn use server] Dynamic 'this' inside a server function is not supported. Capture the receiver in an outer variable instead.",
         );
@@ -747,20 +729,14 @@ function analyzeServerFunctionCaptures(
       typeof node.name === "string" &&
       isReferenceIdentifier(parent, key)
     ) {
-      const binding = resolveLexicalBinding(
-        scopeAnalysis.scopeByNode.get(node),
-        node.name,
-      );
+      const binding = resolveLexicalBinding(scopeAnalysis.scopeByNode.get(node), node.name);
 
       if (
         binding &&
         binding.scope !== scopeAnalysis.moduleScope &&
         !isScopeInside(binding.scope, rootScope)
       ) {
-        const write = isAssignmentTargetReference(
-          node,
-          scopeAnalysis.parentByNode,
-        );
+        const write = isAssignmentTargetReference(node, scopeAnalysis.parentByNode);
 
         if (write) {
           throw new Error(
@@ -780,10 +756,7 @@ function analyzeServerFunctionCaptures(
         /^[A-Z]/.test(node.name)) ||
         (parent?.type === "JSXMemberExpression" && key === "object"))
     ) {
-      const binding = resolveLexicalBinding(
-        scopeAnalysis.scopeByNode.get(node),
-        node.name,
-      );
+      const binding = resolveLexicalBinding(scopeAnalysis.scopeByNode.get(node), node.name);
 
       if (
         binding &&
@@ -897,7 +870,10 @@ function makeExtractedImplementation(
 
   let rewrittenBody = applyEdits(bodySource, bodyEdits);
   const aliases = analysis.captures
-    .map((capture, index) => "const " + capture.alias + " = " + analysis.capturesParameter + "[" + index + "];")
+    .map(
+      (capture, index) =>
+        "const " + capture.alias + " = " + analysis.capturesParameter + "[" + index + "];",
+    )
     .join("\n");
   if (aliases) {
     rewrittenBody = "{" + "\n" + aliases + "\n" + rewrittenBody.slice(1);
@@ -919,8 +895,17 @@ function makeExtractedImplementation(
   const implementationParams = [analysis.capturesParameter, params].filter(Boolean).join(", ");
   const asyncPrefix = marked.fn.async ? "async " : "";
 
-  return "export " + asyncPrefix + "function " + marked.exportName +
-    typeParameters + "(" + implementationParams + ") " + rewrittenBody;
+  return (
+    "export " +
+    asyncPrefix +
+    "function " +
+    marked.exportName +
+    typeParameters +
+    "(" +
+    implementationParams +
+    ") " +
+    rewrittenBody
+  );
 }
 
 function makeReplacement(
@@ -929,9 +914,8 @@ function makeReplacement(
   analysis: CaptureAnalysis,
 ): SourceEdit {
   const { fn, parent } = marked;
-  const captureProvider = ", () => [" +
-    analysis.captures.map((capture) => capture.expression).join(", ") +
-    "]";
+  const captureProvider =
+    ", () => [" + analysis.captures.map((capture) => capture.expression).join(", ") + "]";
   const reference =
     target === "server"
       ? `${CREATE_SERVER_REFERENCE}(${marked.exportName}, ${JSON.stringify(marked.id)}${captureProvider})`

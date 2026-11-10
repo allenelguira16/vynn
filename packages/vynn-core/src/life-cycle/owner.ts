@@ -4,7 +4,7 @@ export interface Owner {
   cleanups: (() => void)[];
   mount: (() => void | (() => void))[];
   disposed?: boolean;
-  context: Map<string | symbol, any>;
+  context: Map<string | symbol, unknown>;
   nodeCount: number;
 }
 
@@ -33,7 +33,7 @@ export function createOwner(parent = currentOwner): Owner {
     children: [],
     cleanups: [],
     mount: [],
-    context: new Map(),
+    context: new Map<string | symbol, unknown>(),
     nodeCount: 0,
   };
 
@@ -77,15 +77,24 @@ export function disposeOwner(owner: Owner): void {
   }
 
   owner.disposed = true;
+  const errors: unknown[] = [];
 
   for (const child of [...owner.children]) {
-    disposeOwner(child);
+    try {
+      disposeOwner(child);
+    } catch (error) {
+      errors.push(error);
+    }
   }
 
   owner.children.length = 0;
 
   for (const cleanup of owner.cleanups.splice(0)) {
-    cleanup();
+    try {
+      cleanup();
+    } catch (error) {
+      errors.push(error);
+    }
   }
 
   if (owner.parent) {
@@ -97,6 +106,14 @@ export function disposeOwner(owner: Owner): void {
   }
 
   owner.parent = null;
+
+  if (errors.length === 1) {
+    throw errors[0];
+  }
+
+  if (errors.length > 1) {
+    throw new AggregateError(errors, "[Vynn] Multiple owner cleanups failed.");
+  }
 }
 
 /**

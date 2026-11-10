@@ -37,11 +37,15 @@ export class ServerFunctionError extends Error {
     this.details = options.details;
 
     if (!Number.isInteger(this.status) || this.status < 400 || this.status > 599) {
-      throw new RangeError("[Vynn] Server-function error status must be an integer between 400 and 599.");
+      throw new RangeError(
+        "[Vynn] Server-function error status must be an integer between 400 and 599.",
+      );
     }
 
     if (!/^[A-Z0-9_]+$/.test(this.code)) {
-      throw new TypeError("[Vynn] Server-function error codes must contain uppercase letters, numbers, and underscores.");
+      throw new TypeError(
+        "[Vynn] Server-function error codes must contain uppercase letters, numbers, and underscores.",
+      );
     }
   }
 

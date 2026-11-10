@@ -1,3 +1,6 @@
+import type { ErrorBoundary } from "../context/error-boundary-context";
+import type { JSX } from "../types/jsx";
+
 import {
   APPLY_HEAD_PATCH_SSR_KEY,
   APPLY_PATCH_SSR_KEY,
@@ -7,9 +10,8 @@ import {
   ERROR_BOUNDARY_END_SSR_MARKER,
   APPLY_ERROR_BOUNDARY_PATCH_SSR_KEY,
 } from "../const";
-import type { ErrorBoundary } from "../context/error-boundary-context";
-import { NotReadyError } from "../reactivity/not-ready-error";
 import { getOwner, runWithOwner } from "../life-cycle/owner";
+import { NotReadyError } from "../reactivity/not-ready-error";
 import {
   type SSR_ASYNC,
   type SSR_DEFERRED,
@@ -25,7 +27,6 @@ import {
   resolveSSRAsyncChildren,
   resolveSSRDeferredChildren,
 } from "../render/resolve-node";
-import type { JSX } from "../types/jsx";
 import { renderHeadPatch, type SsrHeadManager } from "./head";
 import {
   joinHTMLElements,
@@ -121,14 +122,8 @@ export function resolveStream(
 
     try {
       if (error instanceof SSRBoundaryFailure) {
-        boundary = error.handled
-          ? error.boundary
-          : error.boundary.handle(error.reason);
-      } else if (
-        error instanceof Error &&
-        !(error instanceof NotReadyError) &&
-        fallbackBoundary
-      ) {
+        boundary = error.handled ? error.boundary : error.boundary.handle(error.reason);
+      } else if (error instanceof Error && !(error instanceof NotReadyError) && fallbackBoundary) {
         boundary = fallbackBoundary.handle(error);
       } else {
         failStream(error);
@@ -212,11 +207,7 @@ export function resolveStream(
 
         enqueueHeadPatch();
 
-        const children = await resolve(
-          childNodes,
-          true,
-          new Set(availableErrorBoundaryIds),
-        );
+        const children = await resolve(childNodes, true, new Set(availableErrorBoundaryIds));
         if (closed) return;
 
         enqueueHeadPatch();
@@ -228,9 +219,19 @@ export function resolveStream(
       }
     })();
 
-    return "<!--" + FALLBACK_START_SSR_MARKER + ":" + id + "-->" +
+    return (
+      "<!--" +
+      FALLBACK_START_SSR_MARKER +
+      ":" +
+      id +
+      "-->" +
       fallbackHTML +
-      "<!--" + FALLBACK_END_SSR_MARKER + ":" + id + "-->";
+      "<!--" +
+      FALLBACK_END_SSR_MARKER +
+      ":" +
+      id +
+      "-->"
+    );
   }
 
   async function renderDeferredNode(
@@ -261,18 +262,12 @@ export function resolveStream(
     boundaryChildIds.add(node.id);
 
     try {
-      children = await resolve(
-        runWithOwner(owner, node.children),
-        background,
-        boundaryChildIds,
-      );
+      children = await resolve(runWithOwner(owner, node.children), background, boundaryChildIds);
     } catch (error) {
       let boundary: ErrorBoundary;
 
       if (error instanceof SSRBoundaryFailure) {
-        boundary = error.handled
-          ? error.boundary
-          : error.boundary.handle(error.reason);
+        boundary = error.handled ? error.boundary : error.boundary.handle(error.reason);
 
         if (boundary.id !== node.id) {
           throw new SSRBoundaryFailure(error.reason, boundary, true);

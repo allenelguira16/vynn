@@ -1,5 +1,6 @@
 import { ASYNC_DATA_SSR_KEY } from "../const";
 import { getContext, modifyContext, setContext } from "../life-cycle/owner";
+import { deserializeServerFunctionValue } from "../server-functions/serialization";
 import { isServer } from "./is-server-context";
 
 export type AsyncBoundary<T = unknown> = (promise: Promise<T>) => void;
@@ -120,11 +121,11 @@ export function getAsyncValue<T = unknown>(asyncID: string): AsyncHydrationValue
     return { found: false, value: undefined };
   }
 
-  const value = values[asyncID] as T;
+  const encodedValue = values[asyncID];
   delete values[asyncID];
 
   return {
     found: true,
-    value,
+    value: deserializeServerFunctionValue(encodedValue) as T,
   };
 }

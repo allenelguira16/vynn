@@ -20,6 +20,8 @@ export function hydrateToDOM(
   id: Document | Element | DocumentFragment | string,
 ) {
   let cleanup: (() => void) | undefined;
+  let mountedNodes: Node[] = [];
+  let releaseUnmountListener: (() => void) | undefined;
 
   let node: Document | DocumentFragment | Element | null;
 
@@ -40,21 +42,37 @@ export function hydrateToDOM(
       initializeLazyContext();
       initializeErrorBoundaryContext();
 
-      withHydration(
-        () =>
-          withDOMNamespace(
-            node instanceof Element
-              ? getChildDOMNamespace(node.namespaceURI, node.localName)
-              : HTML_NAMESPACE,
-            () => resolveNode(App),
-          ),
-        node,
-      );
+      withHydration(() => {
+        mountedNodes = withDOMNamespace(
+          node instanceof Element
+            ? getChildDOMNamespace(node.namespaceURI, node.localName)
+            : HTML_NAMESPACE,
+          () => resolveNode(App),
+        );
+      }, node);
 
-      addUnmountListener();
+      releaseUnmountListener = addUnmountListener();
     });
 
-    cleanup = () => disposeOwner(owner);
+    cleanup = () => {
+      try {
+        disposeOwner(owner);
+      } finally {
+        try {
+          if (node instanceof Document) {
+            // Keep the document shell valid while removing the hydrated app body.
+            while (node.body?.firstChild) node.body.removeChild(node.body.firstChild);
+          } else {
+            for (const mountedNode of mountedNodes) {
+              mountedNode.parentNode?.removeChild(mountedNode);
+            }
+          }
+        } finally {
+          releaseUnmountListener?.();
+          releaseUnmountListener = undefined;
+        }
+      }
+    };
   } else {
     throw new Error("Node must be a Document, Element, or DocumentFragment");
   }
@@ -64,6 +82,8 @@ export function hydrateToDOM(
       throw new Error("Can only unmount if the app is mounted");
     }
 
-    cleanup();
+    const dispose = cleanup;
+    cleanup = undefined;
+    dispose();
   };
 }

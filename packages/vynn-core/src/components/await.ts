@@ -104,7 +104,11 @@ export const Await = $cmpnt(function Await(props: {
       if (!(error instanceof NotReadyError)) throw error;
 
       if (error.blocking) {
-        return createSSRDeferred(renderAfterBlocking, [error.promise], true) as unknown as JSX.Element;
+        return createSSRDeferred(
+          renderAfterBlocking,
+          [error.promise],
+          true,
+        ) as unknown as JSX.Element;
       }
 
       if (pending.length === 0) throw error;

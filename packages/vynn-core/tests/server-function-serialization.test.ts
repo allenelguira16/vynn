@@ -50,9 +50,10 @@ describe("server-function serialization", () => {
     });
     value.name = "Vynn";
 
-    const result = deserializeServerFunctionValue(
-      serializeServerFunctionValue(value),
-    ) as Record<string, unknown>;
+    const result = deserializeServerFunctionValue(serializeServerFunctionValue(value)) as Record<
+      string,
+      unknown
+    >;
 
     expect(Object.getPrototypeOf(result)).toBeNull();
     expect(result.__proto__).toBe("ordinary data");
@@ -63,9 +64,9 @@ describe("server-function serialization", () => {
     const value = new TypeError("invalid input", {
       cause: { field: "email" },
     });
-    const result = deserializeServerFunctionValue(
-      serializeServerFunctionValue(value),
-    ) as Error & { cause?: unknown };
+    const result = deserializeServerFunctionValue(serializeServerFunctionValue(value)) as Error & {
+      cause?: unknown;
+    };
 
     expect(result).toBeInstanceOf(Error);
     expect(result.name).toBe("TypeError");

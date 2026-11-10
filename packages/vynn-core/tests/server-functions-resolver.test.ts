@@ -35,10 +35,12 @@ it("passes serialized captures before arguments to capture-aware resolver result
   const handler = createServerFunctionHandler({
     development: true,
     resolveWithCaptures: true,
-    resolve: () => async (...received: unknown[]) => ({
-      captures: received[0],
-      url: received[1],
-    }),
+    resolve:
+      () =>
+      async (...received: unknown[]) => ({
+        captures: received[0],
+        url: received[1],
+      }),
   });
 
   const response = await handler(

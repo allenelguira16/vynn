@@ -66,8 +66,6 @@ export const ErrorBoundary = $cmpnt(function ErrorBoundary(props: {
     renderChildren();
   }
 
-
-
   function renderFallback(error: Error): ErrorBoundaryHandle {
     disposeViewOwner();
 
@@ -185,8 +183,7 @@ export const ErrorBoundary = $cmpnt(function ErrorBoundary(props: {
   const boundary: ErrorBoundaryHandle = {
     id: errorBoundaryID,
     handle: (error) => runWithOwner(owner, () => handleError(error)),
-    render: () =>
-      runWithOwner(viewOwner ?? owner, () => resolveSSRChild(() => view.value)),
+    render: () => runWithOwner(viewOwner ?? owner, () => resolveSSRChild(() => view.value)),
     isActive: () => !owner.disposed,
   };
 

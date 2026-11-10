@@ -3,22 +3,19 @@ import {
   runWithServerFunctionContext,
   runWithServerFunctionInvocation,
 } from "../server/server-function-context.ts";
-import { ServerFunctionError } from "./errors.ts";
 import {
   DEFAULT_MAX_SERVER_FUNCTION_REQUEST_BYTES,
   DEFAULT_SERVER_FUNCTION_ENDPOINT,
   MAX_SERVER_FUNCTION_REQUEST_BYTES,
   SERVER_FUNCTION_ID_RE,
 } from "./constants.ts";
+import { ServerFunctionError } from "./errors.ts";
 import {
   createServerFunctionResponse,
   isAllowedServerFunctionOrigin,
   normalizeServerFunctionOrigin,
 } from "./protocol.ts";
-import {
-  deserializeServerFunctionValue,
-  serializeServerFunctionValue,
-} from "./serialization.ts";
+import { deserializeServerFunctionValue, serializeServerFunctionValue } from "./serialization.ts";
 
 export type ServerFunctionImplementation = (...args: unknown[]) => unknown;
 
@@ -92,9 +89,7 @@ export function createServerReference<T extends (...args: never[]) => unknown>(
   });
 
   const reference = (...args: unknown[]) =>
-    runWithServerFunctionInvocation(id, () =>
-      serverImplementation(getCaptures(), ...args),
-    );
+    runWithServerFunctionInvocation(id, () => serverImplementation(getCaptures(), ...args));
 
   Object.defineProperty(reference, "name", { value: "serverReference" });
   return reference as unknown as T;
@@ -111,8 +106,7 @@ export function getServerFunctionImplementation(
     return registered.originalImplementation;
   }
 
-  return (...args) =>
-    registered.implementation(registered.getCaptures?.() ?? [], ...args);
+  return (...args) => registered.implementation(registered.getCaptures?.() ?? [], ...args);
 }
 
 async function readRequestBody(request: Request, maxBytes: number): Promise<string> {
@@ -187,24 +181,32 @@ function createErrorResponse(
 ): Response {
   if (error instanceof ServerFunctionError) {
     if (version === 0) {
-      return createServerFunctionResponse(error.status, {
-        ok: false,
-        error: error.message,
-      }, responseHeaders);
+      return createServerFunctionResponse(
+        error.status,
+        {
+          ok: false,
+          error: error.message,
+        },
+        responseHeaders,
+      );
     }
 
     const details = error.details === undefined ? undefined : encodeErrorDetails(error.details);
-    return createServerFunctionResponse(error.status, {
-      version: 1,
-      ok: false,
-      error: {
-        name: error.name,
-        message: error.message,
-        code: error.code,
-        status: error.status,
-        ...(details === undefined ? {} : { details }),
+    return createServerFunctionResponse(
+      error.status,
+      {
+        version: 1,
+        ok: false,
+        error: {
+          name: error.name,
+          message: error.message,
+          code: error.code,
+          status: error.status,
+          ...(details === undefined ? {} : { details }),
+        },
       },
-    }, responseHeaders);
+      responseHeaders,
+    );
   }
 
   const message =
@@ -214,16 +216,20 @@ function createErrorResponse(
     return createServerFunctionResponse(500, { ok: false, error: message }, responseHeaders);
   }
 
-  return createServerFunctionResponse(500, {
-    version: 1,
-    ok: false,
-    error: {
-      name: exposeErrors && error instanceof Error ? error.name : "ServerFunctionError",
-      message,
-      code: "INTERNAL_SERVER_ERROR",
-      status: 500,
+  return createServerFunctionResponse(
+    500,
+    {
+      version: 1,
+      ok: false,
+      error: {
+        name: exposeErrors && error instanceof Error ? error.name : "ServerFunctionError",
+        message,
+        code: "INTERNAL_SERVER_ERROR",
+        status: 500,
+      },
     },
-  }, responseHeaders);
+    responseHeaders,
+  );
 }
 
 /**
@@ -250,7 +256,8 @@ export function createServerFunctionHandler(
   ) {
     throw new RangeError(
       "[Vynn server functions] maxRequestBytes must be a safe integer between 1 and " +
-        MAX_SERVER_FUNCTION_REQUEST_BYTES + ".",
+        MAX_SERVER_FUNCTION_REQUEST_BYTES +
+        ".",
     );
   }
 
@@ -268,10 +275,14 @@ export function createServerFunctionHandler(
     if (url.pathname !== endpoint) return null;
 
     if (request.method !== "POST") {
-      return createServerFunctionResponse(405, {
-        ok: false,
-        error: "Method Not Allowed",
-      }, { allow: "POST" });
+      return createServerFunctionResponse(
+        405,
+        {
+          ok: false,
+          error: "Method Not Allowed",
+        },
+        { allow: "POST" },
+      );
     }
 
     if (
@@ -338,7 +349,7 @@ export function createServerFunctionHandler(
       const decodedCaptures =
         version === 1
           ? deserializeServerFunctionValue(payload.captures ?? serializeServerFunctionValue([]))
-          : payload.captures ?? [];
+          : (payload.captures ?? []);
 
       if (
         !Array.isArray(decodedArgs) ||
@@ -359,12 +370,8 @@ export function createServerFunctionHandler(
     }
 
     try {
-      const implementation = options.resolve
-        ? await options.resolve(id)
-        : undefined;
-      const registered = options.resolve
-        ? undefined
-        : implementations.get(id);
+      const implementation = options.resolve ? await options.resolve(id) : undefined;
+      const registered = options.resolve ? undefined : implementations.get(id);
 
       if (options.resolve && typeof implementation !== "function") {
         return createServerFunctionResponse(404, {
@@ -398,10 +405,7 @@ export function createServerFunctionHandler(
               : (implementation as ServerFunctionImplementation)(...args);
           }
 
-          return registered!.implementation(
-            registered!.captureAware ? captures : [],
-            ...args,
-          );
+          return registered!.implementation(registered!.captureAware ? captures : [], ...args);
         });
       } catch (error) {
         return createErrorResponse(error, version, exposeErrors, context.response.headers);
@@ -412,25 +416,33 @@ export function createServerFunctionHandler(
         try {
           responseValue = serializeServerFunctionValue(value);
         } catch {
-          return createServerFunctionResponse(500, {
-            version: 1,
-            ok: false,
-            error: {
-              name: "ServerFunctionError",
-              message: "Server function returned a non-serializable value.",
-              code: "SERIALIZATION_ERROR",
-              status: 500,
+          return createServerFunctionResponse(
+            500,
+            {
+              version: 1,
+              ok: false,
+              error: {
+                name: "ServerFunctionError",
+                message: "Server function returned a non-serializable value.",
+                code: "SERIALIZATION_ERROR",
+                status: 500,
+              },
             },
-          }, context.response.headers);
+            context.response.headers,
+          );
         }
       } else {
         try {
           JSON.stringify({ value });
         } catch {
-          return createServerFunctionResponse(500, {
-            ok: false,
-            error: "Server function returned a non-serializable value.",
-          }, context.response.headers);
+          return createServerFunctionResponse(
+            500,
+            {
+              ok: false,
+              error: "Server function returned a non-serializable value.",
+            },
+            context.response.headers,
+          );
         }
       }
 
@@ -451,7 +463,11 @@ export function createServerFunctionHandler(
 }
 
 export type { ServerFunctionRequestPayload } from "./protocol.ts";
-export { ServerFunctionError, type ServerFunctionErrorData, type ServerFunctionErrorOptions } from "./errors.ts";
+export {
+  ServerFunctionError,
+  type ServerFunctionErrorData,
+  type ServerFunctionErrorOptions,
+} from "./errors.ts";
 export {
   registerServerFunctionCodec,
   serializeServerFunctionValue,

@@ -35,9 +35,7 @@ export function resolveSync(App: () => JSX.Element): string {
           children = resolve(node.children());
         } catch (error) {
           if (error instanceof SSRBoundaryFailure) {
-            const boundary = error.handled
-              ? error.boundary
-              : error.boundary.handle(error.reason);
+            const boundary = error.handled ? error.boundary : error.boundary.handle(error.reason);
 
             if (boundary.id !== node.id) {
               throw new SSRBoundaryFailure(error.reason, boundary, true);

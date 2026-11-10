@@ -1,7 +1,7 @@
 import { claimHydrationText, isHydrationClaimActive } from "../client/hydration";
 import { synchronizeHydrationText } from "../client/hydration-diagnostics";
-import { isServer } from "../context/is-server-context";
 import { getErrorBoundary, type ErrorBoundary } from "../context/error-boundary-context";
+import { isServer } from "../context/is-server-context";
 import { JSX } from "../jsx-runtime";
 import { getOwner, runWithOwner } from "../life-cycle/owner";
 import { NotReadyError } from "../reactivity/not-ready-error";
@@ -214,19 +214,14 @@ async function resolveSSRChildrenAfterPromises(
   initialPromises: Promise<unknown>[],
   renderChildren: () => SSR_NODE[],
 ): Promise<SSR_NODE[]> {
-  const promises = new Map<
-    Promise<unknown>,
-    PromiseSettledResult<unknown> | undefined
-  >();
+  const promises = new Map<Promise<unknown>, PromiseSettledResult<unknown> | undefined>();
 
   for (const promise of initialPromises) {
     promises.set(promise, undefined);
   }
 
   while (true) {
-    const pending = [...promises.keys()].filter(
-      (promise) => promises.get(promise) === undefined,
-    );
+    const pending = [...promises.keys()].filter((promise) => promises.get(promise) === undefined);
 
     if (pending.length > 0) {
       const settled = await Promise.allSettled(pending);
@@ -268,9 +263,7 @@ export function resolveSSRAsyncChildren(node: SSR_ASYNC): Promise<SSR_NODE[]> {
   return resolveSSRChildrenAfterPromises(node.promises, node.children);
 }
 
-export function resolveSSRDeferredChildren(
-  node: SSR_DEFERRED,
-): Promise<SSR_NODE[]> {
+export function resolveSSRDeferredChildren(node: SSR_DEFERRED): Promise<SSR_NODE[]> {
   if (node.blocking) {
     return Promise.all(node.promises)
       .catch((reason: unknown) => {

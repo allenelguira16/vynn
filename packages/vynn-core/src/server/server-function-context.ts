@@ -10,13 +10,21 @@ export type ServerFunctionCookieOptions = {
   secure?: boolean;
 };
 
+/** A Map with typed reads for values associated with request-local keys. */
+export class RequestContextLocals extends Map<unknown, unknown> {
+  override get<T = unknown>(key: unknown): T | undefined {
+    return super.get(key) as T | undefined;
+  }
+
+  override set<T>(key: unknown, value: T): this {
+    return super.set(key, value);
+  }
+}
+
 type RequestContextCookies = {
   get(name: string): string | undefined;
   set(name: string, value: string, options?: ServerFunctionCookieOptions): void;
-  delete(
-    name: string,
-    options?: Omit<ServerFunctionCookieOptions, "expires" | "maxAge">,
-  ): void;
+  delete(name: string, options?: Omit<ServerFunctionCookieOptions, "expires" | "maxAge">): void;
 };
 
 /**
@@ -40,7 +48,7 @@ export type RequestContext = {
   /** Helpers for reading incoming cookies and writing outgoing cookies. */
   readonly cookies: RequestContextCookies;
   /** Values shared by middleware, SSR, and server functions for this request. */
-  readonly locals: Map<unknown, unknown>;
+  readonly locals: RequestContextLocals;
 };
 
 type ServerFunctionContext = RequestContext;
@@ -82,7 +90,13 @@ if (existingStorage === undefined) {
 const createdContexts = new WeakSet<object>();
 
 function validateServerFunctionResponseStatus(status: number): void {
-  if (!Number.isInteger(status) || status < 200 || status > 299 || status === 204 || status === 205) {
+  if (
+    !Number.isInteger(status) ||
+    status < 200 ||
+    status > 299 ||
+    status === 204 ||
+    status === 205
+  ) {
     throw new RangeError(
       "[Vynn] Request context response status must be a body-bearing 2xx status. Throw ServerFunctionError for failures.",
     );
@@ -108,7 +122,11 @@ function readRequestCookie(request: Request, name: string): string | undefined {
   return undefined;
 }
 
-function serializeCookie(name: string, value: string, options: ServerFunctionCookieOptions): string {
+function serializeCookie(
+  name: string,
+  value: string,
+  options: ServerFunctionCookieOptions,
+): string {
   if (!/^[!#$%&'*+.^_|~0-9A-Za-z-]+$/.test(name)) {
     throw new TypeError("[Vynn] Invalid cookie name.");
   }
@@ -162,9 +180,7 @@ function appendResponseCookie(
 }
 
 /** Creates isolated mutable context for one server-function or SSR request. */
-export function createServerFunctionContext(
-  input: ServerFunctionContextInput,
-): RequestContext {
+export function createServerFunctionContext(input: ServerFunctionContextInput): RequestContext {
   let status = input.response?.status ?? 200;
   validateServerFunctionResponseStatus(status);
 
@@ -178,6 +194,11 @@ export function createServerFunctionContext(
     },
     headers: new Headers(input.response?.headers),
   };
+
+  const locals =
+    input.locals instanceof RequestContextLocals
+      ? input.locals
+      : new RequestContextLocals(input.locals);
 
   const context: RequestContext = {
     request: input.request,
@@ -199,7 +220,7 @@ export function createServerFunctionContext(
         });
       },
     },
-    locals: input.locals ?? new Map(),
+    locals,
   };
 
   createdContexts.add(context);
@@ -212,7 +233,7 @@ export function runWithServerFunctionContext<T>(
   callback: () => T,
 ): T {
   const normalized = createdContexts.has(context)
-    ? context as RequestContext
+    ? (context as RequestContext)
     : createServerFunctionContext(context as ServerFunctionContextInput);
 
   return serverFunctionContext.run(normalized, callback);
@@ -224,10 +245,7 @@ export function runWithServerFunctionContext<T>(
  *
  * When called outside a request scope, the implementation runs unchanged.
  */
-export function runWithServerFunctionInvocation<T>(
-  functionId: string,
-  callback: () => T,
-): T {
+export function runWithServerFunctionInvocation<T>(functionId: string, callback: () => T): T {
   const current = serverFunctionContext.getStore();
   if (!current) return callback();
 

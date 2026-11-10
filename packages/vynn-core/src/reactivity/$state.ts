@@ -1,19 +1,21 @@
+import type { VynnRef } from "./ref";
+
 import { createAsyncDerived } from "./async";
 import { createCell } from "./cell";
 import { isAsyncFunction } from "./is-async-function";
-import type { VynnRef } from "./ref";
 
 export type State<T> = VynnRef<T>;
 
 /**
  * Creates a reactive state value.
  *
- * Passing an async function creates writable async-derived state. Reactive
- * dependencies read before the first await trigger a refresh. The latest
- * resolved value remains writable through the same value property.
+ * Passing an async function declared with the async keyword creates
+ * writable async-derived state. Reactive dependencies read before the first
+ * await trigger a refresh. The latest resolved value remains writable through
+ * the same value property.
  *
- * Ordinary values, including synchronous function values, remain ordinary
- * state.
+ * Ordinary values, including non-async function values, remain ordinary
+ * state. Use async-function syntax when a function should initialize a resource.
  *
  * @template T The state value type.
  * @param initialValue The initial value or async initializer.

@@ -9,17 +9,13 @@ import {
   createServerEntry,
   createSsrHandlerCode,
 } from "../../vite-plugin/src/plugins/app/documents.ts";
-import { registerSsrModule } from "../src/context/ssr-module-context";
 import { ErrorBoundary } from "../src/components/error-boundary";
+import { registerSsrModule } from "../src/context/ssr-module-context";
 import { createOwner, disposeOwner, getOwner, runWithOwner } from "../src/life-cycle/owner";
 import { $head, $headTmpl } from "../src/render/$head";
 import { $insert } from "../src/render/$insert";
 import { $txt } from "../src/render/$txt";
-import {
-  createSSRAsync,
-  createSSRDeferred,
-  createSSRText,
-} from "../src/render/resolve-node";
+import { createSSRAsync, createSSRDeferred, createSSRText } from "../src/render/resolve-node";
 import { renderToServer } from "../src/server/render-to-server";
 
 describe("renderToServer modes", () => {

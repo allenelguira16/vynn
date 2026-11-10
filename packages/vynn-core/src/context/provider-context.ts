@@ -14,18 +14,18 @@ export function createContext<T>() {
   const id = Symbol();
 
   function Provider(props: { value: T; children: JSX.Element }) {
-    setContext(id, props.value);
+    setContext(id, { value: props.value });
     return props.children;
   }
 
   function useContext() {
-    const value = getContext<T>(id);
+    const entry = getContext<{ value: T }>(id);
 
-    if (value === undefined || value === null) {
+    if (entry === undefined) {
       throw new Error("Context used without wrapping it in its Provider");
     }
 
-    return value;
+    return entry.value;
   }
 
   return [Provider, useContext] as const;

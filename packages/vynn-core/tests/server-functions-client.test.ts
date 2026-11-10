@@ -58,10 +58,9 @@ describe("client server-function references", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     let tenantId = "initial";
-    const action = createServerReference<() => Promise<string>>(
-      "vynn_00000000000000000004",
-      { getCaptures: () => [tenantId] },
-    );
+    const action = createServerReference<() => Promise<string>>("vynn_00000000000000000004", {
+      getCaptures: () => [tenantId],
+    });
 
     tenantId = "latest";
     await action();
@@ -88,10 +87,9 @@ describe("client server-function references", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    const action = createServerReference<() => Promise<string>>(
-      "vynn_00000000000000000006",
-      () => ["tenant-a"],
-    );
+    const action = createServerReference<() => Promise<string>>("vynn_00000000000000000006", () => [
+      "tenant-a",
+    ]);
 
     await action();
 
@@ -113,12 +111,13 @@ describe("client server-function references", () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
-    const action = createServerReference<() => Promise<unknown>>(
-      "vynn_00000000000000000005",
-      { getCaptures: () => [() => "not serializable"] },
-    );
+    const action = createServerReference<() => Promise<unknown>>("vynn_00000000000000000005", {
+      getCaptures: () => [() => "not serializable"],
+    });
 
-    await expect(action()).rejects.toThrow(/Functions and symbols cannot be sent through server functions/);
+    await expect(action()).rejects.toThrow(
+      /Functions and symbols cannot be sent through server functions/,
+    );
     expect(fetchMock).not.toHaveBeenCalled();
   });
 

@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
+
 import type { JSX } from "../src/types/jsx";
 
+import { createServerReference } from "../src/server-functions/server.ts";
 import { getRequestContext } from "../src/server/index.ts";
 import { renderToServer } from "../src/server/render-to-server.ts";
-import { createServerReference } from "../src/server-functions/server.ts";
 
 describe("server functions during SSR", () => {
   it("inherits the page request and records response metadata", () => {
@@ -18,11 +19,7 @@ describe("server functions during SSR", () => {
           sameSite: "Lax",
         });
 
-        return [
-          context.request.url,
-          context.cookies.get("session"),
-          context.functionId,
-        ].join("|");
+        return [context.request.url, context.cookies.get("session"), context.functionId].join("|");
       },
       id,
       () => [],
@@ -31,15 +28,9 @@ describe("server functions during SSR", () => {
     const request = new Request("https://example.test/projects/42", {
       headers: { cookie: "session=from-page" },
     });
-    const result = renderToServer(
-      () => readRequest() as unknown as JSX.Element,
-      "sync",
-      request,
-    );
+    const result = renderToServer(() => readRequest() as unknown as JSX.Element, "sync", request);
 
-    expect(result.body).toBe(
-      "https://example.test/projects/42|from-page|" + id,
-    );
+    expect(result.body).toBe("https://example.test/projects/42|from-page|" + id);
     expect(result.response?.status).toBe(200);
     expect(result.response?.headers.get("x-rendered-by")).toBe("vynn");
     expect(result.response?.headers.get("set-cookie")).toContain("ssr-session=created");
@@ -65,14 +56,8 @@ describe("server functions during SSR", () => {
     );
 
     const request = new Request("https://example.test/nested");
-    const result = renderToServer(
-      () => outer() as unknown as JSX.Element,
-      "sync",
-      request,
-    );
+    const result = renderToServer(() => outer() as unknown as JSX.Element, "sync", request);
 
-    expect(result.body).toBe(
-      "https://example.test/nested|" + innerId + "|" + outerId,
-    );
+    expect(result.body).toBe("https://example.test/nested|" + innerId + "|" + outerId);
   });
 });

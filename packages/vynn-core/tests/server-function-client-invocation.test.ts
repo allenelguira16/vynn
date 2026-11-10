@@ -1,9 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import {
-  createServerReference,
-  invokeServerFunction,
-} from "../src/server-functions/client.ts";
+import { createServerReference, invokeServerFunction } from "../src/server-functions/client.ts";
 import { serializeServerFunctionValue } from "../src/server-functions/serialization.ts";
 
 const originalFetch = globalThis.fetch;

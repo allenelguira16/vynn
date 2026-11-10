@@ -1,10 +1,3 @@
-import {
-  isSSRElement,
-  isSSRErrorBoundary,
-  type SSR_ELEMENT,
-  type SSR_NODE,
-} from "../render/resolve-node";
-
 import { APPLY_HEAD_PATCH_SSR_KEY } from "../const";
 import {
   type HeadContext,
@@ -14,6 +7,13 @@ import {
   getHeadWinners,
   subscribeHeadContext,
 } from "../context/head-context";
+import { assertSafeAttributeName } from "../render/attribute-name";
+import {
+  isSSRElement,
+  isSSRErrorBoundary,
+  type SSR_ELEMENT,
+  type SSR_NODE,
+} from "../render/resolve-node";
 import { escapeHtml } from "../utils/escape-html";
 
 const voidElements = new Set([
@@ -44,7 +44,10 @@ function getServerIdentity(entry: HeadEntry): string {
 
 function serializeAttributes(attributes: Record<string, string>): string {
   return Object.entries(attributes)
-    .map(([name, value]) => `${name}="${escapeHtml(value)}"`)
+    .map(([name, value]) => {
+      assertSafeAttributeName(name);
+      return `${name}="${escapeHtml(value)}"`;
+    })
     .join(" ");
 }
 

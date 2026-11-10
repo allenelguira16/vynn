@@ -116,22 +116,27 @@ function queueRenderEffects(effects: Iterable<EffectFn>): void {
   }
 
   isFlushingRenderEffects = true;
+  const errors: unknown[] = [];
 
   try {
     while (renderEffectQueue.size > 0) {
       const pendingEffects = [...renderEffectQueue];
-
       renderEffectQueue.clear();
 
       for (const effect of pendingEffects) {
-        if (!effect.disposed) {
+        if (effect.disposed) continue;
+        try {
           effect();
+        } catch (error) {
+          errors.push(error);
         }
       }
     }
   } finally {
     isFlushingRenderEffects = false;
   }
+
+  throwEffectErrors(errors, "Render effects failed.");
 }
 
 /**
@@ -165,11 +170,18 @@ function flushEffects(): void {
 
     effectQueue.clear();
 
+    const errors: unknown[] = [];
+
     for (const effect of effects) {
-      if (!effect.disposed) {
+      if (effect.disposed) continue;
+      try {
         effect();
+      } catch (error) {
+        errors.push(error);
       }
     }
+
+    throwEffectErrors(errors, "Multiple effects failed.");
   } finally {
     isFlushing = false;
 
@@ -178,4 +190,9 @@ function flushEffects(): void {
       queueMicrotask(flushEffects);
     }
   }
+}
+
+function throwEffectErrors(errors: unknown[], message: string): void {
+  if (errors.length === 1) throw errors[0];
+  if (errors.length > 1) throw new AggregateError(errors, message);
 }

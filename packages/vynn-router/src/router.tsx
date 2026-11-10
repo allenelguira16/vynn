@@ -4,12 +4,7 @@ import type { Location, Route } from "./types";
 
 import { LocationProvider } from "./context";
 import { isServer } from "./environment";
-import {
-  parseLocation,
-  setActiveLocation,
-  updateDefaultLocation,
-  updateLocation,
-} from "./location";
+import { parseLocation, updateDefaultLocation, updateLocation } from "./location";
 import { RouteOutlet } from "./outlet";
 
 /** Creates a Router with request-local URL state, suitable for SSR. */
@@ -17,10 +12,8 @@ export function Router(props: { url?: string; routes: Route[] }) {
   const location = $store<Location>(parseLocation(props.url));
 
   if (!isServer) {
-    // Keep the fallback store synchronized for consumers outside a Router.
-    // Route components read the request-local store through the $location facade.
-    setActiveLocation(location);
-    updateDefaultLocation(location);
+    // Router-specific state stays in this instance's context. The fallback
+    // store follows the browser URL and is updated by navigation/popstate.
 
     onMount(() => {
       const updateFromBrowser = () => {

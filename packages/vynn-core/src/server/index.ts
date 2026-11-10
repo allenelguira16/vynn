@@ -5,6 +5,7 @@ export {
   getRequestContext,
   type RequestContext,
   type ServerFunctionCookieOptions,
+  RequestContextLocals,
 } from "./server-function-context";
 
 export { injectSsrPreloadLinks } from "./preload.inject-links";

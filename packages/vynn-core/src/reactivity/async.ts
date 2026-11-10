@@ -45,8 +45,11 @@ type AsyncRecord<T> =
  * Unlike $async, this retains the last resolved value while a replacement
  * computation is pending. It starts the first computation immediately.
  */
-export function createAsyncDerived<T>(getter: () => Promise<T>, lazy = false): Async<T> {
-  const derived = createAsyncResource(getter, true, { lazy });
+export function createAsyncDerived<T>(getter: () => Promise<T>, lazy?: boolean): Async<T>;
+export function createAsyncDerived<T>(getter: () => T, lazy?: boolean): Async<T>;
+export function createAsyncDerived<T>(getter: () => T | Promise<T>, lazy?: boolean): Async<T>;
+export function createAsyncDerived<T>(getter: () => T | Promise<T>, lazy = false): Async<T> {
+  const derived = createAsyncResource<T>(getter, true, { lazy });
 
   // Async-derived state is eager by default. Lazy computations defer resource
   // initialization until their first value read.
@@ -67,8 +70,16 @@ type AsyncResourceOptions = {
   lazy?: boolean;
 };
 
+function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
+  return (
+    value !== null &&
+    (typeof value === "object" || typeof value === "function") &&
+    typeof (value as { then?: unknown }).then === "function"
+  );
+}
+
 export function createAsyncResource<T>(
-  getter: () => Promise<T>,
+  getter: () => T | Promise<T>,
   retainPrevious: boolean,
   options: AsyncResourceOptions = {},
 ): Async<T> {
@@ -139,6 +150,8 @@ export function createAsyncResource<T>(
           }
 
           let promise: Promise<T> | undefined;
+          let synchronousValue: T | undefined;
+          let hasSynchronousValue = false;
 
           try {
             if (hydrationData?.found) {
@@ -146,8 +159,15 @@ export function createAsyncResource<T>(
               // reactive dependencies without repeating the server request.
               withFakeAsyncApis(getter);
             } else {
-              promise = Promise.resolve(getter());
-              if (isLazy && !isServer()) registerPromiseFromLazy(promise);
+              const nextValue = getter();
+
+              if (isPromiseLike(nextValue)) {
+                promise = Promise.resolve(nextValue as PromiseLike<T>);
+                if (isLazy && !isServer()) registerPromiseFromLazy(promise);
+              } else {
+                synchronousValue = nextValue as T;
+                hasSynchronousValue = true;
+              }
             }
           } catch (error) {
             // A getter may depend on another async resource. Keep its pending
@@ -182,6 +202,15 @@ export function createAsyncResource<T>(
             result.value = {
               status: "resolved",
               value,
+              version: currentVersion,
+            };
+            return;
+          }
+
+          if (hasSynchronousValue) {
+            result.value = {
+              status: "resolved",
+              value: synchronousValue as T,
               version: currentVersion,
             };
             return;

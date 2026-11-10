@@ -48,11 +48,7 @@ describe("$store Vue-style reactivity", () => {
       delete state.first;
       await flushEffects();
 
-      expect(keys).toEqual([
-        ["first"],
-        ["first", "optional"],
-        ["optional"],
-      ]);
+      expect(keys).toEqual([["first"], ["first", "optional"], ["optional"]]);
       expect(values).toEqual([1, 2, 0]);
       expect(existence).toEqual([false, true]);
     } finally {
@@ -150,11 +146,7 @@ describe("$store Vue-style reactivity", () => {
     const keys: string[][] = [];
 
     const disposeValues = $effect(() => {
-      values.push(
-        [...state.values()]
-          .map((value) => value.name)
-          .join(","),
-      );
+      values.push([...state.values()].map((value) => value.name).join(","));
     });
     const disposeKeys = $effect(() => {
       keys.push([...state.keys()]);
@@ -311,9 +303,7 @@ describe("$store Vue-style reactivity", () => {
 
   it("deeply reacts to WeakMap values and tracks WeakSet membership", async () => {
     const key = {};
-    const weakMap = $store(
-      new WeakMap<object, { profile: { name: string } }>(),
-    );
+    const weakMap = $store(new WeakMap<object, { profile: { name: string } }>());
     const weakSet = $store(new WeakSet<object>());
     const names: string[] = [];
     const memberships: boolean[] = [];
@@ -341,5 +331,4 @@ describe("$store Vue-style reactivity", () => {
       disposeSet();
     }
   });
-
 });

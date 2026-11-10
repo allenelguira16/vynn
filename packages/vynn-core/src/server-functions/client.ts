@@ -1,13 +1,7 @@
 import { DEFAULT_SERVER_FUNCTION_ENDPOINT } from "./constants.ts";
 import { ServerFunctionError, type ServerFunctionErrorData } from "./errors.ts";
-import {
-  SERVER_FUNCTION_INVOKE,
-  type ServerFunctionInvocationOptions,
-} from "./invocation.ts";
-import {
-  deserializeServerFunctionValue,
-  serializeServerFunctionValue,
-} from "./serialization.ts";
+import { SERVER_FUNCTION_INVOKE, type ServerFunctionInvocationOptions } from "./invocation.ts";
+import { deserializeServerFunctionValue, serializeServerFunctionValue } from "./serialization.ts";
 
 export type ClientServerFunctionOptions = {
   /** Absolute pathname for the server-function RPC endpoint. */
@@ -131,9 +125,7 @@ export function createServerReference<T extends ServerFunction>(
       throw toServerFunctionError(payload, response.status);
     }
 
-    return payload.version === 1
-      ? deserializeServerFunctionValue(payload.value)
-      : payload.value;
+    return payload.version === 1 ? deserializeServerFunctionValue(payload.value) : payload.value;
   };
 
   const reference = (...args: unknown[]): Promise<unknown> => invoke(args);

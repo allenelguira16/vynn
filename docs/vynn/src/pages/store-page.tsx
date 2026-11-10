@@ -158,9 +158,9 @@ function UserFields() {
         />
 
         <p>
-          These dependencies are distinct from reading <code>user.name</code>. For example,
-          adding <code>name</code> with a value of <code>undefined</code> still changes the result
-          of the <code>in</code> check and the object's key list.
+          These dependencies are distinct from reading <code>user.name</code>. For example, adding{" "}
+          <code>name</code> with a value of <code>undefined</code> still changes the result of the{" "}
+          <code>in</code> check and the object's key list.
         </p>
 
         <h3 class="mt-4">Array key enumeration</h3>
@@ -169,8 +169,8 @@ function UserFields() {
           Array enumeration is structural too. Calls such as <code>Object.keys()</code>,
           <code>Reflect.ownKeys()</code>, and <code>for...in</code> track the array's indexed
           properties, not just its <code>length</code>. Adding or deleting an index therefore
-          updates an effect that enumerates the array, even when deleting an index leaves the
-          array length unchanged.
+          updates an effect that enumerates the array, even when deleting an index leaves the array
+          length unchanged.
         </p>
 
         <CodeBlock
@@ -271,8 +271,8 @@ console.log(state.double); // 4
 
         <p>
           This follows Vue-style ref unwrapping for object properties without changing how
-          standalone <code>$state()</code> and <code>$computed()</code> values are read.
-          Those values continue to use <code>.value</code>.
+          standalone <code>$state()</code> and <code>$computed()</code> values are read. Those
+          values continue to use <code>.value</code>.
         </p>
 
         <h2 class="mt-6">Derived values with getters</h2>

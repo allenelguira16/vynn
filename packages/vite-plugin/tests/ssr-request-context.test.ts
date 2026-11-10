@@ -10,14 +10,14 @@ describe("SSR request context integration", () => {
   it("forwards the request into generated renderToServer entries", () => {
     const entry = createServerEntry("/src/App.tsx", "stream");
 
-    expect(entry).toContain('export function render(url, request)');
+    expect(entry).toContain("export function render(url, request)");
     expect(entry).toContain('renderToServer(() => App({ url }), "stream", request)');
   });
 
   it("passes the request to authored server entries", () => {
     const entry = createAuthoredServerEntry("/src/entry-server.ts", "async");
 
-    expect(entry).toContain('render(url, request)');
+    expect(entry).toContain("render(url, request)");
     expect(entry).toContain('serverModule.render(url, "async", request)');
   });
 

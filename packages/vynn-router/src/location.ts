@@ -45,8 +45,6 @@ export const $location = new Proxy(defaultLocation, {
   },
 });
 
-let activeLocation: Location | undefined;
-
 if (!isServer) {
   window.addEventListener("popstate", () => {
     updateDefaultLocation({
@@ -57,20 +55,16 @@ if (!isServer) {
 }
 
 /**
- * Sets the browser Router location used by callbacks that resume after an
- * await, when the synchronous component context is no longer active.
+ * Returns the current router location when called inside a route owner.
+ * Async callbacks without an owner use the browser-level fallback store;
+ * callers working with independent router instances can pass their location
+ * explicitly to navigate() or replace().
  */
-export function setActiveLocation(location: Location): void {
-  activeLocation = location;
-}
-
 export function currentLocation(): Location {
   try {
     return useRouterLocation();
   } catch {
-    // Async callbacks resume without a Vynn owner. In the browser, use the
-    // active Router store so redirects still update the Router's own location.
-    return activeLocation ?? $location;
+    return $location;
   }
 }
 
@@ -155,8 +149,7 @@ function updateUrl(path: string, location: Location, historyAction: "push" | "re
         // Keep the literal fragment when it contains malformed escapes.
       }
 
-      const targetElement =
-        document.getElementById(id) ?? document.getElementsByName(id).item(0);
+      const targetElement = document.getElementById(id) ?? document.getElementsByName(id).item(0);
       if (targetElement && typeof targetElement.scrollIntoView === "function") {
         targetElement.scrollIntoView();
       }

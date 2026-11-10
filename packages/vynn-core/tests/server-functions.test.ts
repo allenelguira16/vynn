@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { getRequestContext } from "vynn/server";
 
 import {
   createServerFunctionHandler,
   createServerReference,
 } from "../src/server-functions/server.ts";
-import { getRequestContext } from "vynn/server";
 
 const makeRequest = (
   body: string,
@@ -93,9 +93,7 @@ describe("server-function runtime", () => {
     createServerReference((name: string) => `Hello ${name}`, id);
 
     const handler = createServerFunctionHandler({ development: true });
-    const response = await handler(
-      makeRequest(JSON.stringify({ id, args: ["Vynn"] })),
-    );
+    const response = await handler(makeRequest(JSON.stringify({ id, args: ["Vynn"] })));
 
     expect(response?.status).toBe(200);
     await expect(response?.json()).resolves.toEqual({
@@ -109,9 +107,7 @@ describe("server-function runtime", () => {
     const handler = createServerFunctionHandler({
       development: true,
       resolve: (requestedId) =>
-        requestedId === id
-          ? (name: string) => `Hello ${name}`
-          : undefined,
+        requestedId === id ? (name: string) => `Hello ${name}` : undefined,
     });
     const response = await handler(
       makeRequest(JSON.stringify({ id, args: ["Ada"], captures: ["ignored"] })),

@@ -1,12 +1,13 @@
-import { describe, expect, it } from "vitest";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { ViteDevServer } from "vite";
 
+import { describe, expect, it } from "vitest";
+
 import { DEFAULT_SERVER_FUNCTION_ENDPOINT } from "../../vynn-core/src/server-functions/constants.ts";
 import { serverFunctions } from "../src/index.ts";
+import { registerServerFunctionDevMiddleware } from "../src/plugins/server-functions/dev-middleware.ts";
 import { makeClientRuntime, makeServerRuntime } from "../src/plugins/server-functions/runtime.ts";
 import { DEFAULT_ENDPOINT } from "../src/plugins/server-functions/shared.ts";
-import { registerServerFunctionDevMiddleware } from "../src/plugins/server-functions/dev-middleware.ts";
 
 describe("standalone server-function Vite integration", () => {
   it("keeps the Vite endpoint default aligned with the core runtime", () => {

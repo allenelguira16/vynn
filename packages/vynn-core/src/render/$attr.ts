@@ -4,9 +4,16 @@ import { isHydrationClaimActive } from "../client/hydration";
 import { diagnoseHydrationAttribute } from "../client/hydration-diagnostics";
 import { isServer } from "../context/is-server-context";
 import { $renderEffect } from "../reactivity/$effect";
+import { assertSafeAttributeName } from "./attribute-name";
 import { HTML_NAMESPACE, SVG_NAMESPACE } from "./namespace";
 
-export type AttributeValue = string | number | boolean | Partial<CSSStyleDeclaration> | null | undefined;
+export type AttributeValue =
+  | string
+  | number
+  | boolean
+  | Partial<CSSStyleDeclaration>
+  | null
+  | undefined;
 
 const rawHTMLContentElements = new WeakSet<Element>();
 
@@ -185,12 +192,14 @@ export function serializeStyleValue(value: AttributeValue): string {
   for (const [property, rawValue] of Object.entries(value)) {
     if (rawValue == null || rawValue === "") continue;
 
-    const name = property === "cssFloat"
-      ? "float"
-      : property.startsWith("--")
-        ? property
-        : property.replace(/[A-Z]/g, (character) => "-" + character.toLowerCase())
-            .replace(/^ms-/, "-ms-");
+    const name =
+      property === "cssFloat"
+        ? "float"
+        : property.startsWith("--")
+          ? property
+          : property
+              .replace(/[A-Z]/g, (character) => "-" + character.toLowerCase())
+              .replace(/^ms-/, "-ms-");
 
     declarations.push(name + ":" + String(rawValue).trim());
   }
@@ -209,6 +218,8 @@ export function setDOMAttributeValue<E extends Element>(
   name: string,
   next: AttributeValue,
 ): void {
+  assertSafeAttributeName(name);
+
   if (isServer()) {
     const node = element as unknown as SSR_ELEMENT;
 
@@ -304,7 +315,6 @@ export function setDOMAttributeValue<E extends Element>(
   setDOMAttribute(element, attributeName, String(next));
 }
 
-
 /**
  * Sets a reactive DOM attribute or property.
  *
@@ -343,7 +353,11 @@ export function $attr<E extends Element>(
               ? serializeStyleValue(next)
               : String(next);
 
-        diagnoseHydrationAttribute(element, getAttributeName(element.namespaceURI, name), expectedValue);
+        diagnoseHydrationAttribute(
+          element,
+          getAttributeName(element.namespaceURI, name),
+          expectedValue,
+        );
       }
     }
 

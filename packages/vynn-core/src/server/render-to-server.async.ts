@@ -1,3 +1,4 @@
+import { runWithOwner, type Owner } from "../life-cycle/owner";
 import { NotReadyError } from "../reactivity/not-ready-error";
 import {
   type SSR_NODE,
@@ -9,7 +10,6 @@ import {
   isSSRErrorBoundary,
   isSSRElement,
 } from "../render/resolve-node";
-import { runWithOwner, type Owner } from "../life-cycle/owner";
 import { JSX } from "../types/jsx";
 import {
   joinHTMLElements,
@@ -90,9 +90,7 @@ export async function resolveAsync(App: () => JSX.Element, owner: Owner): Promis
           let boundary: import("../context/error-boundary-context").ErrorBoundary;
 
           if (error instanceof SSRBoundaryFailure) {
-            boundary = error.handled
-              ? error.boundary
-              : error.boundary.handle(error.reason);
+            boundary = error.handled ? error.boundary : error.boundary.handle(error.reason);
 
             if (boundary.id !== node.id) {
               throw new SSRBoundaryFailure(error.reason, boundary, true);

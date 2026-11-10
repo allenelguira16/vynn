@@ -24,7 +24,7 @@ export function createCell<T>(initialValue: T): Cell<T> {
       const write = () => {
         const result = Reflect.set(target, key, newValue, receiver);
 
-        if (oldValue !== newValue) {
+        if (!Object.is(oldValue, newValue)) {
           trigger(target, key);
         }
 

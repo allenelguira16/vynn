@@ -59,9 +59,7 @@ const decodeBase64 = (value: string): ArrayBuffer => {
  * Register the same codec in client and server startup code. Codec tags are
  * part of the wire format and must remain stable across deployments.
  */
-export function registerServerFunctionCodec<T>(
-  codec: ServerFunctionCodec<T>,
-): () => void {
+export function registerServerFunctionCodec<T>(codec: ServerFunctionCodec<T>): () => void {
   if (
     !codec ||
     typeof codec.tag !== "string" ||
@@ -74,7 +72,9 @@ export function registerServerFunctionCodec<T>(
   }
 
   if (codecs.has(codec.tag)) {
-    throw new Error("[Vynn] A server-function codec is already registered for tag " + codec.tag + ".");
+    throw new Error(
+      "[Vynn] A server-function codec is already registered for tag " + codec.tag + ".",
+    );
   }
 
   const registered: RegisteredServerFunctionCodec = {
@@ -95,11 +95,7 @@ export function registerServerFunctionCodec<T>(
   };
 }
 
-function encodeValue(
-  value: unknown,
-  ancestors: WeakSet<object>,
-  depth: number,
-): EncodedValue {
+function encodeValue(value: unknown, ancestors: WeakSet<object>, depth: number): EncodedValue {
   if (depth > MAX_DEPTH) {
     throw new RangeError("[Vynn] Server-function values exceed the maximum serialization depth.");
   }
@@ -220,7 +216,9 @@ function encodeValue(
     }
 
     if (Object.getOwnPropertySymbols(value).length > 0) {
-      throw new TypeError("[Vynn] Symbol-keyed properties cannot be sent through server functions.");
+      throw new TypeError(
+        "[Vynn] Symbol-keyed properties cannot be sent through server functions.",
+      );
     }
 
     const entries = Object.keys(value).map((key) => [
@@ -298,10 +296,11 @@ function decodeValue(value: unknown, depth: number): unknown {
     }
     case "object": {
       const entries = expectArray(tuple[2], "object");
-      const result = tuple[1] === true ? Object.create(null) as Record<string, unknown> : {};
+      const result = tuple[1] === true ? (Object.create(null) as Record<string, unknown>) : {};
       for (const entry of entries) {
         const pair = expectArray(entry, "object entry");
-        if (typeof pair[0] !== "string") throw new TypeError("[Vynn] Invalid serialized object key.");
+        if (typeof pair[0] !== "string")
+          throw new TypeError("[Vynn] Invalid serialized object key.");
         Object.defineProperty(result, pair[0], {
           value: decodeValue(pair[1], depth + 1),
           enumerable: true,

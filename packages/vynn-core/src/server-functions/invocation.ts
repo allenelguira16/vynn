@@ -21,16 +21,20 @@ export function invokeServerFunction<T extends (...args: never[]) => unknown>(
   args: Parameters<T>,
   options: ServerFunctionInvocationOptions = {},
 ): ReturnType<T> {
-  const invoker = (reference as unknown as {
-    [SERVER_FUNCTION_INVOKE]?: ServerFunctionInvoker;
-  })[SERVER_FUNCTION_INVOKE];
+  const invoker = (
+    reference as unknown as {
+      [SERVER_FUNCTION_INVOKE]?: ServerFunctionInvoker;
+    }
+  )[SERVER_FUNCTION_INVOKE];
 
   if (invoker) {
     return invoker(args as unknown[], options) as ReturnType<T>;
   }
 
   if (options.signal) {
-    throw new TypeError("[Vynn] AbortSignal options require a generated Vynn server-function reference.");
+    throw new TypeError(
+      "[Vynn] AbortSignal options require a generated Vynn server-function reference.",
+    );
   }
 
   return reference(...args) as ReturnType<T>;

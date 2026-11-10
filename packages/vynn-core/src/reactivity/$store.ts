@@ -1,6 +1,5 @@
 import { $renderEffect } from "./$effect";
 import { createAsyncDerived } from "./async";
-import { isAsyncFunction } from "./is-async-function";
 import { NotReadyError } from "./not-ready-error";
 import { isPending as getPending, registerPending } from "./pending";
 import { isRef, type VynnReadonlyRef } from "./ref";
@@ -10,6 +9,29 @@ import { untrack } from "./untrack";
 
 type StoreArrayValue<T> = T extends VynnReadonlyRef<unknown> ? T : StoreValue<T>;
 type StoreCollectionValue<T> = T extends VynnReadonlyRef<unknown> ? T : StoreValue<T>;
+
+type AsyncStoreInitializer<T extends object> = () => Promise<T> &
+  (T extends
+    | readonly unknown[]
+    | Date
+    | Error
+    | RegExp
+    | Promise<unknown>
+    | Function
+    | URL
+    | URLSearchParams
+    | ArrayBuffer
+    | ArrayBufferView
+    ? never
+    : T extends ReadonlyMap<infer _Key, infer _Value>
+      ? never
+      : T extends ReadonlySet<infer _Value>
+        ? never
+        : T extends WeakMap<infer _Key, infer _Value>
+          ? never
+          : T extends WeakSet<infer _Value>
+            ? never
+            : unknown);
 
 type StoreValue<T> =
   T extends VynnReadonlyRef<infer V>
@@ -34,9 +56,8 @@ type StoreValue<T> =
                       ? { [K in keyof T]: StoreValue<T[K]> }
                       : T;
 
-export type Store<T extends object> = T extends VynnReadonlyRef<unknown>
-  ? T
-  : StoreValue<T> & object;
+export type Store<T extends object> =
+  T extends VynnReadonlyRef<unknown> ? T : StoreValue<T> & object;
 
 const rawToReactive = new WeakMap<object, object>();
 const reactiveToRaw = new WeakMap<object, object>();
@@ -157,12 +178,7 @@ function isArrayIndex(key: PropertyKey): key is string {
 
   const index = Number(key);
 
-  return (
-    Number.isInteger(index) &&
-    index >= 0 &&
-    index < 0xffff_ffff &&
-    String(index) === key
-  );
+  return Number.isInteger(index) && index >= 0 && index < 0xffff_ffff && String(index) === key;
 }
 
 function hasChanged(value: unknown, oldValue: unknown): boolean {
@@ -237,12 +253,7 @@ function triggerAdded(target: object, key: PropertyKey): void {
   }
 }
 
-function triggerChanged(
-  target: object,
-  key: PropertyKey,
-  value: unknown,
-  oldValue: unknown,
-): void {
+function triggerChanged(target: object, key: PropertyKey, value: unknown, oldValue: unknown): void {
   if (!hasChanged(value, oldValue)) {
     return;
   }
@@ -306,9 +317,7 @@ function getArrayInstrumentation(key: PropertyKey): Function | undefined {
     const target = toRaw(this) as unknown[];
 
     if (arrayMutatingMethods.has(key)) {
-      return untrack(() =>
-        inTransaction(() => Reflect.apply(method, this, args)),
-      );
+      return untrack(() => inTransaction(() => Reflect.apply(method, this, args)));
     }
 
     track(target, ARRAY_ITERATE_KEY);
@@ -359,12 +368,7 @@ function createArrayHandlers(beforeRead?: () => void): ProxyHandler<object> {
       trackGet(target, key);
 
       const descriptor = Reflect.getOwnPropertyDescriptor(target, key);
-      if (
-        descriptor &&
-        !descriptor.configurable &&
-        "value" in descriptor &&
-        !descriptor.writable
-      ) {
+      if (descriptor && !descriptor.configurable && "value" in descriptor && !descriptor.writable) {
         return result;
       }
 
@@ -455,12 +459,7 @@ function createObjectHandlers(beforeRead?: () => void): ProxyHandler<object> {
       trackGet(target, key);
 
       const descriptor = Reflect.getOwnPropertyDescriptor(target, key);
-      if (
-        descriptor &&
-        !descriptor.configurable &&
-        "value" in descriptor &&
-        !descriptor.writable
-      ) {
+      if (descriptor && !descriptor.configurable && "value" in descriptor && !descriptor.writable) {
         return result;
       }
 
@@ -530,10 +529,7 @@ function createObjectHandlers(beforeRead?: () => void): ProxyHandler<object> {
   };
 }
 
-function createCollectionIterator(
-  target: object,
-  method: PropertyKey,
-): IterableIterator<unknown> {
+function createCollectionIterator(target: object, method: PropertyKey): IterableIterator<unknown> {
   const targetIsMap = isMap(target);
   const isPair = method === "entries" || (method === Symbol.iterator && targetIsMap);
   const isKeyOnly = method === "keys" && targetIsMap;
@@ -639,8 +635,7 @@ function createCollectionHandlers(): ProxyHandler<object> {
         return (value: unknown) =>
           inTransaction(() => {
             const rawValue = toRaw(value);
-            const hadValue =
-              target.has(value as never) || target.has(rawValue as never);
+            const hadValue = target.has(value as never) || target.has(rawValue as never);
 
             if (!hadValue) {
               target.add(rawValue as never);
@@ -691,18 +686,17 @@ function createCollectionHandlers(): ProxyHandler<object> {
       }
 
       if (key === "forEach" && (isMap(target) || isSet(target))) {
-        return (callback: (value: unknown, key: unknown, collection: object) => void, thisArg?: unknown) => {
+        return (
+          callback: (value: unknown, key: unknown, collection: object) => void,
+          thisArg?: unknown,
+        ) => {
           track(target, ITERATE_KEY);
 
-          return Reflect.apply(
-            Reflect.get(target, "forEach", target) as Function,
-            target,
-            [
-              (value: unknown, entryKey: unknown) => {
-                callback.call(thisArg, toReactive(value), toReactive(entryKey), receiver);
-              },
-            ],
-          );
+          return Reflect.apply(Reflect.get(target, "forEach", target) as Function, target, [
+            (value: unknown, entryKey: unknown) => {
+              callback.call(thisArg, toReactive(value), toReactive(entryKey), receiver);
+            },
+          ]);
         };
       }
 
@@ -729,10 +723,7 @@ function createCollectionHandlers(): ProxyHandler<object> {
  * use collection-specific methods. Unsupported built-ins such as Date remain
  * raw, matching the target types supported by Vue's reactive() API.
  */
-function createReactiveObject<T extends object>(
-  value: T,
-  beforeRead?: () => void,
-): T {
+function createReactiveObject<T extends object>(value: T, beforeRead?: () => void): T {
   if (isRef(value)) {
     return value as T;
   }
@@ -787,14 +778,12 @@ function createReactiveObject<T extends object>(
  * @param initialObject The initial object or async initializer.
  * @returns A deeply reactive proxy of the object.
  */
-export function $store<T extends object>(initialObject: () => Promise<T>): Store<T>;
+export function $store<T extends object>(initialObject: AsyncStoreInitializer<T>): Store<T>;
 
-export function $store<T extends object>(initialObject: T): Store<T>;
+export function $store<T extends object>(initialObject: T extends Function ? never : T): Store<T>;
 
-export function $store<T extends object>(
-  initialObject: T | (() => Promise<T>),
-): Store<T> {
-  if (isAsyncFunction(initialObject)) {
+export function $store<T extends object>(initialObject: T | (() => Promise<T>)): Store<T> {
+  if (typeof initialObject === "function") {
     return createAsyncStore(initialObject as () => Promise<T>);
   }
 

@@ -57,8 +57,8 @@ function Counter() {
 
         <p>
           A component invoked without JSX attributes still receives an empty props object. This
-          means optional props can be destructured and given defaults without first checking
-          whether the entire props argument exists.
+          means optional props can be destructured and given defaults without first checking whether
+          the entire props argument exists.
         </p>
 
         <CodeBlock
@@ -307,11 +307,10 @@ function TodoList() {
         </p>
 
         <p>
-          Vynn matches existing list entries using <code>Object.is()</code>. For objects and
-          arrays, that means reference identity matters: the same object instance can keep its
-          rendered subtree, while a new object with identical fields is treated as a new item.
-          Each old entry is reused at most once, including when the input contains duplicate
-          values.
+          Vynn matches existing list entries using <code>Object.is()</code>. For objects and arrays,
+          that means reference identity matters: the same object instance can keep its rendered
+          subtree, while a new object with identical fields is treated as a new item. Each old entry
+          is reused at most once, including when the input contains duplicate values.
         </p>
 
         <CodeBlock
@@ -356,9 +355,9 @@ function TodoList() {
         <h2 class="mt-6">5. JSX prop spreads are reconciled reactively</h2>
 
         <p>
-          JSX spread attributes such as <code>&lt;button &#123;...props&#125; /&gt;</code> are not copied to
-          the element only once. When the spread expression reads reactive values, Vynn tracks
-          those values and reconciles the element whenever they change. For in-place object
+          JSX spread attributes such as <code>&lt;button &#123;...props&#125; /&gt;</code> are not
+          copied to the element only once. When the spread expression reads reactive values, Vynn
+          tracks those values and reconciles the element whenever they change. For in-place object
           mutations, use a reactive object such as <code>$store()</code>; mutating an ordinary
           JavaScript object by itself does not notify Vynn.
         </p>
@@ -407,17 +406,17 @@ function SaveButton() {
         <p>
           Properties added to the reactive object are applied, and properties removed from it are
           cleared from the element. The spread is applied through one managed render effect:
-          updating an attribute does not create another effect for that property. Replacing an
-          event handler updates the existing listener instead of stacking duplicate listeners.
+          updating an attribute does not create another effect for that property. Replacing an event
+          handler updates the existing listener instead of stacking duplicate listeners.
         </p>
 
         <h3 class="mt-4">Function-valued properties</h3>
 
         <p>
           An ordinary function-valued spread property is treated as a zero-argument accessor, just
-          like a function-valued direct JSX attribute. Vynn calls it to obtain the current
-          attribute value. Event properties and <code>ref</code> are exceptions: their functions
-          are treated as handlers or ref callbacks, not as accessors.
+          like a function-valued direct JSX attribute. Vynn calls it to obtain the current attribute
+          value. Event properties and <code>ref</code> are exceptions: their functions are treated
+          as handlers or ref callbacks, not as accessors.
         </p>
 
         <h3 class="mt-4">Events inside a spread</h3>
@@ -430,9 +429,9 @@ function SaveButton() {
         </p>
 
         <p>
-          The current handler is used when an event fires, even when the handler value changes
-          after the element has been created. A missing or non-function event value removes the
-          listener. Listeners are also removed when the component that owns the spread is disposed.
+          The current handler is used when an event fires, even when the handler value changes after
+          the element has been created. A missing or non-function event value removes the listener.
+          Listeners are also removed when the component that owns the spread is disposed.
         </p>
 
         <h3 class="mt-4">Refs inside a spread</h3>
@@ -484,10 +483,10 @@ function Notice() {
         />
 
         <p>
-          Style object properties use CSS string values and are serialized as supplied. Vynn
-          does not automatically append <code>px</code>, so include units where a property
-          requires them, such as <code>padding: "1rem"</code> or <code>width: "240px"</code>.
-          Unitless properties such as <code>opacity</code> still use a string value, for example
+          Style object properties use CSS string values and are serialized as supplied. Vynn does
+          not automatically append <code>px</code>, so include units where a property requires them,
+          such as <code>padding: "1rem"</code> or <code>width: "240px"</code>. Unitless properties
+          such as <code>opacity</code> still use a string value, for example
           <code>"1"</code>. To type custom CSS properties, extend
           <code>Partial&lt;CSSStyleDeclaration&gt;</code> with a template-literal index signature,
           as shown in the example.
@@ -788,8 +787,8 @@ function UserProfile() {
         <p>
           When you navigate through <code>Link</code>, <code>navigate()</code>, or
           <code>replace()</code> to a URL containing a fragment, Vynn updates the browser URL and
-          then looks for the fragment target. It checks an element's <code>id</code> first and
-          falls back to a matching <code>name</code> attribute before calling
+          then looks for the fragment target. It checks an element's <code>id</code> first and falls
+          back to a matching <code>name</code> attribute before calling
           <code>scrollIntoView()</code>.
         </p>
 
@@ -823,10 +822,9 @@ function Guide() {
 
         <p>
           This matters because <code>history.pushState()</code> and
-          <code>history.replaceState()</code> do not perform the browser's usual fragment
-          scrolling. The target must exist in the DOM when the navigation update is applied.
-          Normal external links and links that open another browsing context keep their native
-          browser behavior.
+          <code>history.replaceState()</code> do not perform the browser's usual fragment scrolling.
+          The target must exist in the DOM when the navigation update is applied. Normal external
+          links and links that open another browsing context keep their native browser behavior.
         </p>
 
         <h2 class="mt-6">TL;DR: Vynn's mindset</h2>

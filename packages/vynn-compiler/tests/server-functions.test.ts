@@ -62,7 +62,9 @@ describe("Vynn server-function compiler", () => {
 
     expect(client?.code).toContain("() => [tenantId]");
     expect(server?.code).toMatch(/__vynn_captures_[a-f0-9]{20}, userId: string/);
-    expect(server?.code).toMatch(/const __VYNN_CAPTURE_[a-f0-9]{20}_0 = __vynn_captures_[a-f0-9]{20}\[0\]/);
+    expect(server?.code).toMatch(
+      /const __VYNN_CAPTURE_[a-f0-9]{20}_0 = __vynn_captures_[a-f0-9]{20}\[0\]/,
+    );
     expect(server?.code).toMatch(/return `\$\{__VYNN_CAPTURE_[a-f0-9]{20}_0\}:\$\{userId\}`/);
   });
 
@@ -77,9 +79,7 @@ describe("Vynn server-function compiler", () => {
       target: "server",
     });
 
-    expect(server?.code).toMatch(
-      /return \{ tenantId: __VYNN_CAPTURE_[a-f0-9]{20}_0 \}/,
-    );
+    expect(server?.code).toMatch(/return \{ tenantId: __VYNN_CAPTURE_[a-f0-9]{20}_0 \}/);
   });
 
   it("rewrites captured values used in parameter default expressions", () => {
@@ -98,9 +98,7 @@ describe("Vynn server-function compiler", () => {
     });
 
     expect(client?.code).toContain("() => [tenantId]");
-    expect(server?.code).toMatch(
-      /userId = __vynn_captures_[a-f0-9]{20}\[0\]/,
-    );
+    expect(server?.code).toMatch(/userId = __vynn_captures_[a-f0-9]{20}\[0\]/);
   });
 
   it("captures lexical values through TypeScript expression wrappers", () => {

@@ -19,6 +19,9 @@ export function renderToDOM(
   id: Document | Element | DocumentFragment | string,
 ) {
   let cleanup: (() => void) | undefined;
+  let mountedNodes: Node[] = [];
+  let restoreDocument: (() => void) | undefined;
+  let releaseUnmountListener: (() => void) | undefined;
 
   let node: Document | DocumentFragment | Element | null;
 
@@ -46,8 +49,10 @@ export function renderToDOM(
         () => resolveNode(App),
       );
       const nodes = app.map((element) => element);
+      mountedNodes = nodes;
 
       if (node instanceof Document) {
+        const documentNode = node;
         const root = nodes[0];
         const markers = nodes.slice(1);
 
@@ -61,6 +66,11 @@ export function renderToDOM(
           );
         }
 
+        const previousRoot = documentNode.documentElement;
+        const previousHead = previousRoot?.querySelector("head");
+        const previousBody = previousRoot?.querySelector("body");
+        const preservedHeadNodes = previousHead ? Array.from(previousHead.childNodes) : [];
+        const preservedBodyNodes = previousBody ? Array.from(previousBody.childNodes) : [];
         const nextHead = root.querySelector("head");
         const nextBody = root.querySelector("body");
 
@@ -72,24 +82,51 @@ export function renderToDOM(
 
         // Preserve shell resources and head entries registered while
         // resolving App before replacing the browser's initial document root.
-        nextHead.append(...Array.from(node.head.childNodes));
+        nextHead.append(...preservedHeadNodes);
 
         // Compiled root components return a lifecycle marker after the
         // document element. Keep those markers in the body so the unmount
         // observer can dispose the component without adding nodes to Document.
-        nextBody.append(...Array.from(node.body.childNodes), ...markers);
+        nextBody.append(...preservedBodyNodes, ...markers);
 
-        const previousRoot = node.documentElement;
-        if (previousRoot) node.replaceChild(root, previousRoot);
+        if (previousRoot) documentNode.replaceChild(root, previousRoot);
         else node.append(root);
+
+        restoreDocument = () => {
+          for (const marker of markers) marker.parentNode?.removeChild(marker);
+          if (previousRoot && documentNode.documentElement === root) {
+            if (previousHead) previousHead.append(...preservedHeadNodes);
+            if (previousBody) previousBody.append(...preservedBodyNodes);
+            documentNode.replaceChild(previousRoot, root);
+          } else if (!previousRoot && documentNode.documentElement === root) {
+            documentNode.removeChild(root);
+          }
+        };
       } else {
         node.append(...nodes);
       }
 
-      addUnmountListener();
+      releaseUnmountListener = addUnmountListener();
     });
 
-    cleanup = () => disposeOwner(owner);
+    cleanup = () => {
+      try {
+        disposeOwner(owner);
+      } finally {
+        try {
+          if (restoreDocument) {
+            restoreDocument();
+          } else {
+            for (const mountedNode of mountedNodes) {
+              mountedNode.parentNode?.removeChild(mountedNode);
+            }
+          }
+        } finally {
+          releaseUnmountListener?.();
+          releaseUnmountListener = undefined;
+        }
+      }
+    };
   } else {
     throw new Error("Node must be a Document, Element, or DocumentFragment");
   }
@@ -99,6 +136,8 @@ export function renderToDOM(
       throw new Error("Can only unmount if the app is mounted");
     }
 
-    cleanup();
+    const dispose = cleanup;
+    cleanup = undefined;
+    dispose();
   };
 }

@@ -10,7 +10,9 @@ import {
 import { getAsyncValues } from "../context/async-context";
 import { getErrorBoundaryValues } from "../context/error-boundary-context";
 import { getRenderMode } from "../context/render-mode";
+import { assertSafeAttributeName } from "../render/attribute-name";
 import { SSR_ELEMENT, SSR_TEXT } from "../render/resolve-node";
+import { serializeServerFunctionValue } from "../server-functions/serialization";
 import { escapeHtml } from "../utils/escape-html";
 
 const voidElements = new Set([
@@ -44,7 +46,10 @@ export function renderNode(props: {
   children: string;
 }) {
   let attributes = Object.entries(props.attributes)
-    .map(([key, value]) => `${key}="${escapeHtml(value)}"`)
+    .map(([key, value]) => {
+      assertSafeAttributeName(key);
+      return `${key}="${escapeHtml(value)}"`;
+    })
     .join(" ");
   attributes = attributes ? ` ${attributes}` : "";
 
@@ -103,8 +108,17 @@ export function renderAsyncUtilities() {
     return "";
   }
 
+  const encodedAsyncValues = asyncValues
+    ? Object.fromEntries(
+        Object.entries(asyncValues).map(([key, value]) => [
+          key,
+          serializeServerFunctionValue(value),
+        ]),
+      )
+    : asyncValues;
+
   const values = {
-    async: serializeForInlineScript(asyncValues),
+    async: serializeForInlineScript(encodedAsyncValues),
     mode: serializeForInlineScript(getRenderMode()),
     error: serializeForInlineScript(errorValues),
   };

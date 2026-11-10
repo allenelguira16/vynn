@@ -96,11 +96,7 @@ export function triggerArrayLength(
       Number(key) < 0xffff_ffff &&
       String(Number(key)) === key;
 
-    if (
-      key === "length" ||
-      key === arrayIterationKey ||
-      (isIndex && Number(key) >= newLength)
-    ) {
+    if (key === "length" || key === arrayIterationKey || (isIndex && Number(key) >= newLength)) {
       for (const effect of dependencies) {
         effects.add(effect);
       }
