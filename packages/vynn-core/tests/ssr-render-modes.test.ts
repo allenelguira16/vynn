@@ -10,11 +10,16 @@ import {
   createSsrHandlerCode,
 } from "../../vite-plugin/src/plugins/app/documents.ts";
 import { registerSsrModule } from "../src/context/ssr-module-context";
+import { ErrorBoundary } from "../src/components/error-boundary";
 import { createOwner, disposeOwner, getOwner, runWithOwner } from "../src/life-cycle/owner";
 import { $head, $headTmpl } from "../src/render/$head";
 import { $insert } from "../src/render/$insert";
 import { $txt } from "../src/render/$txt";
-import { createSSRAsync, createSSRText } from "../src/render/resolve-node";
+import {
+  createSSRAsync,
+  createSSRDeferred,
+  createSSRText,
+} from "../src/render/resolve-node";
 import { renderToServer } from "../src/server/render-to-server";
 
 describe("renderToServer modes", () => {
@@ -51,6 +56,23 @@ describe("renderToServer modes", () => {
     expect(rendered.body).toContain("Synchronous content");
     expect(rendered.head.render()).toBe("");
     expect(rendered.modules.size).toBe(0);
+  });
+
+  it("catches synchronous lazy-child errors in sync SSR mode", () => {
+    const rendered = renderToServer(
+      () =>
+        ErrorBoundary({
+          children: (() => {
+            throw new Error("synchronous child failed");
+          }) as unknown as JSX.Element,
+          fallback: (error) => `Caught: ${error.message}`,
+        }),
+      "sync",
+    );
+
+    expect(rendered.body).toContain("Caught: synchronous child failed");
+    expect(rendered.body).toContain("<!--eb:0-->");
+    expect(rendered.body).toContain("<!--/eb:0-->");
   });
 
   it("renders an async boundary fallback without waiting in sync mode", () => {
@@ -137,6 +159,211 @@ describe("renderToServer modes", () => {
       body: "Async content",
       modules: expect.any(Set),
     });
+  });
+
+  it("does not fail a retry for a rejected resource the child no longer reads", async () => {
+    const rendered = await renderToServer(
+      () =>
+        createSSRAsync(
+          () => [createSSRText("Loading")],
+          () => [createSSRText("The resource is no longer needed")],
+          [Promise.reject(new Error("stale resource failure"))],
+        ) as unknown as JSX.Element,
+      "async",
+    );
+
+    expect(rendered.body).toContain("The resource is no longer needed");
+    expect(rendered.body).not.toContain("stale resource failure");
+  });
+
+  it("handles async render failures within an ErrorBoundary", async () => {
+    const rendered = await renderToServer(
+      () =>
+        ErrorBoundary({
+          children: (() =>
+            createSSRAsync(
+              () => [createSSRText("Loading")],
+              () => {
+                throw new Error("async render failed");
+              },
+              [Promise.reject(new Error("async render failed"))],
+            )) as unknown as JSX.Element,
+          fallback: (error) => `Caught: ${error.message}`,
+        }),
+      "async",
+    );
+
+    expect(rendered.body).toContain("Caught: async render failed");
+    expect(rendered.body).toContain("$EBD");
+  });
+
+  it("routes guarded child render errors to ErrorBoundary after the guard resolves", async () => {
+    const rendered = await renderToServer(
+      () =>
+        ErrorBoundary({
+          children: (() =>
+            createSSRDeferred(
+              () => {
+                throw new Error("guarded child render failed");
+              },
+              [Promise.resolve()],
+              true,
+            )) as unknown as JSX.Element,
+          fallback: (error) => `Caught: ${error.message}`,
+        }),
+      "async",
+    );
+
+    expect(rendered.body).toContain("Caught: guarded child render failed");
+    expect(rendered.body).toContain("$EBD");
+  });
+
+  it("patches an enclosing ErrorBoundary when streamed async work rejects", async () => {
+    let reject!: (reason: Error) => void;
+    const pending = new Promise<void>((_resolve, rejectPromise) => {
+      reject = rejectPromise;
+    });
+
+    const rendered = renderToServer(
+      () =>
+        ErrorBoundary({
+          children: (() =>
+            createSSRAsync(
+              () => [createSSRText("Loading")],
+              () => {
+                throw new Error("resource failed");
+              },
+              [pending],
+            )) as unknown as JSX.Element,
+          fallback: (error) => `Caught: ${error.message}`,
+        }),
+      "stream",
+    );
+
+    const reader = rendered.body.getReader();
+    const initial = await reader.read();
+    expect(initial.done).toBe(false);
+
+    const initialHTML = new TextDecoder().decode(initial.value);
+    expect(initialHTML).toContain("Loading");
+    expect(initialHTML).toContain("<!--eb:0-->");
+
+    reject(new Error("resource failed"));
+
+    const patches: string[] = [];
+    while (true) {
+      const result = await reader.read();
+      if (result.done) break;
+      patches.push(new TextDecoder().decode(result.value));
+    }
+
+    const patchHTML = patches.join("");
+    expect(patchHTML).toContain('template id="vynn-eb-0"');
+    expect(patchHTML).toContain("$AEBP(0)");
+    expect(patchHTML).toContain("Caught: resource failed");
+  });
+
+  it("patches the nearest nested ErrorBoundary instead of its parent", async () => {
+    let reject!: (reason: Error) => void;
+    const pending = new Promise<void>((_resolve, rejectPromise) => {
+      reject = rejectPromise;
+    });
+
+    const rendered = renderToServer(
+      () =>
+        ErrorBoundary({
+          children: (() =>
+            ErrorBoundary({
+              children: (() =>
+                createSSRAsync(
+                  () => [createSSRText("Nested loading")],
+                  () => {
+                    throw new Error("nested resource failed");
+                  },
+                  [pending],
+                )) as unknown as JSX.Element,
+              fallback: (error) => `Inner: ${error.message}`,
+            })) as unknown as JSX.Element,
+          fallback: (error) => `Outer: ${error.message}`,
+        }),
+      "stream",
+    );
+
+    const reader = rendered.body.getReader();
+    const initial = await reader.read();
+    const initialHTML = new TextDecoder().decode(initial.value);
+
+    expect(initialHTML).toContain("<!--eb:0-->");
+    expect(initialHTML).toContain("<!--eb:1-->");
+    expect(initialHTML).toContain("Nested loading");
+
+    reject(new Error("nested resource failed"));
+
+    const patches: string[] = [];
+    while (true) {
+      const result = await reader.read();
+      if (result.done) break;
+      patches.push(new TextDecoder().decode(result.value));
+    }
+
+    const patchHTML = patches.join("");
+    expect(patchHTML).toContain('template id="vynn-eb-1"');
+    expect(patchHTML).toContain("Inner: nested resource failed");
+    expect(patchHTML).not.toContain("Outer: nested resource failed");
+  });
+
+  it("errors the stream when async work rejects without an ErrorBoundary", async () => {
+    let reject!: (reason: Error) => void;
+    const pending = new Promise<void>((_resolve, rejectPromise) => {
+      reject = rejectPromise;
+    });
+
+    const rendered = renderToServer(
+      () =>
+        createSSRAsync(
+          () => [createSSRText("Loading")],
+          () => {
+            throw new Error("unhandled resource failure");
+          },
+          [pending],
+        ) as unknown as JSX.Element,
+      "stream",
+    );
+
+    const reader = rendered.body.getReader();
+    const initial = await reader.read();
+    expect(initial.done).toBe(false);
+
+    reject(new Error("unhandled resource failure"));
+
+    await expect(reader.read()).rejects.toThrow("unhandled resource failure");
+  });
+
+  it("keeps blocking deferred failures outside ErrorBoundary recovery", async () => {
+    let reject!: (reason: Response) => void;
+    const pending = new Promise<never>((_resolve, rejectPromise) => {
+      reject = rejectPromise;
+    });
+    const redirect = new Response(null, {
+      status: 302,
+      headers: { location: "/login" },
+    });
+
+    const rendered = renderToServer(
+      () =>
+        createSSRDeferred(
+          () => [createSSRText("Guarded content")],
+          [pending],
+          true,
+        ) as unknown as JSX.Element,
+      "stream",
+    );
+
+    const reader = rendered.body.getReader();
+    const read = reader.read();
+    reject(redirect);
+
+    await expect(read).rejects.toBe(redirect);
   });
 
   it("returns the readable stream inside the render result in stream mode", () => {

@@ -7,12 +7,14 @@ import {
   getErrorBoundaryID,
   getErrorBoundaryValue,
   getErrorBoundaryValues,
+  type ErrorBoundary as ErrorBoundaryHandle,
 } from "../context/error-boundary-context";
 import { isServer } from "../context/is-server-context";
 import { createOwner, disposeOwner, getOwner, runWithOwner } from "../life-cycle/owner";
 import { $state } from "../reactivity/$state";
 import { NotReadyError } from "../reactivity/not-ready-error";
 import { $cmpnt, $nodes } from "../render";
+import { createSSRErrorBoundary, resolveSSRChild } from "../render/resolve-node";
 
 export type ErrorBoundarySSRState =
   | { status: "children" }
@@ -26,14 +28,16 @@ export const ErrorBoundary = $cmpnt(function ErrorBoundary(props: {
   fallback?: (error: Error, reset: () => void) => JSX.Element;
   children: JSX.Element;
 }) {
-  const owner = getOwner();
+  const currentOwner = getOwner();
   const errorBoundaryID = getErrorBoundaryID();
   const ssrData = getErrorBoundaryValue(errorBoundaryID);
   // console.log(ssrData);
 
-  if (!owner) {
+  if (!currentOwner) {
     throw new Error("ErrorBoundary requires an owner.");
   }
+
+  const owner: Owner = currentOwner;
 
   // Capture the enclosing boundary before registering this one.
   const parentBoundary = getErrorBoundary();
@@ -62,7 +66,9 @@ export const ErrorBoundary = $cmpnt(function ErrorBoundary(props: {
     renderChildren();
   }
 
-  function renderFallback(error: Error) {
+
+
+  function renderFallback(error: Error): ErrorBoundaryHandle {
     disposeViewOwner();
 
     const fallbackOwner = createOwner(owner);
@@ -98,19 +104,26 @@ export const ErrorBoundary = $cmpnt(function ErrorBoundary(props: {
       }
 
       if (parentBoundary) {
-        parentBoundary(fallbackError);
-        return;
+        return parentBoundary.handle(fallbackError);
       }
 
       throw fallbackError;
     }
 
     view.value = fallbackView;
+    return boundary;
   }
 
-  function handleError(error: Error): void {
+  function handleError(error: Error): ErrorBoundaryHandle {
     // Pending async values are handled by Await and SSR deferral.
     if (error instanceof NotReadyError) {
+      throw error;
+    }
+
+    // An async task may outlive the route or owner that created this boundary.
+    // Do not render into a disposed subtree; let the enclosing boundary decide.
+    if (owner.disposed) {
+      if (parentBoundary) return parentBoundary.handle(error);
       throw error;
     }
 
@@ -120,8 +133,7 @@ export const ErrorBoundary = $cmpnt(function ErrorBoundary(props: {
       disposeViewOwner();
 
       if (parentBoundary) {
-        parentBoundary(error);
-        return;
+        return parentBoundary.handle(error);
       }
 
       throw error;
@@ -131,7 +143,7 @@ export const ErrorBoundary = $cmpnt(function ErrorBoundary(props: {
 
     // Remove the failed subtree before creating the fallback.
     disposeViewOwner();
-    renderFallback(error);
+    return renderFallback(error);
   }
 
   function renderChildren(): void {
@@ -170,7 +182,15 @@ export const ErrorBoundary = $cmpnt(function ErrorBoundary(props: {
     }
   }
 
-  enterErrorBoundary(handleError);
+  const boundary: ErrorBoundaryHandle = {
+    id: errorBoundaryID,
+    handle: (error) => runWithOwner(owner, () => handleError(error)),
+    render: () =>
+      runWithOwner(viewOwner ?? owner, () => resolveSSRChild(() => view.value)),
+    isActive: () => !owner.disposed,
+  };
+
+  enterErrorBoundary(boundary);
 
   // console.log();
   if (ssrData?.status === "fallback") {
@@ -181,5 +201,7 @@ export const ErrorBoundary = $cmpnt(function ErrorBoundary(props: {
 
   // Keep the boundary's own reactive output alive when its child owner
   // is replaced by a fallback or recreated by reset().
-  return $nodes(() => view.value);
+  return isServer()
+    ? (createSSRErrorBoundary(errorBoundaryID, boundary.render, boundary) as unknown as JSX.Element)
+    : $nodes(() => view.value);
 });

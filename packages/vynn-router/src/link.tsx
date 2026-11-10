@@ -12,7 +12,18 @@ export function isActiveRoute(targetPath: string, location = currentLocation()):
     return false;
   }
 
-  return matchRoute(targetPath, true, location);
+  // Active state describes the route, not a particular query or fragment.
+  // Resolve relative URLs the same way the click handler does, then pass only
+  // the pathname to the route matcher.
+  const base = `http://vynn.local${location.pathname}${location.search}`;
+
+  try {
+    const target = new URL(targetPath, base);
+    if (target.origin !== "http://vynn.local") return false;
+    return matchRoute(target.pathname, true, location);
+  } catch {
+    return false;
+  }
 }
 
 /** Renders an anchor that navigates through the active Router. */

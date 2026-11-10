@@ -45,6 +45,185 @@ describe("Vynn server-function compiler", () => {
     expect(result?.code).not.toContain('"use server"');
   });
 
+  it("captures values from the enclosing lexical scope", () => {
+    const source = `export const makeAction = (tenantId: string) => async (userId: string) => {
+      "use server";
+      return \`\${tenantId}:\${userId}\`;
+    };`;
+
+    const client = transformServerFunctions(source, "/project/actions.ts", {
+      root: "/project",
+      target: "client",
+    });
+    const server = transformServerFunctions(source, "/project/actions.ts", {
+      root: "/project",
+      target: "server",
+    });
+
+    expect(client?.code).toContain("() => [tenantId]");
+    expect(server?.code).toMatch(/__vynn_captures_[a-f0-9]{20}, userId: string/);
+    expect(server?.code).toMatch(/const __VYNN_CAPTURE_[a-f0-9]{20}_0 = __vynn_captures_[a-f0-9]{20}\[0\]/);
+    expect(server?.code).toMatch(/return `\$\{__VYNN_CAPTURE_[a-f0-9]{20}_0\}:\$\{userId\}`/);
+  });
+
+  it("rewrites captured identifiers in object shorthand properties", () => {
+    const source = `export const makeAction = (tenantId: string) => () => {
+      "use server";
+      return { tenantId };
+    };`;
+
+    const server = transformServerFunctions(source, "/project/actions.ts", {
+      root: "/project",
+      target: "server",
+    });
+
+    expect(server?.code).toMatch(
+      /return \{ tenantId: __VYNN_CAPTURE_[a-f0-9]{20}_0 \}/,
+    );
+  });
+
+  it("rewrites captured values used in parameter default expressions", () => {
+    const source = `export const makeAction = (tenantId: string) => (userId = tenantId) => {
+      "use server";
+      return userId;
+    };`;
+
+    const client = transformServerFunctions(source, "/project/actions.ts", {
+      root: "/project",
+      target: "client",
+    });
+    const server = transformServerFunctions(source, "/project/actions.ts", {
+      root: "/project",
+      target: "server",
+    });
+
+    expect(client?.code).toContain("() => [tenantId]");
+    expect(server?.code).toMatch(
+      /userId = __vynn_captures_[a-f0-9]{20}\[0\]/,
+    );
+  });
+
+  it("captures lexical values through TypeScript expression wrappers", () => {
+    const source = `export const makeAction = (tenantId: string) => () => {
+      "use server";
+      return (tenantId as string).toUpperCase();
+    };`;
+
+    const client = transformServerFunctions(source, "/project/actions.ts", {
+      root: "/project",
+      target: "client",
+    });
+
+    expect(client?.code).toContain("() => [tenantId]");
+  });
+
+  it("does not capture a local binding declared later in the function body", () => {
+    const source = `export const makeAction = (tenantId: string) => () => {
+      "use server";
+      console.log(tenantId);
+      const tenantId = "local";
+    };`;
+
+    const client = transformServerFunctions(source, "/project/actions.ts", {
+      root: "/project",
+      target: "client",
+    });
+
+    expect(client?.code).toContain("() => []");
+  });
+
+  it("does not serialize top-level lexical this for server arrows", () => {
+    const source = `export const action = () => {
+      "use server";
+      return this;
+    };`;
+
+    const client = transformServerFunctions(source, "/project/actions.ts", {
+      root: "/project",
+      target: "client",
+    });
+    const server = transformServerFunctions(source, "/project/actions.ts", {
+      root: "/project",
+      target: "server",
+    });
+
+    expect(client?.code).toContain("() => []");
+    expect(server?.code).toContain("return this");
+  });
+
+  it("rejects super references in extracted server functions", () => {
+    const source = `export class Actions {
+      create() {
+        return () => {
+          "use server";
+          return super.toString();
+        };
+      }
+    }`;
+
+    expect(() =>
+      transformServerFunctions(source, "/project/actions.ts", {
+        root: "/project",
+        target: "server",
+      }),
+    ).toThrow(/'super' cannot be used inside an extracted server function/);
+  });
+
+  it("rejects dynamic this and arguments in regular server functions", () => {
+    const thisSource = `export const action = function () {
+      "use server";
+      return this.value;
+    };`;
+    const argumentsSource = `export const action = function (value: string) {
+      "use server";
+      return arguments[0];
+    };`;
+
+    expect(() =>
+      transformServerFunctions(thisSource, "/project/actions.ts", {
+        root: "/project",
+        target: "server",
+      }),
+    ).toThrow(/Dynamic 'this' inside a server function is not supported/);
+
+    expect(() =>
+      transformServerFunctions(argumentsSource, "/project/actions.ts", {
+        root: "/project",
+        target: "server",
+      }),
+    ).toThrow(/'arguments' inside a server function is not supported/);
+  });
+
+  it("rejects reassignment of captured bindings in destructuring patterns", () => {
+    const source = `export const makeAction = (count: number) => (value: number) => {
+      "use server";
+      ({ count } = { count: value });
+      return count;
+    };`;
+
+    expect(() =>
+      transformServerFunctions(source, "/project/actions.ts", {
+        root: "/project",
+        target: "server",
+      }),
+    ).toThrow(/Captured variable 'count' cannot be reassigned/);
+  });
+
+  it("rejects reassigning a captured binding", () => {
+    const source = `export const makeAction = (count: number) => () => {
+      "use server";
+      count += 1;
+      return count;
+    };`;
+
+    expect(() =>
+      transformServerFunctions(source, "/project/actions.ts", {
+        root: "/project",
+        target: "server",
+      }),
+    ).toThrow(/Captured variable 'count' cannot be reassigned/);
+  });
+
   it("supports a build-tool supplied runtime module", () => {
     const result = transformServerFunctions(
       `export const action = () => {

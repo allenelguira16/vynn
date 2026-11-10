@@ -64,6 +64,69 @@ describe("server-function runtime", () => {
     });
   });
 
+  it("passes captured values before RPC arguments to compiler-generated implementations", async () => {
+    const id = createId();
+    createServerReference(
+      (captures: unknown[], name: string) => `${String(captures[0])}:${name}`,
+      id,
+      () => ["tenant-a"],
+    );
+
+    const handler = createServerFunctionHandler({ development: true });
+    const response = await handler(
+      makeRequest(JSON.stringify({ id, args: ["Ada"], captures: ["tenant-b"] })),
+    );
+
+    expect(response?.status).toBe(200);
+    await expect(response?.json()).resolves.toEqual({
+      ok: true,
+      value: "tenant-b:Ada",
+    });
+  });
+
+  it("returns manually registered server functions unchanged", () => {
+    const id = createId();
+    const implementation = (name: string) => `Hello ${name}`;
+
+    expect(createServerReference(implementation, id)).toBe(implementation);
+  });
+
+  it("keeps manually registered implementations compatible without captures", async () => {
+    const id = createId();
+    createServerReference((name: string) => `Hello ${name}`, id);
+
+    const handler = createServerFunctionHandler({ development: true });
+    const response = await handler(
+      makeRequest(JSON.stringify({ id, args: ["Vynn"] })),
+    );
+
+    expect(response?.status).toBe(200);
+    await expect(response?.json()).resolves.toEqual({
+      ok: true,
+      value: "Hello Vynn",
+    });
+  });
+
+  it("keeps custom resolvers on the original arguments-only contract", async () => {
+    const id = createId();
+    const handler = createServerFunctionHandler({
+      development: true,
+      resolve: (requestedId) =>
+        requestedId === id
+          ? (name: string) => `Hello ${name}`
+          : undefined,
+    });
+    const response = await handler(
+      makeRequest(JSON.stringify({ id, args: ["Ada"], captures: ["ignored"] })),
+    );
+
+    expect(response?.status).toBe(200);
+    await expect(response?.json()).resolves.toEqual({
+      ok: true,
+      value: "Hello Ada",
+    });
+  });
+
   it("returns null for requests outside the configured endpoint", async () => {
     const handler = createServerFunctionHandler();
     const response = await handler(makeRequest("{}", { url: "https://app.test/other" }));

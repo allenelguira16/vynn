@@ -2,6 +2,8 @@ import {
   ASYNC_DATA_SSR_KEY,
   EMPTY_TEXT_SSR_MARKER,
   ERROR_BOUNDARY_DATA_SSR_KEY,
+  ERROR_BOUNDARY_START_SSR_MARKER,
+  ERROR_BOUNDARY_END_SSR_MARKER,
   TEXT_SSR_SEPARATOR,
   RAW_HTML_SSR_ATTRIBUTE,
 } from "../const";
@@ -29,6 +31,10 @@ const voidElements = new Set([
 
 export function renderText(node: SSR_TEXT) {
   return node.value === "" ? `<!--${EMPTY_TEXT_SSR_MARKER}-->` : escapeHtml(node.value);
+}
+
+export function renderErrorBoundaryRange(id: number, html: string): string {
+  return `<!--${ERROR_BOUNDARY_START_SSR_MARKER}:${id}-->${html}<!--${ERROR_BOUNDARY_END_SSR_MARKER}:${id}-->`;
 }
 
 export function renderNode(props: {

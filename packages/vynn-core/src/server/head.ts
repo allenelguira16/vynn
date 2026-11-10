@@ -1,4 +1,9 @@
-import type { SSR_ELEMENT, SSR_NODE } from "../render/resolve-node";
+import {
+  isSSRElement,
+  isSSRErrorBoundary,
+  type SSR_ELEMENT,
+  type SSR_NODE,
+} from "../render/resolve-node";
 
 import { APPLY_HEAD_PATCH_SSR_KEY } from "../const";
 import {
@@ -52,6 +57,12 @@ function serializeSsrNode(node: SSR_NODE): string {
     // Deferred metadata is emitted by the streaming head-patch mechanism.
     return "";
   }
+
+  if (isSSRErrorBoundary(node)) {
+    return node.children().map(serializeSsrNode).join("");
+  }
+
+  if (!isSSRElement(node)) return "";
 
   const attributes = serializeAttributes(node.attributes);
   const suffix = attributes ? ` ${attributes}` : "";

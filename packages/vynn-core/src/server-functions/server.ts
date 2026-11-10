@@ -14,6 +14,18 @@ import {
 
 export type ServerFunctionImplementation = (...args: unknown[]) => unknown;
 
+type CaptureAwareServerFunctionImplementation = (
+  captures: unknown[],
+  ...args: unknown[]
+) => unknown;
+
+type RegisteredServerFunction = {
+  implementation: CaptureAwareServerFunctionImplementation;
+  captureAware: boolean;
+  getCaptures?: () => unknown[];
+  originalImplementation?: ServerFunctionImplementation;
+};
+
 export type ServerFunctionResolver = (
   id: string,
 ) => ServerFunctionImplementation | undefined | Promise<ServerFunctionImplementation | undefined>;
@@ -29,36 +41,70 @@ export type ServerFunctionHandlerOptions = {
   exposeErrors?: boolean;
   /** Treat this handler as a development handler when selecting error details. */
   development?: boolean;
-  /** Resolve a generated function ID to its server implementation. */
+  /** Resolve a function ID to a custom server implementation. */
   resolve?: ServerFunctionResolver;
+  /** Marks resolver results as compiler-generated implementations with a captures parameter. */
+  resolveWithCaptures?: boolean;
 };
 
-const implementations = new Map<string, ServerFunctionImplementation>();
+const implementations = new Map<string, RegisteredServerFunction>();
 
 /**
- * Registers a server implementation and returns it unchanged.
+ * Registers a server implementation and returns its callable reference.
  *
- * The compiler emits this call in server builds. The registry is also used by
- * development handlers after Vite has loaded the module containing a server
- * function.
+ * Manually registered implementations are returned unchanged. Compiler-
+ * generated implementations receive a wrapper that supplies their captures.
+ * The registry is also used by development handlers after Vite has loaded the
+ * module containing a server function.
  */
 export function createServerReference<T extends (...args: never[]) => unknown>(
   implementation: T,
   id: string,
+  getCaptures?: () => unknown[],
 ): T {
   if (typeof implementation !== "function" || !SERVER_FUNCTION_ID_RE.test(id)) {
     throw new TypeError("[Vynn] Invalid server-function implementation or ID.");
   }
 
-  implementations.set(id, implementation as unknown as ServerFunctionImplementation);
-  return implementation;
+  const invoke = implementation as (...args: unknown[]) => unknown;
+
+  if (!getCaptures) {
+    implementations.set(id, {
+      implementation: (_captures, ...args) => invoke(...args),
+      captureAware: false,
+      originalImplementation: implementation,
+    });
+    return implementation;
+  }
+
+  const serverImplementation =
+    implementation as unknown as CaptureAwareServerFunctionImplementation;
+  implementations.set(id, {
+    implementation: serverImplementation,
+    captureAware: true,
+    getCaptures,
+  });
+
+  const reference = (...args: unknown[]) =>
+    serverImplementation(getCaptures(), ...args);
+
+  Object.defineProperty(reference, "name", { value: "serverReference" });
+  return reference as unknown as T;
 }
 
 /** Returns a server implementation previously registered by the compiler output. */
 export function getServerFunctionImplementation(
   id: string,
 ): ServerFunctionImplementation | undefined {
-  return implementations.get(id);
+  const registered = implementations.get(id);
+  if (!registered) return undefined;
+
+  if (!registered.captureAware) {
+    return registered.originalImplementation;
+  }
+
+  return (...args) =>
+    registered.implementation(registered.getCaptures?.() ?? [], ...args);
 }
 
 async function readRequestBody(request: Request, maxBytes: number): Promise<string> {
@@ -208,7 +254,9 @@ export function createServerFunctionHandler(
       typeof payload.id !== "string" ||
       !SERVER_FUNCTION_ID_RE.test(payload.id) ||
       !Array.isArray(payload.args) ||
-      payload.args.length > 100
+      payload.args.length > 100 ||
+      (payload.captures !== undefined &&
+        (!Array.isArray(payload.captures) || payload.captures.length > 100))
     ) {
       return createServerFunctionResponse(400, {
         ok: false,
@@ -219,9 +267,19 @@ export function createServerFunctionHandler(
     try {
       const implementation = options.resolve
         ? await options.resolve(payload.id)
+        : undefined;
+      const registered = options.resolve
+        ? undefined
         : implementations.get(payload.id);
 
-      if (typeof implementation !== "function") {
+      if (options.resolve && typeof implementation !== "function") {
+        return createServerFunctionResponse(404, {
+          ok: false,
+          error: "Unknown Vynn server function.",
+        });
+      }
+
+      if (!options.resolve && !registered) {
         return createServerFunctionResponse(404, {
           ok: false,
           error: "Unknown Vynn server function.",
@@ -230,7 +288,21 @@ export function createServerFunctionHandler(
 
       const value = await runWithServerFunctionContext(
         { request: requestForContext, functionId: payload.id },
-        () => implementation(...payload.args),
+        () => {
+          if (options.resolve) {
+            return options.resolveWithCaptures
+              ? (implementation as unknown as CaptureAwareServerFunctionImplementation)(
+                  payload.captures ?? [],
+                  ...payload.args,
+                )
+              : (implementation as ServerFunctionImplementation)(...payload.args);
+          }
+
+          return registered!.implementation(
+            registered!.captureAware ? payload.captures ?? [] : [],
+            ...payload.args,
+          );
+        },
       );
 
       let body: string | undefined;

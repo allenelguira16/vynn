@@ -1,8 +1,12 @@
-export function makeClientRuntime(endpoint: string): string {
+import { DEFAULT_ENDPOINT } from "./shared.ts";
+
+export function makeClientRuntime(endpoint: string = DEFAULT_ENDPOINT): string {
+  const resolvedEndpoint = endpoint || DEFAULT_ENDPOINT;
+
   return [
     'import { createServerReference as createVynnServerReference } from "vynn/server-functions/client";',
-    "export function createServerReference(id) {",
-    `  return createVynnServerReference(id, { endpoint: ${JSON.stringify(endpoint)} });`,
+    "export function createServerReference(id, getCaptures) {",
+    `  return createVynnServerReference(id, { endpoint: ${JSON.stringify(resolvedEndpoint)}, getCaptures });`,
     "}",
     "",
   ].join("\n");
@@ -20,8 +24,8 @@ export function makeServerRuntime(
 ): string {
   return [
     'import { createServerFunctionHandler, createServerReference as createVynnServerReference } from "vynn/server-functions/server";',
-    "export function createServerReference(implementation, id) {",
-    "  return createVynnServerReference(implementation, id);",
+    "export function createServerReference(implementation, id, getCaptures) {",
+    "  return createVynnServerReference(implementation, id, getCaptures);",
     "}",
     `const endpoint = ${JSON.stringify(endpoint)};`,
     `const maxRequestBytes = ${String(options.maxRequestBytes)};`,
@@ -45,6 +49,7 @@ export function makeServerRuntime(
     "  exposeErrors,",
     "  development,",
     "  resolve: development ? undefined : resolveImplementation,",
+    "  resolveWithCaptures: true,",
     "});",
     "",
   ].join("\n");

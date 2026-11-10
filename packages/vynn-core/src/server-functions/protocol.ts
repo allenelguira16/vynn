@@ -8,6 +8,7 @@ export {
 export type ServerFunctionRequestPayload = {
   id: string;
   args: unknown[];
+  captures?: unknown[];
 };
 
 export type ServerFunctionSuccessPayload = {

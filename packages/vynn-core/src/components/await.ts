@@ -80,7 +80,7 @@ export const Await = $cmpnt(function Await(props: {
           if (!(error instanceof NotReadyError)) throw error;
 
           if (error.blocking || retryPending.length === 0) {
-            return [createSSRDeferred(renderAfterBlocking, [error.promise])];
+            return [createSSRDeferred(renderAfterBlocking, [error.promise], error.blocking)];
           }
 
           return [createBoundary(retryPending) as unknown as SSR_NODE];
@@ -104,7 +104,7 @@ export const Await = $cmpnt(function Await(props: {
       if (!(error instanceof NotReadyError)) throw error;
 
       if (error.blocking) {
-        return createSSRDeferred(renderAfterBlocking, [error.promise]) as unknown as JSX.Element;
+        return createSSRDeferred(renderAfterBlocking, [error.promise], true) as unknown as JSX.Element;
       }
 
       if (pending.length === 0) throw error;

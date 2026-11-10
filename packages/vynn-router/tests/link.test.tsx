@@ -37,6 +37,22 @@ describe("Link", () => {
     return Array.from(document.body.querySelectorAll<HTMLAnchorElement>("a"));
   }
 
+  it("matches active links by pathname while ignoring query strings and hashes", () => {
+    window.history.replaceState(null, "", "/users?tab=profile");
+
+    const [differentQuery, hashLink, relativeQuery, otherPath] = renderLinks([
+      { href: "/users?tab=settings", activeClass: "active", children: "Settings" },
+      { href: "/users#details", activeClass: "active", children: "Details" },
+      { href: "?tab=activity", activeClass: "active", children: "Activity" },
+      { href: "/teams?tab=profile", activeClass: "active", children: "Teams" },
+    ]);
+
+    expect(differentQuery.classList.contains("active")).toBe(true);
+    expect(hashLink.classList.contains("active")).toBe(true);
+    expect(relativeQuery.classList.contains("active")).toBe(true);
+    expect(otherPath.classList.contains("active")).toBe(false);
+  });
+
   it("intercepts an ordinary same-origin primary click", () => {
     window.history.replaceState(null, "", "/");
     const [link] = renderLinks([{ href: "/users?sort=name", children: "Users" }]);

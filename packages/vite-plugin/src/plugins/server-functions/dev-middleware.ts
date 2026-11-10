@@ -21,6 +21,8 @@ type ServerFunctionHandlerFactory = (options: {
   allowedOrigins: string[];
   exposeErrors: boolean;
   development: boolean;
+  /** Resolver results are compiler-generated functions with a leading captures parameter. */
+  resolveWithCaptures: boolean;
   resolve: (
     id: string,
   ) => ServerFunctionImplementation | undefined | Promise<ServerFunctionImplementation | undefined>;
@@ -83,6 +85,9 @@ export function registerServerFunctionDevMiddleware(
         allowedOrigins,
         exposeErrors: exposeErrors ?? isDevelopment,
         development: isDevelopment,
+        // Extracted implementations take (captures, ...args), unlike manual
+        // server functions. Match the production server runtime behavior.
+        resolveWithCaptures: true,
         resolve: async (id) => {
           const reference = refsById.get(id);
           if (!reference) return undefined;
