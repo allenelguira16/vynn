@@ -280,9 +280,7 @@ export function setDOMAttributeValue<E extends Element>(
 
   if (name === "style") {
     const styleValue = serializeStyleValue(next);
-    const style = "style" in element ? (element as HTMLElement | SVGElement).style : undefined;
 
-    if (style) style.cssText = styleValue;
     if (next == null) {
       removeDOMAttribute(element, attributeName);
     } else {
