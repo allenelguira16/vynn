@@ -35,8 +35,8 @@ export function createAuthoredServerEntry(
 ): string {
   return [
     `import * as serverModule from ${JSON.stringify(serverSpecifier)};`,
-    `if (typeof serverModule.render !== "function") throw new Error("[Vynn App] The entry-server module must export render(url, mode) and return a Vynn SSR render result or Response.");`,
-    `export function render(url) { return serverModule.render(url, ${JSON.stringify(ssrMode)}); }`,
+    `if (typeof serverModule.render !== "function") throw new Error("[Vynn App] The entry-server module must export render(url, mode, request?) and return a Vynn SSR render result or Response.");`,
+    `export function render(url, request) { return serverModule.render(url, ${JSON.stringify(ssrMode)}, request); }`,
     "",
   ].join("\n");
 }
@@ -52,8 +52,8 @@ export function createServerEntry(appSpecifier: string, ssrMode: RenderMode = "s
     `import { renderToServer } from "vynn/server";`,
     `const App = ${selected("appModule")};`,
     `if (typeof App !== "function") throw new Error("[Vynn App] The app module must export a component as default or App.");`,
-    `export function render(url) {`,
-    `  return renderToServer(() => App({ url }), ${JSON.stringify(ssrMode)});`,
+    `export function render(url, request) {`,
+    `  return renderToServer(() => App({ url }), ${JSON.stringify(ssrMode)}, request);`,
     `}`,
     "",
   ].join("\n");
@@ -299,20 +299,36 @@ export function createSsrHandlerCode(options: {
     `    return new Response("Method Not Allowed", { status: 405, headers: { Allow: "GET, HEAD" } });`,
     `  }`,
     `  const url = new URL(request.url);`,
-    `  const headers = { "content-type": "text/html; charset=utf-8" };`,
+    `  const headers = new Headers({ "content-type": "text/html; charset=utf-8" });`,
     `  let rendered;`,
-    `  try { rendered = await render(url.pathname + url.search); }`,
+    `  try { rendered = await render(url.pathname + url.search, request); }`,
     `  catch (error) { if (isWebResponse(error)) return error; throw error; }`,
     `  if (isWebResponse(rendered)) return rendered;`,
     `  if (!rendered || typeof rendered !== "object" || !("body" in rendered) || !("head" in rendered) || !("modules" in rendered) || typeof rendered.head?.render !== "function") {`,
     `    throw new TypeError("[Vynn App] The server entry render() must return a Vynn SSR render result or Response.");`,
     `  }`,
-    `  let body;`,
+    `  const responseHeaders = new Headers(headers);
+    const renderHeaders = rendered.response?.headers;
+    if (renderHeaders) {
+      const getSetCookie = renderHeaders.getSetCookie;
+      const cookies = typeof getSetCookie === "function" ? getSetCookie.call(renderHeaders) : [];
+      renderHeaders.forEach((value, name) => {
+        if (name.toLowerCase() !== "set-cookie" && name.toLowerCase() !== "content-type") {
+          responseHeaders.set(name, value);
+        }
+      });
+      for (const cookie of cookies) responseHeaders.append("set-cookie", cookie);
+      if (cookies.length === 0 && renderHeaders.has("set-cookie")) {
+        responseHeaders.append("set-cookie", renderHeaders.get("set-cookie"));
+      }
+    }
+    const responseStatus = rendered.response?.status ?? 200;
+    let body;`,
     `  try { body = await peekStream(asReadableStream(rendered.body)); }`,
     `  catch (error) { if (isWebResponse(error)) return error; throw error; }`,
-    `  if (request.method === "HEAD") { await body.cancel(); return new Response(null, { status: 200, headers }); }`,
+    `  if (request.method === "HEAD") { await body.cancel(); return new Response(null, { status: responseStatus, headers: responseHeaders }); }`,
     `  const headHtml = rendered.head.render();`,
-    `  return new Response(withDocument(body, devCssLinks, rendered.modules, headHtml), { status: 200, headers });`,
+    `  return new Response(withDocument(body, devCssLinks, rendered.modules, headHtml), { status: responseStatus, headers: responseHeaders });`,
     `}`,
     `export default { fetch(request) { return handleRequest(request); } };`,
     "",

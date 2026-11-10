@@ -2,10 +2,9 @@ export { renderToServer, type SsrRenderResult } from "./render-to-server";
 export type { SsrHeadManager } from "./head";
 
 export {
-  getServerFunctionContext,
-  getServerFunctionRequest,
-  runWithServerFunctionContext,
-  type ServerFunctionContext,
+  getRequestContext,
+  type RequestContext,
+  type ServerFunctionCookieOptions,
 } from "./server-function-context";
 
 export { injectSsrPreloadLinks } from "./preload.inject-links";
@@ -20,7 +19,14 @@ export {
   createServerFunctionHandler,
   createServerReference,
   getServerFunctionImplementation,
+  ServerFunctionError,
+  registerServerFunctionCodec,
+  serializeServerFunctionValue,
+  deserializeServerFunctionValue,
+  type ServerFunctionCodec,
   type ServerFunctionHandlerOptions,
   type ServerFunctionImplementation,
   type ServerFunctionResolver,
+  type ServerFunctionErrorData,
+  type ServerFunctionErrorOptions,
 } from "../server-functions/server";

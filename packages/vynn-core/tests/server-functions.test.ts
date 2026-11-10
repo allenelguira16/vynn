@@ -4,10 +4,7 @@ import {
   createServerFunctionHandler,
   createServerReference,
 } from "../src/server-functions/server.ts";
-import {
-  getServerFunctionContext,
-  getServerFunctionRequest,
-} from "../src/server/server-function-context.ts";
+import { getRequestContext } from "vynn/server";
 
 const makeRequest = (
   body: string,
@@ -45,8 +42,8 @@ describe("server-function runtime", () => {
       await Promise.resolve();
       return {
         greeting: `Hello ${name}`,
-        requestUrl: getServerFunctionRequest().url,
-        functionId: getServerFunctionContext().functionId,
+        requestUrl: getRequestContext().request.url,
+        functionId: getRequestContext().functionId,
       };
     }, id);
 

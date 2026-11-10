@@ -17,25 +17,21 @@ export const StackedSuspense = () => {
   console.log("suspense parent rerender");
 
   return (
-    <>
-      <Template title="Stacked Suspense">
-        <div class="p-2 flex flex-col container m-auto">
-          <Await fallback="Lick my ass">
-            <input
-              class="input w-full"
-              onInput={(event) => (msg2.value = event.currentTarget.value)}
-              value={msg2.value}
-            ></input>
-          </Await>
-          <Await fallback="Ngee">{msg3.value}</Await>
-          <Await fallback={<div>loading 1...</div>}>
-            <div>hi</div>
-            <Component />
-            <Await fallback={<div>loading 2...</div>}>{msg2.value}</Await>
-          </Await>
-        </div>
-      </Template>
-    </>
+    <Template title="Stacked Suspense">
+      <Await fallback="Lick my ass">
+        <input
+          class="input w-full"
+          onInput={(event) => (msg2.value = event.currentTarget.value)}
+          value={msg2.value}
+        ></input>
+      </Await>
+      <Await fallback="Ngee">{msg3.value}</Await>
+      <Await fallback={<div>loading 1...</div>}>
+        <div>hi</div>
+        <Component />
+        <Await fallback={<div>loading 2...</div>}>{msg2.value}</Await>
+      </Await>
+    </Template>
   );
 };
 

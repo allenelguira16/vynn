@@ -1,4 +1,9 @@
-import { runWithServerFunctionContext } from "../server/server-function-context.ts";
+import {
+  createServerFunctionContext,
+  runWithServerFunctionContext,
+  runWithServerFunctionInvocation,
+} from "../server/server-function-context.ts";
+import { ServerFunctionError } from "./errors.ts";
 import {
   DEFAULT_MAX_SERVER_FUNCTION_REQUEST_BYTES,
   DEFAULT_SERVER_FUNCTION_ENDPOINT,
@@ -9,8 +14,11 @@ import {
   createServerFunctionResponse,
   isAllowedServerFunctionOrigin,
   normalizeServerFunctionOrigin,
-  type ServerFunctionRequestPayload,
 } from "./protocol.ts";
+import {
+  deserializeServerFunctionValue,
+  serializeServerFunctionValue,
+} from "./serialization.ts";
 
 export type ServerFunctionImplementation = (...args: unknown[]) => unknown;
 
@@ -37,7 +45,7 @@ export type ServerFunctionHandlerOptions = {
   maxRequestBytes?: number;
   /** Additional exact browser origins permitted to call this endpoint. */
   allowedOrigins?: string[];
-  /** Include thrown error messages in responses. Defaults to the development setting. */
+  /** Include unexpected thrown error messages in responses. Defaults to the development setting. */
   exposeErrors?: boolean;
   /** Treat this handler as a development handler when selecting error details. */
   development?: boolean;
@@ -54,8 +62,6 @@ const implementations = new Map<string, RegisteredServerFunction>();
  *
  * Manually registered implementations are returned unchanged. Compiler-
  * generated implementations receive a wrapper that supplies their captures.
- * The registry is also used by development handlers after Vite has loaded the
- * module containing a server function.
  */
 export function createServerReference<T extends (...args: never[]) => unknown>(
   implementation: T,
@@ -86,7 +92,9 @@ export function createServerReference<T extends (...args: never[]) => unknown>(
   });
 
   const reference = (...args: unknown[]) =>
-    serverImplementation(getCaptures(), ...args);
+    runWithServerFunctionInvocation(id, () =>
+      serverImplementation(getCaptures(), ...args),
+    );
 
   Object.defineProperty(reference, "name", { value: "serverReference" });
   return reference as unknown as T;
@@ -163,13 +171,70 @@ function validateEndpoint(endpoint: string): void {
   }
 }
 
+function encodeErrorDetails(details: unknown): unknown {
+  try {
+    return serializeServerFunctionValue(details);
+  } catch {
+    return undefined;
+  }
+}
+
+function createErrorResponse(
+  error: unknown,
+  version: 0 | 1,
+  exposeErrors: boolean,
+  responseHeaders?: HeadersInit,
+): Response {
+  if (error instanceof ServerFunctionError) {
+    if (version === 0) {
+      return createServerFunctionResponse(error.status, {
+        ok: false,
+        error: error.message,
+      }, responseHeaders);
+    }
+
+    const details = error.details === undefined ? undefined : encodeErrorDetails(error.details);
+    return createServerFunctionResponse(error.status, {
+      version: 1,
+      ok: false,
+      error: {
+        name: error.name,
+        message: error.message,
+        code: error.code,
+        status: error.status,
+        ...(details === undefined ? {} : { details }),
+      },
+    }, responseHeaders);
+  }
+
+  const message =
+    exposeErrors && error instanceof Error ? error.message : "Server function failed.";
+
+  if (version === 0) {
+    return createServerFunctionResponse(500, { ok: false, error: message }, responseHeaders);
+  }
+
+  return createServerFunctionResponse(500, {
+    version: 1,
+    ok: false,
+    error: {
+      name: exposeErrors && error instanceof Error ? error.name : "ServerFunctionError",
+      message,
+      code: "INTERNAL_SERVER_ERROR",
+      status: 500,
+    },
+  }, responseHeaders);
+}
+
 /**
  * Creates a Fetch-compatible request handler for server-function RPC calls.
  *
  * The resolver is supplied by the build integration. When present, it is the
  * authoritative production allowlist. Runtime-registered implementations are
- * used only when no resolver is supplied, which is how development dispatch
- * remains independent of Vite's manifest format.
+ * used only when no resolver is supplied.
+ *
+ * Version 1 requests use Vynn's tagged serializer. Requests without a version
+ * continue to use the legacy JSON-only payload for rolling deployments.
  */
 export function createServerFunctionHandler(
   options: ServerFunctionHandlerOptions = {},
@@ -184,7 +249,8 @@ export function createServerFunctionHandler(
     maxRequestBytes > MAX_SERVER_FUNCTION_REQUEST_BYTES
   ) {
     throw new RangeError(
-      `[Vynn server functions] maxRequestBytes must be a safe integer between 1 and ${MAX_SERVER_FUNCTION_REQUEST_BYTES}.`,
+      "[Vynn server functions] maxRequestBytes must be a safe integer between 1 and " +
+        MAX_SERVER_FUNCTION_REQUEST_BYTES + ".",
     );
   }
 
@@ -202,15 +268,10 @@ export function createServerFunctionHandler(
     if (url.pathname !== endpoint) return null;
 
     if (request.method !== "POST") {
-      return new Response(JSON.stringify({ ok: false, error: "Method Not Allowed" }), {
-        status: 405,
-        headers: {
-          allow: "POST",
-          "content-type": "application/json; charset=utf-8",
-          "cache-control": "no-store",
-          "x-content-type-options": "nosniff",
-        },
-      });
+      return createServerFunctionResponse(405, {
+        ok: false,
+        error: "Method Not Allowed",
+      }, { allow: "POST" });
     }
 
     if (
@@ -234,12 +295,10 @@ export function createServerFunctionHandler(
     }
 
     const requestForContext = request.clone();
-    let payload: ServerFunctionRequestPayload;
+    let rawPayload: unknown;
 
     try {
-      payload = JSON.parse(
-        await readRequestBody(request, maxRequestBytes),
-      ) as ServerFunctionRequestPayload;
+      rawPayload = JSON.parse(await readRequestBody(request, maxRequestBytes));
     } catch (error) {
       const statusCode = (error as Error & { statusCode?: number }).statusCode === 413 ? 413 : 400;
       return createServerFunctionResponse(statusCode, {
@@ -248,15 +307,21 @@ export function createServerFunctionHandler(
       });
     }
 
+    if (!rawPayload || typeof rawPayload !== "object" || Array.isArray(rawPayload)) {
+      return createServerFunctionResponse(400, {
+        ok: false,
+        error: "Invalid server-function request.",
+      });
+    }
+
+    const payload = rawPayload as Record<string, unknown>;
+    const id = payload.id;
+    const version: 0 | 1 = payload.version === undefined ? 0 : 1;
+
     if (
-      !payload ||
-      typeof payload !== "object" ||
-      typeof payload.id !== "string" ||
-      !SERVER_FUNCTION_ID_RE.test(payload.id) ||
-      !Array.isArray(payload.args) ||
-      payload.args.length > 100 ||
-      (payload.captures !== undefined &&
-        (!Array.isArray(payload.captures) || payload.captures.length > 100))
+      (payload.version !== undefined && payload.version !== 1) ||
+      typeof id !== "string" ||
+      !SERVER_FUNCTION_ID_RE.test(id)
     ) {
       return createServerFunctionResponse(400, {
         ok: false,
@@ -264,13 +329,42 @@ export function createServerFunctionHandler(
       });
     }
 
+    let args: unknown[];
+    let captures: unknown[];
+
+    try {
+      const decodedArgs =
+        version === 1 ? deserializeServerFunctionValue(payload.args) : payload.args;
+      const decodedCaptures =
+        version === 1
+          ? deserializeServerFunctionValue(payload.captures ?? serializeServerFunctionValue([]))
+          : payload.captures ?? [];
+
+      if (
+        !Array.isArray(decodedArgs) ||
+        !Array.isArray(decodedCaptures) ||
+        decodedArgs.length > 100 ||
+        decodedCaptures.length > 100
+      ) {
+        throw new TypeError("Invalid argument or capture list.");
+      }
+
+      args = decodedArgs;
+      captures = decodedCaptures;
+    } catch {
+      return createServerFunctionResponse(400, {
+        ok: false,
+        error: "Invalid server-function argument or capture values.",
+      });
+    }
+
     try {
       const implementation = options.resolve
-        ? await options.resolve(payload.id)
+        ? await options.resolve(id)
         : undefined;
       const registered = options.resolve
         ? undefined
-        : implementations.get(payload.id);
+        : implementations.get(id);
 
       if (options.resolve && typeof implementation !== "function") {
         return createServerFunctionResponse(404, {
@@ -286,50 +380,81 @@ export function createServerFunctionHandler(
         });
       }
 
-      const value = await runWithServerFunctionContext(
-        { request: requestForContext, functionId: payload.id },
-        () => {
+      const context = createServerFunctionContext({
+        request: requestForContext,
+        functionId: id,
+        signal: request.signal,
+      });
+
+      let value: unknown;
+      try {
+        value = await runWithServerFunctionContext(context, () => {
           if (options.resolve) {
             return options.resolveWithCaptures
               ? (implementation as unknown as CaptureAwareServerFunctionImplementation)(
-                  payload.captures ?? [],
-                  ...payload.args,
+                  captures,
+                  ...args,
                 )
-              : (implementation as ServerFunctionImplementation)(...payload.args);
+              : (implementation as ServerFunctionImplementation)(...args);
           }
 
           return registered!.implementation(
-            registered!.captureAware ? payload.captures ?? [] : [],
-            ...payload.args,
+            registered!.captureAware ? captures : [],
+            ...args,
           );
-        },
-      );
-
-      let body: string | undefined;
-      try {
-        body = JSON.stringify({ ok: true, value });
-      } catch {
-        return createServerFunctionResponse(500, {
-          ok: false,
-          error: "Server function returned a non-serializable value.",
         });
+      } catch (error) {
+        return createErrorResponse(error, version, exposeErrors, context.response.headers);
       }
 
-      return new Response(body ?? JSON.stringify({ ok: true }), {
-        status: 200,
-        headers: {
-          "content-type": "application/json; charset=utf-8",
-          "cache-control": "no-store",
-          "x-content-type-options": "nosniff",
-        },
-      });
+      let responseValue: unknown = value;
+      if (version === 1) {
+        try {
+          responseValue = serializeServerFunctionValue(value);
+        } catch {
+          return createServerFunctionResponse(500, {
+            version: 1,
+            ok: false,
+            error: {
+              name: "ServerFunctionError",
+              message: "Server function returned a non-serializable value.",
+              code: "SERIALIZATION_ERROR",
+              status: 500,
+            },
+          }, context.response.headers);
+        }
+      } else {
+        try {
+          JSON.stringify({ value });
+        } catch {
+          return createServerFunctionResponse(500, {
+            ok: false,
+            error: "Server function returned a non-serializable value.",
+          }, context.response.headers);
+        }
+      }
+
+      const responsePayload =
+        version === 1
+          ? { version: 1 as const, ok: true as const, value: responseValue }
+          : { ok: true as const, value: responseValue };
+
+      return createServerFunctionResponse(
+        context.response.status,
+        responsePayload,
+        context.response.headers,
+      );
     } catch (error) {
-      return createServerFunctionResponse(500, {
-        ok: false,
-        error: exposeErrors && error instanceof Error ? error.message : "Server function failed.",
-      });
+      return createErrorResponse(error, version, exposeErrors);
     }
   };
 }
 
 export type { ServerFunctionRequestPayload } from "./protocol.ts";
+export { ServerFunctionError, type ServerFunctionErrorData, type ServerFunctionErrorOptions } from "./errors.ts";
+export {
+  registerServerFunctionCodec,
+  serializeServerFunctionValue,
+  deserializeServerFunctionValue,
+  type ServerFunctionCodec,
+} from "./serialization.ts";

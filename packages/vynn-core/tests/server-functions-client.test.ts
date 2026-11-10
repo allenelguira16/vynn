@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createServerReference } from "../src/server-functions/client.ts";
+import { deserializeServerFunctionValue } from "../src/server-functions/serialization.ts";
 
 describe("client server-function references", () => {
   afterEach(() => {
@@ -33,8 +34,18 @@ describe("client server-function references", () => {
         "content-type": "application/json",
         accept: "application/json",
       },
-      body: JSON.stringify({ id, args: ["input"], captures: [] }),
     });
+
+    const payload = JSON.parse(String(init.body)) as {
+      version: number;
+      id: string;
+      args: unknown;
+      captures: unknown;
+    };
+    expect(payload.version).toBe(1);
+    expect(payload.id).toBe(id);
+    expect(deserializeServerFunctionValue(payload.args)).toEqual(["input"]);
+    expect(deserializeServerFunctionValue(payload.captures)).toEqual([]);
   });
 
   it("reads lexical captures at call time and sends them with the arguments", async () => {
@@ -56,11 +67,16 @@ describe("client server-function references", () => {
     await action();
 
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(JSON.parse(String(init.body))).toEqual({
-      id: "vynn_00000000000000000004",
-      args: [],
-      captures: ["latest"],
-    });
+    const payload = JSON.parse(String(init.body)) as {
+      version: number;
+      id: string;
+      args: unknown;
+      captures: unknown;
+    };
+    expect(payload.version).toBe(1);
+    expect(payload.id).toBe("vynn_00000000000000000004");
+    expect(deserializeServerFunctionValue(payload.args)).toEqual([]);
+    expect(deserializeServerFunctionValue(payload.captures)).toEqual(["latest"]);
   });
 
   it("accepts the compiler capture-provider shorthand and uses the default endpoint", async () => {
@@ -81,11 +97,16 @@ describe("client server-function references", () => {
 
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("/__vynn/server-function");
-    expect(JSON.parse(String(init.body))).toEqual({
-      id: "vynn_00000000000000000006",
-      args: [],
-      captures: ["tenant-a"],
-    });
+    const payload = JSON.parse(String(init.body)) as {
+      version: number;
+      id: string;
+      args: unknown;
+      captures: unknown;
+    };
+    expect(payload.version).toBe(1);
+    expect(payload.id).toBe("vynn_00000000000000000006");
+    expect(deserializeServerFunctionValue(payload.args)).toEqual([]);
+    expect(deserializeServerFunctionValue(payload.captures)).toEqual(["tenant-a"]);
   });
 
   it("rejects non-JSON lexical captures before making a request", async () => {
@@ -97,7 +118,7 @@ describe("client server-function references", () => {
       { getCaptures: () => [() => "not serializable"] },
     );
 
-    await expect(action()).rejects.toThrow(/captures must contain only JSON-serializable values/);
+    await expect(action()).rejects.toThrow(/Functions and symbols cannot be sent through server functions/);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
