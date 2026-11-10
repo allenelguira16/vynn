@@ -1,169 +1,182 @@
 import { CodeBlock } from "../components/CodeBlock";
 
-export const EffectPage = () => {
-  return (
-    <div>
-      <h1>$effect</h1>
+export const EffectPage = () => (
+  <div>
+    <h1>$effect</h1>
+    <section>
+      <p>
+        <code>$effect()</code> runs a callback that performs work outside the normal DOM binding
+        process. Vynn tracks reactive values read while the callback runs and schedules the effect
+        again when those dependencies change.
+      </p>
 
-      <section>
-        <p>
-          <code>$effect</code> runs a function that depends on reactive values. Whenever one of
-          those values changes, Vynn schedules the effect to run again. Dependencies are tracked
-          automatically, so you don't need to list them manually.
-        </p>
-
-        <p>
-          Use effects when you need to perform work outside the normal rendering process, such as
-          logging values, synchronizing with browser APIs, or setting up timers and event listeners.
-        </p>
-
-        <h2 class="mt-6">Basic usage</h2>
-
-        <p>
-          An effect runs immediately when it is created. After that, it runs again whenever a
-          reactive value it reads changes.
-        </p>
-
-        <CodeBlock
-          lang="tsx"
-          code={`
-import { $state, $effect } from "vynn";
-import { renderToDOM } from "vynn/client";
+      <h2 class="mt-6">Basic usage</h2>
+      <CodeBlock
+        lang="tsx"
+        code={`
+import { $effect, $state } from "vynn";
 
 function Counter() {
   const count = $state(0);
 
   $effect(() => {
-    console.log("Count is now:", count.value);
+    console.log("Count:", count.value);
   });
 
-  const handleCount = () => {
-    count.value++;
-  };
-
   return (
-    <div>
-      <div>Count: {count.value}</div>
-
-      <button onClick={handleCount}>
-        Add counter
-      </button>
-    </div>
+    <button onClick={() => count.value++}>
+      Increment
+    </button>
   );
 }
+      `}
+      />
+      <p>
+        The callback runs once immediately, so the initial value is logged. Subsequent invalidations
+        are deduplicated and run through Vynn's queued effect phase. The component function itself
+        is not called again just because the count changes.
+      </p>
 
-renderToDOM(Counter, "#app");
-          `}
-        />
+      <h2 class="mt-6">Returning cleanup</h2>
+      <p>
+        Return a function when an effect creates a resource that must be replaced or released. Vynn
+        runs the previous cleanup before the effect executes again, and runs the current cleanup
+        when the effect is disposed.
+      </p>
+      <CodeBlock
+        lang="tsx"
+        code={`
+import { $effect, $state } from "vynn";
 
-        <p>
-          The effect logs the initial value when <code>Counter</code> is created. Every time
-          <code>count.value</code> changes, Vynn schedules it to run again.
-        </p>
-
-        <h2 class="mt-6">Returning a cleanup function</h2>
-
-        <p>
-          Some effects create things that need to be cleaned up, such as intervals, event listeners,
-          or subscriptions. You can return a function from an effect to handle that cleanup.
-        </p>
-
-        <p>
-          Vynn calls the cleanup function before running the effect again. It also calls it when the
-          effect is disposed, such as when its owning component is removed.
-        </p>
-
-        <CodeBlock
-          lang="tsx"
-          code={`
-$effect(() => {
-  const currentCount = count.value;
-
-  const id = setInterval(() => {
-    console.log("Count when timer started:", currentCount);
-  }, 1000);
-
-  return () => {
-    clearInterval(id);
-  };
-});
-          `}
-        />
-
-        <p>
-          Whenever <code>count.value</code> changes, Vynn clears the previous interval before
-          creating a new one. This prevents old intervals from continuing to run.
-        </p>
-
-        <h2 class="mt-6">Working with asynchronous tasks</h2>
-
-        <p>
-          You can start asynchronous work inside an effect, but the effect itself should remain
-          synchronous. Vynn does not wait for a returned Promise before running the effect again or
-          calling its cleanup function.
-        </p>
-
-        <CodeBlock
-          lang="tsx"
-          code={`
-async function logLater(value: number, signal: AbortSignal) {
-  await new Promise((resolve) => setTimeout(resolve, 500));
-
-  if (!signal.aborted) {
-    console.log("Delayed value:", value);
-  }
-}
+const search = $state("");
 
 $effect(() => {
+  const query = search.value;
   const controller = new AbortController();
 
-  // Read the reactive value before starting asynchronous work.
-  void logLater(count.value, controller.signal);
+  void fetch("/api/search?q=" + encodeURIComponent(query), {
+    signal: controller.signal,
+  });
 
   return () => {
     controller.abort();
   };
 });
-          `}
-        />
+      `}
+      />
+      <p>
+        This keeps each request tied to the values that started it. When
+        <code>search.value</code> changes, the previous request is aborted before the next effect
+        run starts.
+      </p>
 
-        <p>
-          Here, the effect reads <code>count.value</code> synchronously, so Vynn tracks it as a
-          dependency. When the value changes, the previous cleanup aborts the task before the effect
-          runs again.
-        </p>
+      <h2 class="mt-6">Asynchronous work</h2>
+      <p>
+        Keep the effect callback synchronous. Vynn does not await a Promise returned by the
+        callback, and an async callback cannot provide a cleanup function synchronously after an{" "}
+        <code>await</code>. Start asynchronous work inside the effect and return cleanup
+        immediately.
+      </p>
+      <CodeBlock
+        lang="tsx"
+        code={`
+import { $effect, $state } from "vynn";
 
-        <p>
-          Keep in mind that reactive reads made after an <code>await</code> are not tracked by the
-          effect. Also, starting an asynchronous task does not automatically cancel it when the
-          effect re-runs. Use an <code>AbortController</code> or another cleanup mechanism when the
-          task needs to be cancelled.
-        </p>
+const userId = $state("42");
 
-        <h2 class="mt-6">API Reference</h2>
-
-        <h3>$effect(callback)</h3>
-
-        <p>Creates a reactive effect and returns a function that disposes it.</p>
-
-        <CodeBlock
-          lang="tsx"
-          code={`
 $effect(() => {
-  // Read reactive values and perform side effects.
+  const controller = new AbortController();
+  const id = userId.value;
 
-  return () => {
-    // Optional cleanup.
-  };
+  void loadUser(id, controller.signal).catch((error) => {
+    if (!controller.signal.aborted) {
+      console.error(error);
+    }
+  });
+
+  return () => controller.abort();
 });
-          `}
-        />
+      `}
+      />
+      <p>
+        Dependency collection happens while the callback is executing. Reads made later by{" "}
+        <code>loadUser()</code>, after an
+        <code>await</code>, or inside an unrelated callback are not automatically tracked by this
+        effect.
+      </p>
 
-        <p>
-          When created inside a component, the effect is automatically disposed with its owning
-          component. You can also call the returned disposer to stop it manually.
-        </p>
-      </section>
-    </div>
-  );
-};
+      <h2 class="mt-6">Manual disposal</h2>
+      <p>
+        <code>$effect()</code> returns a disposer. Effects created while a component owner is active
+        are also registered for automatic cleanup when that owner is disposed.
+      </p>
+      <CodeBlock
+        lang="tsx"
+        code={`
+import { $effect, $state } from "vynn";
+
+const value = $state(0);
+
+const stop = $effect(() => {
+  console.log("Current value:", value.value);
+});
+
+// Stop listening before the owning component is disposed.
+stop();
+      `}
+      />
+
+      <h2 class="mt-6">Avoiding dependency collection with untrack</h2>
+      <p>
+        Sometimes an effect needs to read a value without subscribing to it. Wrap that read in{" "}
+        <code>untrack()</code>. Only reactive reads inside the callback passed to{" "}
+        <code>untrack</code> are excluded from the current effect's dependency set.
+      </p>
+      <CodeBlock
+        lang="tsx"
+        code={`
+import { $effect, $state, untrack } from "vynn";
+
+const activeUserId = $state("42");
+const theme = $state("dark");
+
+$effect(() => {
+  console.log("Active user:", activeUserId.value);
+
+  // This value is read, but does not trigger this effect.
+  console.log("Current theme:", untrack(() => theme.value));
+});
+      `}
+      />
+
+      <h2 class="mt-6">Render-phase effects</h2>
+      <p>
+        The root package also exports <code>$renderEffect()</code>. It has the same dependency and
+        cleanup model, but subsequent executions happen synchronously when the surrounding reactive
+        transaction commits. This is a lower-level scheduling primitive for runtime integrations.
+        Application side effects should normally use
+        <code>$effect()</code>.
+      </p>
+      <CodeBlock
+        lang="tsx"
+        code={`
+import { $renderEffect } from "vynn";
+
+const stop = $renderEffect(() => {
+  // Synchronous render-phase integration work.
+});
+      `}
+      />
+
+      <h2 class="mt-6">API reference</h2>
+      <h3>
+        <code>$effect(callback)</code>
+      </h3>
+      <p>
+        Runs the callback immediately, tracks synchronous reactive reads, and schedules later runs
+        when those dependencies change. The callback can return a synchronous cleanup function. The
+        function returns a disposer.
+      </p>
+    </section>
+  </div>
+);

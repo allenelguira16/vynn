@@ -1,212 +1,202 @@
 import { CodeBlock } from "../components/CodeBlock";
 
-export const AwaitPage = () => {
-  return (
-    <div>
-      <h1>Await</h1>
+export const AwaitPage = () => (
+  <div>
+    <h1>Await</h1>
+    <section>
+      <p>
+        <code>&lt;Await&gt;</code> is an async boundary for a subtree. It displays a fallback when a
+        descendant first reads a pending asynchronous reactive value. When the pending work settles,
+        Vynn renders the children.
+      </p>
+      <p>
+        Async resources are created with <code>$state(async () =&gt; ...)</code>,
+        <code>$store(async () =&gt; ...)</code>, or
+        <code>$computed(() =&gt; Promise)</code>. There is no separate
+        <code>$async()</code> primitive in the current core API.
+      </p>
 
-      <section>
-        <p>
-          <code>&lt;Await&gt;</code> displays a fallback while an asynchronous resource is loading
-          for the first time. Once the resource resolves, the fallback is replaced with the actual
-          content.
-        </p>
-
-        <p>
-          You can use <code>Await</code> with asynchronous resources created by <code>$state</code>,{" "}
-          <code>$store</code>, <code>$computed</code>, and <code>$async</code>. This is useful when
-          a component needs data before it can display its content.
-        </p>
-
-        <h2>Basic usage</h2>
-
-        <p>
-          Pass the loading UI through the <code>fallback</code> prop and put the content that
-          depends on your asynchronous resource inside
-          <code>&lt;Await&gt;</code>.
-        </p>
-
-        <CodeBlock
-          lang="tsx"
-          code={`
+      <h2 class="mt-6">Basic usage</h2>
+      <CodeBlock
+        lang="tsx"
+        code={`
 import { $state, Await } from "vynn";
 
-function App() {
+function Message() {
   const message = $state(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-
-    return "Hello, world!";
+    const response = await fetch("/api/message");
+    if (!response.ok) throw new Error("Could not load the message");
+    return (await response.json()) as { text: string };
   });
 
   return (
     <Await fallback={<p>Loading message...</p>}>
-      <h1>{message.value}</h1>
+      <p>{message.value.text}</p>
     </Await>
   );
 }
-          `}
-        />
+      `}
+      />
+      <p>
+        The resource starts when it is created. Reading
+        <code>message.value</code> while its first request is pending suspends that part of the
+        render. The nearest <code>&lt;Await&gt;</code>
+        catches the pending read and displays its fallback.
+      </p>
 
-        <p>
-          While the asynchronous state is pending, the fallback is displayed. Once it resolves, the
-          component displays <code>Hello, world!</code>.
-        </p>
+      <h2 class="mt-6">What Await does and does not do</h2>
+      <ul>
+        <li>It handles pending asynchronous reads from descendants.</li>
+        <li>
+          Its <code>fallback</code> prop is optional.
+        </li>
+        <li>
+          It does not catch rejected operations. Use <code>&lt;ErrorBoundary&gt;</code> for errors.
+        </li>
+        <li>
+          It does not require every async resource to be wrapped. You can use{" "}
+          <code>isPending()</code> and render loading UI yourself.
+        </li>
+        <li>
+          On the client, the fallback is for the initial pending display. Once the children have
+          rendered successfully, later refreshes keep the existing content visible.
+        </li>
+      </ul>
 
-        <h2>How it works</h2>
+      <h2 class="mt-6">Refreshing while keeping the current view</h2>
+      <p>
+        Async <code>$state</code>, <code>$store</code>, and
+        <code>$computed</code> resources retain their last successfully resolved value while a
+        replacement computation is pending. This makes refreshes different from the initial load.
+      </p>
+      <CodeBlock
+        lang="tsx"
+        code={`
+import { $state, Await, isPending } from "vynn";
 
-        <p>
-          <code>Await</code> handles the initial loading state of its children. Here's what happens:
-        </p>
+type User = { id: number; name: string };
 
-        <ol>
-          <li>
-            When a child reads a pending asynchronous resource, Vynn registers its pending promise
-            with the nearest <code>Await</code>
-            boundary.
-          </li>
-          <li>The fallback is displayed while the initial asynchronous operation is pending.</li>
-          <li>Once the operation resolves, the fallback is replaced with the actual children.</li>
-          <li>
-            On subsequent updates, the existing content remains visible instead of showing the
-            fallback again.
-          </li>
-        </ol>
-
-        <p>
-          Unlike React's <code>Suspense</code>, <code>Await</code> does not repeatedly replace its
-          children with the fallback every time an asynchronous dependency changes. It is designed
-          to handle the initial loading state without unnecessarily hiding already displayed
-          content.
-        </p>
-
-        <h2>Updating asynchronous resources</h2>
-
-        <p>
-          Consider a component that loads a user based on a reactive ID. When the ID changes, the
-          asynchronous resource runs again.
-        </p>
-
-        <CodeBlock
-          lang="tsx"
-          code={`
-import { $state, Await } from "vynn";
-
-function UserProfile() {
+function UserPanel() {
   const userId = $state(1);
 
   const user = $state(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-
-    return {
-      id: userId.value,
-      name: \`User \${userId.value}\`,
-    };
+    const id = userId.value;
+    const response = await fetch("/api/users/" + id);
+    if (!response.ok) throw new Error("Could not load user");
+    return (await response.json()) as User;
   });
 
   return (
-    <Await fallback={<p>Loading user...</p>}>
-      <div>
+    <Await fallback={<p>Loading the first user...</p>}>
+      <section>
         <h2>{user.value.name}</h2>
-        <p>User ID: {user.value.id}</p>
-      </div>
+        {isPending(user) ? <p>Refreshing...</p> : null}
+        <button onClick={() => userId.value++}>Load next user</button>
+      </section>
     </Await>
   );
 }
-          `}
-        />
+      `}
+      />
+      <p>
+        The resource reads <code>userId.value</code> before its first
+        <code>await</code>, so that read becomes a dependency. Changing the ID starts a new request.
+        The previous user remains readable while the request is running, and{" "}
+        <code>isPending(user)</code> exposes the refresh state.
+      </p>
 
-        <p>
-          After the initial load, changing <code>userId</code> triggers another request. The
-          previously resolved content remains visible while the resource refreshes.
-        </p>
-
-        <p>
-          This behavior is provided by Vynn's asynchronous derived state, which retains its last
-          resolved value while computing a new one.
-          <code>Await</code> does not show its fallback again for that subsequent update.
-        </p>
-
-        <h2>Loading multiple resources</h2>
-
-        <p>
-          When a component depends on multiple requests, you can combine them using{" "}
-          <code>Promise.all()</code> inside a single asynchronous resource. This makes sure all the
-          required data is ready before displaying the content.
-        </p>
-
-        <CodeBlock
-          lang="tsx"
-          code={`
+      <h2 class="mt-6">Multiple asynchronous dependencies</h2>
+      <p>
+        A child tree can read more than one async resource. The boundary waits for the pending work
+        registered by its descendants before it can display the complete children.
+      </p>
+      <CodeBlock
+        lang="tsx"
+        code={`
 import { $state, Await } from "vynn";
 
 function Dashboard() {
-  const dashboard = $state(async () => {
-    const [userResponse, postsResponse] = await Promise.all([
-      fetch("/api/user"),
-      fetch("/api/posts"),
-    ]);
+  const user = $state(async () => {
+    const response = await fetch("/api/user");
+    if (!response.ok) throw new Error("Could not load user");
+    return response.json() as Promise<{ name: string }>;
+  });
 
-    const [user, posts] = await Promise.all([
-      userResponse.json(),
-      postsResponse.json(),
-    ]);
-
-    return { user, posts };
+  const posts = $state(async () => {
+    const response = await fetch("/api/posts");
+    if (!response.ok) throw new Error("Could not load posts");
+    return response.json() as Promise<Array<{ id: number; title: string }>>;
   });
 
   return (
     <Await fallback={<p>Loading dashboard...</p>}>
-      <div>
-        <h2>{dashboard.value.user.name}</h2>
-
-        <ul>
-          {dashboard.value.posts.map((post) => (
-            <li>{post.title}</li>
-          ))}
-        </ul>
-      </div>
+      <h1>{user.value.name}</h1>
+      <ul>{posts.value.map((post) => <li>{post.title}</li>)}</ul>
     </Await>
   );
 }
-          `}
-        />
+      `}
+      />
 
-        <h2>Handling errors</h2>
+      <h2 class="mt-6">Manual loading UI without Await</h2>
+      <p>
+        <code>Await</code> is a convenience, not a requirement. When you want to control the loading
+        branch directly, check <code>isPending()</code>
+        before reading the resource value.
+      </p>
+      <CodeBlock
+        lang="tsx"
+        code={`
+import { $state, isPending } from "vynn";
 
-        <p>
-          <code>Await</code> handles pending asynchronous resources, not rejected promises. When an
-          asynchronous operation fails, the error should be handled using <code>ErrorBoundary</code>
-          .
-        </p>
+function Status() {
+  const status = $state(async () => {
+    const response = await fetch("/api/status");
+    if (!response.ok) throw new Error("Could not load status");
+    return response.text();
+  });
 
-        <p>
-          You can combine both components to provide a loading state and an error fallback for the
-          same piece of content.
-        </p>
+  return (
+    <div>
+      {isPending(status)
+        ? <p>Loading status...</p>
+        : <p>Status: {status.value}</p>}
+    </div>
+  );
+}
+      `}
+      />
+      <p>
+        Avoid reading <code>status.value</code> during its first pending operation. The conditional
+        above only reads the value once it is available. After a successful first load, the old
+        value remains readable during refreshes.
+      </p>
 
-        <CodeBlock
-          lang="tsx"
-          code={`
+      <h2 class="mt-6">Error handling</h2>
+      <p>
+        A rejected resource throws its error when read. Pair
+        <code>&lt;Await&gt;</code> with <code>&lt;ErrorBoundary&gt;</code>
+        when the same subtree needs both a loading fallback and an error fallback.
+      </p>
+      <CodeBlock
+        lang="tsx"
+        code={`
 import { $state, Await, ErrorBoundary } from "vynn";
 
-function App() {
+function UserName() {
   const user = $state(async () => {
     const response = await fetch("/api/user");
-
-    if (!response.ok) {
-      throw new Error("Failed to load user");
-    }
-
-    return response.json();
+    if (!response.ok) throw new Error("Could not load user");
+    return response.json() as Promise<{ name: string }>;
   });
 
   return (
     <ErrorBoundary
       fallback={(error, reset) => (
-        <div>
+        <section>
           <p>{error.message}</p>
           <button onClick={reset}>Try again</button>
-        </div>
+        </section>
       )}
     >
       <Await fallback={<p>Loading user...</p>}>
@@ -215,9 +205,26 @@ function App() {
     </ErrorBoundary>
   );
 }
-          `}
-        />
-      </section>
-    </div>
-  );
-};
+      `}
+      />
+
+      <h2 class="mt-6">Server rendering behavior</h2>
+      <p>
+        With synchronous or async SSR, pending work is resolved before the complete HTML result is
+        returned. With streaming SSR, Vynn can emit the fallback in the initial stream and send a
+        later patch when the children are ready. The server renderer owns this streaming protocol;
+        the component API stays the same.
+      </p>
+
+      <h2 class="mt-6">API reference</h2>
+      <h3>
+        <code>&lt;Await fallback?&gt;</code>
+      </h3>
+      <p>
+        Receives an optional <code>fallback</code> JSX element and required
+        <code>children</code>. The fallback is used for pending async reads during the initial
+        display of the children.
+      </p>
+    </section>
+  </div>
+);

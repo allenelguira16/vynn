@@ -1,57 +1,29 @@
 import { CodeBlock } from "../components/CodeBlock";
 
-export const IntroductionPage = () => {
-  return (
-    <div>
-      <h1>Introduction</h1>
+export const IntroductionPage = () => (
+  <div>
+    <h1>Vynn Core</h1>
+    <section>
+      <p>
+        <strong>Vynn</strong> is a TypeScript UI runtime for building browser interfaces with JSX
+        and fine-grained reactivity. Components create their UI and reactive computations; changes
+        are then propagated to the specific expressions, attributes, and effects that depend on
+        them.
+      </p>
+      <p>
+        This guide covers <code>vynn-core</code>: reactive primitives, component utilities,
+        lifecycle, client rendering, server rendering, and the server-function runtime. The Vynn
+        compiler and Vynn router have their own documentation and are intentionally outside this
+        guide.
+      </p>
 
-      <section>
-        <p>
-          <strong>Vynn</strong> is a TypeScript UI framework for building reactive web applications
-          with JSX. It combines familiar component composition with fine-grained reactivity,
-          updating the DOM directly when the values it depends on change.
-        </p>
-
-        <p>
-          Instead of re-rendering components and comparing virtual DOM trees, Vynn tracks reactive
-          dependencies and updates only the affected parts of the interface. You can write your UI
-          using components, ordinary JavaScript, and a small set of reactive primitives.
-        </p>
-
-        <h2 class="mt-6">Why Vynn?</h2>
-
-        <ul>
-          <li>Write components using TypeScript and JSX.</li>
-          <li>
-            Build reactive interfaces with <code>$state()</code> and
-            <code> $store()</code>.
-          </li>
-          <li>
-            Derive values with <code>$computed()</code> and run side effects with{" "}
-            <code>$effect()</code>.
-          </li>
-          <li>Organize shared logic and application state using contexts.</li>
-          <li>
-            Handle asynchronous resources with <code>$async()</code> and <code>&lt;Await&gt;</code>.
-          </li>
-          <li>
-            Handle rendering errors with <code>&lt;ErrorBoundary&gt;</code>.
-          </li>
-          <li>Render applications on the server and hydrate them in the browser.</li>
-          <li>Use the Vynn router for client-side navigation and route handling.</li>
-        </ul>
-
-        <h2 class="mt-6">How it works</h2>
-
-        <p>Here's a simple counter:</p>
-
-        <CodeBlock
-          lang="tsx"
-          code={`
+      <h2 class="mt-6">A first component</h2>
+      <CodeBlock
+        lang="tsx"
+        code={`
 import { $state } from "vynn";
-import { renderToDOM } from "vynn/client";
 
-function App() {
+export function Counter() {
   const count = $state(0);
 
   return (
@@ -60,91 +32,132 @@ function App() {
     </button>
   );
 }
+      `}
+      />
+      <p>
+        <code>$state()</code> creates a reactive value. Reading
+        <code>count.value</code> inside JSX establishes a dependency. Updating that value updates
+        the affected text without calling the component function again.
+      </p>
 
-renderToDOM(App, "#app");
-          `}
-        />
+      <h2 class="mt-6">The core building blocks</h2>
+      <ul>
+        <li>
+          <strong>
+            <code>$state()</code>
+          </strong>{" "}
+          stores one reactive value and also supports writable asynchronous derived state.
+        </li>
+        <li>
+          <strong>
+            <code>$store()</code>
+          </strong>{" "}
+          creates a deeply reactive proxy for objects, arrays, and supported native collections.
+        </li>
+        <li>
+          <strong>
+            <code>$computed()</code>
+          </strong>{" "}
+          derives a read-only value from other reactive values. Its getter can be synchronous or
+          asynchronous.
+        </li>
+        <li>
+          <strong>
+            <code>$effect()</code>
+          </strong>{" "}
+          runs side effects when reactive values read by its callback change.
+        </li>
+        <li>
+          <strong>
+            <code>isPending()</code> and <code>&lt;Await&gt;</code>
+          </strong>{" "}
+          let you handle the initial pending state of asynchronous resources.
+        </li>
+        <li>
+          <strong>
+            <code>createContext()</code>
+          </strong>{" "}
+          shares a value with descendants without threading it through every component.
+        </li>
+        <li>
+          <strong>
+            <code>onMount()</code> and <code>onDestroy()</code>
+          </strong>{" "}
+          attach setup and cleanup work to a component's lifetime.
+        </li>
+        <li>
+          <strong>
+            <code>&lt;ErrorBoundary&gt;</code>, <code>lazy()</code>, and <code>&lt;Portal&gt;</code>
+          </strong>{" "}
+          provide error handling, lazy component loading, and rendering into another DOM node.
+        </li>
+      </ul>
 
-        <p>
-          <code>$state()</code> creates a reactive value. When
-          <code>count.value</code> changes, Vynn updates the text displayed inside the button
-          without re-running the entire component.
-        </p>
+      <h2 class="mt-6">Core entry points</h2>
+      <p>
+        Most reactive primitives and components come from the package root. Rendering functions live
+        in dedicated entry points so browser and server code can import only the runtime they need.
+      </p>
+      <CodeBlock
+        lang="tsx"
+        code={`
+import { $computed, $effect, $state, $store, Await } from "vynn";
+import { renderToDOM, hydrateToDOM } from "vynn/client";
+import { renderToServer } from "vynn/server";
+import { createListener } from "vynn/server/node";
+      `}
+      />
+      <ul>
+        <li>
+          <code>vynn</code>: reactive primitives, components, context, lifecycle APIs, and core
+          TypeScript types.
+        </li>
+        <li>
+          <code>vynn/client</code>: <code>renderToDOM()</code> and <code>hydrateToDOM()</code>.
+        </li>
+        <li>
+          <code>vynn/server</code>: <code>renderToServer()</code>, server-function runtime, and SSR
+          helpers.
+        </li>
+        <li>
+          <code>vynn/server/node</code>: adapters between Node HTTP and Web-standard
+          Request/Response objects.
+        </li>
+        <li>
+          <code>vynn/server-functions/client</code>: client-side server-function references and
+          invocation helpers.
+        </li>
+      </ul>
 
-        <p>
-          You don't need to manually subscribe to changes or tell Vynn which parts of the UI should
-          update. Dependencies are tracked as your application runs.
-        </p>
-
-        <h2 class="mt-6">Core concepts</h2>
-
-        <ul>
-          <li>
-            <strong>
-              <code>$state()</code>
-            </strong>{" "}
-            - Holds a reactive value. It also supports asynchronous derived state.
-          </li>
-          <li>
-            <strong>
-              <code>$store()</code>
-            </strong>{" "}
-            - Creates deeply reactive objects and arrays, with native collection support.
-          </li>
-          <li>
-            <strong>
-              <code>$computed()</code>
-            </strong>{" "}
-            - Derives a value from other reactive values.
-          </li>
-          <li>
-            <strong>
-              <code>$effect()</code>
-            </strong>{" "}
-            - Runs side effects when their reactive dependencies change.
-          </li>
-          <li>
-            <strong>
-              <code>$async()</code>
-            </strong>{" "}
-            - Manages asynchronous computations that can suspend while pending.
-          </li>
-          <li>
-            <strong>
-              <code>createContext()</code>
-            </strong>{" "}
-            - Shares values between components without passing them through every level.
-          </li>
-          <li>
-            <strong>
-              <code>onMount()</code> and <code>onDestroy()</code>
-            </strong>{" "}
-            - Run code when a component is mounted or destroyed.
-          </li>
-        </ul>
-
-        <h2 class="mt-6">Where to go next</h2>
-
-        <p>
-          If you're new to Vynn, start with the installation guide and work through the core
-          concepts. You can explore the other features once you're comfortable with the basics.
-        </p>
-
-        <ul>
-          <li>
-            <code>/docs/installation</code> - Install Vynn and set up your project.
-          </li>
-          <li>
-            <code>/docs/core-concepts/state</code> - Learn how reactive state works.
-          </li>
-          <li>
-            <code>/docs/core-concepts/store</code> - Work with reactive objects and arrays.
-          </li>
-          <li>
-            <code>/docs/routing</code> - Add navigation and route handling.
-          </li>
-        </ul>
-      </section>
-    </div>
-  );
-};
+      <h2 class="mt-6">Where to go next</h2>
+      <p>
+        Learn the reactive primitives first, then explore async rendering, component utilities, and
+        the runtime entry points.
+      </p>
+      <ul>
+        <li>
+          <code>/docs/reactivity/state</code> - primitive and asynchronous state.
+        </li>
+        <li>
+          <code>/docs/reactivity/store</code> - nested objects, arrays, and collections.
+        </li>
+        <li>
+          <code>/docs/reactivity/computed</code> - synchronous and asynchronous derived values.
+        </li>
+        <li>
+          <code>/docs/rendering/client</code> and <code>/docs/rendering/server</code> - mounting,
+          hydration, and SSR.
+        </li>
+        <li>
+          <code>/docs/life-cycles/owners</code> - the owner lifecycle behind component-scoped work.
+        </li>
+        <li>
+          <code>/docs/utilities/types</code> - JSX and component prop types.
+        </li>
+        <li>
+          <code>/docs/server/functions</code> - the client/server function runtime.
+        </li>
+      </ul>
+    </section>
+  </div>
+);

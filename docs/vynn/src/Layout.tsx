@@ -3,8 +3,6 @@ import { isActiveRoute, Link } from "vynn-router";
 
 import vynnLogo from "./assets/vynn.svg";
 
-// const getStartedLinks = ;
-
 const links = [
   {
     title: "Getting Started",
@@ -15,19 +13,22 @@ const links = [
     ],
   },
   {
-    title: "Life Cycles",
-    items: [
-      { label: "onMount", href: "/docs/life-cycles/on-mount" },
-      { label: "onDestroy", href: "/docs/life-cycles/on-destroy" },
-    ],
-  },
-  {
     title: "Reactivity",
     items: [
       { label: "$state", href: "/docs/reactivity/state" },
       { label: "$store", href: "/docs/reactivity/store" },
       { label: "$computed", href: "/docs/reactivity/computed" },
       { label: "$effect", href: "/docs/reactivity/effect" },
+      { label: "untrack", href: "/docs/reactivity/untrack" },
+    ],
+  },
+  {
+    title: "Lifecycle and Context",
+    items: [
+      { label: "onMount", href: "/docs/life-cycles/on-mount" },
+      { label: "onDestroy", href: "/docs/life-cycles/on-destroy" },
+      { label: "Owners", href: "/docs/life-cycles/owners" },
+      { label: "Contexts", href: "/docs/utilities/context" },
     ],
   },
   {
@@ -35,15 +36,25 @@ const links = [
     items: [
       { label: "Await", href: "/docs/components/await" },
       { label: "ErrorBoundary", href: "/docs/components/error-boundary" },
+      { label: "Portal", href: "/docs/components/portal" },
+      { label: "lazy", href: "/docs/utilities/lazy" },
+      { label: "isPending", href: "/docs/utilities/is-pending" },
     ],
   },
   {
-    title: "Utilities",
+    title: "Rendering",
     items: [
-      { label: "lazy", href: "/docs/utilities/lazy" },
-      { label: "isPending", href: "/docs/utilities/is-pending" },
-      { label: "context", href: "/docs/utilities/context" },
+      { label: "Client rendering", href: "/docs/rendering/client" },
+      { label: "Server rendering", href: "/docs/rendering/server" },
     ],
+  },
+  {
+    title: "Server Runtime",
+    items: [{ label: "Server functions", href: "/docs/server/functions" }],
+  },
+  {
+    title: "TypeScript",
+    items: [{ label: "Core types", href: "/docs/utilities/types" }],
   },
 ];
 
@@ -104,13 +115,11 @@ export default function Layout({ children }: PropsWithChildren) {
               ></path>
             </svg>
           </label>
-
           <Link href="/" class="flex items-center gap-2 p-4 text-xl not-prose">
             <img src={vynnLogo} class="w-4" alt="Vynn logo" />
             <span>Vynn</span>
           </Link>
         </div>
-
         {children}
       </div>
     </div>
