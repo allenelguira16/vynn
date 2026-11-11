@@ -10,6 +10,7 @@ export type {
 
 export type { MemoryHistory, MemoryHistoryOptions, RouterHistory } from "./history";
 
+export { toFileRouter } from "./file-router";
 export { createBrowserHistory, createMemoryHistory } from "./history";
 export { createRouter } from "./create-router";
 export { $location, navigate, replace } from "./location";

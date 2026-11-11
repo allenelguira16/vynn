@@ -1,13 +1,11 @@
 import "./main.css";
 import { $state, Await, onDestroy, onMount } from "vynn";
-import { createRouter, Router } from "vynn-router";
-
-import { routes } from "./routes";
+import { createRouter, Router, toFileRouter } from "vynn-router";
 
 export default function App(props: { url: string }) {
   const counter = $state(0);
   const router = createRouter({
-    routes,
+    routes: toFileRouter("/src/app"),
     url: props.url,
   });
 

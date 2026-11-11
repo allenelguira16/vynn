@@ -23,7 +23,7 @@ export type BeforeLoadContext<TContext = undefined> = {
 };
 
 export type Route<TContext = undefined> = {
-  /** A terminal \`*\` matches any remaining path segments. Its value is available as params["*"]. */
+  /** A terminal `*` captures one or more segments; `*?` captures zero or more. */
   path: string;
   component: FC<PropsWithChildren>;
   beforeLoad?: (context: BeforeLoadContext<TContext>) => unknown;

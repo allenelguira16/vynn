@@ -15,10 +15,10 @@ export function toSegments(path: string): string[] {
   return normalizePath(path).split("/").filter(Boolean);
 }
 
-/** Returns whether a route pattern ends with a catch-all segment. */
+/** Returns whether a route pattern ends with a required or optional catch-all segment. */
 export function isCatchAllPath(path: string): boolean {
   const segments = toSegments(path);
-  return segments[segments.length - 1] === "*";
+  return segments[segments.length - 1] === "*" || segments[segments.length - 1] === "*?";
 }
 
 /** Decodes a path segment without failing on malformed percent escapes. */
@@ -35,9 +35,13 @@ export function getRouteParam(path: string, name: string, location: Location): s
   const routeSegments = toSegments(path);
   const pathnameSegments = toSegments(location.pathname);
   const hasWildcard = isCatchAllPath(path);
+  const requiresWildcardSegment = routeSegments[routeSegments.length - 1] === "*";
   const matchedSegmentCount = routeSegments.length - (hasWildcard ? 1 : 0);
 
-  if (pathnameSegments.length < matchedSegmentCount) {
+  if (
+    pathnameSegments.length < matchedSegmentCount ||
+    (requiresWildcardSegment && pathnameSegments.length === matchedSegmentCount)
+  ) {
     return undefined;
   }
 
@@ -68,10 +72,14 @@ export function getRouteParams(path: string, location: Location): RouteParams {
   const routeSegments = toSegments(path);
   const pathnameSegments = toSegments(location.pathname);
   const hasWildcard = isCatchAllPath(path);
+  const requiresWildcardSegment = routeSegments[routeSegments.length - 1] === "*";
   const matchedSegmentCount = routeSegments.length - (hasWildcard ? 1 : 0);
   const params: Record<string, string | undefined> = {};
 
-  if (pathnameSegments.length < matchedSegmentCount) {
+  if (
+    pathnameSegments.length < matchedSegmentCount ||
+    (requiresWildcardSegment && pathnameSegments.length === matchedSegmentCount)
+  ) {
     return params;
   }
 
@@ -105,10 +113,13 @@ export function matchRoute(targetPath: string, exact: boolean, location: Locatio
 
   if (target === "/") return exact ? pathname === "/" : true;
 
-  const hasWildcard = targetSegments[targetSegments.length - 1] === "*";
+  const wildcardSegment = targetSegments[targetSegments.length - 1];
+  const hasWildcard = wildcardSegment === "*" || wildcardSegment === "*?";
+  const requiresWildcardSegment = wildcardSegment === "*";
   const matchedSegmentCount = targetSegments.length - (hasWildcard ? 1 : 0);
 
   if (pathnameSegments.length < matchedSegmentCount) return false;
+  if (requiresWildcardSegment && pathnameSegments.length === matchedSegmentCount) return false;
   if (exact && !hasWildcard && pathnameSegments.length !== matchedSegmentCount) {
     return false;
   }

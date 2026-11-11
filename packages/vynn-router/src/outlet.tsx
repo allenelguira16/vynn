@@ -5,8 +5,9 @@ import type { Location, Route } from "./types";
 import { RoutePathProvider } from "./context";
 import { isServer } from "./environment";
 import { currentLocation } from "./location";
-import { getRouteParams, isCatchAllPath, joinPaths, matchRoute, toSegments } from "./path";
+import { getRouteParams, joinPaths, matchRoute, toSegments } from "./path";
 import { commitClientRedirect, isClientRedirect } from "./redirect";
+import { PATHLESS_ROUTE, REQUIRE_CHILD_MATCH, type InternalRoute } from "./route-meta";
 
 type NotReadyErrorLike = Error & {
   promise: Promise<unknown>;
@@ -34,7 +35,7 @@ type RouteGuardResult =
 /** Assigns a lexicographic specificity score to a route pattern. */
 function getRouteSpecificity(path: string): number[] {
   return toSegments(path).map((segment) => {
-    if (segment === "*") return 0;
+    if (segment === "*" || segment === "*?") return 0;
     if (segment.startsWith(":")) return 1;
     return 2;
   });
@@ -53,9 +54,54 @@ function compareSpecificity(left: string, right: string): number {
   return 0;
 }
 
+/** Finds the most specific URL path reachable inside a pathless route branch. */
+function findPathlessMatchPath<TContext = undefined>(
+  routes: Route<TContext>[],
+  location: ReturnType<typeof currentLocation>,
+  parentPath: string,
+): string | undefined {
+  let bestPath: string | undefined;
+
+  for (const route of routes) {
+    const internalRoute = route as InternalRoute<TContext>;
+    const isPathless = internalRoute[PATHLESS_ROUTE] === true;
+    const requiresChildMatch = internalRoute[REQUIRE_CHILD_MATCH] === true;
+    const fullPath = isPathless ? parentPath : joinPaths(parentPath, route.path);
+    const children = route.children ?? [];
+    const hasChildren = children.length > 0;
+
+    if (isPathless) {
+      const nestedPath = findPathlessMatchPath(children, location, fullPath);
+      if (nestedPath && (!bestPath || compareSpecificity(nestedPath, bestPath) > 0)) {
+        bestPath = nestedPath;
+      }
+      continue;
+    }
+
+    if (!matchRoute(fullPath, !hasChildren, location)) continue;
+
+    const nestedPath = hasChildren
+      ? findPathlessMatchPath(children, location, fullPath)
+      : undefined;
+    if (requiresChildMatch && !nestedPath) continue;
+
+    const candidatePath = nestedPath ?? fullPath;
+
+    if (!bestPath || compareSpecificity(candidatePath, bestPath) > 0) {
+      bestPath = candidatePath;
+    }
+  }
+
+  return bestPath;
+}
+
 /** Returns whether a catch-all route matches without consuming a path segment. */
 function isEmptyCatchAllMatch(path: string, pathname: string): boolean {
-  return isCatchAllPath(path) && toSegments(pathname).length === toSegments(path).length - 1;
+  const routeSegments = toSegments(path);
+  return (
+    routeSegments[routeSegments.length - 1] === "*?" &&
+    toSegments(pathname).length === routeSegments.length - 1
+  );
 }
 
 /** Finds the most specific route selected by the current outlet. */
@@ -65,10 +111,45 @@ export function findMatch<TContext = undefined>(
   parentPath = "",
 ): MatchedRoute<TContext> | undefined {
   let bestMatch: MatchedRoute<TContext> | undefined;
+  let bestScorePath: string | undefined;
 
   for (const route of routes) {
-    const fullPath = joinPaths(parentPath, route.path);
+    const internalRoute = route as InternalRoute<TContext>;
+    const isPathless = internalRoute[PATHLESS_ROUTE] === true;
+    const requiresChildMatch = internalRoute[REQUIRE_CHILD_MATCH] === true;
+    const fullPath = isPathless ? parentPath : joinPaths(parentPath, route.path);
     const hasChildren = !!route.children?.length;
+
+    if (isPathless || requiresChildMatch) {
+      // A route group has no URL segment of its own. A folder with no page
+      // must also resolve through a descendant so its layout does not create
+      // a public route by itself.
+      if (!isPathless && !matchRoute(fullPath, false, location)) {
+        continue;
+      }
+
+      const descendantPath = findPathlessMatchPath(route.children ?? [], location, fullPath);
+      if (!descendantPath) continue;
+
+      const nextIsEmptyCatchAll = isEmptyCatchAllMatch(descendantPath, location.pathname);
+      const bestIsEmptyCatchAll = bestScorePath
+        ? isEmptyCatchAllMatch(bestScorePath, location.pathname)
+        : false;
+
+      if (bestScorePath && nextIsEmptyCatchAll !== bestIsEmptyCatchAll) {
+        if (nextIsEmptyCatchAll) continue;
+        bestMatch = { route, fullPath };
+        bestScorePath = descendantPath;
+        continue;
+      }
+
+      if (!bestScorePath || compareSpecificity(descendantPath, bestScorePath) > 0) {
+        bestMatch = { route, fullPath };
+        bestScorePath = descendantPath;
+      }
+
+      continue;
+    }
 
     if (!matchRoute(fullPath, !hasChildren, location)) {
       continue;
@@ -76,7 +157,9 @@ export function findMatch<TContext = undefined>(
 
     if (bestMatch) {
       const nextIsEmptyCatchAll = isEmptyCatchAllMatch(fullPath, location.pathname);
-      const bestIsEmptyCatchAll = isEmptyCatchAllMatch(bestMatch.fullPath, location.pathname);
+      const bestIsEmptyCatchAll = bestScorePath
+        ? isEmptyCatchAllMatch(bestScorePath, location.pathname)
+        : isEmptyCatchAllMatch(bestMatch.fullPath, location.pathname);
 
       // A terminal wildcard may match without capturing any segments. In that
       // case it is only a fallback and must not shadow an exact route such as
@@ -87,15 +170,16 @@ export function findMatch<TContext = undefined>(
         }
 
         bestMatch = { route, fullPath };
+        bestScorePath = fullPath;
         continue;
       }
     }
 
-    if (!bestMatch || compareSpecificity(fullPath, bestMatch.fullPath) > 0) {
+    if (!bestScorePath || compareSpecificity(fullPath, bestScorePath) > 0) {
       bestMatch = { route, fullPath };
+      bestScorePath = fullPath;
     }
   }
-
   return bestMatch;
 }
 

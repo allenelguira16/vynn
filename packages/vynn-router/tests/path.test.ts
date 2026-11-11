@@ -58,6 +58,15 @@ describe("path utilities", () => {
     expect(getRouteParam("/users/:id", "id", location("/users/%E0%A4%A"))).toBe("%E0%A4%A");
   });
 
+  it("distinguishes required and optional catch-all segments", () => {
+    expect(matchRoute("/files/*", true, location("/files"))).toBe(false);
+    expect(matchRoute("/files/*", true, location("/files/a"))).toBe(true);
+
+    expect(matchRoute("/files/*?", true, location("/files"))).toBe(true);
+    expect(getRouteParams("/files/*?", location("/files"))).toEqual({ "*": "" });
+    expect(getRouteParams("/files/*", location("/files"))).toEqual({});
+  });
+
   it("returns no parameter when the route prefix does not match", () => {
     expect(getRouteParam("/users/:id", "id", location("/posts/42"))).toBeUndefined();
     expect(getRouteParams("/users/:id", location("/posts/42"))).toEqual({});

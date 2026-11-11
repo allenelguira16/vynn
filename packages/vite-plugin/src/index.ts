@@ -3,6 +3,7 @@ import type { Plugin } from "vite";
 import type { RenderMode } from "vynn";
 
 import { vynnAppPlugin } from "./plugins/app/index.ts";
+import { vynnFileRouterPlugin } from "./plugins/file-router.ts";
 import { vynnOxcPlugin } from "./plugins/jsx-transpiler.ts";
 import { vynnNodeAdapterPlugin } from "./plugins/node-adapter.ts";
 import {
@@ -37,7 +38,7 @@ export type VynnPluginOptions = {
  * Server functions are optional and can also be used without SSR.
  */
 export default function vynn(options: VynnPluginOptions = {}) {
-  const plugins: Plugin[] = [vynnOxcPlugin()];
+  const plugins: Plugin[] = [vynnFileRouterPlugin(), vynnOxcPlugin()];
 
   const ssrCss = options.ssr ? createVynnSsrCssPlugin() : undefined;
   const ssrPreload = options.ssr ? vynnSsrPreloadPlugin() : undefined;
@@ -79,5 +80,4 @@ export default function vynn(options: VynnPluginOptions = {}) {
 export function serverFunctions(options: VynnServerFunctionsOptions = {}) {
   return serverFunctionsPlugin(options);
 }
-
 export type { VynnServerFunctionsOptions };
