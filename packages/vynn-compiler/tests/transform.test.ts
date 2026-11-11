@@ -3,6 +3,22 @@ import { describe, expect, it } from "vitest";
 import { transformVynnOxc, transformVynnOxcWithMap } from "../src/index.ts";
 
 describe("Vynn Oxc JSX compiler", () => {
+  it("preserves dollar-prefixed runtime helper names in generated aliases", () => {
+    const code = transformVynnOxc(
+      `function Greeting(props: { name: string }) {
+        return <h1>Hello {props.name}</h1>;
+      }`,
+      "greeting.tsx",
+    );
+
+    expect(code).toContain("$cmpnt as _$cmpnt");
+    expect(code).toContain("$tmpl as _$tmpl");
+    expect(code).toContain("$txt as _$txt");
+    expect(code).toContain("$insert as _$insert");
+    expect(code).toContain("_$cmpnt(function Greeting");
+    expect(code).not.toContain("$cmpnt as _cmpnt");
+  });
+
   it("preserves whitespace between an inline element and following text", () => {
     const code = transformVynnOxc(
       `function Intro() {
@@ -32,9 +48,9 @@ describe("Vynn Oxc JSX compiler", () => {
       "status.tsx",
     );
 
-    expect(code).toContain("_cmpnt(function Status");
-    expect(code).toContain('_tmpl("div")');
-    expect(code).toContain('_tmpl("section")');
+    expect(code).toContain("_$cmpnt(function Status");
+    expect(code).toContain('_$tmpl("div")');
+    expect(code).toContain('_$tmpl("section")');
   });
 
   it("wraps function components whose returns are nested in switch cases", () => {
@@ -50,9 +66,9 @@ describe("Vynn Oxc JSX compiler", () => {
       "status.tsx",
     );
 
-    expect(code).toContain("_cmpnt(function Status");
-    expect(code).toContain('_tmpl("strong")');
-    expect(code).toContain('_tmpl("em")');
+    expect(code).toContain("_$cmpnt(function Status");
+    expect(code).toContain('_$tmpl("strong")');
+    expect(code).toContain('_$tmpl("em")');
   });
 
   it("wraps PascalCase function-expression component variables", () => {
@@ -64,9 +80,9 @@ describe("Vynn Oxc JSX compiler", () => {
       "button.tsx",
     );
 
-    expect(code).toContain("const Button = _cmpnt(function Button");
-    expect(code).toContain('_tmpl("span")');
-    expect(code).toContain('_tmpl("button")');
+    expect(code).toContain("const Button = _$cmpnt(function Button");
+    expect(code).toContain('_$tmpl("span")');
+    expect(code).toContain('_$tmpl("button")');
   });
 
   it("wraps anonymous default function declarations", () => {
@@ -77,15 +93,15 @@ describe("Vynn Oxc JSX compiler", () => {
       "app.tsx",
     );
 
-    expect(code).toMatch(/export default _cmpnt\(function\s*\(/);
-    expect(code).toContain('_tmpl("main")');
+    expect(code).toMatch(/export default _$cmpnt\(function\s*\(/);
+    expect(code).toContain('_$tmpl("main")');
   });
 
   it("wraps anonymous default arrow components", () => {
     const code = transformVynnOxc(`export default () => <main>Anonymous</main>;`, "app.tsx");
 
-    expect(code).toMatch(/export default _cmpnt\(function\s*\(/);
-    expect(code).toContain('_tmpl("main")');
+    expect(code).toMatch(/export default _$cmpnt\(function\s*\(/);
+    expect(code).toContain('_$tmpl("main")');
   });
 
   it("lowers JSX returned from nested named map callbacks", () => {
@@ -101,7 +117,7 @@ describe("Vynn Oxc JSX compiler", () => {
       "list.tsx",
     );
 
-    expect(code).toContain("_for(");
+    expect(code).toContain("_$for(");
     expect(code).toContain("_renderItemFor");
   });
 
@@ -117,7 +133,7 @@ describe("Vynn Oxc JSX compiler", () => {
       "list.tsx",
     );
 
-    expect(code).toContain("_for(");
+    expect(code).toContain("_$for(");
     expect(code).toContain(".bind(context)");
   });
 
@@ -165,7 +181,7 @@ describe("Vynn Oxc JSX compiler", () => {
     );
 
     expect(code).toContain("keep this source comment");
-    expect(code).toContain("_cmpnt(function Page");
+    expect(code).toContain("_$cmpnt(function Page");
   });
 
   it("discards comments inside empty JSX expression containers", () => {
@@ -182,7 +198,7 @@ describe("Vynn Oxc JSX compiler", () => {
     );
 
     expect(code).not.toContain("JSX-only comment");
-    expect(code).toContain("_cmpnt(function Page");
+    expect(code).toContain("_$cmpnt(function Page");
   });
 });
 
@@ -193,7 +209,7 @@ describe("Vynn compiler output", () => {
       "page.tsx",
     );
 
-    expect(result.code).toContain("_tmpl");
+    expect(result.code).toContain("_$tmpl");
     expect(result.map).toMatchObject({
       version: expect.any(Number),
       sources: expect.any(Array),

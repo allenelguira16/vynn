@@ -21,6 +21,11 @@ Both functions accept optional compiler settings:
   `"module"`.
 
 The output imports generated helpers from `vynn/render`, so transformed
-applications must include the `vynn` runtime package. Run this transform before
-any other JSX transform; do not run a second JSX lowering pass on the same
-source.
+applications must include the `vynn` runtime package. Generated local aliases keep
+the helper's `$` prefix while adding a leading underscore, for example
+`$cmpnt as _$cmpnt`. The underscore marks a compiler-generated binding without
+hiding which Vynn runtime helper it refers to. Numeric suffixes are added only
+when needed to avoid a name collision.
+
+Run this transform before any other JSX transform; do not run a second JSX
+lowering pass on the same source.

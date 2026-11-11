@@ -62,13 +62,16 @@ const CompilerPage = () => (
     <CodeBlock
       lang="tsx"
       code={
-        'import {\n  $cmpnt as _cmpnt,\n  $tmpl as _tmpl,\n  $txt as _txt,\n  $insert as _insert,\n} from "vynn/render";\n\nconst Greeting = _cmpnt(function Greeting(props: { name: string }) {\n  const el1 = _tmpl("h1");\n  _insert(el1, _txt("Hello "));\n  _insert(el1, () => props.name);\n  return el1;\n});\n\nconst App = _cmpnt(function App() {\n  return Greeting({\n    get name() {\n      return "Ada";\n    },\n  });\n});'
+        'import {\n  $cmpnt as _$cmpnt,\n  $tmpl as _$tmpl,\n  $txt as _$txt,\n  $insert as _$insert,\n} from "vynn/render";\n\nconst Greeting = _$cmpnt(function Greeting(props: { name: string }) {\n  const el1 = _$tmpl("h1");\n  _$insert(el1, _$txt("Hello "));\n  _$insert(el1, () => props.name);\n  return el1;\n});\n\nconst App = _$cmpnt(function App() {\n  return Greeting({\n    get name() {\n      return "Ada";\n    },\n  });\n});'
       }
     />
     <p>
-      This is a simplified view of the generated module. The compiler chooses helper aliases and
-      temporary variable names automatically, so the exact formatting and import order may differ.
-      The important parts are the transformations:
+      This is a simplified view of the generated module. Generated runtime helpers keep their
+      original <code>$</code> prefix and receive a leading underscore in the local alias, such as
+      <code>$cmpnt as _$cmpnt</code>. The underscore marks compiler-generated bindings without
+      hiding the Vynn helper name. Temporary names such as <code>el1</code> are allocated separately,
+      and numeric suffixes are used when a generated name would collide with a source identifier.
+      Exact formatting and import order may differ. The important parts are the transformations:
     </p>
     <ol>
       <li>

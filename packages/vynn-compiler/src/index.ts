@@ -324,9 +324,9 @@ class TransformState {
     forEachChild(node, (child) => this.collectUsedNames(child));
   }
 
-  private generateUidIdentifier(hint: string): NodeOfType<"Identifier"> {
+  private generateUidIdentifier(hint: string, prefix = "_"): NodeOfType<"Identifier"> {
     const cleanHint = hint.replace(/^\$+/, "").replace(/[^A-Za-z0-9_$]/g, "") || "ref";
-    const base = `_${cleanHint}`;
+    const base = `${prefix}${cleanHint}`;
     let name = base;
     let suffix = 1;
     while (this.usedNames.has(name)) name = `${base}${suffix++}`;
@@ -375,7 +375,7 @@ class TransformState {
       return imported;
     }
 
-    const local = this.generateUidIdentifier(name);
+    const local = this.generateUidIdentifier(name, "_$");
     this.runtimeHelpers.set(name, local);
     return local;
   }
