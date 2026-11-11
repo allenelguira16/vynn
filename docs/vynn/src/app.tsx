@@ -1,12 +1,10 @@
 import "./main.css";
 import { Await, onDestroy } from "vynn";
-import { createRouter, Router } from "vynn-router";
-
-import { routes } from "./routes";
+import { createRouter, Router, toFileRouter } from "vynn-router";
 
 export const App = (props: { url: string }) => {
   const router = createRouter({
-    routes,
+    routes: toFileRouter("/src/pages"),
     url: props.url,
   });
 

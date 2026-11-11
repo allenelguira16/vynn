@@ -43,12 +43,22 @@ export function addBaseToRequestUrl(base: string, incomingUrl: string): string {
 
 export function isHtmlNavigation(req: IncomingMessage): boolean {
   if (req.method !== "GET" && req.method !== "HEAD") return false;
+
+  // Fetch Metadata is more reliable than Accept for browsers: subresources
+  // can advertise */* (and occasionally text/html) without being documents.
+  const destination = req.headers["sec-fetch-dest"];
+  if (destination && !["document", "iframe", "frame"].includes(destination)) {
+    return false;
+  }
+
   const accept = req.headers.accept;
   return (
+    destination === "document" ||
+    destination === "iframe" ||
+    destination === "frame" ||
     !accept ||
     accept.includes("text/html") ||
-    accept.includes("application/xhtml+xml") ||
-    accept.includes("*/*")
+    accept.includes("application/xhtml+xml")
   );
 }
 

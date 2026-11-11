@@ -4,8 +4,10 @@ import { createRouter, Router, toFileRouter } from "vynn-router";
 
 export default function App(props: { url: string }) {
   const counter = $state(0);
+  console.log("hi");
+
   const router = createRouter({
-    routes: toFileRouter("/src/app"),
+    routes: toFileRouter("/src/pages"),
     url: props.url,
   });
 
