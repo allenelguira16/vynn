@@ -1,13 +1,12 @@
 import { Link } from "vynn-router";
 
-import vynnLogo from "../assets/vynn.svg";
 import { CodeBlock } from "../components/code-block";
 
 const HomePage = () => (
   <div class="min-h-screen bg-base-100">
     <header class="navbar mx-auto max-w-7xl px-6 py-5 sm:px-10">
       <Link href="/" class="flex items-center gap-3 text-xl font-semibold">
-        <img src={vynnLogo} class="h-8 w-8" alt="Vynn logo" />
+        <img src="/vynn-logo.webp" class="h-8 w-8" alt="Vynn logo" />
         Vynn
       </Link>
       <a
@@ -27,7 +26,7 @@ const HomePage = () => (
         </p>
         <h1 class="mb-6 flex items-center gap-3 text-5xl font-bold leading-tight tracking-tight sm:text-6xl">
           Build interfaces with less machinery.
-          <img src={vynnLogo} class="h-10 w-10 shrink-0" alt="" />
+          <img src="/vynn-logo.webp" class="h-10 w-10 shrink-0" alt="" />
         </h1>
         <p class="mb-8 max-w-xl text-lg leading-8 text-base-content/70">
           Vynn brings JSX components and fine-grained reactivity together. Describe your UI with
@@ -82,6 +81,5 @@ export function Counter() {
     </main>
   </div>
 );
-
 
 export default HomePage;

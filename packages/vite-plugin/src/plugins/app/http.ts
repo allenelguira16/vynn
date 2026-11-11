@@ -1,7 +1,14 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
+import { once } from "node:events";
 import { isAbsolute, relative, sep } from "node:path";
 import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import {
+  constants as zlibConstants,
+  createBrotliCompress,
+  createGzip,
+} from "node:zlib";
 
 import { VYNN_SSR_CSS_URL } from "../ssr-css.ts";
 import { CLIENT_ENTRY_ID, type ResolvedEntries } from "./shared.ts";
@@ -116,7 +123,169 @@ export function createWebRequest(req: IncomingMessage, requestUrl: string): Requ
   return new Request(new URL(requestUrl, origin), init);
 }
 
-export async function writeResponse(res: ServerResponse, response: Response): Promise<void> {
+export type ResponseCompressionEncoding = "br" | "gzip";
+
+const compressibleResponseMime = /text|javascript|\/json|xml/i;
+const responseCompressionThreshold = 1024;
+
+/** Select the best supported encoding advertised by the request. */
+export function negotiateResponseEncoding(
+  acceptEncoding: string | undefined,
+): ResponseCompressionEncoding | null {
+  if (!acceptEncoding) return null;
+
+  const qualities = new Map<string, number>();
+  for (const item of acceptEncoding.split(",")) {
+    const [rawEncoding, ...parameters] = item.trim().toLowerCase().split(";");
+    if (!rawEncoding) continue;
+
+    const qualityParameter = parameters.find((parameter) => parameter.trim().startsWith("q="));
+    const qualityValue = qualityParameter ? Number(qualityParameter.trim().slice(2)) : 1;
+    const quality =
+      Number.isFinite(qualityValue) && qualityValue >= 0 && qualityValue <= 1
+        ? qualityValue
+        : 0;
+
+    qualities.set(rawEncoding, quality);
+  }
+
+  const qualityFor = (encoding: ResponseCompressionEncoding): number =>
+    qualities.get(encoding) ?? qualities.get("*") ?? 0;
+  const brotliQuality = qualityFor("br");
+  const gzipQuality = qualityFor("gzip");
+
+  if (brotliQuality <= 0 && gzipQuality <= 0) return null;
+  return brotliQuality >= gzipQuality && brotliQuality > 0 ? "br" : "gzip";
+}
+
+function getResponseCompression(
+  response: Response,
+  acceptEncoding: string | undefined,
+): ResponseCompressionEncoding | null {
+  const encoding = negotiateResponseEncoding(acceptEncoding);
+  const contentType = response.headers.get("content-type") ?? "";
+
+  if (
+    !encoding ||
+    !response.body ||
+    response.status === 204 ||
+    response.status === 205 ||
+    response.status === 206 ||
+    response.status === 304 ||
+    response.headers.has("content-encoding") ||
+    response.headers.has("content-range") ||
+    /\bno-transform\b/i.test(response.headers.get("cache-control") ?? "") ||
+    /^text\/event-stream\b/i.test(contentType)
+  ) {
+    return null;
+  }
+
+  if (!compressibleResponseMime.test(contentType)) return null;
+
+  const contentLengthHeader = response.headers.get("content-length");
+  const contentLength = contentLengthHeader === null ? null : Number(contentLengthHeader);
+  if (
+    contentLength !== null &&
+    Number.isFinite(contentLength) &&
+    contentLength < responseCompressionThreshold
+  ) {
+    return null;
+  }
+
+  return encoding;
+}
+
+function appendVaryHeader(res: ServerResponse, value: string): void {
+  const current = res.getHeader("Vary");
+  const entries = (Array.isArray(current) ? current : current === undefined ? [] : [current])
+    .flatMap((entry) => String(entry).split(","))
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+
+  if (
+    entries.includes("*") ||
+    entries.some((entry) => entry.toLowerCase() === value.toLowerCase())
+  ) {
+    return;
+  }
+
+  res.setHeader("Vary", [...entries, value].join(", "));
+}
+
+async function writeCompressedResponse(
+  res: ServerResponse,
+  body: ReadableStream<Uint8Array>,
+  encoding: ResponseCompressionEncoding,
+): Promise<void> {
+  const compressor =
+    encoding === "br"
+      ? createBrotliCompress({
+          params: { [zlibConstants.BROTLI_PARAM_QUALITY]: 4 },
+        })
+      : createGzip();
+  const reader = body.getReader();
+  const flushMode =
+    encoding === "br"
+      ? zlibConstants.BROTLI_OPERATION_FLUSH
+      : zlibConstants.Z_SYNC_FLUSH;
+
+  const cancelOnClose = () => {
+    if (res.writableFinished) return;
+    void reader.cancel().catch(() => undefined);
+    compressor.destroy(new Error("Client disconnected during compressed Vynn SSR."));
+  };
+  res.once("close", cancelOnClose);
+
+  // Vite preview's compression middleware wraps this response before Vynn's
+  // post-hook runs. Content-Encoding is set before the first write so Vite
+  // passes this already-compressed stream through instead of compressing it
+  // again or making a decision from the first small SSR chunk.
+  const output = pipeline(compressor, res);
+  const input = (async () => {
+    while (!res.destroyed) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      if (!compressor.write(value)) await once(compressor, "drain");
+
+      // Flush each SSR chunk so the initial shell reaches the client without
+      // waiting for the compressor's internal buffer to fill.
+      await new Promise<void>((resolveFlush) => {
+        compressor.flush(flushMode, resolveFlush);
+      });
+    }
+
+    if (!res.destroyed) compressor.end();
+  })();
+
+  try {
+    await Promise.all([input, output]);
+  } catch (error) {
+    const cause = error instanceof Error ? error : new Error(String(error));
+    compressor.destroy(cause);
+    await reader.cancel(cause).catch(() => undefined);
+    await Promise.allSettled([input, output]);
+    if (!res.destroyed) res.destroy(cause);
+    throw cause;
+  } finally {
+    res.off("close", cancelOnClose);
+    if (res.destroyed) await reader.cancel().catch(() => undefined);
+    reader.releaseLock();
+  }
+}
+
+export type WriteResponseOptions = {
+  /** Request Accept-Encoding header. Omit to leave compression to the host server. */
+  acceptEncoding?: string;
+};
+
+export async function writeResponse(
+  res: ServerResponse,
+  response: Response,
+  options: WriteResponseOptions = {},
+): Promise<void> {
+  const compression = getResponseCompression(response, options.acceptEncoding);
+
   res.statusCode = response.status;
   response.headers.forEach((value, key) => {
     // The Node server owns transfer-encoding and computes lengths for bodies.
@@ -125,8 +294,19 @@ export async function writeResponse(res: ServerResponse, response: Response): Pr
     }
   });
 
+  if (compression) {
+    res.setHeader("Content-Encoding", compression);
+    res.removeHeader("Content-Length");
+    appendVaryHeader(res, "Accept-Encoding");
+  }
+
   if (!response.body) {
     res.end();
+    return;
+  }
+
+  if (compression) {
+    await writeCompressedResponse(res, response.body, compression);
     return;
   }
 
@@ -141,9 +321,6 @@ export async function writeResponse(res: ServerResponse, response: Response): Pr
       const { done, value } = await reader.read();
       if (done) break;
       const canContinue = res.write(value);
-
-      // Flush compression middleware after each streamed SSR chunk.
-      (res as ServerResponse & { flush?: () => void }).flush?.();
 
       if (!canContinue) {
         await new Promise<void>((resolveDrain, reject) => {

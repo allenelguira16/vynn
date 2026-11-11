@@ -2,8 +2,6 @@ import type { PropsWithChildren } from "vynn";
 
 import { isActiveRoute, Link } from "vynn-router";
 
-import vynnLogo from "../../assets/vynn.svg";
-
 const sections = [
   {
     title: "Get started",
@@ -85,7 +83,7 @@ export default function Layout({ children }: PropsWithChildren) {
           </div>
 
           <Link href="/" class="flex items-center gap-2 text-lg font-semibold">
-            <img src={vynnLogo} class="h-6 w-6" alt="Vynn logo" />
+            <img src="/vynn-logo.webp" class="h-6 w-6" alt="Vynn logo" />
             <span>Vynn</span>
             <span class="text-sm font-normal text-base-content/55">Docs</span>
           </Link>
@@ -117,7 +115,7 @@ export default function Layout({ children }: PropsWithChildren) {
         <label for="docs-drawer" aria-label="Close documentation menu" class="drawer-overlay" />
         <aside class="min-h-full w-72 border-r border-base-300 bg-base-100 px-4 py-5">
           <Link href="/" class="mb-8 flex items-center gap-3 px-3">
-            <img src={vynnLogo} class="h-8 w-8" alt="Vynn logo" />
+            <img src="/vynn-logo.webp" class="h-8 w-8" alt="Vynn logo" />
             <span class="text-xl font-semibold">Vynn</span>
           </Link>
 

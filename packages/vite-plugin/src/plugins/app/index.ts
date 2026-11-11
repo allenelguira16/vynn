@@ -438,14 +438,18 @@ export function vynnAppPlugin({ ssr, ssrMode, ssrCss, serverFunctions }: PluginO
             const handler = await handlerPromise;
             const requestUrl = addBaseToRequestUrl(base, req.url ?? "/");
             const response = await handler.handleRequest(createWebRequest(req, requestUrl));
-            await writeResponse(res, response);
+            await writeResponse(res, response, {
+              acceptEncoding: req.headers["accept-encoding"],
+            });
           })().catch((error: unknown) => {
             if (res.headersSent) {
               res.destroy(error instanceof Error ? error : undefined);
               return;
             }
             if (isWebResponse(error)) {
-              void writeResponse(res, error).catch(next);
+              void writeResponse(res, error, {
+                acceptEncoding: req.headers["accept-encoding"],
+              }).catch(next);
               return;
             }
             next(error);

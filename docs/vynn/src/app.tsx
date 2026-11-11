@@ -14,6 +14,7 @@ export const App = (props: { url: string }) => {
     <html lang="en">
       <head>
         <title>Vynn documentation</title>
+        <link rel="icon" type="image/svg+xml" href="/vynn-logo.webp"></link>
         <meta
           name="description"
           content="Learn Vynn, a TypeScript UI framework built around JSX and fine-grained reactivity."

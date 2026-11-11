@@ -23,7 +23,7 @@ export default function App(props: { url: string }) {
     <html>
       <head>
         <title>Vynn SSR Sandbox {counter.value}</title>
-        <link rel="icon" type="image/svg+xml" href="/favicon.svg"></link>
+        <link rel="icon" type="image/svg+xml" href="/vynn-logo.webp"></link>
         <meta name="description" content="A server-rendered application built with Vynn." />
         <meta property="og:title" content="Vynn SSR Sandbox" />
         <meta property="og:description" content="A server-rendered application built with Vynn." />

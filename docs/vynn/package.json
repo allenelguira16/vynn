@@ -20,6 +20,7 @@
     "shiki": "^4.6.0",
     "tailwindcss": "^4.3.3",
     "vite-bundle-visualizer": "^1.2.1",
+    "vite-plugin-compression2": "^2.5.4",
     "vite-plugin-vynn": "workspace:^",
     "vynn": "workspace:^",
     "vynn-router": "workspace:^"
