@@ -1,10 +1,17 @@
 import "./main.css";
-import { Await } from "vynn";
-import { Router } from "vynn-router";
+import { Await, onDestroy } from "vynn";
+import { createRouter, Router } from "vynn-router";
 
 import { routes } from "./routes";
 
 export const App = (props: { url: string }) => {
+  const router = createRouter({
+    routes,
+    url: props.url,
+  });
+
+  onDestroy(() => router.dispose());
+
   return (
     <html lang="en">
       <head>
@@ -22,7 +29,7 @@ export const App = (props: { url: string }) => {
       </head>
       <body>
         <Await fallback={<main class="p-8">Loading documentation...</main>}>
-          <Router routes={routes} url={props.url} />
+          <Router router={router} />
         </Await>
       </body>
     </html>

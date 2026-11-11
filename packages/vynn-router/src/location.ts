@@ -1,9 +1,45 @@
 import { $store } from "vynn";
 
-import type { Location } from "./types";
+import type { Location, RouterInstance } from "./types";
 
 import { useRouterLocation } from "./context";
 import { isServer } from "./environment";
+
+type LocationNavigation = Pick<RouterInstance<unknown>, "navigate" | "replace">;
+
+const locationNavigations = new WeakMap<Location, LocationNavigation>();
+const navigationRegistrations: {
+  location: Location;
+  navigation: LocationNavigation;
+}[] = [];
+
+/** Associates a router's reactive location with its instance navigation methods. */
+export function registerLocationNavigation(
+  location: Location,
+  navigation: LocationNavigation,
+): () => void {
+  const registration = { location, navigation };
+  locationNavigations.set(location, navigation);
+
+  // The fallback registry is only needed for browser calls made outside an
+  // owner. Keeping it server-side would retain every request's router.
+  if (!isServer) {
+    navigationRegistrations.push(registration);
+  }
+
+  return () => {
+    if (locationNavigations.get(location) === navigation) {
+      locationNavigations.delete(location);
+    }
+
+    if (!isServer) {
+      const index = navigationRegistrations.indexOf(registration);
+      if (index !== -1) {
+        navigationRegistrations.splice(index, 1);
+      }
+    }
+  };
+};
 
 /**
  * Fallback location store for consumers outside a Router. Each Router has its
@@ -159,15 +195,41 @@ function updateUrl(path: string, location: Location, historyAction: "push" | "re
   }
 }
 
+function getLocationNavigation(location: Location): LocationNavigation | undefined {
+  const navigation = locationNavigations.get(location);
+  if (navigation) return navigation;
+
+  // Preserve the no-argument navigate()/replace() helpers for browser code
+  // running outside a route owner. In a multi-router app, use the instance
+  // methods to avoid relying on this most-recently-created fallback.
+  if (!isServer && location === $location) {
+    return navigationRegistrations[navigationRegistrations.length - 1]?.navigation;
+  }
+
+  return undefined;
+}
+
 /**
- * Updates the current URL and reactive location state by pushing a history
- * entry. Calls outside a Router use the active browser location or $location.
+ * Navigates through the Router instance associated with the provided location.
+ * Calls outside a Router use the browser/default location fallback.
  */
 export function navigate(path: string, location = currentLocation()): void {
+  const navigation = getLocationNavigation(location);
+  if (navigation) {
+    navigation.navigate(path);
+    return;
+  }
+
   updateUrl(path, location, "push");
 }
 
-/** Replaces the current URL and history entry without adding a back-button stop. */
+/** Replaces the current history entry through its Router instance when available. */
 export function replace(path: string, location = currentLocation()): void {
+  const navigation = getLocationNavigation(location);
+  if (navigation) {
+    navigation.replace(path);
+    return;
+  }
+
   updateUrl(path, location, "replace");
 }

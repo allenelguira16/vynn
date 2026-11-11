@@ -1,39 +1,35 @@
-import { $store, onMount } from "vynn";
+import { onDestroy } from "vynn";
 
-import type { Location, Route } from "./types";
+import type { RouterInstance, RouterOptions } from "./types";
 
+import { createRouter } from "./create-router";
 import { LocationProvider } from "./context";
-import { isServer } from "./environment";
-import { parseLocation, updateDefaultLocation, updateLocation } from "./location";
 import { RouteOutlet } from "./outlet";
 
-/** Creates a Router with request-local URL state, suitable for SSR. */
-export function Router(props: { url?: string; routes: Route[] }) {
-  const location = $store<Location>(parseLocation(props.url));
+type RouterProps<TContext> =
+  | { router: RouterInstance<TContext> }
+  | RouterOptions<TContext>;
 
-  if (!isServer) {
-    // Router-specific state stays in this instance's context. The fallback
-    // store follows the browser URL and is updated by navigation/popstate.
+/**
+ * Renders a router instance.
+ *
+ * Prefer createRouter() so the same instance can also be used for navigation,
+ * state inspection, and route context outside the component tree. The direct
+ * routes/url form remains supported for compatibility.
+ */
+export function Router<TContext = undefined>(props: RouterProps<TContext>) {
+  const ownsRouter = !("router" in props);
+  const router = "router" in props ? props.router : createRouter(props);
 
-    onMount(() => {
-      const updateFromBrowser = () => {
-        const next = {
-          pathname: window.location.pathname,
-          search: window.location.search,
-        };
-
-        updateLocation(location, next);
-        updateDefaultLocation(next);
-      };
-
-      window.addEventListener("popstate", updateFromBrowser);
-      return () => window.removeEventListener("popstate", updateFromBrowser);
-    });
+  // An instance passed by the caller has an explicit lifetime and may be
+  // mounted elsewhere. Only dispose the compatibility instance we create.
+  if (ownsRouter) {
+    onDestroy(() => router.dispose());
   }
 
   return (
-    <LocationProvider value={location}>
-      <RouteOutlet routes={props.routes} />
+    <LocationProvider value={router.state.location}>
+      <RouteOutlet routes={router.routes} context={router.context} />
     </LocationProvider>
   );
 }

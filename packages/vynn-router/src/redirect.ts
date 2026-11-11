@@ -34,7 +34,11 @@ export function isClientRedirect(error: unknown): error is ClientRedirectSignal 
  * navigation. The caller's revision check also invalidates redirects when
  * the guard resource is superseded before this frame runs.
  */
-export function commitClientRedirect(error: unknown, isCurrent: () => boolean = () => true): void {
+export function commitClientRedirect(
+  error: unknown,
+  isCurrent: () => boolean = () => true,
+  routeLocation = currentLocation(),
+): void {
   if (!isClientRedirect(error)) {
     return;
   }
@@ -44,16 +48,20 @@ export function commitClientRedirect(error: unknown, isCurrent: () => boolean = 
       return;
     }
 
-    const location = currentLocation();
-
-    if (location.pathname !== error.sourcePathname || location.search !== error.sourceSearch) {
+    if (
+      routeLocation.pathname !== error.sourcePathname ||
+      routeLocation.search !== error.sourceSearch
+    ) {
       return;
     }
 
     if (error.target.origin !== window.location.origin) {
       window.location.replace(error.target.href);
     } else {
-      replace(error.target.pathname + error.target.search + error.target.hash, location);
+      replace(
+        error.target.pathname + error.target.search + error.target.hash,
+        routeLocation,
+      );
     }
   };
 

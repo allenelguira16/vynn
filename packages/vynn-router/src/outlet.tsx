@@ -22,8 +22,8 @@ function isNotReadyError(error: unknown): error is NotReadyErrorLike {
   );
 }
 
-type MatchedRoute = {
-  route: Route;
+type MatchedRoute<TContext = undefined> = {
+  route: Route<TContext>;
   fullPath: string;
 };
 
@@ -59,12 +59,12 @@ function isEmptyCatchAllMatch(path: string, pathname: string): boolean {
 }
 
 /** Finds the most specific route selected by the current outlet. */
-export function findMatch(
-  routes: Route[],
+export function findMatch<TContext = undefined>(
+  routes: Route<TContext>[],
   location: ReturnType<typeof currentLocation>,
   parentPath = "",
-): MatchedRoute | undefined {
-  let bestMatch: MatchedRoute | undefined;
+): MatchedRoute<TContext> | undefined {
+  let bestMatch: MatchedRoute<TContext> | undefined;
 
   for (const route of routes) {
     const fullPath = joinPaths(parentPath, route.path);
@@ -106,7 +106,7 @@ export function findMatch(
  * change, so the guard uses the location snapshot from route entry and does
  * not revalidate for those in-place URL updates.
  */
-function RouteView(props: MatchedRoute) {
+function RouteView<TContext>(props: MatchedRoute<TContext> & { context: TContext }) {
   const RenderRoute = () => {
     const route = props.route;
     const fullPath = props.fullPath;
@@ -115,7 +115,9 @@ function RouteView(props: MatchedRoute) {
 
     return (
       <Component>
-        {!!childRoutes.length && <RouteOutlet routes={childRoutes} parentPath={fullPath} />}
+        {!!childRoutes.length && (
+          <RouteOutlet routes={childRoutes} parentPath={fullPath} context={props.context} />
+        )}
       </Component>
     );
   };
@@ -169,6 +171,7 @@ function RouteView(props: MatchedRoute) {
 
         await untrack(() =>
           route.beforeLoad!({
+            context: props.context,
             location,
             params: getRouteParams(fullPath, location),
             search: new URLSearchParams(location.search),
@@ -225,6 +228,7 @@ function RouteView(props: MatchedRoute) {
         commitClientRedirect(
           result.signal,
           () => guardRevision === result.revision && !activeGuardController?.signal.aborted,
+          currentLocation(),
         );
       }
 
@@ -251,8 +255,12 @@ function RouteView(props: MatchedRoute) {
  * $search. A RouteView's beforeLoad uses the location snapshot from its creation
  * and does not revalidate when those values change.
  */
-export function RouteOutlet(props: { routes: Route[]; parentPath?: string }) {
-  let previousMatch: MatchedRoute | undefined;
+export function RouteOutlet<TContext = undefined>(props: {
+  routes: Route<TContext>[];
+  parentPath?: string;
+  context: TContext;
+}) {
+  let previousMatch: MatchedRoute<TContext> | undefined;
   const view = $state<ReturnType<typeof RouteView> | null>(null);
 
   $renderEffect(() => {
@@ -272,7 +280,7 @@ export function RouteOutlet(props: { routes: Route[]; parentPath?: string }) {
     const nextView = next
       ? untrack(() => (
           <RoutePathProvider value={next.fullPath}>
-            <RouteView route={next.route} fullPath={next.fullPath} />
+            <RouteView route={next.route} fullPath={next.fullPath} context={props.context} />
           </RoutePathProvider>
         ))
       : null;

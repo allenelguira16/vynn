@@ -1,11 +1,17 @@
 import "./main.css";
-import { $state, Await, onMount } from "vynn";
-import { Router } from "vynn-router";
+import { $state, Await, onDestroy, onMount } from "vynn";
+import { createRouter, Router } from "vynn-router";
 
 import { routes } from "./routes";
 
 export default function App(props: { url: string }) {
   const counter = $state(0);
+  const router = createRouter({
+    routes,
+    url: props.url,
+  });
+
+  onDestroy(() => router.dispose());
 
   onMount(() => {
     setInterval(() => {
@@ -25,7 +31,7 @@ export default function App(props: { url: string }) {
       </head>
       <body class="overflow-hidden">
         <Await fallback={<div class="text-9xl">Page Is Loading</div>}>
-          <Router routes={routes} url={props.url} />
+          <Router router={router} />
         </Await>
       </body>
     </html>
