@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { ASYNC_DATA_SSR_KEY } from "../src/const";
 import {
   enterAsyncBoundary,
+  getAsyncID,
   getAsyncValues,
   initializeAsyncContext,
 } from "../src/context/async-context";
@@ -107,6 +108,35 @@ describe("$computed", () => {
     expect(executions).toBe(2);
   });
 
+  it("keeps synchronous computed values out of async hydration identities", async () => {
+    const owner = createOwner(null);
+
+    try {
+      await runWithOwner(owner, async () => {
+        initializeAsyncContext();
+
+        const synchronous = $computed(() => 41);
+        expect(synchronous.value).toBe(41);
+
+        const asynchronous = $computed(async () => 42);
+        expect(isPending(asynchronous)).toBe(true);
+
+        // Only the asynchronous computed reserves root:0. The synchronous
+        // computed must not shift the identity used by SSR async resources.
+        expect(getAsyncID()).toBe("root:1");
+
+        await Promise.resolve();
+
+        runWithOwner(owner, () => {
+          expect(asynchronous!.value).toBe(42);
+          expect(getAsyncValues()).toEqual({ "root:0": 42 });
+        });
+      });
+    } finally {
+      disposeOwner(owner);
+    }
+  });
+
   it("defers synchronous computations until their first read when lazy", () => {
     const firstName = $state("Ada");
     let executions = 0;
@@ -191,6 +221,41 @@ describe("$computed", () => {
       runWithOwner(owner, () => {
         expect(greeting!.value).toBe("Hello, Ada!");
         expect(isPending(greeting!)).toBe(false);
+      });
+    } finally {
+      disposeOwner(owner);
+    }
+  });
+
+  it("propagates pending async dependencies through chained synchronous computeds", async () => {
+    const owner = createOwner(null);
+    let result: { readonly value: string } | undefined;
+    let boundaryPromise: Promise<unknown> | undefined;
+
+    try {
+      runWithOwner(owner, () => {
+        initializeAsyncContext();
+
+        const name = $async(async () => "Ada");
+        const greeting = $computed(() => `Hello, ${name.value}`);
+        result = $computed(() => `${greeting.value}!`);
+      });
+
+      runWithOwner(owner, () => {
+        enterAsyncBoundary((promise) => {
+          boundaryPromise = promise;
+        });
+
+        expect(() => result!.value).toThrow(NotReadyError);
+        expect(isPending(result!)).toBe(true);
+      });
+
+      expect(boundaryPromise).toBeDefined();
+      await boundaryPromise;
+
+      runWithOwner(owner, () => {
+        expect(result!.value).toBe("Hello, Ada!");
+        expect(isPending(result!)).toBe(false);
       });
     } finally {
       disposeOwner(owner);

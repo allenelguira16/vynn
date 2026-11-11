@@ -1,25 +1,15 @@
 import "./main.css";
 import { $state, Await, onDestroy, onMount } from "vynn";
-// import { createRouter, Router, toFileRouter } from "vynn-router";
-
-import { ComponentError } from "./pages/component-error";
-import { Contexts } from "./pages/context";
-import { Dropdowns } from "./pages/dropdown-list";
-import { Forms } from "./pages/forms";
-import { Lazy } from "./pages/lazy";
-import { NonAsyncSuspense } from "./pages/non-async-suspense";
-import { PokeDex } from "./pages/poke-dex";
-import { PokeDexAwait } from "./pages/poke-dex-await";
-import { StackedSuspense } from "./pages/stacked-suspense";
+import { createRouter, Router, toFileRouter } from "vynn-router";
 
 export default function App(props: { url: string }) {
   const counter = $state(0);
-  // const router = createRouter({
-  //   routes: toFileRouter("/src/app"),
-  //   url: props.url,
-  // });
+  const router = createRouter({
+    routes: toFileRouter("/src/app"),
+    url: props.url,
+  });
 
-  // onDestroy(() => router.dispose());
+  onDestroy(() => router.dispose());
 
   onMount(() => {
     setInterval(() => {
@@ -37,19 +27,10 @@ export default function App(props: { url: string }) {
         <meta property="og:description" content="A server-rendered application built with Vynn." />
         <meta property="og:type" content="website" />
       </head>
-      <body>
-        <Lazy />
-        <Forms />
-        <Contexts />
-        <Dropdowns />
-        <ComponentError />
-        <NonAsyncSuspense />
-        <PokeDex />
-        <PokeDexAwait />
-        <StackedSuspense />
-        {/* <Await fallback={<div class="text-9xl">Page Is Loading</div>}>
+      <body class="overflow-hidden">
+        <Await fallback={<div class="text-9xl">Page Is Loading</div>}>
           <Router router={router} />
-        </Await> */}
+        </Await>
       </body>
     </html>
   );
