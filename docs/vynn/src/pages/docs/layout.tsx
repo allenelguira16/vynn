@@ -31,6 +31,19 @@ const sections = [
     ],
   },
   {
+    title: "Routing",
+    items: [
+      { label: "Introduction", href: "/docs/routing" },
+      { label: "Basic routing", href: "/docs/routing/basic-routing" },
+      { label: "File-based routing", href: "/docs/routing/file-based-routing" },
+      { label: "Layouts", href: "/docs/routing/layouts" },
+      { label: "Dynamic routes", href: "/docs/routing/dynamic-routes" },
+      { label: "Navigation", href: "/docs/routing/navigation" },
+      { label: "Route guards and redirects", href: "/docs/routing/guards-and-redirects" },
+      { label: "Not found", href: "/docs/routing/not-found" },
+    ],
+  },
+  {
     title: "Reference",
     items: [
       { label: "API overview", href: "/docs/reference/api" },
