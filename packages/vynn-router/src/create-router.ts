@@ -51,6 +51,7 @@ export function createRouter<TContext = undefined>(
     context: options.context as TContext,
     history,
     state,
+    notFound: options.notFound,
 
     navigate(to) {
       history.push(to);

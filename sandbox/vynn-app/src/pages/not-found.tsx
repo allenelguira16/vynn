@@ -1,6 +1,6 @@
 import { $location } from "vynn-router";
 
-import { Template } from "../../components/template";
+import { Template } from "../components/template";
 
 export default function NotFoundPage() {
   console.log("ah wala");

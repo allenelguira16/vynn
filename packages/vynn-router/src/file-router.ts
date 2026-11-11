@@ -8,8 +8,8 @@ export type FileRouteModuleMetadata = {
   /** Vite's normalized module key, such as /src/app/blog/page.tsx. */
   path: string;
   /** The App Router special file represented by this module. */
-  kind: "page" | "layout";
-  /** Whether this page or layout module has a named beforeLoad export. */
+  kind: "page" | "layout" | "not-found";
+  /** Whether this route module has a named beforeLoad export. */
   beforeLoad: boolean;
 };
 
@@ -24,6 +24,7 @@ type RouteDirectory<TContext> = {
   name: string;
   page?: FileRouteModuleMetadata;
   layout?: FileRouteModuleMetadata;
+  notFound?: FileRouteModuleMetadata;
   children: Map<string, RouteDirectory<TContext>>;
 };
 
@@ -54,9 +55,9 @@ function getDirectorySegments(directory: string, filePath: string): string[] {
   const fileName = segments.pop() ?? "";
   const specialFile = fileName.replace(/\.(?:[cm]?[jt]sx?)$/i, "");
 
-  if (specialFile !== "page" && specialFile !== "layout") {
+  if (specialFile !== "page" && specialFile !== "layout" && specialFile !== "not-found") {
     throw new Error(
-      "[vynn-router] Expected a page or layout module, received " + JSON.stringify(filePath) + ".",
+      "[vynn-router] Expected a page, layout, or not-found module, received " + JSON.stringify(filePath) + ".",
     );
   }
 
@@ -112,11 +113,11 @@ function addFileToTree<TContext>(
     current = child;
   }
 
-  const key = file.kind;
+  const key = file.kind === "not-found" ? "notFound" : file.kind;
   if (current[key]) {
     throw new Error(
       "[vynn-router] Multiple " +
-        key +
+        file.kind +
         ".tsx modules resolve to the same route folder: " +
         JSON.stringify(file.path) +
         ".",
@@ -265,6 +266,12 @@ export function toFileRouter<TContext = undefined>(
       children.push(...buildDirectoryRoutes(child));
     }
 
+    // A segment-level not-found file behaves like a catch-all fallback. Add it
+    // after explicit children so declared catch-all routes retain precedence.
+    if (node.notFound) {
+      children.push(createPageRoute(node.notFound, "*"));
+    }
+
     if (/^\([^/]+\)$/.test(node.name)) {
       if (node.layout) {
         const route: InternalRoute<TContext> = {
@@ -304,6 +311,10 @@ export function toFileRouter<TContext = undefined>(
 
   for (const child of root.children.values()) {
     rootChildren.push(...buildDirectoryRoutes(child));
+  }
+
+  if (root.notFound) {
+    rootChildren.push(createPageRoute(root.notFound, "*"));
   }
 
   const rootRoute: InternalRoute<TContext> = {

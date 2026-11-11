@@ -190,7 +190,12 @@ export function findMatch<TContext = undefined>(
  * change, so the guard uses the location snapshot from route entry and does
  * not revalidate for those in-place URL updates.
  */
-function RouteView<TContext>(props: MatchedRoute<TContext> & { context: TContext }) {
+function RouteView<TContext>(
+  props: MatchedRoute<TContext> & {
+    context: TContext;
+    notFound?: Route<TContext>["component"];
+  },
+) {
   const RenderRoute = () => {
     const route = props.route;
     const fullPath = props.fullPath;
@@ -200,7 +205,12 @@ function RouteView<TContext>(props: MatchedRoute<TContext> & { context: TContext
     return (
       <Component>
         {!!childRoutes.length && (
-          <RouteOutlet routes={childRoutes} parentPath={fullPath} context={props.context} />
+          <RouteOutlet
+            routes={childRoutes}
+            parentPath={fullPath}
+            context={props.context}
+            notFound={props.notFound}
+          />
         )}
       </Component>
     );
@@ -343,8 +353,10 @@ export function RouteOutlet<TContext = undefined>(props: {
   routes: Route<TContext>[];
   parentPath?: string;
   context: TContext;
+  notFound?: Route<TContext>["component"];
 }) {
   let previousMatch: MatchedRoute<TContext> | undefined;
+  let hasRendered = false;
   const view = $state<ReturnType<typeof RouteView> | null>(null);
 
   $renderEffect(() => {
@@ -357,18 +369,33 @@ export function RouteOutlet<TContext = undefined>(props: {
     };
     const next = findMatch(props.routes, location, props.parentPath ?? "");
 
-    if (previousMatch?.route === next?.route && previousMatch?.fullPath === next?.fullPath) {
+    if (
+      hasRendered &&
+      previousMatch?.route === next?.route &&
+      previousMatch?.fullPath === next?.fullPath
+    ) {
       return;
     }
 
     const nextView = next
       ? untrack(() => (
           <RoutePathProvider value={next.fullPath}>
-            <RouteView route={next.route} fullPath={next.fullPath} context={props.context} />
+            <RouteView
+              route={next.route}
+              fullPath={next.fullPath}
+              context={props.context}
+              notFound={props.notFound}
+            />
           </RoutePathProvider>
         ))
-      : null;
+      : props.notFound
+        ? untrack(() => {
+            const NotFound = props.notFound!;
+            return <NotFound />;
+          })
+        : null;
 
+    hasRendered = true;
     previousMatch = next;
     view.value = nextView;
   });

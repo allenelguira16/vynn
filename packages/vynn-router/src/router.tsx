@@ -29,7 +29,11 @@ export function Router<TContext = undefined>(props: RouterProps<TContext>) {
 
   return (
     <LocationProvider value={router.state.location}>
-      <RouteOutlet routes={router.routes} context={router.context} />
+      <RouteOutlet
+        routes={router.routes}
+        context={router.context}
+        notFound={router.notFound}
+      />
     </LocationProvider>
   );
 }

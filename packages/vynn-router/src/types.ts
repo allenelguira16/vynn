@@ -42,6 +42,8 @@ export type RouterOptions<TContext = undefined> = {
   context?: TContext;
   /** Custom history. When supplied, its current location takes precedence over url. */
   history?: RouterHistory;
+  /** Component rendered when no route matches the current URL. */
+  notFound?: FC<PropsWithChildren>;
 };
 
 export type RouterInstance<TContext = undefined> = {
@@ -49,6 +51,7 @@ export type RouterInstance<TContext = undefined> = {
   readonly context: TContext;
   readonly history: RouterHistory;
   readonly state: RouterState;
+  readonly notFound?: FC<PropsWithChildren>;
   navigate(to: string): void;
   replace(to: string): void;
   /** Unsubscribes the router from history and releases its owned history. */

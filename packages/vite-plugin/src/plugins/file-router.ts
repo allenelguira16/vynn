@@ -12,7 +12,7 @@ type AstNode = {
 
 type FileRouteMetadata = {
   path: string;
-  kind: "page" | "layout";
+  kind: "page" | "layout" | "not-found";
   beforeLoad: boolean;
 };
 
@@ -24,7 +24,7 @@ type SourceEdit = {
 
 const SCRIPT_EXTENSION_RE = /\.(?:[cm]?[jt]sx?)$/i;
 const ROUTE_SOURCE_EXTENSION_RE = /\.(?:js|jsx|ts|tsx|mjs|mts)$/i;
-const ROUTE_GLOB = "**/{page,layout}.{js,jsx,ts,tsx,mjs,mts}";
+const ROUTE_GLOB = "**/{page,layout,not-found}.{js,jsx,ts,tsx,mjs,mts}";
 
 function asNode(value: unknown): AstNode | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
@@ -112,13 +112,15 @@ function parseModule(source: string, filePath: string): AstNode {
   return parsed.program;
 }
 
-function getSpecialFileKind(filePath: string): "page" | "layout" | undefined {
+function getSpecialFileKind(filePath: string): "page" | "layout" | "not-found" | undefined {
   const fileName = filePath.split(/[\\/]/).pop() ?? "";
   if (!ROUTE_SOURCE_EXTENSION_RE.test(fileName)) return undefined;
   if (/\.d\.(?:ts|mts|cts)$/i.test(fileName)) return undefined;
 
   const specialName = fileName.replace(/\.(?:[cm]?[jt]sx?)$/i, "");
-  return specialName === "page" || specialName === "layout" ? specialName : undefined;
+  return specialName === "page" || specialName === "layout" || specialName === "not-found"
+    ? specialName
+    : undefined;
 }
 
 function getSpecialFileExports(
@@ -286,9 +288,9 @@ function isNodePosition(value: unknown): value is number {
 }
 
 /**
- * Rewrites toFileRouter("...") calls into static Vite glob imports for page and layout modules.
+ * Rewrites toFileRouter("...") calls into static Vite glob imports for route special files.
  *
- * Export inspection is done at transform time so only page modules with a
+ * Export inspection is done at transform time so route special files with a
  * named beforeLoad export receive a route guard. The route module itself is
  * still loaded on demand through import.meta.glob().
  */
@@ -371,7 +373,7 @@ export function transformFileRouterCalls(
     const globPrefix = viteDirectory === "/" ? "" : viteDirectory;
     const globPatterns = [
       globPrefix + "/" + ROUTE_GLOB,
-      "!" + globPrefix + "/**/_*/**/{page,layout}.{js,jsx,ts,tsx,mjs,mts}",
+      "!" + globPrefix + "/**/_*/**/{page,layout,not-found}.{js,jsx,ts,tsx,mjs,mts}",
     ];
     const files = discoverRouteModules(absoluteDirectory, resolve(root), addWatchFile);
     const prefix = source.slice(callStart, argumentStart);

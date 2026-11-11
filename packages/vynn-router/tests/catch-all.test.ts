@@ -6,9 +6,13 @@ import { renderToServer } from "vynn/server";
 
 import { $params, isActiveRoute, Router, type Route } from "../src";
 
-async function renderRouter(url: string, routes: Route[]): Promise<string> {
+async function renderRouter(
+  url: string,
+  routes: Route[],
+  notFound?: Route["component"],
+): Promise<string> {
   const rendered = await renderToServer(
-    () => Router({ url, routes }) as unknown as JSX.Element,
+    () => Router({ url, routes, notFound }) as unknown as JSX.Element,
     "async",
   );
 
@@ -103,5 +107,37 @@ describe("router catch-all routes", () => {
         search: "",
       }),
     ).toBe(false);
+  });
+});
+
+
+describe("router not-found fallback", () => {
+  it("renders the configured notFound component only when no route matches", async () => {
+    const notFound = () => "Not found";
+    const routes: Route[] = [
+      {
+        path: "/",
+        component: (props) => props.children,
+        children: [
+          {
+            path: "about",
+            component: () => "About page",
+          },
+        ],
+      },
+    ];
+
+    const missingPage = await renderRouter("/missing/nested", routes, notFound);
+    const existingPage = await renderRouter("/about", routes, notFound);
+
+    expect(missingPage).toContain("Not found");
+    expect(existingPage).toContain("About page");
+    expect(existingPage).not.toContain("Not found");
+  });
+
+  it("supports notFound when the route list is empty", async () => {
+    const rendered = await renderRouter("/anything", [], () => "Not found");
+
+    expect(rendered).toContain("Not found");
   });
 });

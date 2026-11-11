@@ -244,3 +244,68 @@ describe("toFileRouter", () => {
     );
   });
 });
+
+
+describe("toFileRouter not-found files", () => {
+  it("creates root and segment-level fallback routes", () => {
+    const rootNotFound = "/src/app/not-found.tsx";
+    const blogNotFound = "/src/app/blog/not-found.tsx";
+    const notFoundFiles: FileRouteModuleMetadata[] = [
+      { path: rootNotFound, kind: "not-found", beforeLoad: false },
+      { path: blogNotFound, kind: "not-found", beforeLoad: false },
+    ];
+    const modules: FileRouteModuleMap = {
+      [rootNotFound]: async () => ({ default: () => "Root not found" }),
+      [blogNotFound]: async () => ({ default: () => "Blog not found" }),
+    };
+    const routes = toFileRouter("/src/app", modules, notFoundFiles);
+    const root = routes[0];
+    const rootFallback = root.children?.find((route) => route.path === "*");
+    const blog = root.children?.find((route) => route.path === "blog");
+    const blogFallback = blog?.children?.find((route) => route.path === "*");
+
+    expect(rootFallback).toBeDefined();
+    expect(blogFallback).toBeDefined();
+
+    const rootMiss = findMatch(root.children ?? [], {
+      pathname: "/outside",
+      search: "",
+    }, "/");
+    expect(rootMiss?.route).toBe(rootFallback);
+
+    const blogParent = findMatch(root.children ?? [], {
+      pathname: "/blog/missing",
+      search: "",
+    }, "/");
+    expect(blogParent?.route).toBe(blog);
+
+    const blogMiss = findMatch(blog?.children ?? [], {
+      pathname: "/blog/missing",
+      search: "",
+    }, "/blog");
+    expect(blogMiss?.route).toBe(blogFallback);
+  });
+
+  it("keeps explicit catch-all pages ahead of not-found fallbacks", () => {
+    const notFoundPath = "/src/app/not-found.tsx";
+    const catchAllPath = "/src/app/[...slug]/page.tsx";
+    const notFoundFiles: FileRouteModuleMetadata[] = [
+      { path: catchAllPath, kind: "page", beforeLoad: false },
+      { path: notFoundPath, kind: "not-found", beforeLoad: false },
+    ];
+    const modules: FileRouteModuleMap = {
+      [catchAllPath]: async () => ({ default: () => "Catch-all page" }),
+      [notFoundPath]: async () => ({ default: () => "Not found" }),
+    };
+    const routes = toFileRouter("/src/app", modules, notFoundFiles);
+    const rootChildren = routes[0].children ?? [];
+    const match = findMatch(rootChildren, {
+      pathname: "/a/path",
+      search: "",
+    }, "/");
+
+    const explicitCatchAll = rootChildren.find((route) => route.path === "*" && route.children);
+    expect(match?.route).toBe(explicitCatchAll);
+    expect(match?.route?.children?.some((route) => route.path === "/")).toBe(true);
+  });
+});

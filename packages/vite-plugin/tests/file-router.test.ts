@@ -28,10 +28,15 @@ function writeAppFile(path: string, source: string): void {
 }
 
 describe("Vynn App Router transform", () => {
-  it("injects a static glob for page and layout files only", () => {
+  it("injects a static glob for route special files", () => {
     const root = createProject();
 
     writeAppFile("src/app/page.tsx", "export default function Home() { return null; }");
+    writeAppFile("src/app/not-found.tsx", "export default function NotFound() { return null; }");
+    writeAppFile(
+      "src/app/blog/not-found.tsx",
+      "export default function BlogNotFound() { return null; }",
+    );
     writeAppFile(
       "src/app/layout.tsx",
       "export const beforeLoad = async () => undefined; export default function RootLayout() { return null; }",
@@ -63,13 +68,19 @@ describe("Vynn App Router transform", () => {
 
     expect(transformed).not.toBeNull();
     expect(transformed).toContain(
-      'appRoutes("/src/app", import.meta.glob(["/src/app/**/{page,layout}.{js,jsx,ts,tsx,mjs,mts}", "!/src/app/**/_*/**/{page,layout}.{js,jsx,ts,tsx,mjs,mts}"])',
+      'appRoutes("/src/app", import.meta.glob(["/src/app/**/{page,layout,not-found}.{js,jsx,ts,tsx,mjs,mts}", "!/src/app/**/_*/**/{page,layout,not-found}.{js,jsx,ts,tsx,mjs,mts}"])',
     );
     expect(transformed).toContain(
       '"path":"/src/app/page.tsx","kind":"page","beforeLoad":false',
     );
     expect(transformed).toContain(
       '"path":"/src/app/layout.tsx","kind":"layout","beforeLoad":true',
+    );
+    expect(transformed).toContain(
+      '"path":"/src/app/not-found.tsx","kind":"not-found","beforeLoad":false',
+    );
+    expect(transformed).toContain(
+      '"path":"/src/app/blog/not-found.tsx","kind":"not-found","beforeLoad":false',
     );
     expect(transformed).toContain(
       '"path":"/src/app/about/page.tsx","kind":"page","beforeLoad":true',
@@ -82,6 +93,8 @@ describe("Vynn App Router transform", () => {
     expect(transformed).not.toContain("example.test");
     expect(watchedFiles).toContain(resolve(root, "src", "app", "page.tsx"));
     expect(watchedFiles).toContain(resolve(root, "src", "app", "about", "page.tsx"));
+    expect(watchedFiles).toContain(resolve(root, "src", "app", "not-found.tsx"));
+    expect(watchedFiles).toContain(resolve(root, "src", "app", "blog", "not-found.tsx"));
   });
 
   it("supports root-absolute app directories", () => {
@@ -95,7 +108,7 @@ describe("Vynn App Router transform", () => {
     );
 
     expect(transformed).toContain(
-      'toFileRouter("/src/app", import.meta.glob(["/src/app/**/{page,layout}.',
+      'toFileRouter("/src/app", import.meta.glob(["/src/app/**/{page,layout,not-found}.',
     );
   });
 
