@@ -6,17 +6,22 @@ import { routes } from "./routes";
 
 export const App = (props: { url: string }) => {
   return (
-    <html>
+    <html lang="en">
       <head>
-        <title>Vynn</title>
-        <link rel="icon" type="image/svg+xml" href="/favicon.svg"></link>
-        <meta name="description" content="Vynn documentation" />
-        <meta property="og:title" content="Vynn" />
-        <meta property="og:description" content="Vynn documentation" />
+        <title>Vynn documentation</title>
+        <meta
+          name="description"
+          content="Learn Vynn, a TypeScript UI framework built around JSX and fine-grained reactivity."
+        />
+        <meta property="og:title" content="Vynn documentation" />
+        <meta
+          property="og:description"
+          content="Guides and API references for building applications with Vynn."
+        />
         <meta property="og:type" content="website" />
       </head>
       <body>
-        <Await>
+        <Await fallback={<main class="p-8">Loading documentation...</main>}>
           <Router routes={routes} url={props.url} />
         </Await>
       </body>

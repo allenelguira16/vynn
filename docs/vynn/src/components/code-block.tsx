@@ -11,6 +11,7 @@ const highlighter = await createHighlighterCore({
   themes: [import("@shikijs/themes/tokyo-night")],
   langs: [
     import("@shikijs/langs/tsx"),
+    import("@shikijs/langs/html"),
     import("@shikijs/langs/bash"),
     import("@shikijs/langs/json5"),
   ],
