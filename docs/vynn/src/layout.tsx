@@ -109,23 +109,23 @@ export default function Layout({ children }: PropsWithChildren) {
           </Link>
 
           <nav aria-label="Documentation">
-            {sections.map(({ title, items }) => (
-              <section class="mb-6">
-                <h2 class="px-3 pb-2 text-xs font-semibold uppercase tracking-wider text-base-content/50">
-                  {title}
-                </h2>
-                <ul class="menu menu-sm gap-1 p-0">
-                  {items.map(({ label, href }) => (
-                    <li>
-                      {isActiveRoute(href) && <title>{label} | Vynn</title>}
-                      <Link href={href} activeClass="menu-active font-medium">
-                        {label}
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            ))}
+            <ul class="menu gap-1 p-0 mb-6 w-full">
+              {sections.map(({ title, items }) => (
+                <li>
+                  <h2 class="menu-title">{title}</h2>
+                  <ul>
+                    {items.map(({ label, href }) => (
+                      <li>
+                        {isActiveRoute(href) && <title>{label} | Vynn</title>}
+                        <Link href={href} activeClass="menu-active font-medium" class="">
+                          {label}
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </li>
+              ))}
+            </ul>
           </nav>
         </aside>
       </div>
