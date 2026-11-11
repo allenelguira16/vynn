@@ -3,20 +3,25 @@ import { CodeBlock } from "../components/CodeBlock";
 export const AwaitPage = () => (
   <div>
     <h1>Await</h1>
+    <p class="text-base-content/70">Show a helpful placeholder while part of your UI waits for data.</p>
     <section>
       <p>
-        <code>&lt;Await&gt;</code> is an async boundary for a subtree. It displays a fallback when a
-        descendant first reads a pending asynchronous reactive value. When the pending work settles,
-        Vynn renders the children.
+        <code>&lt;Await&gt;</code> gives an async part of your UI a loading state. When a descendant first
+        reads an async reactive value that hasn't finished loading yet, the boundary shows its
+        fallback. Once the pending work settles, Vynn can render the children.
       </p>
       <p>
+        You can use this boundary when a profile card, dashboard panel, or other part of the page
+        needs data before it can show its useful content. The rest of the page can remain visible
+        while that section waits.
+
         Async resources are created with <code>$state(async () =&gt; ...)</code>,
         <code>$store(async () =&gt; ...)</code>, or
         <code>$computed(() =&gt; Promise)</code>. There is no separate
         <code>$async()</code> primitive in the current core API.
       </p>
 
-      <h2 class="mt-6">Basic usage</h2>
+      <h2 class="mt-6">Show something while data loads</h2>
       <CodeBlock
         lang="tsx"
         code={`
@@ -38,15 +43,17 @@ function Message() {
       `}
       />
       <p>
-        The resource starts when it is created. Reading
-        <code>message.value</code> while its first request is pending suspends that part of the
-        render. The nearest <code>&lt;Await&gt;</code>
-        catches the pending read and displays its fallback.
+        The resource starts when it is created, not when <code>&lt;Await&gt;</code> appears. The first
+        read of <code>message.value</code> suspends while the request is pending, and the nearest
+        boundary catches that pending read and displays the fallback. In other words,
+        <code>&lt;Await&gt;</code> handles the loading UI; your resource initializer is still where
+        the data is loaded. Think of it as a boundary around the part of the page that needs to
+        wait, not as a replacement for <code>fetch()</code>.
       </p>
 
-      <h2 class="mt-6">What Await does and does not do</h2>
+      <h2 class="mt-6">What Await handles (and what it leaves to you)</h2>
       <ul>
-        <li>It handles pending asynchronous reads from descendants.</li>
+        <li>It handles pending asynchronous reads from descendants. It does not start requests or fetch data by itself.</li>
         <li>
           Its <code>fallback</code> prop is optional.
         </li>
@@ -63,7 +70,7 @@ function Message() {
         </li>
       </ul>
 
-      <h2 class="mt-6">Refreshing while keeping the current view</h2>
+      <h2 class="mt-6">Keep the current screen during a refresh</h2>
       <p>
         Async <code>$state</code>, <code>$store</code>, and
         <code>$computed</code> resources retain their last successfully resolved value while a
@@ -105,10 +112,11 @@ function UserPanel() {
         <code>isPending(user)</code> exposes the refresh state.
       </p>
 
-      <h2 class="mt-6">Multiple asynchronous dependencies</h2>
+      <h2 class="mt-6">Wait for several pieces of data together</h2>
       <p>
-        A child tree can read more than one async resource. The boundary waits for the pending work
-        registered by its descendants before it can display the complete children.
+        A child tree can read several async resources. The boundary keeps track of pending work from its
+        descendants and waits until the required reads are ready before showing the complete
+        children.
       </p>
       <CodeBlock
         lang="tsx"
@@ -138,7 +146,7 @@ function Dashboard() {
       `}
       />
 
-      <h2 class="mt-6">Manual loading UI without Await</h2>
+      <h2 class="mt-6">Prefer to control loading yourself?</h2>
       <p>
         <code>Await</code> is a convenience, not a requirement. When you want to control the loading
         branch directly, check <code>isPending()</code>
@@ -172,7 +180,7 @@ function Status() {
         value remains readable during refreshes.
       </p>
 
-      <h2 class="mt-6">Error handling</h2>
+      <h2 class="mt-6">What happens when a request fails?</h2>
       <p>
         A rejected resource throws its error when read. Pair
         <code>&lt;Await&gt;</code> with <code>&lt;ErrorBoundary&gt;</code>
@@ -208,13 +216,20 @@ function UserName() {
       `}
       />
 
-      <h2 class="mt-6">Server rendering behavior</h2>
+      <h2 class="mt-6">How this behaves during server rendering</h2>
       <p>
         With synchronous or async SSR, pending work is resolved before the complete HTML result is
         returned. With streaming SSR, Vynn can emit the fallback in the initial stream and send a
         later patch when the children are ready. The server renderer owns this streaming protocol;
         the component API stays the same.
       </p>
+
+      <h2 class="mt-6">A quick way to choose</h2>
+      <ul>
+        <li>Use <code>&lt;Await&gt;</code> when a section needs a fallback on its first pending read.</li>
+        <li>Use <code>isPending()</code> when you want to keep the current content visible and show your own loading state.</li>
+        <li>Use <code>&lt;ErrorBoundary&gt;</code> when you also need a recovery UI for failures.</li>
+      </ul>
 
       <h2 class="mt-6">API reference</h2>
       <h3>

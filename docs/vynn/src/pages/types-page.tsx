@@ -5,16 +5,22 @@ export const TypesPage = () => (
     <h1>TypeScript types</h1>
     <section>
       <p>
-        The <code>vynn</code> package exports types for JSX values, component props, reactive
-        references, and server-render modes. These are type-only exports; they do not add runtime
-        behavior to an application.
+        You can write Vynn components without annotating every return type or reaching for a utility
+        type each time. TypeScript can infer a lot on its own. These helpers are useful when you want
+        to make a component's public props explicit, share a type between files, or describe a
+        reactive value in an API.
+      </p>
+      <p>
+        Everything on this page is a type, not a runtime helper. Import it with
+        <code>import type</code> and it will be erased from the emitted JavaScript.
       </p>
 
-      <h2 class="mt-6">JSX.Element</h2>
+      <h2 class="mt-6">What can a component return? JSX.Element</h2>
       <p>
-        <code>JSX.Element</code> is the type used for a Vynn-renderable JSX value. It includes
-        primitive text and number values, DOM nodes, arrays of elements, and empty values such as{" "}
-        <code>null</code>,<code>undefined</code>, and <code>false</code>.
+        <code>JSX.Element</code> describes values that Vynn can render. You might use it to
+        annotate a component's return type, or when a prop is expected to contain JSX. It includes
+        text and number values, DOM nodes, arrays of elements, and empty values such as
+        <code>null</code>, <code>undefined</code>, and <code>false</code>.
       </p>
       <CodeBlock
         lang="tsx"
@@ -27,10 +33,12 @@ function Message(): JSX.Element {
       `}
       />
 
-      <h2 class="mt-6">FC</h2>
+      <h2 class="mt-6">Do you want to annotate a component? FC</h2>
       <p>
-        <code>FC&lt;Props&gt;</code> describes a function component that receives a props object and
-        returns a <code>JSX.Element</code>. Its props type defaults to <code>object</code>.
+        <code>FC&lt;Props&gt;</code> is an optional shorthand for a function component's type.
+        It describes a component that receives <code>Props</code> and returns a
+        <code>JSX.Element</code>. You can also write the function normally and let TypeScript infer
+        its return type; use <code>FC</code> when you find the explicit annotation useful.
       </p>
       <CodeBlock
         lang="tsx"
@@ -50,7 +58,7 @@ const Badge: FC<BadgeProps> = (props) => (
       `}
       />
 
-      <h2 class="mt-6">PropsWithChildren</h2>
+      <h2 class="mt-6">A component that wraps other content</h2>
       <p>
         <code>PropsWithChildren&lt;T&gt;</code> combines your props with a required{" "}
         <code>children</code> property typed as
@@ -74,7 +82,7 @@ const Panel: FC<PanelProps> = (props) => (
       `}
       />
 
-      <h2 class="mt-6">PropsWithRef</h2>
+      <h2 class="mt-6">A component that exposes a DOM ref</h2>
       <p>
         <code>PropsWithRef&lt;T&gt;</code> adds a required callback ref property. The callback
         receives an <code>HTMLElement</code>. Use it when a component forwards access to one of its
@@ -99,7 +107,7 @@ const SearchField: FC<SearchFieldProps> = (props) => (
       `}
       />
 
-      <h2 class="mt-6">Reactive reference types</h2>
+      <h2 class="mt-6">Add types to your reactive values</h2>
       <p>
         <code>State&lt;T&gt;</code> and <code>Async&lt;T&gt;</code> describe writable reactive
         references. <code>Computed&lt;T&gt;</code>
@@ -128,7 +136,7 @@ const remoteCount: Async<number> = $state(async () => {
         used by the asynchronous APIs.
       </p>
 
-      <h2 class="mt-6">ComputedOptions</h2>
+      <h2 class="mt-6">Type the computed options</h2>
       <p>
         <code>ComputedOptions</code> describes the optional configuration accepted by{" "}
         <code>$computed()</code>. Its <code>lazy</code> flag defaults to <code>false</code>. When
@@ -145,7 +153,7 @@ const options: ComputedOptions = {
       `}
       />
 
-      <h2 class="mt-6">RenderMode</h2>
+      <h2 class="mt-6">Type the server render mode</h2>
       <p>
         <code>RenderMode</code> is the union used by the server renderer:
         <code>"sync"</code>, <code>"async"</code>, or <code>"stream"</code>. It is useful when an
@@ -162,10 +170,10 @@ function renderPage(mode: RenderMode) {
       `}
       />
 
-      <h2 class="mt-6">Importing types</h2>
+      <h2 class="mt-6">Import types without adding runtime code</h2>
       <p>
-        Use <code>import type</code> for type-only imports so these helpers are erased from emitted
-        JavaScript. The package root exports
+        Use <code>import type</code> when you only need a type. TypeScript can then erase the import
+        from the generated JavaScript. The package root exports
         <code>JSX</code>, <code>FC</code>, <code>PropsWithChildren</code>,<code>PropsWithRef</code>,{" "}
         <code>State</code>, <code>Async</code>,<code>Computed</code>, <code>ComputedOptions</code>,
         and

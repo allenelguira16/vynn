@@ -3,18 +3,18 @@ import { CodeBlock } from "../components/CodeBlock";
 export const PortalPage = () => (
   <div>
     <h1>Portal</h1>
+    <p class="text-base-content/70">Render UI somewhere else in the document without giving up its component ownership.</p>
     <section>
       <p>
-        <code>&lt;Portal&gt;</code> renders its children into a DOM element outside the component's
-        normal DOM position. This is useful for dialogs, popovers, menus, tooltips, and overlays
-        that need to escape an ancestor's layout or stacking context.
+        <code>&lt;Portal&gt;</code> lets a component keep ownership of some UI while placing its DOM
+        somewhere else in the document. This is useful for dialogs, menus, tooltips, and overlays
+        that would otherwise be clipped or trapped by an ancestor's layout or stacking context.
       </p>
 
-      <h2 class="mt-6">Basic usage</h2>
+      <h2 class="mt-6">Put an overlay outside its parent layout</h2>
       <p>
-        Pass an existing DOM element through the required <code>mount</code>
-        prop. The portal inserts its children into that target after the component mounts in the
-        browser.
+        Give the portal an existing DOM element through its required <code>mount</code> prop. Once
+        the component mounts in the browser, Vynn inserts the portal's children into that target.
       </p>
       <CodeBlock
         lang="tsx"
@@ -59,7 +59,7 @@ renderToDOM(() => <App overlayRoot={overlayRoot} />, "#app");
       `}
       />
 
-      <h2 class="mt-6">Portal lifecycle</h2>
+      <h2 class="mt-6">What happens to portal content?</h2>
       <ul>
         <li>The portal's children are inserted into the supplied target after mount.</li>
         <li>
@@ -71,13 +71,12 @@ renderToDOM(() => <App overlayRoot={overlayRoot} />, "#app");
         <li>The target should be an existing DOM element when the mount callback runs.</li>
       </ul>
 
-      <h2 class="mt-6">Server rendering</h2>
+      <h2 class="mt-6">A server-rendering detail to plan for</h2>
       <p>
-        <code>Portal</code> is client-only in the current core implementation. It returns{" "}
-        <code>null</code> during server rendering, so the portal children are not included in the
-        server HTML. Do not rely on portal content being present in the initial SSR document. Render
-        essential content in the normal tree or provide an accessible non-portal fallback when that
-        content must exist before hydration.
+        <code>Portal</code> is client-only. During server rendering it returns <code>null</code>, so
+        the portal's children are not part of the HTML sent by the server. Keep essential content in
+        the normal component tree, or provide an accessible alternative for users who need that
+        content before hydration.
       </p>
 
       <h2 class="mt-6">API reference</h2>

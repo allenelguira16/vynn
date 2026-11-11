@@ -5,12 +5,18 @@ export const UntrackPage = () => (
     <h1>untrack</h1>
     <section>
       <p>
-        <code>untrack()</code> runs a callback without collecting reactive dependencies. It is
-        useful when a reactive computation needs to read a value for the current execution but
-        should not rerun when that particular value changes.
+        Most of the time, you want Vynn to track every reactive value your effect or computed
+        getter reads. That is what keeps everything in sync. Occasionally, though, you need a value
+        for the current calculation without wanting changes to that value to trigger another run.
+        That's when <code>untrack()</code> is useful.
+      </p>
+      <p>
+        Treat it as an escape hatch, not the default. Start with normal dependency tracking and
+        reach for <code>untrack()</code> only when you can explain why a particular read should not
+        trigger an update.
       </p>
 
-      <h2 class="mt-6">Basic usage</h2>
+      <h2 class="mt-6">A read you don't want to subscribe to</h2>
       <CodeBlock
         lang="tsx"
         code={`
@@ -28,12 +34,12 @@ $effect(() => {
       `}
       />
       <p>
-        This effect subscribes to <code>count.value</code>, but not
-        <code>theme.value</code>. Changing the theme alone does not schedule the effect. When the
-        count changes for another reason, the next run reads the latest theme value.
+        The effect subscribes to <code>count.value</code>, but it only takes a snapshot of
+        <code>theme.value</code> each time it runs. Changing the theme on its own won't rerun the
+        effect. The next count update will read the latest theme.
       </p>
 
-      <h2 class="mt-6">Using it in a computed getter</h2>
+      <h2 class="mt-6">Use the same idea in a computed value</h2>
       <p>
         The same rule applies to other reactive computations. A value read inside{" "}
         <code>untrack()</code> does not become a dependency of the surrounding computation.
@@ -55,12 +61,12 @@ const total = $computed(() => {
       `}
       />
 
-      <h2 class="mt-6">Untrack a larger section</h2>
+      <h2 class="mt-6">Keep the untracked section small</h2>
       <p>
-        The callback can contain multiple reads and ordinary JavaScript work. Every reactive read
-        during that callback is excluded from the active dependency collection. Keep the callback
-        synchronous and as small as practical so it remains clear which values drive the
-        computation.
+        The callback can contain several reads and ordinary JavaScript statements. None of those
+        reactive reads become dependencies of the surrounding computation. Keep it synchronous and
+        focused: the smaller the untracked section, the easier it is to see what actually drives an
+        update.
       </p>
 
       <h2 class="mt-6">What untrack does not do</h2>

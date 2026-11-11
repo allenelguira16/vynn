@@ -5,11 +5,13 @@ export const OnDestroyPage = () => {
     <div>
       <h1>onDestroy</h1>
 
+      <p class="text-base-content/70">When a component goes away, make sure the work it started doesn't keep running.</p>
+
       <section>
         <p>
-          <code>onDestroy()</code> registers a cleanup function that runs when its component is
-          destroyed. It's useful for releasing resources and cleaning up anything the component
-          started during its lifetime.
+          <code>onDestroy()</code> lets a component clean up after itself. Register a callback when
+          you create something that should not outlive the component, and Vynn runs that callback
+          when the component's owner is disposed.
         </p>
 
         <p>Common use cases include:</p>
@@ -24,7 +26,7 @@ export const OnDestroyPage = () => {
           <li>Unsubscribing from external services.</li>
         </ul>
 
-        <h2 class="mt-6">Basic usage</h2>
+        <h2 class="mt-6">Clean up when a component is removed</h2>
 
         <p>
           Call <code>onDestroy()</code> inside a component and pass it a function containing your
@@ -71,7 +73,7 @@ function App() {
           interval.
         </p>
 
-        <h2 class="mt-6">Using it with onMount</h2>
+        <h2 class="mt-6">Pair setup and cleanup with onMount</h2>
 
         <p>
           When cleanup is directly related to something initialized inside
@@ -108,11 +110,13 @@ function WindowListener() {
         </p>
 
         <p>
-          Use <code>onDestroy()</code> when the cleanup is independent of
-          <code>onMount()</code>, or when you prefer to register it separately.
+          Use <code>onDestroy()</code> when the cleanup isn't tied to one mount setup, or when
+          you prefer to keep teardown registration separate. For a listener or observer created
+          inside <code>onMount()</code>, returning cleanup from that same callback is usually easier
+          to follow.
         </p>
 
-        <h2 class="mt-6">Asynchronous cleanup</h2>
+        <h2 class="mt-6">What about asynchronous cleanup?</h2>
 
         <p>
           <code>onDestroy()</code> does not wait for asynchronous cleanup to finish. If your
@@ -135,9 +139,12 @@ onDestroy(() => {
           `}
         />
 
-        <h2 class="mt-6">When does it run?</h2>
+        <h2 class="mt-6">When does cleanup actually run?</h2>
 
-        <p>A component's cleanup functions run when its owner is disposed. This can happen when:</p>
+        <p>
+          You don't have to guess when to call the callback yourself. Cleanup runs when the
+          component's owner is disposed. That usually happens when:
+        </p>
 
         <ul>
           <li>The component is conditionally removed from the UI.</li>
@@ -150,7 +157,7 @@ onDestroy(() => {
           nested components to release their resources before the parent finishes its own cleanup.
         </p>
 
-        <h2 class="mt-6">API Reference</h2>
+        <h2 class="mt-6">API reference</h2>
 
         <h3>onDestroy(callback)</h3>
 

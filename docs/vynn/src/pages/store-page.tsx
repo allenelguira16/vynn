@@ -7,74 +7,75 @@ export const StorePage = () => {
 
       <section>
         <p>
-          <code>$store()</code> creates a deeply reactive proxy for plain objects and arrays. It
-          also supports native <code>Map</code>, <code>Set</code>, <code>WeakMap</code>, and
-          <code>WeakSet</code> collections with collection-specific reactivity. Unlike
-          <code>$state()</code>, which tracks its value as a whole, <code>$store()</code> tracks
-          individual properties, entries, and iteration dependencies.
+          <code>$store()</code> is for state with structure: objects, arrays, and supported native
+          collections. It wraps that data in a reactive proxy, so Vynn can track the properties,
+          entries, and iterations your UI actually reads. Unlike <code>$state()</code>, you work
+          with a store directly instead of going through <code>.value</code>.
         </p>
 
         <p>
-          You can read and update properties directly using ordinary JavaScript syntax. Vynn tracks
-          which properties your UI and reactive computations access, then updates the parts that
-          depend on those properties when they change.
+          The nice part is that your code still looks like regular JavaScript. Read
+          <code>user.name</code>, change <code>user.settings.theme</code>, or call
+          <code>items.push()</code>. Vynn remembers which pieces were read and updates only the
+          dependent bindings when those pieces change.
         </p>
 
         <h2 class="mt-6">Basic usage</h2>
 
         <p>
-          Pass an object or array to <code>$store()</code>. You can access and modify its properties
-          without using <code>.value</code>.
+          Pass an object or array to <code>$store()</code>, then work with its properties directly.
+          There's no <code>.value</code> wrapper: read <code>profile.name</code>, assign to
+          <code>profile.settings.theme</code>, and let Vynn keep the UI in sync.
         </p>
 
         <CodeBlock
           lang="tsx"
           code={`
 import { $store } from "vynn";
-import { renderToDOM } from "vynn/client";
 
-function Counter() {
-  const state = $store({
-    count: 0,
+function ProfileCard() {
+  const profile = $store({
+    name: "Ada",
+    settings: {
+      theme: "dark",
+    },
   });
 
-  const handleCount = () => {
-    state.count++;
-  };
-
   return (
-    <div>
-      <div>Count: {state.count}</div>
+    <section>
+      <h2>{profile.name}</h2>
+      <p>Theme: {profile.settings.theme}</p>
 
       <button
-        disabled={state.count > 5}
-        onClick={handleCount}
+        onClick={() => {
+          profile.settings.theme =
+            profile.settings.theme === "dark" ? "light" : "dark";
+        }}
       >
-        Add counter
+        Toggle theme
       </button>
-
-      {state.count <= 3 ? <p>Hi!</p> : <p>That's enough.</p>}
-    </div>
+    </section>
   );
 }
-
-renderToDOM(Counter, "#app");
           `}
         />
 
         <p>
-          When <code>state.count</code> changes, Vynn updates the DOM bindings that read that
-          property. You don't need to replace the entire object or manually notify Vynn about the
-          change.
+          That's the everyday experience of a store: mutate the data where it lives. Vynn tracks
+          which properties the UI reads, then updates those bindings when the properties change.
+          You don't need to replace the whole object or manually notify anything.
+        </p>
+        <p>
+          <strong>Try it:</strong> add a <code>city</code> property to the profile and display it.
+          Then add a button that changes the city.
         </p>
 
         <h2 class="mt-6">Nested reactivity</h2>
 
         <p>
-          Nested objects and arrays are reactive too. You don't need to create separate{" "}
-          <code>$state()</code> or <code>$store()</code>
-          values for every property. Nested values are converted to reactive proxies when they are
-          accessed.
+          Nested objects and arrays are reactive as well. You can keep related data together instead
+          of creating a separate <code>$state()</code> for every field. When you access a nested
+          object or array, Vynn gives you its reactive proxy automatically.
         </p>
 
         <CodeBlock
@@ -124,12 +125,13 @@ function Profile() {
           properties.
         </p>
 
-        <h2 class="mt-6">Structural reactivity</h2>
+        <h2 class="mt-6">Going deeper: structural reactivity</h2>
 
         <p>
-          A store tracks more than property values. Checking whether a property exists and
-          enumerating an object's keys are reactive too. Adding or deleting a property updates
-          computations that depend on the object's structure.
+          A store also knows when its shape changes. That means checks such as <code>"name" in user</code>
+          and calls such as <code>Object.keys(user)</code> are reactive too. Adding or removing a
+          property updates consumers that care about the object's structure, even when the
+          property's value happens to be <code>undefined</code>.
         </p>
 
         <CodeBlock
@@ -163,7 +165,7 @@ function UserFields() {
           <code>in</code> check and the object's key list.
         </p>
 
-        <h3 class="mt-4">Array key enumeration</h3>
+        <h3 class="mt-4">Advanced: array key enumeration</h3>
 
         <p>
           Array enumeration is structural too. Calls such as <code>Object.keys()</code>,
@@ -201,7 +203,7 @@ delete items[1];
           <code>length</code> when it only depends on the array's size.
         </p>
 
-        <h2 class="mt-6">Native collections</h2>
+        <h2 class="mt-6">Using Map and Set</h2>
 
         <p>
           <code>$store()</code> also supports <code>Map</code>, <code>Set</code>,
@@ -235,13 +237,13 @@ users.get("1")!.name = "Grace";
           <code>RegExp</code>, and <code>Promise</code> are left unproxied.
         </p>
 
-        <h2 class="mt-6">Ref unwrapping</h2>
+        <h2 class="mt-6">When a store contains refs</h2>
 
         <p>
-          When a Vynn state or computed ref is stored in an ordinary object property,
-          <code>$store()</code> exposes its value directly. Assigning a non-ref value to that
-          property updates the original writable ref. Refs inside arrays and collections are
-          preserved and must still be accessed through <code>.value</code>.
+          A useful convenience: refs placed in ordinary object properties are unwrapped when you read
+          them through a store. Writing a non-ref value back to that property updates the original
+          writable ref. Arrays and collections are different by design: refs stored there stay
+          intact, so you still read them with <code>.value</code>.
         </p>
 
         <CodeBlock
@@ -275,7 +277,7 @@ console.log(state.double); // 4
           values continue to use <code>.value</code>.
         </p>
 
-        <h2 class="mt-6">Derived values with getters</h2>
+        <h2 class="mt-6">Calculating a property with a getter</h2>
 
         <p>
           You can define JavaScript getters directly inside a store. This is useful for values that
@@ -322,7 +324,7 @@ function Counter() {
           derived logic outside the store.
         </p>
 
-        <h2 class="mt-6">Async stores</h2>
+        <h2 class="mt-6">Load structured data asynchronously</h2>
 
         <p>
           <code>$store()</code> also accepts an async function that loads an object. This is useful
@@ -376,7 +378,7 @@ function Header() {
           <code>$store()</code>.
         </p>
 
-        <h2 class="mt-6">Refreshing async stores</h2>
+        <h2 class="mt-6">Refresh without replacing the store</h2>
 
         <p>
           An async store can depend on other reactive values. Dependencies read before the first
@@ -436,12 +438,12 @@ function UserProfile() {
         </p>
 
         <p>
-          Async store initializers must resolve to plain objects. For asynchronous values that
-          aren't objects, use async
-          <code>$state()</code> or <code>$computed()</code> instead.
+          An async store must resolve to a plain object. If the request returns a string, number, or
+          another non-object value, use async <code>$state()</code> or <code>$computed()</code>
+          instead.
         </p>
 
-        <h2 class="mt-6">Using stores outside components</h2>
+        <h2 class="mt-6">Sharing a store between components</h2>
 
         <p>
           You can also create a store outside a component and import it wherever you need it. This
@@ -486,12 +488,12 @@ export function Header() {
         </p>
 
         <p>
-          For server-rendered applications, avoid putting user-specific mutable state in a
-          module-level store. Modules can be shared across requests, so create request-specific
-          state within the appropriate application scope instead.
+          The same SSR rule applies here as it does to <code>$state()</code>: module-level stores are
+          shared across requests in the same server process. Keep user-specific data inside the
+          correct application or request scope.
         </p>
 
-        <h2 class="mt-6">When to use $state instead</h2>
+        <h2 class="mt-6">Should I use $state or $store?</h2>
 
         <p>
           Use <code>$state()</code> when you only need to track a value as a whole, such as a
@@ -503,7 +505,7 @@ export function Header() {
           be independently reactive.
         </p>
 
-        <h2 class="mt-6">API Reference</h2>
+        <h2 class="mt-6">API reference</h2>
 
         <h3>$store(initialObject)</h3>
 

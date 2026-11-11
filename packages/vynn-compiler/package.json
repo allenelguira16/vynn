@@ -44,5 +44,13 @@
       "version": "^11.17.0",
       "onFail": "download"
     }
+  },
+  "peerDependencies": {
+    "@oxc-parser/binding-wasm32-wasip1": "0.155.0"
+  },
+  "peerDependenciesMeta": {
+    "@oxc-parser/binding-wasm32-wasip1": {
+      "optional": true
+    }
   }
 }

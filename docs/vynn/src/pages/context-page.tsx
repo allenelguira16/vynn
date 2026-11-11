@@ -5,18 +5,21 @@ export const ContextPage = () => {
     <div>
       <h1>Contexts</h1>
 
+      <p class="text-base-content/70">Share values with the parts of your app that need them, without passing the same prop through every layer.</p>
+
       <p>
-        Contexts allow you to share values between components without manually passing props through
-        every component in the tree. This is useful for sharing application state, configuration,
-        user information, and other values across deeply nested components.
+        Sometimes a value is useful far below the component that creates it. Context lets you share
+        that value with descendants without threading another prop through every component in
+        between. It's a natural fit for themes, application settings, and shared reactive state.
       </p>
 
       <section>
-        <h2>Creating a context</h2>
+        <h2>First, create a place for the value</h2>
 
         <p>
-          <code>createContext</code> creates a context and returns a tuple containing two functions:
-          a <code>Provider</code> component and a <code>useContext</code> function.
+          <code>createContext</code> sets up a context and gives you two things: a <code>Provider</code>
+          component for supplying the value, and a <code>useContext</code> function for reading it
+          later.
         </p>
 
         <CodeBlock
@@ -29,8 +32,9 @@ const [ThemeProvider, useTheme] = createContext<string>();
         />
 
         <p>
-          The generic type parameter defines the type of value that the context will hold. In this
-          example, the context stores a string.
+          The type parameter describes the value you'll provide. Here, the theme is a string, so
+          TypeScript can check both the Provider's <code>value</code> and the value returned by
+          <code>useTheme()</code>.
         </p>
 
         <p>
@@ -41,7 +45,7 @@ const [ThemeProvider, useTheme] = createContext<string>();
       </section>
 
       <section>
-        <h2>Providing a context</h2>
+        <h2>Make the value available to a subtree</h2>
 
         <p>
           To make a context available to other components, wrap them with its corresponding Provider
@@ -76,14 +80,13 @@ function Content() {
         />
 
         <p>
-          Context values are available to components anywhere inside the Provider's descendant tree.
-          You don't need to pass the value through intermediate components such as <code>Page</code>
-          .
+          Any descendant can read the value from the nearest matching Provider. Intermediate
+          components such as <code>Page</code> don't need to know about it or pass it along.
         </p>
       </section>
 
       <section>
-        <h2>Consuming a context</h2>
+        <h2>Read the value where you need it</h2>
 
         <p>
           Use the function returned by <code>createContext</code> to access the context value inside
@@ -109,18 +112,20 @@ function Profile() {
         </p>
 
         <p>
-          Using a context without wrapping the component in its corresponding Provider throws an
-          error. Make sure the Provider exists somewhere above the component consuming it.
+          There is no default value in this example. Calling <code>useName()</code> without a
+          matching Provider throws. If you see that error, check that the component is actually
+          rendered somewhere beneath <code>NameProvider</code>.
         </p>
       </section>
 
       <section>
-        <h2>Using context with reactivity</h2>
+        <h2>Share reactive state, not a stale copy</h2>
 
         <p>
-          Contexts can also share reactive values. Since Vynn passes the original value rather than
-          creating a copy, you can provide a <code>$state</code> or <code>$store</code> and access
-          its reactive properties from descendant components.
+          Context doesn't clone the value you provide. That's handy for reactivity: pass a
+          <code>$state()</code> ref or <code>$store()</code> proxy, and every descendant that receives
+          it works with that same reactive value. A plain object, on the other hand, doesn't become
+          reactive just because it is placed in context.
         </p>
 
         <CodeBlock
@@ -165,13 +170,13 @@ function Profile() {
 
         <p>
           When <code>user.name</code> changes, components that read that property update
-          automatically through Vynn's reactivity system. You don't need to create additional
-          effects or manually synchronize the context.
+          automatically. Context shares the reference; <code>$store()</code> provides the
+          reactivity. You don't need an extra effect to keep the consumers synchronized.
         </p>
       </section>
 
       <section>
-        <h2>Nested providers</h2>
+        <h2>Override a value for just one part of the tree</h2>
 
         <p>
           You can nest multiple Providers created from the same context. A descendant will receive
@@ -218,7 +223,7 @@ function DarkPage() {
       </section>
 
       <section>
-        <h2>API Reference</h2>
+        <h2>API reference</h2>
 
         <h3>createContext&lt;T&gt;()</h3>
 

@@ -7,9 +7,9 @@ const links = [
   {
     title: "Getting Started",
     items: [
-      { label: "Introduction", href: "/docs/getting-started/introduction" },
-      { label: "Installation", href: "/docs/getting-started/installation" },
-      { label: "Things to know", href: "/docs/getting-started/things-to-know" },
+      { label: "Quick start", href: "/docs/getting-started/introduction" },
+      { label: "Set up Vynn", href: "/docs/getting-started/installation" },
+      { label: "How Vynn works", href: "/docs/getting-started/things-to-know" },
     ],
   },
   {
@@ -23,7 +23,7 @@ const links = [
     ],
   },
   {
-    title: "Lifecycle and Context",
+    title: "Lifecycle & Context",
     items: [
       { label: "onMount", href: "/docs/life-cycles/on-mount" },
       { label: "onDestroy", href: "/docs/life-cycles/on-destroy" },
@@ -32,7 +32,7 @@ const links = [
     ],
   },
   {
-    title: "Components",
+    title: "UI Components",
     items: [
       { label: "Await", href: "/docs/components/await" },
       { label: "ErrorBoundary", href: "/docs/components/error-boundary" },
@@ -49,12 +49,12 @@ const links = [
     ],
   },
   {
-    title: "Server Runtime",
+    title: "Server",
     items: [{ label: "Server functions", href: "/docs/server/functions" }],
   },
   {
     title: "TypeScript",
-    items: [{ label: "Core types", href: "/docs/utilities/types" }],
+    items: [{ label: "TypeScript types", href: "/docs/utilities/types" }],
   },
 ];
 

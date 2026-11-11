@@ -3,22 +3,22 @@ import { CodeBlock } from "../components/CodeBlock";
 export const OwnerPage = () => (
   <div>
     <h1>Owners and lifecycle scopes</h1>
+    <p class="text-base-content/70">An advanced look at how Vynn keeps track of who owns reactive work and when that work should stop.</p>
     <section>
       <p>
-        Vynn associates components and reactive work with an <em>owner</em>. An owner forms a
-        lifetime scope: child owners, effects, and cleanup callbacks are tied to it. When the owner
-        is disposed, its descendants and registered resources are disposed too.
+        Vynn gives components and reactive work an <em>owner</em>, which is a fancy name for a
+        lifetime scope. Effects, child components, and cleanup callbacks belong to that scope.
+        When the owner is disposed, everything it owns is cleaned up as well.
       </p>
       <p>
-        Most application code does not need to manage owners directly. Components already receive an
-        owner, and APIs such as
-        <code>$effect()</code>, <code>onMount()</code>, and
-        <code>onDestroy()</code> use it automatically. The owner functions exported from{" "}
-        <code>vynn</code> are lower-level tools for integrations and reusable runtime
-        infrastructure.
+        You normally won't need to create an owner yourself. Vynn gives components an owner
+        automatically, and APIs such as <code>$effect()</code>, <code>onMount()</code>, and
+        <code>onDestroy()</code> use it for you. The owner helpers are for integrations and
+        reusable infrastructure that needs a separate lifetime. If you're building an ordinary
+        component, you can safely skip most of this page for now.
       </p>
 
-      <h2 class="mt-6">Inspect the current owner</h2>
+      <h2 class="mt-6">First, see which owner is active</h2>
       <CodeBlock
         lang="tsx"
         code={`
@@ -38,7 +38,7 @@ function DebugPanel() {
         returns <code>null</code> when no owner is active.
       </p>
 
-      <h2 class="mt-6">Create an explicit owner</h2>
+      <h2 class="mt-6">Create a separate lifetime scope</h2>
       <p>
         <code>createOwner()</code> creates a new owner. By default, it uses the currently active
         owner as its parent. You can also pass an explicit parent owner.
@@ -63,20 +63,20 @@ disposeOwner(owner);
       `}
       />
 
-      <h2 class="mt-6">Run work under an owner</h2>
+      <h2 class="mt-6">Run code inside that scope</h2>
       <p>
         <code>runWithOwner(owner, callback)</code> temporarily makes the supplied owner current
         while it invokes the callback. Vynn restores the previous owner after the callback returns
         or throws.
       </p>
       <p>
-        This scope is synchronous. If the callback returns a Promise, the owner is restored as soon
-        as the callback returns that Promise. Do not expect the owner to remain active automatically
-        after an
-        <code>await</code>.
+        This scope only covers the synchronous callback. If it returns a Promise, Vynn restores the
+        previous owner as soon as that Promise is returned. An <code>await</code> does not keep the
+        owner active. Create owner-bound work before the first <code>await</code>, or explicitly
+        re-enter the owner for a later synchronous step.
       </p>
 
-      <h2 class="mt-6">Nested ownership and disposal</h2>
+      <h2 class="mt-6">What happens when owners are nested?</h2>
       <CodeBlock
         lang="tsx"
         code={`
@@ -106,7 +106,7 @@ disposeOwner(parent);
         together.
       </p>
 
-      <h2 class="mt-6">Owner-aware APIs</h2>
+      <h2 class="mt-6">Which APIs use the current owner?</h2>
       <ul>
         <li>
           <code>$effect()</code> registers its disposer with the active owner.
@@ -122,7 +122,7 @@ disposeOwner(parent);
         </li>
       </ul>
 
-      <h2 class="mt-6">Which APIs should application code use?</h2>
+      <h2 class="mt-6">Do you need to create an owner yourself?</h2>
       <p>
         Prefer component-level lifecycle APIs for normal application features. Use{" "}
         <code>createOwner()</code>, <code>runWithOwner()</code>, and

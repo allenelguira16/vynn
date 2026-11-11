@@ -3,20 +3,20 @@ import { CodeBlock } from "../components/CodeBlock";
 export const LazyPage = () => (
   <div>
     <h1>lazy</h1>
+    <p class="text-base-content/70">Split a feature into its own file and load it only when someone needs it.</p>
     <section>
       <p>
-        <code>lazy()</code> lets you load components dynamically instead of including them in the
-        initial application bundle. This is useful for code-splitting, large pages, and components
-        that are not needed immediately.
+        <code>lazy()</code> lets you split a component into a separate module and load it only when
+        the component is needed. This is especially useful for large pages, admin screens, or
+        heavier features that most users won't open right away.
       </p>
       <p>
-        It accepts a dynamic import function and returns a component that loads the requested module
-        when it is rendered. While the module is loading, the component suspends so that{" "}
-        <code>&lt;Await&gt;</code>
-        can display a fallback.
+        Pass it a dynamic import function and use the returned value like any other component. The
+        module starts loading when that component is rendered. While it loads, the lazy component
+        suspends, giving <code>&lt;Await&gt;</code> a chance to show a fallback.
       </p>
 
-      <h2 class="mt-6">Basic usage</h2>
+      <h2 class="mt-6">Load a component only when it appears</h2>
       <p>
         By default, <code>lazy()</code> expects the dynamically imported module to have a default
         component export.
@@ -38,12 +38,12 @@ function App() {
       `}
       />
       <p>
-        When <code>LazyHello</code> is rendered, Vynn starts loading the module. Until the component
-        is available, <code>&lt;Await&gt;</code>
-        displays its fallback. Once the module finishes loading, Vynn renders the actual component.
+        The first time <code>LazyHello</code> appears, Vynn begins the import. The fallback covers the
+        loading period; once the module resolves, Vynn renders the selected component. Later
+        instances can reuse the already-loaded module.
       </p>
 
-      <h2 class="mt-6">Named exports</h2>
+      <h2 class="mt-6">What if the component isn't the default export?</h2>
       <p>You can load a named component export by passing its name as the second argument.</p>
       <CodeBlock
         lang="tsx"
@@ -59,7 +59,7 @@ const LazyHello = lazy(() => import("./Hello"), "Hello");
         function component, Vynn throws an error.
       </p>
 
-      <h2 class="mt-6">Passing props</h2>
+      <h2 class="mt-6">Pass props just like any other component</h2>
       <p>
         Lazy components work like regular components. Props passed to the lazy component are
         forwarded to the selected component after the module loads.
@@ -81,7 +81,7 @@ function App() {
       `}
       />
 
-      <h2 class="mt-6">SSR module IDs</h2>
+      <h2 class="mt-6">Help the server preload the right files</h2>
       <p>
         The optional third argument identifies the module to the server renderer. Vynn adds that ID
         to the render result's
@@ -106,7 +106,7 @@ const LazyReports = lazy(
         <code>undefined</code> when using the default export and specifying the third argument.
       </p>
 
-      <h2 class="mt-6">How it works</h2>
+      <h2 class="mt-6">What happens behind the scenes</h2>
       <ul>
         <li>The lazy component starts loading its module when it is rendered.</li>
         <li>
@@ -123,7 +123,7 @@ const LazyReports = lazy(
         </li>
       </ul>
 
-      <h2 class="mt-6">Handling loading errors</h2>
+      <h2 class="mt-6">And if the import fails?</h2>
       <p>
         If the dynamic import fails or the requested export is invalid, the lazy component throws an
         error. Use <code>&lt;ErrorBoundary&gt;</code>

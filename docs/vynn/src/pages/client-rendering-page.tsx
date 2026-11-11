@@ -5,13 +5,12 @@ export const ClientRenderingPage = () => (
     <h1>Client rendering</h1>
     <section>
       <p>
-        The <code>vynn/client</code> entry point exposes the functions that attach a Vynn
-        application to DOM nodes. Use <code>renderToDOM()</code>
-        for a client-rendered app and <code>hydrateToDOM()</code> when the server has already
-        rendered the matching markup.
+        The <code>vynn/client</code> entry point is where a browser app meets the DOM. Use
+        <code>renderToDOM()</code> when Vynn should create the UI from scratch, or
+        <code>hydrateToDOM()</code> when the server has already sent the matching Vynn markup.
       </p>
 
-      <h2 class="mt-6">renderToDOM()</h2>
+      <h2 class="mt-6">Starting with an empty page: renderToDOM()</h2>
       <p>
         Pass a component function and a target. The target can be a CSS selector, an{" "}
         <code>Element</code>, a <code>Document</code>, or a<code>DocumentFragment</code>.
@@ -32,11 +31,11 @@ unmount();
       `}
       />
       <p>
-        The function returns an unmount callback. Call it when the application should be disposed.
-        Vynn disposes the root owner and removes the nodes that were mounted by that render.
+        Keep the returned disposer when you mount the app. Calling it later tears down the root owner,
+        runs registered cleanup, and removes the nodes created by that render.
       </p>
 
-      <h2 class="mt-6">Mounting into an existing element</h2>
+      <h2 class="mt-6">Choose where the app should appear</h2>
       <CodeBlock
         lang="tsx"
         code={`
@@ -50,17 +49,16 @@ const unmount = renderToDOM(App, root);
       `}
       />
       <p>
-        Rendering into an element appends the application nodes to that element. Choose a target
-        whose existing children should be preserved or replaced by your own application logic;{" "}
-        <code>renderToDOM()</code>
-        does not automatically clear arbitrary pre-existing content.
+        One detail worth knowing: mounting into an element appends the app's nodes. It doesn't
+        silently clear whatever was already there, so choose an empty target or manage existing
+        content yourself before mounting.
       </p>
 
-      <h2 class="mt-6">Hydrating server-rendered markup</h2>
+      <h2 class="mt-6">Already have HTML from the server? Hydrate it</h2>
       <p>
-        Use <code>hydrateToDOM()</code> when the target already contains HTML produced by the
-        matching Vynn application. Hydration connects the client runtime to that existing structure
-        instead of creating a second copy of the UI.
+        Use <code>hydrateToDOM()</code> when the browser already has HTML from the same Vynn app.
+        Hydration attaches event handlers and reactive behavior to that markup instead of building
+        a second copy beside it.
       </p>
       <CodeBlock
         lang="tsx"
@@ -84,13 +82,12 @@ const unmount = hydrateToDOM(App, "#app");
       />
 
       <p>
-        The client component tree and the server output must describe the same application
-        structure. Keep request-specific data consistent between the server render and the browser's
-        initial hydration. A mismatch in application data or tree shape can cause hydration
-        mismatches.
+        The server output and the browser's first render need to agree. Pass the same initial data and
+        render the same component structure on both sides. When they disagree, hydration can report
+        a mismatch or attach behavior to the wrong nodes.
       </p>
 
-      <h2 class="mt-6">Hydrating a full document</h2>
+      <h2 class="mt-6">Hydrating the whole document</h2>
       <p>
         The target can be the <code>Document</code> itself when the application owns the document
         shell. This is useful when the root component returns <code>&lt;html&gt;</code>,{" "}
@@ -100,7 +97,7 @@ const unmount = hydrateToDOM(App, "#app");
         <code>&lt;html&gt;</code> root with both a head and body.
       </p>
 
-      <h2 class="mt-6">Disposal and cleanup</h2>
+      <h2 class="mt-6">Unmount cleanly when you're done</h2>
       <p>
         Both mounting functions return a disposer. Disposing the app releases its owner tree, which
         in turn runs registered <code>onDestroy()</code>

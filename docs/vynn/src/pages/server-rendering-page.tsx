@@ -5,18 +5,25 @@ export const ServerRenderingPage = () => (
     <h1>Server rendering</h1>
     <section>
       <p>
-        The <code>vynn/server</code> entry point exposes
-        <code>renderToServer()</code>. It renders a component tree to HTML without a browser DOM and
-        returns the body together with metadata collected during that render.
+        Server rendering (SSR) means your server creates the page's HTML before it reaches the
+        browser. That can make the first page useful before the client JavaScript has loaded and
+        gives crawlers HTML to inspect.
       </p>
-
-      <h2 class="mt-6">Render modes</h2>
       <p>
-        Vynn supports three render modes. The mode determines whether the renderer returns
-        immediately, waits for async work, or streams incremental output.
+        Most apps using <code>vite-plugin-vynn</code> don't need to call the renderer themselves:
+        the plugin creates the request handler and hydrates the page in the browser. This guide is
+        for custom servers, framework integrations, or anyone who wants to understand the lower-level
+        renderer. Use <code>renderToServer()</code> from <code>vynn/server</code> to render a Vynn
+        component tree and collect its HTML, document metadata, and the modules used by the page.
       </p>
 
-      <h3 class="mt-4">Synchronous mode</h3>
+      <h2 class="mt-6">First, choose how the HTML should be delivered</h2>
+      <p>
+        The main difference is when your server can start sending the response. Use the mode that
+        matches what your request handler needs; the component code can stay the same.
+      </p>
+
+      <h3 class="mt-4">Need the result immediately? Use sync mode</h3>
       <CodeBlock
         lang="tsx"
         code={`
@@ -35,7 +42,7 @@ const headHtml = result.head.render();
         <code>"stream"</code> when the output depends on asynchronous work.
       </p>
 
-      <h3 class="mt-4">Async mode</h3>
+      <h3 class="mt-4">Need complete HTML before responding? Use async mode</h3>
       <CodeBlock
         lang="tsx"
         code={`
@@ -51,7 +58,7 @@ const headHtml = result.head.render();
         sending a response.
       </p>
 
-      <h3 class="mt-4">Streaming mode</h3>
+      <h3 class="mt-4">Want to send the page as it becomes ready? Use stream mode</h3>
       <CodeBlock
         lang="tsx"
         code={`
@@ -62,17 +69,17 @@ const initialHead = result.head.render();
       `}
       />
       <p>
-        <code>"stream"</code> returns a <code>ReadableStream</code>. Vynn can send the initial
-        markup and async fallbacks first, then send patches when deferred content becomes available.
-        Streaming lets the response begin before every async boundary has completed.
+        <code>"stream"</code> returns a <code>ReadableStream</code>. Vynn can send the first HTML
+        and any async fallbacks, then follow up with patches as deferred content becomes ready.
+        This lets the browser start receiving the page without waiting for every section to finish.
       </p>
       <p>
-        The stream includes the runtime markup needed to apply streamed content patches. Send the
-        stream as the response body rather than converting it to a string before transmission, or
-        the streaming benefit is lost.
+        The stream also includes the runtime markers needed to apply those patches. Pass it through
+        as the response body instead of buffering it into one string first; converting it up front
+        removes the main benefit of streaming.
       </p>
 
-      <h2 class="mt-6">Understanding the result</h2>
+      <h2 class="mt-6">What do you get back?</h2>
       <p>
         Every mode returns an <code>SsrRenderResult</code> with these fields:
       </p>
@@ -95,7 +102,7 @@ const initialHead = result.head.render();
         </li>
       </ul>
 
-      <h2 class="mt-6">Document head management</h2>
+      <h2 class="mt-6">Collect the page title and other head elements</h2>
       <p>
         Vynn collects supported document metadata declared by the component tree. Call{" "}
         <code>result.head.render()</code> to obtain the current head markup. During streaming,
@@ -117,7 +124,7 @@ const unsubscribe = result.head.subscribe((nextHeadHtml) => {
       `}
       />
 
-      <h2 class="mt-6">Passing the incoming request</h2>
+      <h2 class="mt-6">Make the incoming request available to your app</h2>
       <p>
         The optional third argument is a Web-standard <code>Request</code>. Passing it creates a
         request context for the render. Core code that runs during that SSR request can then access
@@ -130,7 +137,7 @@ const result = await renderToServer(App, "async", request);
       `}
       />
 
-      <h2 class="mt-6">Node HTTP integration</h2>
+      <h2 class="mt-6">Connecting to a Node HTTP server</h2>
       <p>
         The <code>vynn/server/node</code> subpath provides
         <code>createListener()</code>, <code>toWebRequest()</code>, and
@@ -175,12 +182,13 @@ createServer(createListener(fetchHandler)).listen(3000);
         hop-by-hop headers, and client disconnects.
       </p>
       <p>
-        The Node adapter does not choose your routes or construct the document shell. Your request
-        handler remains responsible for invoking the renderer, combining the result with the
-        document response, and setting the appropriate headers.
+        The Node adapter is plumbing, not an application framework. It translates the incoming
+        Node request into a Web <code>Request</code>, calls your handler, and writes its Web
+        <code>Response</code> back to the Node response. It doesn't choose routes or build your
+        document shell; your application still owns those decisions.
       </p>
 
-      <h2 class="mt-6">Preload helpers</h2>
+      <h2 class="mt-6">Preload assets used by the page</h2>
       <p>
         The server entry point also exports <code>renderSsrPreloadLinks()</code>
         and <code>injectSsrPreloadLinks()</code>. The former maps reached module IDs through a

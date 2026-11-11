@@ -1,4 +1,4 @@
-import { createHighlighterCore, StringLiteralUnion } from "shiki/core";
+import { createHighlighterCore, type StringLiteralUnion } from "shiki/core";
 import { createOnigurumaEngine } from "shiki/engine/oniguruma";
 import { $state } from "vynn";
 
@@ -17,17 +17,23 @@ const highlighter = await createHighlighterCore({
   engine: createOnigurumaEngine(import("shiki/wasm")),
 });
 
-export const CodeBlock = ({ code: rawCode, lang }: CodeBlockProps) => {
-  const code = parse(rawCode);
-  const isCopied = $state(false);
-
-  const parsedCode = highlighter.codeToHtml(code, {
+export const highlightCode = (
+  code: string,
+  lang: StringLiteralUnion<string, string> = "tsx",
+) =>
+  highlighter.codeToHtml(code, {
     lang,
     theme: "tokyo-night",
     colorReplacements: {
       "#1a1b26": "transparent",
     },
   });
+
+export const CodeBlock = ({ code: rawCode, lang }: CodeBlockProps) => {
+  const code = parse(rawCode);
+  const isCopied = $state(false);
+
+  const parsedCode = highlightCode(code, lang);
 
   const copyToClipboard = () => {
     isCopied.value = true;
@@ -63,19 +69,17 @@ function parse(str: string) {
   const lines = str.split("\n");
   if (lines.length === 0) return "";
 
-  // Find the minimum indentation level (excluding empty lines)
   let minIndent = Infinity;
   for (const line of lines) {
-    if (line.trim().length === 0) continue; // Ignore empty lines for indentation calculation
+    if (line.trim().length === 0) continue;
     const match = line.match(/^\s*/);
     if (match && match[0].length < minIndent) {
       minIndent = match[0].length;
     }
   }
 
-  if (minIndent === Infinity) return str.trim(); // All lines were empty or just whitespace
+  if (minIndent === Infinity) return str.trim();
 
-  // Remove that minimum indentation from each line
   return lines
     .map((line) => line.substring(minIndent))
     .join("\n")

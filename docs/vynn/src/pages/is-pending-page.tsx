@@ -7,17 +7,23 @@ export const IsPendingPage = () => {
 
       <section>
         <p>
-          <code>isPending()</code> tells you whether an asynchronous reactive value is currently
-          waiting for its operation to finish. It works with async values created using{" "}
-          <code>$state()</code>,<code> $store()</code>, and <code>$computed()</code>.
+          You have data on screen, but a refresh is still running. Should you replace the whole
+          page with a spinner? Usually not. <code>isPending()</code> lets you show a small
+          “Updating…” message while keeping the last successful result visible.
+        </p>
+        <p>
+          It works with async <code>$state()</code>, <code>$store()</code>, and
+          <code>$computed()</code> values, so you don't need a second state variable just to track
+          loading.
         </p>
 
         <p>
-          This is useful when you want to show a loading indicator, disable controls during a
-          request, or let users know that existing data is being refreshed.
+          On the first load, pair it with a conditional so you don't read a value that isn't ready
+          yet. After the resource has resolved once, you can keep showing the old result while the
+          next request runs.
         </p>
 
-        <h2 class="mt-6">Basic usage</h2>
+        <h2 class="mt-6">Show an updating message</h2>
 
         <p>
           Pass the reactive value itself to <code>isPending()</code>, not its <code>.value</code>.
@@ -32,7 +38,8 @@ function UserPanel() {
   const userId = $state(1);
 
   const user = $state(async () => {
-    const response = await fetch(\`/api/users/\${userId.value}\`);
+    const id = userId.value;
+    const response = await fetch("/api/users/" + id);
 
     if (!response.ok) {
       throw new Error("Failed to load user");
@@ -78,7 +85,7 @@ function UserPanel() {
           <code>false</code> and the updated user data becomes available.
         </p>
 
-        <h2 class="mt-6">Using it with other async values</h2>
+        <h2 class="mt-6">Use the same check with stores and computed values</h2>
 
         <p>
           The same function works with asynchronous <code>$store()</code>
@@ -93,7 +100,8 @@ import { $computed, $store, $state, isPending } from "vynn";
 const userId = $state(1);
 
 const user = $store(async () => {
-  const response = await fetch(\`/api/users/\${userId.value}\`);
+  const id = userId.value;
+  const response = await fetch("/api/users/" + id);
 
   if (!response.ok) {
     throw new Error("Failed to load user");
@@ -103,7 +111,8 @@ const user = $store(async () => {
 });
 
 const userName = $computed(async () => {
-  const response = await fetch(\`/api/users/\${userId.value}/name\`);
+  const id = userId.value;
+  const response = await fetch("/api/users/" + id + "/name");
 
   if (!response.ok) {
     throw new Error("Failed to load username");
@@ -117,7 +126,7 @@ console.log(isPending(userName));
           `}
         />
 
-        <h2 class="mt-6">Reactive pending checks</h2>
+        <h2 class="mt-6">Let the UI react to pending changes</h2>
 
         <p>
           Calling <code>isPending()</code> inside a reactive expression tracks changes to the
@@ -130,7 +139,7 @@ console.log(isPending(userName));
           request is loading.
         </p>
 
-        <h2 class="mt-6">API Reference</h2>
+        <h2 class="mt-6">API reference</h2>
 
         <h3>isPending(value)</h3>
 

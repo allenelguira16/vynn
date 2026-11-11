@@ -5,9 +5,9 @@ export const ComputedPage = () => (
     <h1>$computed</h1>
     <section>
       <p>
-        <code>$computed()</code> creates a read-only reactive value derived from other reactive
-        values. Vynn tracks the values read by its getter and recalculates the result when those
-        dependencies change.
+        <code>$computed()</code> gives you a read-only value that stays in sync with other reactive
+        values. Write a getter that describes how to calculate the result; Vynn tracks the reactive
+        values it reads and recalculates when those dependencies change.
       </p>
 
       <h2 class="mt-6">Basic usage</h2>
@@ -29,16 +29,38 @@ function Counter() {
       `}
       />
       <p>
-        Read the result through <code>.value</code>. A computed value does not have a setter, so
-        update its source values instead of assigning to the computed result.
+        Read the result through <code>.value</code>, just like <code>$state()</code>. The important
+        difference is that a computed value is read-only: change the source state, and Vynn
+        calculates the new result for you.
+      </p>
+      <p>
+        A useful example is a full name. You want it to follow the first and last name, but you
+        don't want to keep a third value in sync every time either input changes.
+      </p>
+      <CodeBlock
+        lang="tsx"
+        code={`
+import { $computed, $state } from "vynn";
+
+const firstName = $state("Ada");
+const lastName = $state("Lovelace");
+
+const fullName = $computed(
+  () => firstName.value + " " + lastName.value,
+);
+        `}
+      />
+      <p>
+        <strong>Try it:</strong> change either name and read <code>fullName.value</code> again.
+        The result always reflects the latest values.
       </p>
 
-      <h2 class="mt-6">Dependency tracking</h2>
+      <h2 class="mt-6">What does a computed value depend on?</h2>
       <p>
-        The getter runs immediately by default. Reactive reads made while it runs become
-        dependencies. If a later run takes a different branch, Vynn refreshes the dependency set to
-        match the reads from that run. Ordinary JavaScript values that are not reactive do not
-        trigger recalculation.
+        By default, Vynn evaluates the getter as soon as you create the computed value. Reactive
+        reads made during that run become its dependencies. Those dependencies are refreshed on
+        every run, so a conditional getter can start following a different set of values when its
+        active branch changes. Plain JavaScript values do not trigger updates on their own.
       </p>
       <CodeBlock
         lang="tsx"
@@ -57,12 +79,11 @@ const total = $computed(() => {
       `}
       />
       <p>
-        The computed value only depends on <code>tax.value</code> while the
-        <code>"gross"</code> branch is active. Changing <code>mode</code>
-        recalculates the dependencies for the next run.
+        Here, <code>tax.value</code> matters only while the <code>"gross"</code> branch is active.
+        Switch the mode and Vynn updates the dependency set along with the computed result.
       </p>
 
-      <h2 class="mt-6">Lazy evaluation</h2>
+      <h2 class="mt-6">Wait until the value is needed</h2>
       <p>
         Pass <code>{`{ lazy: true }`}</code> to defer the first computation until someone reads{" "}
         <code>.value</code>. Once initialized, it continues tracking dependencies and updating like
@@ -88,12 +109,12 @@ console.log(expensive.value); // Calculates on first read.
       `}
       />
 
-      <h2 class="mt-6">Asynchronous computed values</h2>
+      <h2 class="mt-6">Computed values can be asynchronous too</h2>
       <p>
-        The getter may return a <code>Promise</code>. Unlike async
-        <code>$state()</code> and <code>$store()</code> initializers,
-        <code>$computed()</code> detects a Promise from the getter's result. It is valid to return a
-        Promise from a regular function.
+        A computed getter can also return a <code>Promise</code>. This is a little different from
+        async <code>$state()</code> and <code>$store()</code>: those two look for an initializer
+        declared with the <code>async</code> keyword, while <code>$computed()</code> checks the
+        getter's result. A regular function that returns a Promise is perfectly fine.
       </p>
       <CodeBlock
         lang="tsx"
@@ -134,7 +155,7 @@ function UserProfile() {
         pending. Use <code>isPending(user)</code> to show a refresh indicator.
       </p>
 
-      <h2 class="mt-6">Computed values and store getters</h2>
+      <h2 class="mt-6">Computed values vs. store getters</h2>
       <p>
         A <code>$store()</code> object can contain a JavaScript getter. That getter is evaluated
         whenever its property is read, and reactive values accessed through <code>this</code> are

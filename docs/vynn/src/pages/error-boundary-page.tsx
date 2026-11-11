@@ -5,19 +5,21 @@ export const ErrorBoundaryPage = () => {
     <div>
       <h1>ErrorBoundary</h1>
 
+      <p class="text-base-content/70">Keep one broken part of your interface from taking the whole screen down.</p>
+
       <section>
         <p>
-          <code>&lt;ErrorBoundary&gt;</code> catches errors thrown while rendering its descendant
-          components or while their reactive effects are running. Instead of letting an error break
-          the surrounding UI, it replaces the failed content with a fallback.
+          <code>&lt;ErrorBoundary&gt;</code> gives a part of your UI a recovery plan. When a descendant
+          throws during rendering or while one of its reactive effects runs, the boundary replaces
+          that failed subtree with fallback UI. The rest of the application can keep working.
         </p>
 
-        <h2 class="mt-6">Basic usage</h2>
+        <h2 class="mt-6">Give a risky part of the UI a fallback</h2>
 
         <p>
-          Wrap the part of your application that needs error handling with
-          <code>&lt;ErrorBoundary&gt;</code>. Provide a <code>fallback</code> function to decide
-          what should be displayed when an error occurs.
+          Put a boundary around the part of the screen that can fail independently, then decide what
+          users should see in the <code>fallback</code> function. You can show a friendly message,
+          offer a retry button, or both.
         </p>
 
         <CodeBlock
@@ -69,11 +71,12 @@ renderToDOM(App, "#app");
         />
 
         <p>
-          The counter throws an error once its value exceeds <code>5</code>. When that happens, the
-          boundary replaces the counter with the fallback UI.
+          The example deliberately throws after the counter passes <code>5</code>. Try clicking
+          through that point: the counter is replaced by the fallback, while anything outside the
+          boundary can keep working. The retry button resets the failed subtree and creates it again.
         </p>
 
-        <h2 class="mt-6">The fallback function</h2>
+        <h2 class="mt-6">Decide what users should see</h2>
 
         <p>
           The <code>fallback</code> prop receives two arguments:
@@ -110,11 +113,12 @@ renderToDOM(App, "#app");
         />
 
         <p>
-          Calling <code>reset()</code> disposes the failed subtree and renders its children again.
-          Components inside that subtree are recreated, so their local state is initialized again.
+          Calling <code>reset()</code> is a real retry, not just a way to hide the message. Vynn
+          disposes the failed subtree and creates it again. Components inside it start with fresh
+          local state, so any state that must survive a retry should live outside the boundary.
         </p>
 
-        <h2 class="mt-6">How it works</h2>
+        <h2 class="mt-6">What happens after an error?</h2>
 
         <p>
           When an error is caught, Vynn disposes the failed content and renders the fallback
@@ -126,11 +130,11 @@ renderToDOM(App, "#app");
           thrown while rendering a fallback is passed to its enclosing boundary, if one exists.
         </p>
 
-        <h2 class="mt-6">What does it catch?</h2>
+        <h2 class="mt-6">What does it catch, and what doesn't it catch?</h2>
 
         <p>
-          Error boundaries handle instances of <code>Error</code> thrown during descendant rendering
-          and reactive effect execution. They do not catch every possible failure.
+          An error boundary is deliberately scoped. It catches errors from descendant rendering and
+          reactive effects, but it is not a global handler for every error that happens in your app.
         </p>
 
         <ul>
@@ -142,12 +146,13 @@ renderToDOM(App, "#app");
             work.
           </li>
           <li>
-            Errors thrown directly inside event handlers or unrelated asynchronous callbacks are not
-            automatically caught by the boundary.
+            Errors thrown directly from event handlers or unrelated asynchronous callbacks are not
+            automatically caught. Handle those failures where you start the work, or route them
+            into your own application error state.
           </li>
         </ul>
 
-        <h2 class="mt-6">API Reference</h2>
+        <h2 class="mt-6">API reference</h2>
 
         <h3>&lt;ErrorBoundary&gt;</h3>
 

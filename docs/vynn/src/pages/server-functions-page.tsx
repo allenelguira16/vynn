@@ -2,17 +2,37 @@ import { CodeBlock } from "../components/CodeBlock";
 
 export const ServerFunctionsPage = () => (
   <div>
-    <h1>Server-function runtime</h1>
+    <h1>Server functions: runtime integration</h1>
     <section>
       <p>
-        Vynn core provides a request/response runtime for calling server-side functions from a
-        browser client. It includes client references, server-side registration and dispatch,
-        request-scoped context, serialization, and typed application errors.
+        Server functions let browser code call functions that run on your server. In an app using
+        the Vynn Vite integration, the build plugin can generate the client references and request
+        wiring for functions marked with a function-level <code>"use server"</code> directive.
       </p>
       <p>
-        This page documents the runtime APIs only. How source functions are discovered and
-        transformed into references belongs to the separate compiler and application-integration
-        documentation.
+        This page is for the lower-level runtime: it's useful when you're integrating Vynn yourself,
+        customizing request handling, or want to understand what the generated code does. If you're
+        just trying to call a server function from an app, start with the Vite plugin's
+        <a href="https://github.com/allenelguira16/vynn/blob/master/packages/vite-plugin/README.md#server-functions">server-functions guide</a>
+        first.
+      </p>
+      <p>
+        This guide focuses on the runtime contract: what the browser calls, what the server handles,
+        and what data can cross the boundary. Source-level function discovery and code transformation
+        belong to the compiler and Vite integration guides.
+      </p>
+
+      <h2 class="mt-6">What happens when the browser calls a server function?</h2>
+      <ol>
+        <li>The browser calls a client reference using the function's generated ID.</li>
+        <li>The client sends the arguments to the configured server-function endpoint.</li>
+        <li>The server handler validates the request and finds the matching implementation.</li>
+        <li>The implementation runs on the server, and its result is serialized back to the browser.</li>
+      </ol>
+      <p>
+        The rest of this page explains how to build or customize each part of that path. If the
+        Vite plugin is already doing this wiring for you, you can skip the manual registration
+        sections and come back when you need to customize the runtime.
       </p>
 
       <h2 class="mt-6">Separate client and server entry points</h2>
@@ -27,12 +47,12 @@ export const ServerFunctionsPage = () => (
         </li>
       </ul>
       <p>
-        Both sides must agree on the server-function identifier. Generated references normally
-        receive this identifier from the build pipeline; the manual example below shows the runtime
-        contract directly.
+        The client and server must use the same function ID. In a normal app, the build integration
+        generates and wires these references for you. The manual example below is useful when you're
+        integrating the runtime yourself or want to understand what the generated code does.
       </p>
 
-      <h2 class="mt-6">Register a server implementation</h2>
+      <h2 class="mt-6">Step 1: register the server implementation</h2>
       <p>
         On the server, <code>createServerReference()</code> registers an implementation under a
         stable ID. IDs use the
@@ -70,7 +90,7 @@ export const handleServerFunction = createServerFunctionHandler();
         implementation by ID for custom dispatch or integration code.
       </p>
 
-      <h2 class="mt-6">Create a client reference</h2>
+      <h2 class="mt-6">Step 2: create the browser reference</h2>
       <p>
         Browser code imports <code>createServerReference()</code> from the client subpath. This
         function has a different purpose and signature: it creates a callable RPC reference for a
@@ -98,7 +118,7 @@ const user = await lookupUser("42");
         their arguments before sending them.
       </p>
 
-      <h2 class="mt-6">Captures and client reference options</h2>
+      <h2 class="mt-6">Passing extra values with captures</h2>
       <p>
         Advanced integrations can provide lexical captures through
         <code>getCaptures</code>. The client provider is called immediately before each invocation
@@ -111,12 +131,6 @@ const user = await lookupUser("42");
       <CodeBlock
         lang="tsx"
         code={`
-import { $state } from "vynn";
-import { createServerReference } from "vynn/server-functions/client";
-
-// The capture provider is evaluated immediately before each invocation.
-const activeTenantId = $state("tenant-a");
-
 import { $state } from "vynn";
 import { createServerReference } from "vynn/server-functions/client";
 
@@ -140,7 +154,7 @@ const lookupUser = createServerReference<LookupUser>(
         authorization or validation.
       </p>
 
-      <h2 class="mt-6">Handle requests</h2>
+      <h2 class="mt-6">Step 3: handle the incoming request</h2>
       <p>
         <code>createServerFunctionHandler()</code> creates a Fetch-compatible handler with the
         signature
@@ -171,7 +185,7 @@ async function handleRequest(request: Request): Promise<Response> {
       `}
       />
 
-      <h2 class="mt-6">Handler options and validation</h2>
+      <h2 class="mt-6">Configure and validate the endpoint</h2>
       <ul>
         <li>
           <code>endpoint</code>: absolute pathname for the RPC endpoint. Defaults to{" "}
@@ -205,11 +219,12 @@ async function handleRequest(request: Request): Promise<Response> {
         before a function is invoked.
       </p>
       <p>
-        Do not remove your application's own authentication and authorization checks: a valid RPC
-        reference is not proof that a caller is allowed to access the underlying data.
+        Keep your own authentication and authorization checks in place. Knowing a function ID, or
+        successfully calling the RPC endpoint, does not mean a user is allowed to access the data
+        behind that function.
       </p>
 
-      <h2 class="mt-6">Request-scoped context</h2>
+      <h2 class="mt-6">Read information about the current request</h2>
       <p>
         During SSR with a request supplied to <code>renderToServer()</code>, or during a
         server-function invocation, call
@@ -275,7 +290,7 @@ async function updateProfile(name: string) {
         or 5xx status on the context.
       </p>
 
-      <h2 class="mt-6">Cancellation from the client</h2>
+      <h2 class="mt-6">Cancel a request from the browser</h2>
       <p>
         Use <code>invokeServerFunction()</code> when an invocation needs a per-call{" "}
         <code>AbortSignal</code>. The signal is sent with the underlying fetch request and is
@@ -310,7 +325,7 @@ controller.abort();
         cannot be given transport cancellation options.
       </p>
 
-      <h2 class="mt-6">Safe application errors</h2>
+      <h2 class="mt-6">Send an intentional error back to the caller</h2>
       <p>
         Throw <code>ServerFunctionError</code> when the client should receive a known message,
         status, machine-readable code, or structured details. Ordinary unexpected errors are
@@ -335,7 +350,7 @@ throw new ServerFunctionError("The requested user does not exist", {
         is authorized to receive.
       </p>
 
-      <h2 class="mt-6">Serialization</h2>
+      <h2 class="mt-6">What data can cross the boundary?</h2>
       <p>
         Client arguments, captures, and returned values pass through Vynn's tagged serializer.
         Built-in support includes primitives,
