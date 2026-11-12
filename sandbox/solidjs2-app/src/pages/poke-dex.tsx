@@ -1,41 +1,10 @@
 import { For, Show, createStore, onSettled, untrack } from "solid-js";
 
 import { Template } from "../components/template";
-import { name, sleep } from "../utils";
-
-type PokeDexData = {
-  count: number;
-  next: string | null;
-  previous: string | null;
-  results: {
-    name: string;
-    url: string;
-  }[];
-};
+import { getPokedex, name, sleep, type PokeDexData } from "../utils";
 
 type SortKey = keyof PokeDexData["results"][number];
 type SortDirection = "asc" | "desc";
-
-async function getPokedex(url: string): Promise<PokeDexData> {
-  "use server";
-
-  // Restrict server-side requests to the intended API endpoint.
-  const parsedUrl = new URL(url);
-
-  if (parsedUrl.origin !== "https://pokeapi.co" || parsedUrl.pathname !== "/api/v2/pokemon/") {
-    throw new Error("Invalid PokéAPI URL");
-  }
-
-  parsedUrl.searchParams.set("limit", "20");
-
-  const response = await fetch(parsedUrl);
-
-  if (!response.ok) {
-    throw new Error(`Failed to fetch Pokémon: ${response.status}`);
-  }
-
-  return (await response.json()) as PokeDexData;
-}
 
 const INITIAL_URL = "https://pokeapi.co/api/v2/pokemon/?offset=1100&limit=20";
 

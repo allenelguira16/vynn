@@ -9,10 +9,13 @@ const pages = [
   { path: "/forms", label: "Forms" },
   { path: "/contexts", label: "Contexts" },
   { path: "/dropdown-list", label: "Dropdown Lists" },
+  { path: "/component-error", label: "Component Error" },
   { path: "/non-async-suspense", label: "Non Async Suspense" },
   { path: "/stacked-suspense", label: "Stacked Suspense" },
   { path: "/poke-dex", label: "PokeDex List" },
   { path: "/poke-dex-await", label: "PokeDex List with Await" },
+  { path: "/redirect", label: "Redirect" },
+  { path: "/params/1?id=1", label: "Params" },
 ];
 
 export const ButtonPageList = () => {
@@ -28,7 +31,10 @@ export const ButtonPageList = () => {
               <button
                 class="btn"
                 onClick={() => navigate(page.path)}
-                disabled={location.pathname === page.path}
+                disabled={
+                  location.pathname === page.path ||
+                  (page.path === "/params/1?id=1" && location.pathname.startsWith("/params/"))
+                }
               >
                 {page.label}
               </button>

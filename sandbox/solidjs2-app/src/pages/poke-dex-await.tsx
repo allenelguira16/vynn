@@ -10,17 +10,7 @@ import {
 } from "solid-js";
 
 import { Template } from "../components/template";
-import { name, sleep } from "../utils";
-
-type PokeDexData = {
-  count: number;
-  next: string | null;
-  previous: string | null;
-  results: {
-    name: string;
-    url: string;
-  }[];
-};
+import { getPokedex, name, sleep, type PokeDexData } from "../utils";
 
 type SortKey = keyof PokeDexData["results"][number];
 type SortDirection = "asc" | "desc";
@@ -33,8 +23,7 @@ export default function PokeDexAwait() {
   const [sortApplied, setSortApplied] = createSignal(false);
 
   const pokeDex = createMemo(async () => {
-    const response = await fetch(url());
-    const json = (await response.json()) as PokeDexData;
+    const json = await getPokedex(url());
 
     await sleep(0);
 

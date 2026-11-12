@@ -4,17 +4,8 @@ import { Portal } from "@solidjs/web";
 import { Loading, lazy } from "solid-js";
 
 import { ButtonPageList } from "./components/button-page-list";
+import { Template } from "./components/template";
 import { name } from "./utils";
-
-// import Lazy from "./pages/lazy";
-// import Forms from "./pages/forms";
-// import Contexts from "./pages/context";
-// import Dropdowns from "./pages/dropdown-list";
-// import NonAsyncSuspense from "./pages/non-async-suspense";
-// import PokeDex from "./pages/poke-dex";
-// import PokeDexAwait from "./pages/poke-dex-await";
-// import StackedSuspense from "./pages/stacked-suspense";
-// import ComponentError from "./pages/component-error";
 
 const Contexts = lazy(() => import("./pages/context"));
 const Dropdowns = lazy(() => import("./pages/dropdown-list"));
@@ -25,27 +16,33 @@ const PokeDex = lazy(() => import("./pages/poke-dex"));
 const PokeDexAwait = lazy(() => import("./pages/poke-dex-await"));
 const StackedSuspense = lazy(() => import("./pages/stacked-suspense"));
 const ComponentError = lazy(() => import("./pages/component-error"));
+const Params = lazy(() => import("./pages/params"));
+const Redirect = lazy(() => import("./pages/redirect"));
+const NotFound = lazy(() => import("./pages/not-found"));
 
 export default function App(props: { url: string }) {
+  let content!: HTMLDivElement;
+
   return (
-    <>
-      <Loading fallback="Page Is Loading">
-        <Router url={props.url}>
-          {(props) => {
-            return (
-              <div class="p-2 flex flex-col container m-auto">
-                {"<div>Hi</div>"}
-
-                <Portal mount={document.body}>{name.firstName}</Portal>
+    <Loading fallback="Page Is Loading">
+      <Router url={props.url}>
+        {(routeProps) => (
+          <>
+            <div class="flex">
+              <nav class="flex h-screen w-1/8">
                 <ButtonPageList />
-
-                {props.children}
+              </nav>
+              <div class="flex-1 overflow-auto h-screen p-4" ref={content}>
+                {routeProps.children}
               </div>
-            );
-          }}
-        </Router>
-      </Loading>
-    </>
+            </div>
+            <Portal mount={content}>
+              <Template title="Portal">{name.firstName}</Template>
+            </Portal>
+          </>
+        )}
+      </Router>
+    </Loading>
   );
 }
 
@@ -56,7 +53,6 @@ const Router = createRouter({
       component: () => (
         <>
           <div>Hi</div>
-          {/* <div>Hi</div> */}
           <Lazy />
           <Forms />
           <Contexts />
@@ -94,6 +90,10 @@ const Router = createRouter({
       component: () => <Forms />,
     },
     {
+      path: "/component-error",
+      component: () => <ComponentError />,
+    },
+    {
       path: "/non-async-suspense",
       component: () => <NonAsyncSuspense />,
     },
@@ -101,7 +101,17 @@ const Router = createRouter({
       path: "/stacked-suspense",
       component: () => <StackedSuspense />,
     },
+    {
+      path: "/redirect",
+      component: () => <Redirect />,
+    },
+    {
+      path: "/params/:id",
+      component: () => <Params />,
+    },
+    {
+      path: "/*all",
+      component: () => <NotFound />,
+    },
   ],
 });
-
-// const routes = createRouter();
