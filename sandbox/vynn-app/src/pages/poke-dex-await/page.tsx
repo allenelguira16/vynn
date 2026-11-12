@@ -7,9 +7,9 @@ type SortKey = keyof PokeDexData["results"][number];
 type SortDirection = "asc" | "desc";
 
 export default function PokeDexAwait() {
-  const url = $state("https://pokeapi.co/api/v2/pokemon/?offset=1100&limit=20");
-  const sortBy = $state<SortKey>("name");
-  const sortDirection = $state<SortDirection>("asc");
+  const url = $state(() => "https://pokeapi.co/api/v2/pokemon/?offset=1100&limit=20");
+  const sortBy = $state<SortKey>(() => "name" as SortKey);
+  const sortDirection = $state<SortDirection>(() => "asc" as SortDirection);
 
   const pokeDex = $store(async () => {
     return getPokedex(url.value);

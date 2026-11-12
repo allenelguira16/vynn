@@ -8,7 +8,7 @@ type SortDirection = "asc" | "desc";
 
 export default function Dropdowns() {
   console.log("Dropdown rerender"); // log once
-  const dropdownStore = $store({
+  const dropdownStore = $store(() => ({
     showDropdown: true,
     sortDirection: "asc" as SortDirection,
     numbers: Array.from({ length: 8 }, (_, i) => i + 1),
@@ -45,7 +45,7 @@ export default function Dropdowns() {
         dropdownStore.numbers = dropdownStore.numbers.slice(0, -1);
       }
     },
-  });
+  }));
 
   $effect(() => {
     // console.log(dropdownStore.numbers);
@@ -135,7 +135,7 @@ const DropdownList = (props: TDropdownListProps) => {
 
 const Dropdown = (props: { number: number }) => {
   console.log("rerender"); // log thrice
-  const isOpen = $state(false);
+  const isOpen = $state(() => false);
 
   const handleToggle = () => {
     isOpen.value = !isOpen.value;

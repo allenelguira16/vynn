@@ -14,7 +14,7 @@ import {
   regsterAsyncGetterFromLazy,
 } from "../context/lazy-context";
 import { registerSsrModule } from "../context/ssr-module-context";
-import { $computed } from "../reactivity/$computed";
+import { $computed } from "../reactivity_new/computed";
 import { $cmpnt, $nodes } from "../render";
 import { createSSRComment } from "../render/resolve-node";
 

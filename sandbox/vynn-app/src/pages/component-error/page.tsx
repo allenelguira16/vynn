@@ -16,7 +16,7 @@ function ComponentWillThrow(): JSX.Element {
 }
 
 function ComponentWillThrowLater(): JSX.Element {
-  const baseCount = $state(0);
+  const baseCount = $state(() => 0);
   const count = $computed(async () => {
     const count = baseCount.value;
 

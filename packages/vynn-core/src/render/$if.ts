@@ -2,9 +2,9 @@ import type { JSX } from "../jsx-runtime";
 
 import { isHydrating } from "../client/hydration";
 import { isServer } from "../context/is-server-context";
-import { $renderEffect } from "../reactivity/$effect";
-import { NotReadyError } from "../reactivity/not-ready-error";
-import { untrack } from "../reactivity/untrack";
+import { $renderEffect } from "../reactivity_new/effect";
+import { NotReadyError } from "../reactivity_new/not-ready-error";
+import { untrack } from "../reactivity_new/effect";
 import { markParked, unmarkParked } from "./$cmpnt.util";
 import { getCurrentDOMNamespace, withDOMNamespace } from "./namespace";
 import { resolveNode, resolveSSRChild } from "./resolve-node";

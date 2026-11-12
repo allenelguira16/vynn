@@ -3,9 +3,7 @@ import { $state, Await, onDestroy, onMount } from "vynn";
 import { createRouter, Router, toFileRouter } from "vynn-router";
 
 export default function App(props: { url: string }) {
-  const counter = $state(0);
-  console.log("hi");
-
+  const counter = $state(() => 0);
   const router = createRouter({
     routes: toFileRouter("/src/pages"),
     url: props.url,

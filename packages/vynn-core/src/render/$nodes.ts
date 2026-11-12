@@ -2,7 +2,7 @@ import type { ServerRenderedLazyRange } from "../client/hydration";
 import type { JSX } from "../jsx-runtime";
 
 import { isServer } from "../context/is-server-context";
-import { $renderEffect } from "../reactivity/$effect";
+import { $renderEffect } from "../reactivity_new/effect";
 import { getCurrentDOMNamespace, withDOMNamespace } from "./namespace";
 import { resolveNode, resolveSSRChild } from "./resolve-node";
 

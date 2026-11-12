@@ -3,7 +3,7 @@ import type { JSX } from "../jsx-runtime";
 import { runAfterHydration } from "../client/hydration";
 import { isServer } from "../context/is-server-context";
 import { createOwner, runWithOwner } from "../life-cycle/owner";
-import { untrack } from "../reactivity/untrack";
+import { untrack } from "../reactivity_new/effect";
 import {
   addUnmountListener,
   isRootNode,

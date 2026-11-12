@@ -1,5 +1,5 @@
 import { runWithOwner, type Owner } from "../life-cycle/owner";
-import { NotReadyError } from "../reactivity/not-ready-error";
+import { NotReadyError } from "../reactivity_new/not-ready-error";
 import {
   type SSR_NODE,
   resolveNode,

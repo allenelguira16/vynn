@@ -3,7 +3,7 @@ import type { SSR_ELEMENT } from "./resolve-node";
 import { isHydrationClaimActive } from "../client/hydration";
 import { diagnoseHydrationAttribute } from "../client/hydration-diagnostics";
 import { isServer } from "../context/is-server-context";
-import { $renderEffect } from "../reactivity/$effect";
+import { $renderEffect } from "../reactivity_new/effect";
 import { assertSafeAttributeName } from "./attribute-name";
 import { HTML_NAMESPACE, SVG_NAMESPACE } from "./namespace";
 

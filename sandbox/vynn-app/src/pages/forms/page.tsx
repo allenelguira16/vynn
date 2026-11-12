@@ -25,7 +25,7 @@ export default function Forms() {
 }
 
 export const Counter = () => {
-  const count = $state(0);
+  const count = $state(() => 0);
   const double = $computed(() => count.value * 2);
 
   const handleCount = () => {

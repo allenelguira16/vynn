@@ -11,7 +11,7 @@ import {
   APPLY_ERROR_BOUNDARY_PATCH_SSR_KEY,
 } from "../const";
 import { getOwner, runWithOwner } from "../life-cycle/owner";
-import { NotReadyError } from "../reactivity/not-ready-error";
+import { NotReadyError } from "../reactivity_new/not-ready-error";
 import {
   type SSR_ASYNC,
   type SSR_DEFERRED,

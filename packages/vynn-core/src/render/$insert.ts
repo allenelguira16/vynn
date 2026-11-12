@@ -3,7 +3,7 @@ import type { SSR_ELEMENT } from "./resolve-node";
 
 import { isHydrating } from "../client/hydration";
 import { isServer } from "../context/is-server-context";
-import { $renderEffect } from "../reactivity/$effect";
+import { $renderEffect } from "../reactivity_new/effect";
 import { hasRawHTMLContent } from "./$attr";
 import { isCreatingHeadElement, runWithHeadElementContext } from "./$head";
 import { getChildDOMNamespace, withDOMNamespace } from "./namespace";

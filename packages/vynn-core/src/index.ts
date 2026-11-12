@@ -1,12 +1,11 @@
 export { onMount } from "./life-cycle/on-mount";
 export { onDestroy } from "./life-cycle/on-destroy";
 
-export { type State, $state } from "./reactivity/$state";
-export { $effect, $renderEffect } from "./reactivity/$effect";
-export { $computed, type Computed, type ComputedOptions } from "./reactivity/$computed";
-export { type Async, isPending } from "./reactivity/async";
-export { $store } from "./reactivity/$store";
-export { untrack } from "./reactivity/untrack";
+export { type State, $state } from "./reactivity_new/state";
+export { $effect, $renderEffect, batch, transaction, untrack } from "./reactivity_new/effect";
+export { $computed, type Computed, type ComputedOptions } from "./reactivity_new/computed";
+export { type Async, isPending } from "./reactivity_new/resource";
+export { $store, type Store } from "./reactivity_new/store";
 
 export { getOwner, runWithOwner, createOwner, disposeOwner } from "./life-cycle/owner";
 

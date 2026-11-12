@@ -5,9 +5,9 @@ import { enterAsyncBoundary } from "../context/async-context";
 import { isServer } from "../context/is-server-context";
 import { isPromiseFromLazy } from "../context/lazy-context";
 import { getOwner, runWithOwner } from "../life-cycle/owner";
-import { $state } from "../reactivity/$state";
-import { NotReadyError } from "../reactivity/not-ready-error";
-import { untrack } from "../reactivity/untrack";
+import { $state } from "../reactivity_new/state";
+import { NotReadyError } from "../reactivity_new/not-ready-error";
+import { untrack } from "../reactivity_new/effect";
 import { $cmpnt } from "../render/$cmpnt";
 import { $if } from "../render/$if";
 import {
@@ -83,15 +83,32 @@ export const Await = $cmpnt(function Await(props: {
             return [createSSRDeferred(renderAfterBlocking, [error.promise], error.blocking)];
           }
 
-          return [createBoundary(retryPending) as unknown as SSR_NODE];
+          return [createPendingBoundary(retryPending) as unknown as SSR_NODE];
         }
 
         if (retryPending.length > 0) {
-          return [createBoundary(retryPending) as unknown as SSR_NODE];
+          return [createPendingBoundary(retryPending) as unknown as SSR_NODE];
         }
 
         return resolveSSRChild(() => retryChildren);
       });
+
+    const createPendingBoundary = (promises: Promise<any>[]): JSX.Element => {
+      const lazyPromises = promises.filter(isPromiseFromLazy);
+
+      if (lazyPromises.length > 0) {
+        // A lazy route layout can delay a descendant beforeLoad guard. Resolve
+        // lazy modules before streaming a fallback so redirects can still set
+        // the HTTP response status. Ordinary async data remains streamable.
+        return createSSRDeferred(
+          renderAfterBlocking,
+          lazyPromises,
+          true,
+        ) as unknown as JSX.Element;
+      }
+
+      return createBoundary(promises);
+    };
 
     let renderedChildren: JSX.Element;
 
@@ -113,17 +130,17 @@ export const Await = $cmpnt(function Await(props: {
 
       if (pending.length === 0) throw error;
 
-      return createBoundary(pending);
+      return createPendingBoundary(pending);
     }
 
     // Keep the first evaluation. Rendering children again here duplicates
     // synchronous side effects and can execute a throwing route guard twice.
-    return pending.length === 0 ? renderedChildren : createBoundary(pending);
+    return pending.length === 0 ? renderedChildren : createPendingBoundary(pending);
   }
 
   return untrack(() => {
     let isResolved = false;
-    const isPending = $state(false);
+    const isPending = $state(() => false);
 
     enterAsyncBoundary((promise) => {
       // Ignore lazy imports only while their server-rendered range is being claimed.

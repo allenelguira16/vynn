@@ -20,7 +20,7 @@ export default function Contexts() {
 const [NameProvider, useNameContext] = createContext<{ name: string }>();
 
 const Form = ({ children }: { children: JSX.Element }) => {
-  const state = $store<{ name: string }>({ name: "asd" });
+  const state = $store<{ name: string }>(() => ({ name: "asd" }));
 
   return <NameProvider value={state}>{children}</NameProvider>;
 };
@@ -37,7 +37,7 @@ const Input = () => {
   const forms = useNameContext();
   // console.log(forms);
 
-  const i = $state(0);
+  const i = $state(() => 0);
 
   onMount(() => {
     const cleanup = setInterval(() => {

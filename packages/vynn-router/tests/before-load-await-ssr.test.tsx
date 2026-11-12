@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { Await, $async, $computed, type JSX } from "vynn";
+import { Await, $async, $computed, lazy, type JSX } from "vynn";
 import { renderToServer } from "vynn/server";
 
 import { redirect, Router, type Route } from "../src";
@@ -224,4 +224,60 @@ describe("SSR redirects under Await", () => {
     expect((response as Response).headers.get("Location")).toBe("/params/1?id=1");
     expect(guardRuns).toBe(1);
   });
+
+  it("surfaces redirects before the first chunk when the guard sits behind a lazy layout", async () => {
+    let guardRuns = 0;
+
+    const LazyLayout = lazy(
+      () =>
+        Promise.resolve({
+          Layout: (props: { children?: JSX.Element }) => <main>{props.children}</main>,
+        }),
+      "Layout",
+    );
+
+    const routes: Route[] = [
+      {
+        path: "/",
+        component: LazyLayout as unknown as Route["component"],
+        children: [
+          {
+            path: "/redirect",
+            component: () => <p>This route must not render</p>,
+            beforeLoad: async () => {
+              guardRuns++;
+              await Promise.resolve();
+              redirect("/params/1?id=1");
+            },
+          },
+        ],
+      },
+    ];
+
+    const rendered = renderToServer(
+      () =>
+        Await({
+          fallback: "Page Is Loading",
+          get children(): JSX.Element {
+            return Router({ url: "/redirect", routes }) as unknown as JSX.Element;
+          },
+        }),
+      "stream",
+    );
+    const reader = rendered.body.getReader();
+
+    let response: unknown;
+
+    try {
+      await reader.read();
+    } catch (error) {
+      response = error;
+    }
+
+    expect(response).toBeInstanceOf(Response);
+    expect((response as Response).status).toBe(302);
+    expect((response as Response).headers.get("Location")).toBe("/params/1?id=1");
+    expect(guardRuns).toBe(1);
+  });
+
 });

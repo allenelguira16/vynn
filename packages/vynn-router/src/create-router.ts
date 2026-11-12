@@ -28,7 +28,7 @@ export function createRouter<TContext = undefined>(
       ? createMemoryHistory({ initialEntries: [options.url ?? "/"] })
       : createBrowserHistory(options.url));
 
-  const location = $store<Location>(parseLocation(history.location));
+  const location = $store<Location>(() => parseLocation(history.location));
   const state: RouterState = { location };
 
   const syncLocation = (url: string) => {

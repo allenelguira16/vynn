@@ -7,7 +7,7 @@ type SortKey = keyof PokeDexData["results"][number];
 type SortDirection = "asc" | "desc";
 
 export default function PokeDex() {
-  const pokeDex = $store({
+  const pokeDex = $store(() => ({
     isLoading: true,
     pokeDexList: [] as PokeDexData["results"],
     prevLink: "" as PokeDexData["previous"],
@@ -33,7 +33,7 @@ export default function PokeDex() {
         return this.sortDirection === "asc" ? cmp : -cmp;
       });
     },
-  });
+  }));
 
   onMount(() => {
     const controller = new AbortController();

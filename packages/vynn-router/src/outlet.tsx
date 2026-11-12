@@ -357,7 +357,7 @@ export function RouteOutlet<TContext = undefined>(props: {
 }) {
   let previousMatch: MatchedRoute<TContext> | undefined;
   let hasRendered = false;
-  const view = $state<ReturnType<typeof RouteView> | null>(null);
+  const view = $state<ReturnType<typeof RouteView> | null>(() => null);
 
   $renderEffect(() => {
     // Track the complete URL at the routing boundary. The effect only updates

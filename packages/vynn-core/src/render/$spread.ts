@@ -1,6 +1,6 @@
 import { isServer } from "../context/is-server-context";
 import { getOwner, runWithOwner } from "../life-cycle/owner";
-import { $renderEffect } from "../reactivity/$effect";
+import { $renderEffect } from "../reactivity_new/effect";
 import { $attr, setDOMAttributeValue, type AttributeValue } from "./$attr";
 
 type EventBinding = {

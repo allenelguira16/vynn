@@ -10,6 +10,7 @@ import {
   createSsrHandlerCode,
 } from "../../vite-plugin/src/plugins/app/documents.ts";
 import { ErrorBoundary } from "../src/components/error-boundary";
+import { lazy } from "../src/components/lazy";
 import { registerSsrModule } from "../src/context/ssr-module-context";
 import { createOwner, disposeOwner, getOwner, runWithOwner } from "../src/life-cycle/owner";
 import { $head, $headTmpl } from "../src/render/$head";
@@ -155,6 +156,43 @@ describe("renderToServer modes", () => {
       body: "Async content",
       modules: expect.any(Set),
     });
+  });
+
+  it("resolves new async lazy resources in async SSR mode", async () => {
+    const LazyPage = lazy(
+      () => Promise.resolve({ Page: () => "Loaded lazy page" }),
+      "Page",
+    );
+
+    const rendered = await renderToServer(
+      () => LazyPage(undefined as never),
+      "async",
+    );
+
+    expect(rendered.body).toContain("Loaded lazy page");
+  });
+
+  it("resolves new async lazy resources in streaming SSR mode", async () => {
+    const LazyPage = lazy(
+      () => Promise.resolve({ Page: () => "Loaded lazy page" }),
+      "Page",
+    );
+
+    const rendered = renderToServer(
+      () => LazyPage(undefined as never),
+      "stream",
+    );
+
+    const reader = rendered.body.getReader();
+    const chunks: string[] = [];
+
+    while (true) {
+      const result = await reader.read();
+      if (result.done) break;
+      chunks.push(new TextDecoder().decode(result.value));
+    }
+
+    expect(chunks.join("")).toContain("Loaded lazy page");
   });
 
   it("does not fail a retry for a rejected resource the child no longer reads", async () => {

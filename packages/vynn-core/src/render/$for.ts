@@ -1,9 +1,9 @@
 import type { JSX } from "../types/jsx";
 
 import { isServer } from "../context/is-server-context";
-import { $computed } from "../reactivity/$computed";
-import { $state, type State } from "../reactivity/$state";
-import { untrack } from "../reactivity/untrack";
+import { $computed } from "../reactivity_new/computed";
+import { $state, type State } from "../reactivity_new/state";
+import { untrack } from "../reactivity_new/effect";
 import { $nodes } from "./$nodes";
 import { getCurrentDOMNamespace, withDOMNamespace } from "./namespace";
 
@@ -21,8 +21,20 @@ export function $for<T>(
   const renderEach = (item: T, index: State<number>): JSX.Element =>
     withDOMNamespace(namespace, () => each(item, index));
 
+  const createRowNode = (index: State<number>): JSX.Element =>
+    $nodes(() => {
+      // Resolve the row from the source array inside its own render effect.
+      // Async $store reconciliation can mutate an item in place while keeping
+      // its identity, so relying only on reads from a captured item is not
+      // enough to invalidate component props created from destructured values.
+      const currentItems = items();
+      const currentItem = currentItems[index.value];
+
+      return renderEach(currentItem, index);
+    });
+
   if (isServer()) {
-    return $nodes(() => items().map((item, i) => renderEach(item, $state(i))));
+    return $nodes(() => items().map((item, i) => renderEach(item, $state(() => i))));
   }
 
   // const result = $state<JSX.Element[]>([]);
@@ -39,11 +51,11 @@ export function $for<T>(
        */
       if (!initialized) {
         const entries = newItems.map((value, index) => {
-          const indexState = $state(index);
+          const indexState = $state(() => index);
 
           return {
             item: value,
-            node: renderEach(value, indexState),
+            node: createRowNode(indexState),
             index: indexState,
           };
         });
@@ -105,11 +117,11 @@ export function $for<T>(
           /*
            * Completely new item.
            */
-          const indexState = $state(i);
+          const indexState = $state(() => i);
 
           newEntries.push({
             item: newItem,
-            node: renderEach(newItem, indexState),
+            node: createRowNode(indexState),
             index: indexState,
           });
         }

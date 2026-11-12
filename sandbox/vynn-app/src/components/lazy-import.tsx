@@ -12,7 +12,7 @@ import {
 const [NameProvider, useNameContext] = createContext<State<string>>();
 
 export function LazyImport() {
-  const name = $state("test");
+  const name = $state(() => "test");
   onMount(() => {});
 
   $effect(() => {});

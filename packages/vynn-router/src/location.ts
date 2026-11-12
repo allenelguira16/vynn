@@ -1,4 +1,4 @@
-import { $store } from "vynn";
+import { $store, Store } from "vynn";
 
 import type { Location, RouterInstance } from "./types";
 
@@ -39,17 +39,17 @@ export function registerLocationNavigation(
       }
     }
   };
-};
+}
 
 /**
  * Fallback location store for consumers outside a Router. Each Router has its
  * own store so route state remains scoped to that Router and concurrent SSR
  * renders never share request-specific state.
  */
-const defaultLocation = $store<Location>({
+const defaultLocation = $store<Location>(() => ({
   pathname: !isServer ? window.location.pathname : "/",
   search: !isServer ? window.location.search : "",
-});
+}));
 
 /**
  * Reactive location facade. Inside a Router it reads and writes that Router's
@@ -79,7 +79,7 @@ export const $location = new Proxy(defaultLocation, {
 
     return Reflect.set(location, property, value, location);
   },
-});
+}) as Store<Location>;
 
 if (!isServer) {
   window.addEventListener("popstate", () => {

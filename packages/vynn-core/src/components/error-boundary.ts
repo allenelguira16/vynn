@@ -11,8 +11,8 @@ import {
 } from "../context/error-boundary-context";
 import { isServer } from "../context/is-server-context";
 import { createOwner, disposeOwner, getOwner, runWithOwner } from "../life-cycle/owner";
-import { $state } from "../reactivity/$state";
-import { NotReadyError } from "../reactivity/not-ready-error";
+import { $state } from "../reactivity_new/state";
+import { NotReadyError } from "../reactivity_new/not-ready-error";
 import { $cmpnt, $nodes } from "../render";
 import { createSSRErrorBoundary, resolveSSRChild } from "../render/resolve-node";
 
@@ -42,7 +42,7 @@ export const ErrorBoundary = $cmpnt(function ErrorBoundary(props: {
   // Capture the enclosing boundary before registering this one.
   const parentBoundary = getErrorBoundary();
 
-  const view = $state<JSX.Element>();
+  const view = $state<JSX.Element | undefined>(() => undefined);
   let viewOwner: Owner | undefined;
   let failed = false;
 
