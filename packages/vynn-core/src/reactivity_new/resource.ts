@@ -196,7 +196,14 @@ export function createAsyncResource<T>(
         if (retainPrevious && current.hasPrevious) return current.previous as T;
 
         const boundary = getAsyncBoundary();
-        boundary?.(current.promise);
+
+        // Lazy components already defer their own server-rendered range.
+        // Registering their module promise with an outer Await would emit its
+        // fallback before the lazy subtree can finish rendering (and discover redirects).
+        if (!isServer() || !lazyGetter) {
+          boundary?.(current.promise);
+        }
+
         throw new NotReadyError(current.promise, boundary);
       }
 

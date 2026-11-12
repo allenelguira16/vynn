@@ -174,8 +174,9 @@ describe("SSR redirects under Await", () => {
     expect(guardRuns).toBe(1);
   });
 
-  it("streams a fallback before a redirect from a guard behind a lazy layout", async () => {
+  it("surfaces a redirect before the first chunk behind a lazy layout", async () => {
     let guardRuns = 0;
+    let routeComponentRendered = false;
 
     const LazyLayout = lazy(
       () =>
@@ -192,7 +193,10 @@ describe("SSR redirects under Await", () => {
         children: [
           {
             path: "/redirect",
-            component: () => <p>This route must not render</p>,
+            component: (() => {
+              routeComponentRendered = true;
+              return <p>This route must not render</p>;
+            }) as unknown as Route["component"],
             beforeLoad: async () => {
               guardRuns++;
               await Promise.resolve();
@@ -214,23 +218,22 @@ describe("SSR redirects under Await", () => {
       "stream",
     );
     const reader = rendered.body.getReader();
-    const firstChunk = await reader.read();
 
-    expect(firstChunk.done).toBe(false);
-    expect(new TextDecoder().decode(firstChunk.value)).toContain("Page Is Loading");
-
+    let receivedChunk = false;
     let response: unknown;
 
     try {
-      await reader.read();
+      const firstChunk = await reader.read();
+      receivedChunk = !firstChunk.done;
     } catch (error) {
       response = error;
     }
 
+    expect(receivedChunk).toBe(false);
     expect(response).toBeInstanceOf(Response);
     expect((response as Response).status).toBe(302);
     expect((response as Response).headers.get("Location")).toBe("/params/1?id=1");
+    expect(routeComponentRendered).toBe(false);
     expect(guardRuns).toBe(1);
   });
-
 });
