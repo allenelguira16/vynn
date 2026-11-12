@@ -293,7 +293,6 @@ export function resolveSSRChild(child: () => JSX.Element): SSR_NODE[] {
       createSSRDeferred(
         () => runWithOwner(owner, () => resolveSSRChild(child)),
         [error.promise],
-        error.blocking,
       ),
     ];
   }

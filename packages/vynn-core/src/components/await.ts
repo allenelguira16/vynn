@@ -64,10 +64,9 @@ export const Await = $cmpnt(function Await(props: {
         promises,
       ) as unknown as JSX.Element;
 
-    // A route guard must settle before the HTTP response starts streaming. Once
-    // it succeeds, evaluate the same Await children with a fresh promise list
-    // so ordinary page resources can still use the usual streaming fallback.
-    const renderAfterBlocking = (): SSR_NODE[] =>
+    // Resolve lazy modules before retrying the same children. Async resources
+    // discovered in the loaded tree can then use the normal streaming boundary.
+    const renderAfterLazyResolution = (): SSR_NODE[] =>
       runWithOwner(owner, () => {
         const retryPending: Promise<any>[] = [];
         enterAsyncBoundary((promise) => retryPending.push(promise));
@@ -79,8 +78,8 @@ export const Await = $cmpnt(function Await(props: {
         } catch (error) {
           if (!(error instanceof NotReadyError)) throw error;
 
-          if (error.blocking || retryPending.length === 0) {
-            return [createSSRDeferred(renderAfterBlocking, [error.promise], error.blocking)];
+          if (retryPending.length === 0) {
+            return [createSSRDeferred(renderAfterLazyResolution, [error.promise])];
           }
 
           return [createPendingBoundary(retryPending) as unknown as SSR_NODE];
@@ -97,11 +96,10 @@ export const Await = $cmpnt(function Await(props: {
       const lazyPromises = promises.filter(isPromiseFromLazy);
 
       if (lazyPromises.length > 0) {
-        // A lazy route layout can delay a descendant beforeLoad guard. Resolve
-        // lazy modules before streaming a fallback so redirects can still set
-        // the HTTP response status. Ordinary async data remains streamable.
+        // A lazy module can contain components that register additional async
+        // resources. Resolve it first, then collect dependencies from the loaded tree.
         return createSSRDeferred(
-          renderAfterBlocking,
+          renderAfterLazyResolution,
           lazyPromises,
           true,
         ) as unknown as JSX.Element;
@@ -119,14 +117,6 @@ export const Await = $cmpnt(function Await(props: {
       // Await's streaming behavior for that case, but never swallow redirects
       // or other errors merely because a sibling registered a pending promise.
       if (!(error instanceof NotReadyError)) throw error;
-
-      if (error.blocking) {
-        return createSSRDeferred(
-          renderAfterBlocking,
-          [error.promise],
-          true,
-        ) as unknown as JSX.Element;
-      }
 
       if (pending.length === 0) throw error;
 

@@ -18,6 +18,12 @@ describe("new reactivity API", () => {
     expect(() => $store({} as never)).toThrow(/requires an initializer function/);
   });
 
+  it("does not attach SSR blocking policy to NotReadyError", () => {
+    const error = new NotReadyError(Promise.resolve());
+
+    expect(error).not.toHaveProperty("blocking");
+  });
+
   it("initializes writable state from a function", () => {
     const count = $state(() => 1);
 

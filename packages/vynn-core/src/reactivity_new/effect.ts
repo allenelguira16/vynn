@@ -140,10 +140,7 @@ function removeDependencies(effect: ReactiveEffect): void {
 }
 
 function handleEffectError(error: unknown): void {
-  if (error instanceof NotReadyError) {
-    if (error.blocking) throw error;
-    return;
-  }
+  if (error instanceof NotReadyError) return;
 
   const boundary = getErrorBoundary();
 

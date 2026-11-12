@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { Await, $async, $computed, lazy, type JSX } from "vynn";
+import { Await, $computed, lazy, type JSX } from "vynn";
 import { renderToServer } from "vynn/server";
 
 import { redirect, Router, type Route } from "../src";
@@ -94,57 +94,6 @@ describe("SSR redirects under Await", () => {
     expect(guardRuns).toBe(1);
   });
 
-  it("prioritizes a blocking async read over a sibling async boundary", async () => {
-    let rejectGuard!: (error: unknown) => void;
-    const guardPromise = new Promise<never>((_resolve, reject) => {
-      rejectGuard = reject;
-    });
-    const response = new Response(null, {
-      status: 302,
-      headers: { Location: "/params/1?id=1" },
-    });
-
-    const rendered = renderToServer(() => {
-      const sibling = $async(() => new Promise<never>(() => {}));
-      const guard = $computed(async () => guardPromise, { lazy: true });
-
-      return Await({
-        fallback: "Page Is Loading",
-        get children(): JSX.Element {
-          // Register an unrelated pending resource with this Await boundary.
-          try {
-            // oxlint-disable-next-line no-unused-expressions
-            sibling.value;
-          } catch (error) {
-            if (!(error instanceof Error) || error.name !== "NotReadyError") {
-              throw error;
-            }
-          }
-
-          // RouteView marks a pending guard read as blocking before rethrowing
-          // it. Keep that boundary contract covered independently of Router's
-          // nested component and $nodes rendering structure.
-          try {
-            return guard.value;
-          } catch (error) {
-            if (!(error instanceof Error) || error.name !== "NotReadyError") {
-              throw error;
-            }
-
-            (error as Error & { blocking: boolean }).blocking = true;
-            throw error;
-          }
-        },
-      });
-    }, "stream");
-
-    const reader = rendered.body.getReader();
-    const firstChunk = reader.read();
-
-    rejectGuard(response);
-    await expect(firstChunk).rejects.toBe(response);
-  });
-
   it("propagates redirects thrown after awaiting a guard in async mode", async () => {
     let guardRuns = 0;
     const routes = createRoutes(async () => {
@@ -225,7 +174,7 @@ describe("SSR redirects under Await", () => {
     expect(guardRuns).toBe(1);
   });
 
-  it("surfaces redirects before the first chunk when the guard sits behind a lazy layout", async () => {
+  it("streams a fallback before a redirect from a guard behind a lazy layout", async () => {
     let guardRuns = 0;
 
     const LazyLayout = lazy(
@@ -265,6 +214,10 @@ describe("SSR redirects under Await", () => {
       "stream",
     );
     const reader = rendered.body.getReader();
+    const firstChunk = await reader.read();
+
+    expect(firstChunk.done).toBe(false);
+    expect(new TextDecoder().decode(firstChunk.value)).toContain("Page Is Loading");
 
     let response: unknown;
 

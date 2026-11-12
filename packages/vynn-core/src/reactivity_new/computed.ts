@@ -59,7 +59,6 @@ export function $computed<T>(
         throw new NotReadyError(
           pendingError.promise,
           boundary ?? pendingError.boundary,
-          pendingError.blocking,
         );
       }
 

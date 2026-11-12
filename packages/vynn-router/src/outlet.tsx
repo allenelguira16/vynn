@@ -3,25 +3,10 @@ import { $computed, $renderEffect, $state, onDestroy, runWithOwner, untrack } fr
 import type { Location, Route } from "./types";
 
 import { RoutePathProvider } from "./context";
-import { isServer } from "./environment";
 import { currentLocation } from "./location";
 import { getRouteParams, joinPaths, matchRoute, toSegments } from "./path";
 import { commitClientRedirect, isClientRedirect } from "./redirect";
 import { PATHLESS_ROUTE, REQUIRE_CHILD_MATCH, type InternalRoute } from "./route-meta";
-
-type NotReadyErrorLike = Error & {
-  promise: Promise<unknown>;
-  blocking: boolean;
-};
-
-function isNotReadyError(error: unknown): error is NotReadyErrorLike {
-  return (
-    error instanceof Error &&
-    error.name === "NotReadyError" &&
-    "promise" in error &&
-    "blocking" in error
-  );
-}
 
 type MatchedRoute<TContext = undefined> = {
   route: Route<TContext>;
@@ -295,25 +280,7 @@ function RouteView<TContext>(
     // Read outside the ambient owner so an enclosing Await cannot claim this
     // router-level decision as part of its page fallback. The async resource
     // itself is still bound to this RouteView's owner.
-    let result: RouteGuardResult;
-
-    try {
-      result = runWithOwner(null, () => allowed.value);
-    } catch (error) {
-      // A pending route guard must settle before the server commits the
-      // response. Keep this blocking behavior in the router rather than
-      // applying it to every lazy async computed value.
-      if (isServer && isNotReadyError(error)) {
-        error.blocking = true;
-        throw error;
-      }
-
-      // The blocking SSR deferred node already awaits this guard promise.
-      // Suppress the resource settlement effect's duplicate Response throw;
-      // the deferred node will propagate it to the request handler.
-      if (isServer && error instanceof Response) return false;
-      throw error;
-    }
+    const result = runWithOwner(null, () => allowed.value);
 
     if (result.type === "redirect" && isClientRedirect(result.signal)) {
       if (scheduledRedirect !== result.signal) {
