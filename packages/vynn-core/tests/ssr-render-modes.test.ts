@@ -171,13 +171,15 @@ describe("renderToServer modes", () => {
 
       registeredHandler = getErrorBoundary();
       registeredSsrBoundary = getErrorBoundaryContext()?.ssrBoundary;
+      registeredHandler?.(new Error("unified handler"));
 
       return boundary as unknown as JSX.Element;
     }, "sync");
 
-    expect(registeredHandler).toBe(handler);
+    expect(registeredHandler).toBeTypeOf("function");
     expect(registeredSsrBoundary).toBeDefined();
-    expect(errors).toHaveLength(0);
+    expect((registeredSsrBoundary as { hasError?: boolean }).hasError).toBe(true);
+    expect(errors.map((error) => error.message)).toEqual(["unified handler"]);
     expect(rendered.body).toContain("<!--eb:0-->");
     expect(rendered.body).toContain("<!--/eb:0-->");
   });
