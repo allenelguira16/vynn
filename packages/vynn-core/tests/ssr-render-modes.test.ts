@@ -393,6 +393,62 @@ describe("renderToServer modes", () => {
     expect(patchHTML).toContain("Caught: resource failed");
   });
 
+
+  it("does not emit sibling async patches after an ErrorBoundary has failed", async () => {
+    let rejectFirst!: (reason: Error) => void;
+    let resolveSecond!: () => void;
+
+    const first = new Promise<void>((_resolve, rejectPromise) => {
+      rejectFirst = rejectPromise;
+    });
+    const second = new Promise<void>((resolvePromise) => {
+      resolveSecond = resolvePromise;
+    });
+
+    const rendered = renderToServer(
+      () =>
+        ErrorBoundary({
+          children: (() => [
+            createSSRAsync(
+              () => [createSSRText("First loading")],
+              () => [createSSRText("First resolved")],
+              [first],
+            ),
+            createSSRAsync(
+              () => [createSSRText("Second loading")],
+              () => [createSSRText("Second resolved")],
+              [second],
+            ),
+          ]) as unknown as JSX.Element,
+          fallback: (error) => `Caught: ${error.message}`,
+        }),
+      "stream",
+    );
+
+    const reader = rendered.body.getReader();
+    const initial = await reader.read();
+    expect(new TextDecoder().decode(initial.value)).toContain("First loading");
+
+    rejectFirst(new Error("first resource failed"));
+
+    const boundaryPatch = await reader.read();
+    const chunks = [new TextDecoder().decode(boundaryPatch.value)];
+
+    resolveSecond();
+
+    while (true) {
+      const result = await reader.read();
+      if (result.done) break;
+      chunks.push(new TextDecoder().decode(result.value));
+    }
+
+    const patchHTML = chunks.join("");
+    expect(patchHTML).toContain('template id="vynn-eb-0"');
+    expect(patchHTML).toContain("Caught: first resource failed");
+    expect(patchHTML).not.toContain('template id="1"');
+    expect(patchHTML).not.toContain("Second resolved");
+  });
+
   it("patches the nearest nested ErrorBoundary instead of its parent", async () => {
     let reject!: (reason: Error) => void;
     const pending = new Promise<void>((_resolve, rejectPromise) => {
