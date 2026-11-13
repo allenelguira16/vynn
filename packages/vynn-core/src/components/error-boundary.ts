@@ -34,9 +34,26 @@ export const ErrorBoundary = $cmpnt(function ErrorBoundary(props: {
     throw new Error("ErrorBoundary requires an owner.");
   }
 
-  if (isServer()) {
-    const values = getErrorBoundaryValues();
+  const error = $state<Error | undefined>(() =>
+    ssrData?.status === "fallback" ? new Error(ssrData.message) : undefined,
+  );
+  const values = getErrorBoundaryValues();
 
+  // This handler is registered in the same context on both CSR and SSR.
+  // SSR additionally records the error for client hydration.
+  const handleError = (newError: Error) => {
+    error.value = newError;
+
+    if (isServer() && values) {
+      values[errorBoundaryID] = {
+        status: "fallback",
+        message: newError.message,
+        name: newError.name,
+      };
+    }
+  };
+
+  if (isServer()) {
     if (values) values[errorBoundaryID] = { status: "children" };
 
     return createSSRErrorBoundary(
@@ -46,29 +63,13 @@ export const ErrorBoundary = $cmpnt(function ErrorBoundary(props: {
           props.fallback?.(error, () => undefined),
         ) as unknown as SSR_NODE[],
       () => resolveNode(() => props.children) as unknown as SSR_NODE[],
-      (error) => {
-        if (values) {
-          values[errorBoundaryID] = {
-            status: "fallback",
-            message: error.message,
-            name: error.name,
-          };
-        }
-      },
+      handleError,
     ) as unknown as JSX.Element;
   }
 
-  const error = $state<Error | undefined>(() => undefined);
-
-  enterErrorBoundary((newError) => {
-    error.value = newError;
-  });
+  enterErrorBoundary(handleError);
 
   let viewOwner: Owner | undefined;
-
-  if (ssrData?.status === "fallback") {
-    error.value = new Error(ssrData.message);
-  }
 
   return $nodes(() => {
     if (viewOwner) {
