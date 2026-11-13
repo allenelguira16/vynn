@@ -4,6 +4,7 @@ import {
   getAsyncValue,
   getAsyncValues,
 } from "../context/async-context";
+import { getErrorBoundary, type ErrorBoundary } from "../context/error-boundary-context";
 import { isServer } from "../context/is-server-context";
 import { isAsyncGetterFromLazy, registerPromiseFromLazy } from "../context/lazy-context";
 import { getOwner, runWithOwner } from "../life-cycle/owner";
@@ -35,6 +36,7 @@ type ResourceRecord<T> =
       version: number;
       previous: T | undefined;
       hasPrevious: boolean;
+      boundaryHandled: boolean;
     };
 
 export type Async<T> = VynnRef<T>;
@@ -60,6 +62,46 @@ export function createAsyncResource<T>(
   let asyncValues = getAsyncValues();
   let hasReadHydrationValue = false;
   let hydrationValue: { found: boolean; value: T | undefined } | undefined;
+  let errorBoundary: ErrorBoundary | undefined = getErrorBoundary();
+
+  function handleError(
+    error: unknown,
+    currentVersion: number,
+    previous: T | undefined,
+    hasPrevious: boolean,
+  ): void {
+    if (currentVersion !== version) return;
+
+    if (error instanceof NotReadyError) {
+      record.value = {
+        status: "pending",
+        promise: error.promise,
+        version: currentVersion,
+        previous,
+        hasPrevious,
+      };
+      return;
+    }
+
+    const boundary =
+      error instanceof Error
+        ? (errorBoundary ??= getErrorBoundary())
+        : undefined;
+    const boundaryHandled = boundary !== undefined;
+
+    // Dispatch before publishing the rejected record. A client ErrorBoundary
+    // can dispose the resource's view owner while switching to its fallback.
+    if (boundary) boundary(error);
+
+    record.value = {
+      status: "rejected",
+      error,
+      version: currentVersion,
+      previous,
+      hasPrevious,
+      boundaryHandled,
+    };
+  }
 
   function start(): void {
     if (started) return;
@@ -133,49 +175,13 @@ export function createAsyncResource<T>(
               });
             },
             (error: unknown) => {
-              if (currentVersion !== version) return;
-
               runWithOwner(owner, () => {
-                if (error instanceof NotReadyError) {
-                  record.value = {
-                    status: "pending",
-                    promise: error.promise,
-                    version: currentVersion,
-                    previous,
-                    hasPrevious,
-                  };
-                  return;
-                }
-
-                record.value = {
-                  status: "rejected",
-                  error,
-                  version: currentVersion,
-                  previous,
-                  hasPrevious,
-                };
+                handleError(error, currentVersion, previous, hasPrevious);
               });
             },
           );
         } catch (error) {
-          if (error instanceof NotReadyError) {
-            record.value = {
-              status: "pending",
-              promise: error.promise,
-              version: currentVersion,
-              previous,
-              hasPrevious,
-            };
-            return;
-          }
-
-          record.value = {
-            status: "rejected",
-            error,
-            version: currentVersion,
-            previous,
-            hasPrevious,
-          };
+          handleError(error, currentVersion, previous, hasPrevious);
         }
       },
       { phase: "render", owner },
@@ -184,6 +190,10 @@ export function createAsyncResource<T>(
 
   const resource = markRef({
     get value(): T {
+      // Capture a boundary from the consuming owner for resources created
+      // outside a component, such as module-level resources started on read.
+      errorBoundary ??= getErrorBoundary();
+
       if (!started) start();
 
       const current = record.value;
@@ -207,7 +217,31 @@ export function createAsyncResource<T>(
         throw new NotReadyError(current.promise, boundary);
       }
 
-      if (current.status === "rejected") throw current.error;
+      if (current.status === "rejected") {
+        // A resource may have started before it was consumed by an
+        // ErrorBoundary. Give the consuming boundary one chance to handle it.
+        if (!current.boundaryHandled && current.error instanceof Error) {
+          const boundary = errorBoundary ?? getErrorBoundary();
+
+          if (boundary) {
+            errorBoundary = boundary;
+            boundary(current.error);
+            record.value = { ...current, boundaryHandled: true };
+
+            return retainPrevious && current.hasPrevious
+              ? current.previous as T
+              : undefined as T;
+          }
+        }
+
+        if (current.boundaryHandled) {
+          return retainPrevious && current.hasPrevious
+            ? current.previous as T
+            : undefined as T;
+        }
+
+        throw current.error;
+      }
 
       return current.value;
     },
