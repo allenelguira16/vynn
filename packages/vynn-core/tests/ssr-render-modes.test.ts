@@ -158,10 +158,13 @@ describe("renderToServer modes", () => {
   it("registers the handler and SSR descriptor through one error boundary context", () => {
     const errors: Error[] = [];
     const handler = (error: Error) => {
+      handlerOwner = getOwner();
       errors.push(error);
     };
     let registeredHandler: typeof handler | undefined;
     let registeredSsrBoundary: unknown;
+    let registeredBoundaryOwner: ReturnType<typeof getOwner>;
+    let handlerOwner: ReturnType<typeof getOwner>;
 
     const rendered = renderToServer(() => {
       const boundary = createSSRErrorBoundary(
@@ -171,6 +174,7 @@ describe("renderToServer modes", () => {
         handler,
       );
 
+      registeredBoundaryOwner = boundary.owner;
       registeredHandler = getErrorBoundary();
       registeredSsrBoundary = getErrorBoundaryContext()?.ssrBoundary;
       registeredHandler?.(new Error("unified handler"));
@@ -181,6 +185,7 @@ describe("renderToServer modes", () => {
     expect(registeredHandler).toBeTypeOf("function");
     expect(registeredSsrBoundary).toBeDefined();
     expect((registeredSsrBoundary as { hasError?: boolean }).hasError).toBe(true);
+    expect(handlerOwner).toBe(registeredBoundaryOwner);
     expect(errors.map((error) => error.message)).toEqual(["unified handler"]);
     expect(rendered.body).toContain("<!--eb:0-->");
     expect(rendered.body).toContain("<!--/eb:0-->");
