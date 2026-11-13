@@ -157,7 +157,9 @@ describe("renderToServer modes", () => {
 
   it("registers the handler and SSR descriptor through one error boundary context", () => {
     const errors: Error[] = [];
-    const handler = (error: Error) => errors.push(error);
+    const handler = (error: Error) => {
+      errors.push(error);
+    };
     let registeredHandler: typeof handler | undefined;
     let registeredSsrBoundary: unknown;
 
