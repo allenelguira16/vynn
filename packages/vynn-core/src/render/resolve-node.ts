@@ -145,6 +145,7 @@ export class SSR_ERROR_BOUNDARY extends SSR_NODE {
   readonly children: () => SSR_NODE[];
   readonly fallback: (error: Error) => SSR_NODE[];
   readonly parentContext?: ErrorBoundaryContext;
+  readonly parentBoundary?: SSR_ERROR_BOUNDARY;
   private handledError?: Error;
   private fallbackPatchClaimed = false;
 
@@ -158,6 +159,7 @@ export class SSR_ERROR_BOUNDARY extends SSR_NODE {
     super();
     this.id = id;
     this.parentContext = parentContext;
+    this.parentBoundary = parentContext?.ssrBoundary;
 
     const namespace = getCurrentDOMNamespace();
     const context: ErrorBoundaryContext = {
