@@ -1,25 +1,80 @@
 import { ERROR_BOUNDARY_DATA_SSR_KEY } from "../const";
 import { getContext, getOwner, modifyContext, setContext } from "../life-cycle/owner";
+import type { SSR_ERROR_BOUNDARY } from "../render/resolve-node";
 import { isServer } from "./is-server-context";
 
 export type ErrorBoundary = (error: Error) => void;
-// export type ErrorBoundary = {
-//   id: number;
-//   handle(error: Error): ErrorBoundary;
-//   render(): import("../render/resolve-node").SSR_NODE[];
-//   isActive(): boolean;
-// };
+
+/**
+ * One error-boundary context is shared by CSR and SSR. The handler is the
+ * public behavior; the SSR descriptor is private rendering metadata.
+ */
+export interface ErrorBoundaryContext {
+  handler: ErrorBoundary;
+  ssrBoundary?: SSR_ERROR_BOUNDARY;
+}
 
 const ERROR_BOUNDARY = Symbol("vynn.error-boundary");
 const ERROR_BOUNDARY_ID = Symbol("vynn.error-boundary-id");
 const ERROR_BOUNDARY_VALUES = Symbol("vynn.error-boundary-values");
 
-export function getErrorBoundary(): ErrorBoundary | undefined {
-  return getContext<ErrorBoundary | undefined>(ERROR_BOUNDARY);
+export function getErrorBoundaryContext(): ErrorBoundaryContext | undefined {
+  return getContext<ErrorBoundaryContext | undefined>(ERROR_BOUNDARY);
 }
 
-export function enterErrorBoundary(boundary: ErrorBoundary | undefined): void {
-  setContext(ERROR_BOUNDARY, boundary);
+export function getErrorBoundary(): ErrorBoundary | undefined {
+  const context = getErrorBoundaryContext();
+
+  if (!context) return undefined;
+  if (!context.ssrBoundary) return context.handler;
+
+  // Effects and other runtime error sources use the same handler path as
+  // async SSR rendering, so the descriptor can claim the error exactly once.
+  return (error) => {
+    context.ssrBoundary?.handle(error);
+  };
+}
+
+/**
+ * Registers the error handler for the current owner. SSR may attach its
+ * internal boundary descriptor to the same context entry.
+ */
+export function enterErrorBoundary(
+  handler: ErrorBoundary | undefined,
+  ssrBoundary?: SSR_ERROR_BOUNDARY,
+): void {
+  setContext(
+    ERROR_BOUNDARY,
+    handler ? { handler, ssrBoundary } satisfies ErrorBoundaryContext : undefined,
+  );
+}
+
+/**
+ * Temporarily installs an error-boundary context while rendering a subtree.
+ * This is internal scope management, not a second registration API.
+ */
+export function withErrorBoundaryContext<T>(
+  context: ErrorBoundaryContext | undefined,
+  render: () => T,
+): T {
+  const owner = getOwner();
+
+  if (!owner) return render();
+
+  const hadPrevious = owner.context.has(ERROR_BOUNDARY);
+  const previous = owner.context.get(ERROR_BOUNDARY);
+
+  owner.context.set(ERROR_BOUNDARY, context);
+
+  try {
+    return render();
+  } finally {
+    if (hadPrevious) {
+      owner.context.set(ERROR_BOUNDARY, previous);
+    } else {
+      owner.context.delete(ERROR_BOUNDARY);
+    }
+  }
 }
 
 export type ErrorBoundarySSRState =

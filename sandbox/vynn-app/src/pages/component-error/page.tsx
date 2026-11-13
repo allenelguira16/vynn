@@ -19,7 +19,21 @@ function ComponentWillThrow(): JSX.Element {
   );
 }
 
-function ComponentWillThrowLater(): JSX.Element {
+function ComponentWillThrowAfterAsync(): JSX.Element {
+  const count = $computed(async () => {
+    await sleep(100);
+    throw new Error("ComponentWillThrowAfterAsync catched, please retry again");
+  });
+
+  return (
+    <div>
+      <div>test</div>
+      <div>{count.value}</div>
+    </div>
+  );
+}
+
+function ComponentWillThrowAfterCount(): JSX.Element {
   const baseCount = $state(() => 0);
   const count = $computed(async () => {
     const count = baseCount.value;
@@ -30,7 +44,7 @@ function ComponentWillThrowLater(): JSX.Element {
   });
 
   const willThrow = () => {
-    throw new Error("ComponentWIllThrowLater catched, please retry again");
+    throw new Error("ComponentWillThrowAfterCount catched, please retry again");
   };
 
   return (
@@ -76,6 +90,24 @@ export default function ComponentError() {
             <button
               class="btn"
               onClick={() => {
+                console.log("hi~");
+                reset();
+              }}
+            >
+              Try Again
+            </button>
+          </div>
+        )}
+      >
+        <ComponentWillThrowAfterAsync />
+      </ErrorBoundary>
+      <ErrorBoundary
+        fallback={(error, reset) => (
+          <div>
+            <p>{String(error)}</p>
+            <button
+              class="btn"
+              onClick={() => {
                 console.log("hi!");
                 reset();
               }}
@@ -85,7 +117,7 @@ export default function ComponentError() {
           </div>
         )}
       >
-        <ComponentWillThrowLater />
+        <ComponentWillThrowAfterCount />
       </ErrorBoundary>
     </Template>
   );

@@ -10,10 +10,16 @@ import {
   createSsrHandlerCode,
 } from "../../vite-plugin/src/plugins/app/documents.ts";
 import { ErrorBoundary } from "../src/components/error-boundary";
+import { $computed } from "../src/reactivity_new/computed";
 import { lazy } from "../src/components/lazy";
 import { registerSsrModule } from "../src/context/ssr-module-context";
+import {
+  getErrorBoundary,
+  getErrorBoundaryContext,
+} from "../src/context/error-boundary-context";
 import { createOwner, disposeOwner, getOwner, runWithOwner } from "../src/life-cycle/owner";
 import { $head, $headTmpl } from "../src/render/$head";
+import { $cmpnt } from "../src/render/$cmpnt";
 import { $insert } from "../src/render/$insert";
 import { $txt } from "../src/render/$txt";
 import {
@@ -150,6 +156,42 @@ describe("renderToServer modes", () => {
     expect([...rendered.modules]).toEqual(["src/pages/synchronous.tsx"]);
   });
 
+  it("registers the handler and SSR descriptor through one error boundary context", () => {
+    const errors: Error[] = [];
+    const handler = (error: Error) => {
+      handlerOwner = getOwner();
+      errors.push(error);
+    };
+    let registeredHandler: typeof handler | undefined;
+    let registeredSsrBoundary: unknown;
+    let registeredBoundaryOwner: ReturnType<typeof getOwner> = null;
+    let handlerOwner: ReturnType<typeof getOwner> = null;
+
+    const rendered = renderToServer(() => {
+      const boundary = createSSRErrorBoundary(
+        0,
+        () => [],
+        () => [],
+        handler,
+      );
+
+      registeredBoundaryOwner = boundary.owner;
+      registeredHandler = getErrorBoundary();
+      registeredSsrBoundary = getErrorBoundaryContext()?.ssrBoundary;
+      registeredHandler?.(new Error("unified handler"));
+
+      return boundary as unknown as JSX.Element;
+    }, "sync");
+
+    expect(registeredHandler).toBeTypeOf("function");
+    expect(registeredSsrBoundary).toBeDefined();
+    expect((registeredSsrBoundary as { hasError?: boolean }).hasError).toBe(true);
+    expect(handlerOwner).toBe(registeredBoundaryOwner);
+    expect(errors.map((error) => error.message)).toEqual(["unified handler"]);
+    expect(rendered.body).toContain("<!--eb:0-->");
+    expect(rendered.body).toContain("<!--/eb:0-->");
+  });
+
   it("creates an independent root Owner instead of reusing the caller Owner", () => {
     const parent = createOwner();
     let renderOwner!: ReturnType<typeof getOwner>;
@@ -257,6 +299,87 @@ describe("renderToServer modes", () => {
     expect(rendered.body).not.toContain("stale resource failure");
   });
 
+
+  it("restores each streamed async boundary's component owner after its promise settles", async () => {
+    const owners: NonNullable<ReturnType<typeof getOwner>>[] = [];
+    const ownerParents: (NonNullable<ReturnType<typeof getOwner>> | null)[] = [];
+    let renderOwner: NonNullable<ReturnType<typeof getOwner>> | undefined;
+
+    function createAsyncComponent(label: string) {
+      return $cmpnt(() => {
+        const componentOwner = getOwner();
+
+        return createSSRAsync(
+          () => [createSSRText(`Loading ${label}`)],
+          () => {
+            expect(getOwner()).toBe(componentOwner);
+            owners.push(getOwner()!);
+            ownerParents.push(getOwner()!.parent);
+            return [createSSRText(`Resolved ${label}`)];
+          },
+          [Promise.resolve()],
+        ) as unknown as JSX.Element;
+      });
+    }
+
+    const First = createAsyncComponent("first");
+    const Second = createAsyncComponent("second");
+
+    const rendered = renderToServer(() => {
+      renderOwner = getOwner()!;
+      return [First(), Second()];
+    }, "stream");
+
+    const reader = rendered.body.getReader();
+    const chunks: string[] = [];
+
+    while (true) {
+      const result = await reader.read();
+      if (result.done) break;
+      chunks.push(new TextDecoder().decode(result.value));
+    }
+
+    expect(chunks.join("")).toContain("Resolved first");
+    expect(chunks.join("")).toContain("Resolved second");
+    expect(owners).toHaveLength(2);
+    expect(owners[0]).not.toBe(owners[1]);
+    expect(ownerParents[0]).toBe(renderOwner);
+    expect(ownerParents[1]).toBe(renderOwner);
+  });
+
+  it("recovers a rejected async computed without an explicit Await", async () => {
+    const rendered = renderToServer(
+      () =>
+        ErrorBoundary({
+          children: (() => {
+            const value = $computed(async (): Promise<string> => {
+              await Promise.resolve();
+              throw new Error("async computed resource failed");
+            });
+
+            return value.value;
+          }) as unknown as JSX.Element,
+          fallback: (error) => `Caught: ${error.message}`,
+        }),
+      "stream",
+    );
+
+    const reader = rendered.body.getReader();
+    const chunks: string[] = [];
+
+    while (true) {
+      const result = await reader.read();
+      if (result.done) break;
+      chunks.push(new TextDecoder().decode(result.value));
+    }
+
+    const html = chunks.join("");
+    expect(html).toContain("Caught: async computed resource failed");
+    expect(html).toContain("<!--eb:0-->");
+    expect(html).toContain("<!--/eb:0-->");
+  });
+
+
   it("handles async render failures within an ErrorBoundary", async () => {
     const rendered = await renderToServer(
       () =>
@@ -342,6 +465,62 @@ describe("renderToServer modes", () => {
     expect(patchHTML).toContain('template id="vynn-eb-0"');
     expect(patchHTML).toContain("$AEBP(0)");
     expect(patchHTML).toContain("Caught: resource failed");
+  });
+
+
+  it("does not emit sibling async patches after an ErrorBoundary has failed", async () => {
+    let rejectFirst!: (reason: Error) => void;
+    let resolveSecond!: () => void;
+
+    const first = new Promise<void>((_resolve, rejectPromise) => {
+      rejectFirst = rejectPromise;
+    });
+    const second = new Promise<void>((resolvePromise) => {
+      resolveSecond = resolvePromise;
+    });
+
+    const rendered = renderToServer(
+      () =>
+        ErrorBoundary({
+          children: (() => [
+            createSSRAsync(
+              () => [createSSRText("First loading")],
+              () => [createSSRText("First resolved")],
+              [first],
+            ),
+            createSSRAsync(
+              () => [createSSRText("Second loading")],
+              () => [createSSRText("Second resolved")],
+              [second],
+            ),
+          ]) as unknown as JSX.Element,
+          fallback: (error) => `Caught: ${error.message}`,
+        }),
+      "stream",
+    );
+
+    const reader = rendered.body.getReader();
+    const initial = await reader.read();
+    expect(new TextDecoder().decode(initial.value)).toContain("First loading");
+
+    rejectFirst(new Error("first resource failed"));
+
+    const boundaryPatch = await reader.read();
+    const chunks = [new TextDecoder().decode(boundaryPatch.value)];
+
+    resolveSecond();
+
+    while (true) {
+      const result = await reader.read();
+      if (result.done) break;
+      chunks.push(new TextDecoder().decode(result.value));
+    }
+
+    const patchHTML = chunks.join("");
+    expect(patchHTML).toContain('template id="vynn-eb-0"');
+    expect(patchHTML).toContain("Caught: first resource failed");
+    expect(patchHTML).not.toContain('template id="1"');
+    expect(patchHTML).not.toContain("Second resolved");
   });
 
   it("patches the nearest nested ErrorBoundary instead of its parent", async () => {

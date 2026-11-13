@@ -9,7 +9,6 @@ import {
 } from "../const";
 import { getAsyncValues } from "../context/async-context";
 import { getErrorBoundaryValues } from "../context/error-boundary-context";
-import { getRenderMode } from "../context/render-mode";
 import { assertSafeAttributeName } from "../render/attribute-name";
 import { SSR_ELEMENT, SSR_TEXT } from "../render/resolve-node";
 import { serializeServerFunctionValue } from "../server-functions/serialization";
@@ -94,9 +93,31 @@ export function hasNoHTMLTags(str: string) {
   return !htmlTagRegex.test(str);
 }
 
-export function renderAsyncUtilities() {
-  const asyncValues = getAsyncValues();
-  const errorValues = getErrorBoundaryValues();
+type SSRUtilitiesContext = {
+  asyncValues: ReturnType<typeof getAsyncValues>;
+  errorValues: ReturnType<typeof getErrorBoundaryValues>;
+};
+
+/**
+ * Captures this render's mutable hydration registries while its owner is active.
+ * The returned renderer can safely run after asynchronous SSR work completes.
+ */
+export function createSSRUtilitiesRenderer(): () => string {
+  const context: SSRUtilitiesContext = {
+    asyncValues: getAsyncValues(),
+    errorValues: getErrorBoundaryValues(),
+  };
+
+  return () => renderAsyncUtilities(context);
+}
+
+export function renderAsyncUtilities(
+  context: SSRUtilitiesContext = {
+    asyncValues: getAsyncValues(),
+    errorValues: getErrorBoundaryValues(),
+  },
+) {
+  const { asyncValues, errorValues } = context;
 
   // Empty hydration registries need no client bootstrap script. The client
   // readers already handle missing globals, so keep plain SSR output free of
@@ -119,7 +140,6 @@ export function renderAsyncUtilities() {
 
   const values = {
     async: serializeForInlineScript(encodedAsyncValues),
-    mode: serializeForInlineScript(getRenderMode()),
     error: serializeForInlineScript(errorValues),
   };
   return `<script>${ASYNC_DATA_SSR_KEY}=${values.async};${ERROR_BOUNDARY_DATA_SSR_KEY}=${values.error};document.currentScript.remove();</script>`.replaceAll(

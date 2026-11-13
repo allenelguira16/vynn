@@ -64,9 +64,15 @@ export const Await = $cmpnt(function Await(props: {
         isPending.value = true;
       }
 
-      promise.then(() => {
+      // Await only tracks whether the children can resume rendering. The
+      // async resource retains its rejected state and reports it to the
+      // ErrorBoundary when the children render again. Observe both outcomes
+      // here so this bookkeeping chain does not create an unhandled rejection.
+      const settle = () => {
         isPending.value = false;
-      });
+      };
+
+      promise.then(settle, settle);
     });
 
     try {

@@ -9,7 +9,7 @@ import {
   ERROR_BOUNDARY_END_SSR_MARKER,
   APPLY_ERROR_BOUNDARY_PATCH_SSR_KEY,
 } from "../const";
-import { getOwner, runWithOwner } from "../life-cycle/owner";
+import { getOwner } from "../life-cycle/owner";
 import {
   SSR_ASYNC,
   SSR_COMMENT,
@@ -24,8 +24,9 @@ import {
 } from "../render/resolve-node";
 import { renderHeadPatch, type SsrHeadManager } from "./head";
 import {
+  createSSRUtilitiesRenderer,
   joinHTMLElements,
-  renderAsyncUtilities,
+  renderErrorBoundaryRange,
   renderNode,
   renderText,
 } from "./render-to-server.util";
@@ -35,9 +36,7 @@ export function resolveStream(
   head: SsrHeadManager,
   disposeRenderOwner: () => void,
 ): ReadableStream<Uint8Array> {
-  const owner = getOwner();
-
-  if (!owner) {
+  if (!getOwner()) {
     throw new Error("[vynn]: Streaming SSR requires an active render owner.");
   }
 
@@ -50,6 +49,7 @@ export function resolveStream(
   let streamClosed = false;
   let renderOwnerReleased = false;
   let previousHead = "";
+  let renderUtilities: () => string = () => "";
 
   const queuedPatches: string[] = [];
 
@@ -113,7 +113,7 @@ export function resolveStream(
     if (pendingTasks !== 0 || !initialChunkSent) return;
 
     try {
-      enqueueChunk(runWithOwner(owner, renderAsyncUtilities));
+      enqueueChunk(renderUtilities());
       controller.close();
     } catch (error) {
       controller.error(error);
@@ -125,7 +125,7 @@ export function resolveStream(
 
   async function renderAsyncNode(node: SSR_ASYNC): Promise<string> {
     const id = nextBoundaryId++;
-    const fallbackNodes = runWithOwner(owner, node.fallback);
+    const fallbackNodes = node.withOwner(node.fallback);
     const fallbackHTML = await resolve(fallbackNodes);
 
     if (streamClosed) return "";
@@ -143,10 +143,57 @@ export function resolveStream(
     );
   }
 
+  async function patchErrorBoundary(
+    boundary: SSR_ERROR_BOUNDARY | undefined,
+    error: unknown,
+  ): Promise<void> {
+    const reason =
+      error instanceof SSRDeferredError || error instanceof SSRBoundaryFailure
+        ? error.reason
+        : error;
+
+    if (!boundary || !(reason instanceof Error)) {
+      failStream(reason);
+      return;
+    }
+
+    // A shared error handler may already have claimed this error (for
+    // example, when a render effect reports it). Only emit one fallback patch.
+    if (!boundary.hasError) {
+      if (!boundary.handle(reason)) return;
+    } else if (boundary.error !== reason) {
+      return;
+    }
+
+    if (!boundary.claimFallbackPatch()) return;
+
+    try {
+      const fallbackHTML = await resolve(boundary.fallback(reason));
+      enqueuePatch(renderErrorBoundaryPatch(boundary.id, fallbackHTML));
+      enqueueHeadPatch();
+    } catch (fallbackError) {
+      await patchErrorBoundary(boundary.parentBoundary, fallbackError);
+    }
+  }
+
   async function renderAsyncChildren(node: SSR_ASYNC, boundaryId: number): Promise<void> {
     try {
       await Promise.all(node.promises);
-      enqueuePatch(renderPatch(boundaryId, await resolve(node.children())));
+
+      if (node.errorBoundary?.hasError) return;
+
+      const children = node.withOwner(node.children);
+      const html = await resolve(children);
+
+      // The shared handler may have claimed an error without throwing.
+      if (node.errorBoundary?.error) {
+        await patchErrorBoundary(node.errorBoundary, node.errorBoundary.error);
+        return;
+      }
+
+      enqueuePatch(renderPatch(boundaryId, html));
+    } catch (error) {
+      await patchErrorBoundary(node.errorBoundary, error);
     } finally {
       await finishTask();
     }
@@ -154,11 +201,33 @@ export function resolveStream(
 
   async function renderDeferredNode(node: SSR_DEFERRED): Promise<string> {
     await Promise.all(node.promises);
-    return await resolve(node.children());
+    const children = node.withOwner(node.children);
+    return await resolve(children);
   }
 
   async function renderErrorBoundary(node: SSR_ERROR_BOUNDARY): Promise<string> {
-    return await resolve(node.fallback());
+    let childrenHTML = "";
+
+    try {
+      childrenHTML = await resolve(node.children());
+    } catch (error) {
+      const reason =
+        error instanceof SSRDeferredError || error instanceof SSRBoundaryFailure
+          ? error.reason
+          : error;
+
+      if (!(reason instanceof Error)) throw reason;
+
+      if (!node.hasError && !node.handle(reason)) throw reason;
+      if (node.error !== reason) throw reason;
+    }
+
+    if (node.error) {
+      const fallbackHTML = await resolve(node.fallback(node.error));
+      return renderErrorBoundaryRange(node.id, fallbackHTML);
+    }
+
+    return renderErrorBoundaryRange(node.id, childrenHTML);
   }
 
   async function renderElement(node: SSR_ELEMENT): Promise<string> {
@@ -211,11 +280,8 @@ export function resolveStream(
     return joinHTMLElements(html);
   }
 
-  async function renderInitialHTML(): Promise<void> {
+  async function renderInitialHTML(app: SSR_NODE[]): Promise<void> {
     try {
-      const app = runWithOwner(owner, () => resolveNode(App)) as unknown as SSR_NODE[];
-      previousHead = head.render();
-
       const html = await resolve(app);
       if (streamClosed) return;
 
@@ -233,13 +299,35 @@ export function resolveStream(
     }
   }
 
+  // Resolve the initial app while this render's owner is synchronously active.
+  // Every async continuation then uses the owner captured by its SSR node.
+  let initialApp: SSR_NODE[] = [];
+  let initialError: unknown;
+  let hasInitialError = false;
+
+  try {
+    initialApp = resolveNode(App) as unknown as SSR_NODE[];
+    previousHead = head.render();
+    renderUtilities = createSSRUtilitiesRenderer();
+  } catch (error) {
+    hasInitialError = true;
+    initialError =
+      error instanceof SSRDeferredError || error instanceof SSRBoundaryFailure
+        ? error.reason
+        : error;
+  }
+
   return new ReadableStream<Uint8Array>({
     start(streamController) {
       controller = streamController;
-
-      // Hold the stream open until the initial HTML has been rendered.
       pendingTasks++;
-      void renderInitialHTML();
+
+      if (hasInitialError) {
+        failStream(initialError);
+        return;
+      }
+
+      void renderInitialHTML(initialApp);
     },
 
     cancel() {
@@ -253,9 +341,9 @@ function renderPatch(id: number, html: string) {
   return `<template id="${id}">${html}</template><script>${APPLY_PATCH_SSR_KEY}(${id});document.currentScript.remove();</script>`;
 }
 
-// function renderErrorBoundaryPatch(id: number, html: string) {
-//   return `<template id="vynn-eb-${id}">${html}</template><script>${APPLY_ERROR_BOUNDARY_PATCH_SSR_KEY}(${id});document.currentScript.remove();</script>`;
-// }
+function renderErrorBoundaryPatch(id: number, html: string) {
+  return `<template id="vynn-eb-${id}">${html}</template><script>${APPLY_ERROR_BOUNDARY_PATCH_SSR_KEY}(${id});document.currentScript.remove();</script>`;
+}
 
 function renderPatchRuntime(): string {
   return `<script>

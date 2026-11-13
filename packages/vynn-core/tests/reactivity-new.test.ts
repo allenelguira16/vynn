@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import { createOwner, disposeOwner, runWithOwner } from "../src/life-cycle/owner";
-import { $computed } from "../src/reactivity_new/computed";
+import { $computed, type Computed } from "../src/reactivity_new/computed";
 import { $effect, $renderEffect, batch } from "../src/reactivity_new/effect";
 import { isPending } from "../src/reactivity_new/pending";
 import { $state } from "../src/reactivity_new/state";
 import { $store } from "../src/reactivity_new/store";
 import { NotReadyError } from "../src/reactivity_new/not-ready-error";
+import { enterErrorBoundary } from "../src/context/error-boundary-context";
+import { ErrorBoundaryHandledError } from "../src/reactivity_new/error-boundary-error";
 
 async function flushEffects(): Promise<void> {
   await new Promise<void>((resolve) => queueMicrotask(resolve));
@@ -302,6 +304,113 @@ describe("new reactivity API", () => {
     expect(isPending(store)).toBe(false);
 
     stop();
+  });
+
+  it("routes reactive errors to the boundary captured when the effect was created", () => {
+    const owner = createOwner();
+    const source = $state(() => false);
+    const failure = new Error("captured boundary failure");
+    const handled: Error[] = [];
+
+    runWithOwner(owner, () => {
+      enterErrorBoundary((error) => handled.push(error));
+
+      $renderEffect(() => {
+        if (source.value) throw failure;
+      });
+
+      // A later context shadow must not detach an already-created effect
+      // from the boundary that owns its render subtree.
+      enterErrorBoundary(undefined);
+    });
+
+    runWithOwner(owner, () => {
+      source.value = true;
+    });
+
+    expect(handled).toEqual([failure]);
+    disposeOwner(owner);
+  });
+
+  it("routes rejected async resources through the nearest ErrorBoundary", async () => {
+    const owner = createOwner();
+    const failure = new Error("async resource failed");
+    const boundaryError = $state<Error | undefined>(() => undefined);
+    const handled: Error[] = [];
+    const fallbackMessages: string[] = [];
+
+    runWithOwner(owner, () => {
+      enterErrorBoundary((error) => {
+        handled.push(error);
+        boundaryError.value = error;
+      });
+
+      const value = $computed(async () => {
+        await Promise.resolve();
+        throw failure;
+      });
+
+      $renderEffect(() => {
+        value.value;
+      });
+
+      $renderEffect(() => {
+        const error = boundaryError.value;
+        if (error) fallbackMessages.push(error.message);
+      });
+    });
+
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    expect(handled).toEqual([failure]);
+    expect(fallbackMessages).toEqual([failure.message]);
+    disposeOwner(owner);
+  });
+
+  it("throws a handled signal when a rejected resource is read outside an effect", async () => {
+    const owner = createOwner();
+    const failure = new Error("resource read failed");
+    const handled: Error[] = [];
+    let value: Computed<string> | undefined;
+
+    runWithOwner(owner, () => {
+      enterErrorBoundary((error) => handled.push(error));
+      value = $computed(async () => {
+        await Promise.resolve();
+        throw failure;
+      });
+    });
+
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    let thrown: unknown;
+    try {
+      runWithOwner(owner, () => value!.value);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(ErrorBoundaryHandledError);
+    expect((thrown as ErrorBoundaryHandledError).originalError).toBe(failure);
+    expect(handled).toEqual([failure]);
+    disposeOwner(owner);
+  });
+
+  it("does not report an already handled reactive error to the boundary again", () => {
+    const owner = createOwner();
+    const originalError = new Error("already handled");
+    const handled: Error[] = [];
+
+    runWithOwner(owner, () => {
+      enterErrorBoundary((error) => handled.push(error));
+
+      $renderEffect(() => {
+        throw new ErrorBoundaryHandledError(originalError);
+      });
+    });
+
+    expect(handled).toEqual([]);
+    disposeOwner(owner);
   });
 
   it("disposes effects with their owner", async () => {

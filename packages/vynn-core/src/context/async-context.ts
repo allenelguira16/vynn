@@ -1,5 +1,5 @@
 import { ASYNC_DATA_SSR_KEY } from "../const";
-import { getContext, modifyContext, setContext } from "../life-cycle/owner";
+import { getContext, setContext } from "../life-cycle/owner";
 import { deserializeServerFunctionValue } from "../server-functions/serialization";
 import { isServer } from "./is-server-context";
 
@@ -10,7 +10,7 @@ const AWAIT_BOUNDARY = Symbol("vynn.await-boundary");
 const ASYNC_ID = Symbol("vynn.async-id");
 const ASYNC_VALUES = Symbol("vynn.async-values");
 
-type AsyncIdScope = {
+export type AsyncIDScope = {
   prefix: string;
   next: number;
 };
@@ -38,7 +38,7 @@ export function enterAsyncBoundary<T>(boundary: AsyncBoundary<T>): void {
 }
 
 export function initializeAsyncContext(): void {
-  setContext<AsyncIdScope>(ASYNC_ID, {
+  setContext<AsyncIDScope>(ASYNC_ID, {
     prefix: "root",
     next: 0,
   });
@@ -52,10 +52,35 @@ export function initializeAsyncContext(): void {
  * lazy instances, so sibling module resolution order cannot exchange IDs.
  */
 export function initializeLazyAsyncScope(lazyID: string): void {
-  setContext<AsyncIdScope>(ASYNC_ID, {
+  setContext<AsyncIDScope>(ASYNC_ID, {
     prefix: `lazy:${lazyID}`,
     next: 0,
   });
+}
+
+/**
+ * Create independent async hydration sequences for an ErrorBoundary's two
+ * render branches. A failed SSR child branch is not evaluated during client
+ * hydration, so its resources must not consume IDs belonging to later
+ * siblings or to the boundary's fallback.
+ */
+export function createErrorBoundaryAsyncScopes(id: number): {
+  children: AsyncIDScope | undefined;
+  fallback: AsyncIDScope | undefined;
+} {
+  if (!getContext<AsyncIDScope>(ASYNC_ID)) {
+    return { children: undefined, fallback: undefined };
+  }
+
+  return {
+    children: { prefix: `boundary:${id}:children`, next: 0 },
+    fallback: { prefix: `boundary:${id}:fallback`, next: 0 },
+  };
+}
+
+/** Install a branch-specific async identity scope on the current owner. */
+export function enterAsyncIDScope(scope: AsyncIDScope | undefined): void {
+  if (scope) setContext(ASYNC_ID, scope);
 }
 
 /**
@@ -66,18 +91,16 @@ export function initializeLazyAsyncScope(lazyID: string): void {
  * restoration because there is no request-scoped async value registry.
  */
 export function getAsyncIDIfAvailable(): string | undefined {
-  const scope = getContext<AsyncIdScope>(ASYNC_ID);
+  const scope = getContext<AsyncIDScope>(ASYNC_ID);
 
   if (!scope) {
     return undefined;
   }
 
-  modifyContext<AsyncIdScope>(ASYNC_ID, (current) => ({
-    ...current,
-    next: current.next + 1,
-  }));
+  const id = `${scope.prefix}:${scope.next}`;
+  scope.next++;
 
-  return `${scope.prefix}:${scope.next}`;
+  return id;
 }
 
 /**

@@ -1,6 +1,7 @@
-import { getErrorBoundary } from "../context/error-boundary-context";
+import { getErrorBoundary, type ErrorBoundary } from "../context/error-boundary-context";
 import { getOwner, runWithOwner, type Owner } from "../life-cycle/owner";
 import { NotReadyError } from "./not-ready-error";
+import { isErrorBoundaryHandledError } from "./error-boundary-error";
 
 export type EffectPhase = "render" | "effect";
 
@@ -8,6 +9,7 @@ export interface ReactiveEffect {
   callback: () => void | (() => void);
   phase: EffectPhase;
   owner: Owner | null;
+  errorBoundary?: ErrorBoundary;
   dependencies: Set<ReactiveEffect>[];
   cleanup?: () => void;
   scheduler?: () => void;
@@ -139,10 +141,10 @@ function removeDependencies(effect: ReactiveEffect): void {
   effect.dependencies.length = 0;
 }
 
-function handleEffectError(error: unknown): void {
-  if (error instanceof NotReadyError) return;
+export function handleEffectError(error: unknown, capturedBoundary?: ErrorBoundary): void {
+  if (error instanceof NotReadyError || isErrorBoundaryHandledError(error)) return;
 
-  const boundary = getErrorBoundary();
+  const boundary = capturedBoundary ?? getErrorBoundary();
 
   if (error instanceof Error && boundary) {
     boundary(error);
@@ -176,7 +178,7 @@ function runEffect(effect: ReactiveEffect): void {
         try {
           cleanup();
         } catch (error) {
-          handleEffectError(error);
+          handleEffectError(error, effect.errorBoundary);
         }
       }
 
@@ -189,7 +191,7 @@ function runEffect(effect: ReactiveEffect): void {
           try {
             return effect.callback();
           } catch (error) {
-            handleEffectError(error);
+            handleEffectError(error, effect.errorBoundary);
             return undefined;
           }
         });
@@ -282,11 +284,13 @@ export function createReactiveEffect(
   options: ReactiveEffectOptions = {},
 ): ReactiveEffect {
   const owner = options.owner === undefined ? getOwner() : options.owner;
+  const errorBoundary = runWithOwner(owner, getErrorBoundary);
 
   const effect: ReactiveEffect = {
     callback,
     phase: options.phase ?? "effect",
     owner,
+    errorBoundary,
     dependencies: [],
     scheduler: options.scheduler,
     disposed: false,

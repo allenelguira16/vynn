@@ -9,18 +9,41 @@ import {
   SSR_ERROR_BOUNDARY,
   type SSR_NODE,
   SSR_TEXT,
+  SSRBoundaryFailure,
+  SSRDeferredError,
   resolveNode,
 } from "../render/resolve-node";
 import {
   joinHTMLElements,
   renderAsyncUtilities,
+  renderErrorBoundaryRange,
   renderNode,
   renderText,
 } from "./render-to-server.util";
 
 export function resolveSync(App: () => JSX.Element, owner: Owner) {
   function resolveErrorBoundary(node: SSR_ERROR_BOUNDARY) {
-    return resolve(node.fallback());
+    let childrenHTML = "";
+
+    try {
+      childrenHTML = resolve(node.children());
+    } catch (error) {
+      const reason =
+        error instanceof SSRDeferredError || error instanceof SSRBoundaryFailure
+          ? error.reason
+          : error;
+
+      if (!(reason instanceof Error)) throw reason;
+
+      if (!node.hasError && !node.handle(reason)) throw reason;
+      if (node.error !== reason) throw reason;
+    }
+
+    if (node.error) {
+      return renderErrorBoundaryRange(node.id, resolve(node.fallback(node.error)));
+    }
+
+    return renderErrorBoundaryRange(node.id, childrenHTML);
   }
 
   function resolveElement(node: SSR_ELEMENT) {
@@ -38,7 +61,7 @@ export function resolveSync(App: () => JSX.Element, owner: Owner) {
     for (const node of nodes.flat(Infinity).filter(Boolean)) {
       if (node instanceof SSR_ASYNC) {
         // Sync SSR never waits for async work. It can only render its fallback.
-        html.push(resolve(node.fallback()));
+        html.push(resolve(node.withOwner(node.fallback)));
         continue;
       }
 

@@ -4,15 +4,17 @@ import {
   getAsyncValue,
   getAsyncValues,
 } from "../context/async-context";
+import { getErrorBoundary } from "../context/error-boundary-context";
 import { isServer } from "../context/is-server-context";
 import { isAsyncGetterFromLazy, registerPromiseFromLazy } from "../context/lazy-context";
 import { getOwner, runWithOwner } from "../life-cycle/owner";
-import { NotReadyError } from "./not-ready-error";
+import { createReactiveEffect, handleEffectError, untrack } from "./effect";
+import { throwReactiveError } from "./error-boundary-error";
 import { withFakeAsyncApis } from "./fake-async";
-import { createReactiveEffect, untrack } from "./effect";
+import { NotReadyError } from "./not-ready-error";
+import { isPending, registerPending } from "./pending";
 import { createCell, markRef, type VynnRef } from "./ref";
 import { isPromiseLike } from "./utils";
-import { isPending, registerPending } from "./pending";
 
 export { isPending };
 
@@ -50,6 +52,7 @@ export function createAsyncResource<T>(
 ): VynnRef<T> {
   const { lazy = false, retainPrevious = true } = options;
   const owner = getOwner();
+  const errorBoundary = runWithOwner(owner, getErrorBoundary);
   const record = createCell<ResourceRecord<T> | undefined>(undefined);
 
   let version = 0;
@@ -123,40 +126,50 @@ export function createAsyncResource<T>(
             hasPrevious,
           };
 
-          promise.then(
-            (value) => {
-              if (currentVersion !== version) return;
+          // State publication can synchronously notify render effects. If
+          // one of those effects throws while reading the newly-settled value,
+          // the promise returned by .then() would reject independently of the
+          // resource promise. Route that notification error through the same
+          // ErrorBoundary path as ordinary reactive effects.
+          void promise
+            .then(
+              (value) => {
+                if (currentVersion !== version || owner?.disposed) return;
 
-              runWithOwner(owner, () => {
-                if (asyncValues && asyncID !== undefined) asyncValues[asyncID] = value;
-                record.value = { status: "resolved", value, version: currentVersion };
-              });
-            },
-            (error: unknown) => {
-              if (currentVersion !== version) return;
+                runWithOwner(owner, () => {
+                  if (asyncValues && asyncID !== undefined) asyncValues[asyncID] = value;
+                  record.value = { status: "resolved", value, version: currentVersion };
+                });
+              },
+              (error: unknown) => {
+                if (currentVersion !== version || owner?.disposed) return;
 
-              runWithOwner(owner, () => {
-                if (error instanceof NotReadyError) {
+                runWithOwner(owner, () => {
+                  if (error instanceof NotReadyError) {
+                    record.value = {
+                      status: "pending",
+                      promise: error.promise,
+                      version: currentVersion,
+                      previous,
+                      hasPrevious,
+                    };
+                    return;
+                  }
+
                   record.value = {
-                    status: "pending",
-                    promise: error.promise,
+                    status: "rejected",
+                    error,
                     version: currentVersion,
                     previous,
                     hasPrevious,
                   };
-                  return;
-                }
-
-                record.value = {
-                  status: "rejected",
-                  error,
-                  version: currentVersion,
-                  previous,
-                  hasPrevious,
-                };
-              });
-            },
-          );
+                });
+              },
+            )
+            .catch((error: unknown) => {
+              if (owner?.disposed) return;
+              runWithOwner(owner, () => handleEffectError(error, errorBoundary));
+            });
         } catch (error) {
           if (error instanceof NotReadyError) {
             record.value = {
@@ -207,7 +220,7 @@ export function createAsyncResource<T>(
         throw new NotReadyError(current.promise, boundary);
       }
 
-      if (current.status === "rejected") throw current.error;
+      if (current.status === "rejected") throwReactiveError(current.error);
 
       return current.value;
     },

@@ -1,9 +1,16 @@
 import { claimHydrationText, isHydrationClaimActive } from "../client/hydration";
 import { synchronizeHydrationText } from "../client/hydration-diagnostics";
-import { getErrorBoundary, type ErrorBoundary } from "../context/error-boundary-context";
+import {
+  enterErrorBoundary,
+  getErrorBoundaryContext,
+  type ErrorBoundary,
+  type ErrorBoundaryContext,
+  withErrorBoundaryContext,
+} from "../context/error-boundary-context";
+import { createErrorBoundaryAsyncScopes, enterAsyncIDScope } from "../context/async-context";
 import { isServer } from "../context/is-server-context";
 import { JSX } from "../jsx-runtime";
-import { getOwner, runWithOwner } from "../life-cycle/owner";
+import { createOwner, getOwner, runWithOwner } from "../life-cycle/owner";
 import { NotReadyError } from "../reactivity_new/not-ready-error";
 import { isCreatingHeadElement, isHeadElement } from "./$head";
 import { getCurrentDOMNamespace, getElementNamespace, withDOMNamespace } from "./namespace";
@@ -16,6 +23,11 @@ import { getCurrentDOMNamespace, getElementNamespace, withDOMNamespace } from ".
  */
 export abstract class SSR_NODE {
   parent: SSR_ELEMENT | null = null;
+  readonly owner = getOwner();
+
+  withOwner<T>(render: () => T): T {
+    return runWithOwner(this.owner, render);
+  }
 }
 
 /** A server-side representation of an HTML or SVG element. */
@@ -93,10 +105,10 @@ export abstract class SSR_PENDING extends SSR_NODE {
   protected constructor(
     children: () => SSR_NODE[],
     promises: Promise<unknown>[],
-    public errorBoundary?: ErrorBoundary,
+    public errorBoundary?: SSR_ERROR_BOUNDARY,
   ) {
     super();
-    this.children = captureSSRRender(children);
+    this.children = captureSSRRender(this, children);
     this.promises = promises;
   }
 }
@@ -109,10 +121,10 @@ export class SSR_ASYNC extends SSR_PENDING {
     fallback: () => SSR_NODE[],
     children: () => SSR_NODE[],
     promises: Promise<unknown>[],
-    errorBoundary?: ErrorBoundary,
+    errorBoundary?: SSR_ERROR_BOUNDARY,
   ) {
     super(children, promises, errorBoundary);
-    this.fallback = captureSSRRender(fallback);
+    this.fallback = captureSSRRender(this, fallback);
   }
 }
 
@@ -122,25 +134,86 @@ export class SSR_DEFERRED extends SSR_PENDING {
     children: () => SSR_NODE[],
     promises: Promise<unknown>[],
     public blocking: boolean,
-    errorBoundary?: ErrorBoundary,
+    errorBoundary?: SSR_ERROR_BOUNDARY,
   ) {
     super(children, promises, errorBoundary);
   }
 }
 
-/** An SSR error boundary whose children are rendered under its captured context. */
+/** An SSR error boundary whose children and fallback retain their own context. */
 export class SSR_ERROR_BOUNDARY extends SSR_NODE {
   readonly id: number;
   readonly children: () => SSR_NODE[];
-  readonly fallback: () => SSR_NODE[];
-  readonly error: Error;
+  readonly fallback: (error: Error) => SSR_NODE[];
+  readonly parentContext?: ErrorBoundaryContext;
+  readonly parentBoundary?: SSR_ERROR_BOUNDARY;
+  private handledError?: Error;
+  private fallbackPatchClaimed = false;
 
-  constructor(id: number, fallback: () => SSR_NODE[], children: () => SSR_NODE[], error: Error) {
+  constructor(
+    id: number,
+    fallback: (error: Error) => SSR_NODE[],
+    children: () => SSR_NODE[],
+    private readonly handler: ErrorBoundary,
+    parentContext?: ErrorBoundaryContext,
+  ) {
     super();
     this.id = id;
-    this.fallback = captureSSRRender(fallback);
-    this.children = captureSSRRender(children);
-    this.error = error;
+    this.parentContext = parentContext;
+    this.parentBoundary = parentContext?.ssrBoundary;
+
+    const namespace = getCurrentDOMNamespace();
+    const context: ErrorBoundaryContext = {
+      handler: this.handler,
+      ssrBoundary: this,
+    };
+
+    // Children and fallback are separate hydration branches. A child branch
+    // that failed during SSR is skipped by the client, so it must not consume
+    // async IDs that belong to the fallback or to later sibling boundaries.
+    const childrenOwner = createOwner(this.owner);
+    const fallbackOwner = createOwner(this.owner);
+    const asyncScopes = createErrorBoundaryAsyncScopes(id);
+
+    runWithOwner(childrenOwner, () => enterAsyncIDScope(asyncScopes.children));
+    runWithOwner(fallbackOwner, () => enterAsyncIDScope(asyncScopes.fallback));
+
+    this.children = () =>
+      runWithOwner(childrenOwner, () =>
+        withDOMNamespace(namespace, () => withErrorBoundaryContext(context, children)),
+      );
+
+    this.fallback = (error) =>
+      runWithOwner(fallbackOwner, () =>
+        withDOMNamespace(namespace, () =>
+          withErrorBoundaryContext(parentContext, () => fallback(error)),
+        ),
+      );
+  }
+
+  get hasError(): boolean {
+    return this.handledError !== undefined;
+  }
+
+  get error(): Error | undefined {
+    return this.handledError;
+  }
+
+  /** Claim the fallback patch once, after this boundary has handled an error. */
+  claimFallbackPatch(): boolean {
+    if (!this.handledError || this.fallbackPatchClaimed) return false;
+
+    this.fallbackPatchClaimed = true;
+    return true;
+  }
+
+  /** Claim the first Error handled by this boundary and invoke its handler. */
+  handle(error: unknown): error is Error {
+    if (!(error instanceof Error) || this.handledError) return false;
+
+    this.handledError = error;
+    this.withOwner(() => this.handler(error));
+    return true;
   }
 }
 
@@ -148,20 +221,30 @@ export class SSR_ERROR_BOUNDARY extends SSR_NODE {
  * Captures the current owner and DOM namespace for work that may run after
  * the current synchronous render stack has completed.
  */
-function captureSSRRender(render: () => SSR_NODE[]): () => SSR_NODE[] {
-  const owner = getOwner();
+function captureSSRRender(node: SSR_NODE, render: () => SSR_NODE[]): () => SSR_NODE[] {
   const namespace = getCurrentDOMNamespace();
 
-  return () => runWithOwner(owner, () => withDOMNamespace(namespace, render));
+  return () => node.withOwner(() => withDOMNamespace(namespace, render));
 }
 
 export function createSSRErrorBoundary(
   id: number,
-  fallback: () => SSR_NODE[],
+  fallback: (error: Error) => SSR_NODE[],
   children: () => SSR_NODE[],
-  error: Error,
+  handler: ErrorBoundary,
 ): SSR_ERROR_BOUNDARY {
-  return new SSR_ERROR_BOUNDARY(id, fallback, children, error);
+  const parentContext = getErrorBoundaryContext();
+  const boundary = new SSR_ERROR_BOUNDARY(
+    id,
+    fallback,
+    children,
+    handler,
+    parentContext,
+  );
+
+  enterErrorBoundary(handler, boundary);
+
+  return boundary;
 }
 
 export function createSSRNode(type: string): SSR_ELEMENT {
@@ -181,7 +264,7 @@ export function createSSRAsync(
   children: () => SSR_NODE[],
   promises: Promise<unknown>[],
 ): SSR_ASYNC {
-  return new SSR_ASYNC(fallback, children, promises, getErrorBoundary());
+  return new SSR_ASYNC(fallback, children, promises, getErrorBoundaryContext()?.ssrBoundary);
 }
 
 export function createSSRDeferred(
@@ -189,7 +272,7 @@ export function createSSRDeferred(
   promises: Promise<unknown>[],
   blocking = false,
 ): SSR_DEFERRED {
-  return new SSR_DEFERRED(children, promises, blocking, getErrorBoundary());
+  return new SSR_DEFERRED(children, promises, blocking, getErrorBoundaryContext()?.ssrBoundary);
 }
 
 export class SSRDeferredError {

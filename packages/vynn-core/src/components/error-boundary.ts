@@ -2,7 +2,12 @@ import type { JSX } from "../jsx-runtime";
 import type { Owner } from "../life-cycle/owner";
 
 import {
+  createErrorBoundaryAsyncScopes,
+  enterAsyncIDScope,
+} from "../context/async-context";
+import {
   enterErrorBoundary,
+  getErrorBoundary,
   getErrorBoundaryID,
   getErrorBoundaryValue,
   getErrorBoundaryValues,
@@ -34,51 +39,47 @@ export const ErrorBoundary = $cmpnt(function ErrorBoundary(props: {
     throw new Error("ErrorBoundary requires an owner.");
   }
 
-  if (isServer()) {
-    const values = getErrorBoundaryValues();
+  const error = $state<Error | undefined>(() =>
+    ssrData?.status === "fallback" ? new Error(ssrData.message) : undefined,
+  );
+  const values = getErrorBoundaryValues();
+  const parentErrorBoundary = getErrorBoundary();
 
-    try {
-      try {
-        return props.children;
-      } finally {
-        if (values) values[errorBoundaryID] = { status: "children" };
-      }
-    } catch (error) {
-      if (!(error instanceof Error)) throw error;
+  // This handler is registered in the same context on both CSR and SSR.
+  // SSR additionally records the error for client hydration.
+  const handleError = (newError: Error) => {
+    error.value = newError;
 
-      if (values)
-        values[errorBoundaryID] = {
-          status: "fallback",
-          message: error.message,
-          name: error.name,
-        };
-
-      return createSSRErrorBoundary(
-        errorBoundaryID,
-        () => {
-          return resolveNode(() =>
-            props.fallback?.(error, () => undefined),
-          ) as unknown as SSR_NODE[];
-        },
-        () => {
-          return resolveNode(() => props.children) as unknown as SSR_NODE[];
-        },
-        error,
-      ) as unknown as JSX.Element;
+    if (isServer() && values) {
+      values[errorBoundaryID] = {
+        status: "fallback",
+        message: newError.message,
+        name: newError.name,
+      };
     }
+  };
+
+  if (isServer()) {
+    if (values) values[errorBoundaryID] = { status: "children" };
+
+    return createSSRErrorBoundary(
+      errorBoundaryID,
+      (error) =>
+        resolveNode(() =>
+          props.fallback?.(error, () => undefined),
+        ) as unknown as SSR_NODE[],
+      () => resolveNode(() => props.children) as unknown as SSR_NODE[],
+      handleError,
+    ) as unknown as JSX.Element;
   }
 
-  const error = $state<Error | undefined>(() => undefined);
+  // A failed SSR child branch is skipped during hydration. Keep its async
+  // resource IDs separate from the fallback branch and from sibling boundaries.
+  const asyncScopes = createErrorBoundaryAsyncScopes(errorBoundaryID);
 
-  enterErrorBoundary((newError) => {
-    error.value = newError;
-  });
+  enterErrorBoundary(handleError);
 
   let viewOwner: Owner | undefined;
-
-  if (ssrData?.status === "fallback") {
-    error.value = new Error(ssrData.message);
-  }
 
   return $nodes(() => {
     if (viewOwner) {
@@ -89,9 +90,17 @@ export const ErrorBoundary = $cmpnt(function ErrorBoundary(props: {
 
     return runWithOwner(viewOwner, () => {
       if (!error.value) {
+        // Reinstall the boundary on the actual owner used to render its child
+        // subtree. Async effects created below this point capture this handler.
+        enterErrorBoundary(handleError);
+        enterAsyncIDScope(asyncScopes.children);
         return props.children;
       }
 
+      // Errors thrown by fallback content belong to the parent boundary, not
+      // to the boundary whose fallback is already being rendered.
+      enterErrorBoundary(parentErrorBoundary);
+      enterAsyncIDScope(asyncScopes.fallback);
       return props.fallback?.(error.value!, () => (error.value = undefined));
     });
   });
