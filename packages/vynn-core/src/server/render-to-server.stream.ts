@@ -173,8 +173,16 @@ export function resolveStream(
   async function renderAsyncChildren(node: SSR_ASYNC, boundaryId: number): Promise<void> {
     try {
       await Promise.all(node.promises);
+
+      if (node.errorBoundary?.hasError) return;
+
       const children = node.withOwner(node.children);
-      enqueuePatch(renderPatch(boundaryId, await resolve(children)));
+      const html = await resolve(children);
+
+      // A sibling may have failed while this branch was resolving.
+      if (!node.errorBoundary?.hasError) {
+        enqueuePatch(renderPatch(boundaryId, html));
+      }
     } catch (error) {
       await patchErrorBoundary(node.errorBoundary, error);
     } finally {
