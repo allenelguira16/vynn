@@ -3,6 +3,8 @@ import type { Owner } from "../life-cycle/owner";
 
 import {
   enterErrorBoundary,
+  enterSSRErrorBoundary,
+  getSSRErrorBoundary,
   getErrorBoundaryID,
   getErrorBoundaryValue,
   getErrorBoundaryValues,
@@ -36,36 +38,37 @@ export const ErrorBoundary = $cmpnt(function ErrorBoundary(props: {
 
   if (isServer()) {
     const values = getErrorBoundaryValues();
+    const parentBoundary = getSSRErrorBoundary();
 
-    try {
-      try {
-        return props.children;
-      } finally {
+    const boundary = createSSRErrorBoundary(
+      errorBoundaryID,
+      (error) => {
+        // A fallback belongs to the enclosing boundary, not itself.
+        enterSSRErrorBoundary(parentBoundary);
+        return resolveNode(() =>
+          props.fallback?.(error, () => undefined),
+        ) as unknown as SSR_NODE[];
+      },
+      () => resolveNode(() => props.children) as unknown as SSR_NODE[],
+      (error) => {
+        if (values) {
+          values[errorBoundaryID] = {
+            status: "fallback",
+            message: error.message,
+            name: error.name,
+          };
+        }
+      },
+      () => {
         if (values) values[errorBoundaryID] = { status: "children" };
-      }
-    } catch (error) {
-      if (!(error instanceof Error)) throw error;
+      },
+    );
 
-      if (values)
-        values[errorBoundaryID] = {
-          status: "fallback",
-          message: error.message,
-          name: error.name,
-        };
+    // Register before resolving children so nested async nodes capture the
+    // nearest boundary, including failures that arrive after initial HTML.
+    enterSSRErrorBoundary(boundary);
 
-      return createSSRErrorBoundary(
-        errorBoundaryID,
-        () => {
-          return resolveNode(() =>
-            props.fallback?.(error, () => undefined),
-          ) as unknown as SSR_NODE[];
-        },
-        () => {
-          return resolveNode(() => props.children) as unknown as SSR_NODE[];
-        },
-        error,
-      ) as unknown as JSX.Element;
-    }
+    return boundary as unknown as JSX.Element;
   }
 
   const error = $state<Error | undefined>(() => undefined);
