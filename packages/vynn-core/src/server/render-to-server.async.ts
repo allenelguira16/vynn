@@ -11,6 +11,8 @@ import {
   type SSR_NODE,
   SSR_TEXT,
   resolveNode,
+  resolveSSRAsyncChildren,
+  resolveSSRDeferredChildren,
   SSRBoundaryFailure,
   SSRDeferredError,
 } from "../render/resolve-node";
@@ -24,19 +26,12 @@ import {
 
 export async function resolveAsync(App: () => JSX.Element, owner: Owner): Promise<string> {
   async function resolveAsyncBoundary(node: SSR_ASYNC | SSR_DEFERRED): Promise<string> {
-    try {
-      await Promise.all(node.promises);
-    } catch (error) {
-      // Only rejection of the blocking promise is control flow. Errors thrown
-      // by rendering its children are still ordinary render errors.
-      if (node instanceof SSR_DEFERRED && node.blocking) {
-        throw new SSRDeferredError(error);
-      }
+    const children =
+      node instanceof SSR_ASYNC
+        ? await resolveSSRAsyncChildren(node)
+        : await resolveSSRDeferredChildren(node);
 
-      throw error;
-    }
-
-    return await resolve(node.children());
+    return await resolve(children);
   }
 
   async function resolveErrorBoundary(node: SSR_ERROR_BOUNDARY): Promise<string> {
