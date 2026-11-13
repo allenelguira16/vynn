@@ -16,6 +16,7 @@ import {
 import {
   createSSRUtilitiesRenderer,
   joinHTMLElements,
+  renderErrorBoundaryRange,
   renderNode,
   renderText,
 } from "./render-to-server.util";
@@ -27,7 +28,18 @@ export async function resolveAsync(App: () => JSX.Element, owner: Owner): Promis
   }
 
   async function resolveErrorBoundary(node: SSR_ERROR_BOUNDARY): Promise<string> {
-    return await resolve(node.withOwner(node.fallback));
+    try {
+      return renderErrorBoundaryRange(node.id, await resolve(node.children()));
+    } catch (error) {
+      const reason =
+        error instanceof SSRDeferredError || error instanceof SSRBoundaryFailure
+          ? error.reason
+          : error;
+
+      if (!(reason instanceof Error) || !node.handle(reason)) throw reason;
+
+      return renderErrorBoundaryRange(node.id, await resolve(node.fallback(reason)));
+    }
   }
 
   async function resolveElement(node: SSR_ELEMENT): Promise<string> {
