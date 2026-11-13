@@ -26,16 +26,17 @@ export async function resolveAsync(App: () => JSX.Element, owner: Owner): Promis
   async function resolveAsyncBoundary(node: SSR_ASYNC | SSR_DEFERRED): Promise<string> {
     try {
       await Promise.all(node.promises);
-      return await resolve(node.children());
     } catch (error) {
-      // Blocking deferred work (such as a route guard) is control flow, not
-      // a render error that an ErrorBoundary should turn into fallback UI.
+      // Only rejection of the blocking promise is control flow. Errors thrown
+      // by rendering its children are still ordinary render errors.
       if (node instanceof SSR_DEFERRED && node.blocking) {
         throw new SSRDeferredError(error);
       }
 
       throw error;
     }
+
+    return await resolve(node.children());
   }
 
   async function resolveErrorBoundary(node: SSR_ERROR_BOUNDARY): Promise<string> {
