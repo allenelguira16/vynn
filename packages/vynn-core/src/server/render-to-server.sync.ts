@@ -9,18 +9,32 @@ import {
   SSR_ERROR_BOUNDARY,
   type SSR_NODE,
   SSR_TEXT,
+  SSRBoundaryFailure,
+  SSRDeferredError,
   resolveNode,
 } from "../render/resolve-node";
 import {
   joinHTMLElements,
   renderAsyncUtilities,
+  renderErrorBoundaryRange,
   renderNode,
   renderText,
 } from "./render-to-server.util";
 
 export function resolveSync(App: () => JSX.Element, owner: Owner) {
   function resolveErrorBoundary(node: SSR_ERROR_BOUNDARY) {
-    return resolve(node.withOwner(node.fallback));
+    try {
+      return renderErrorBoundaryRange(node.id, resolve(node.children()));
+    } catch (error) {
+      const reason =
+        error instanceof SSRDeferredError || error instanceof SSRBoundaryFailure
+          ? error.reason
+          : error;
+
+      if (!(reason instanceof Error) || !node.handle(reason)) throw reason;
+
+      return renderErrorBoundaryRange(node.id, resolve(node.fallback(reason)));
+    }
   }
 
   function resolveElement(node: SSR_ELEMENT) {
