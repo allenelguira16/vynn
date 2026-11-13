@@ -1,11 +1,10 @@
 import { claimHydrationText, isHydrationClaimActive } from "../client/hydration";
 import { synchronizeHydrationText } from "../client/hydration-diagnostics";
 import {
+  enterSSRErrorBoundary,
   getSSRErrorBoundary,
   type ErrorBoundary,
-  type SSR_ERROR_BOUNDARY as SSR_ERROR_BOUNDARY_TYPE,
   withSSRErrorBoundary,
-  enterSSRErrorBoundary,
 } from "../context/error-boundary-context";
 import { isServer } from "../context/is-server-context";
 import { JSX } from "../jsx-runtime";
@@ -104,7 +103,7 @@ export abstract class SSR_PENDING extends SSR_NODE {
   protected constructor(
     children: () => SSR_NODE[],
     promises: Promise<unknown>[],
-    public errorBoundary?: SSR_ERROR_BOUNDARY_TYPE,
+    public errorBoundary?: SSR_ERROR_BOUNDARY,
   ) {
     super();
     this.children = captureSSRRender(this, children);
