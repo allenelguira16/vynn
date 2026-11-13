@@ -201,7 +201,7 @@ export class SSR_ERROR_BOUNDARY extends SSR_NODE {
     if (!(error instanceof Error) || this.handledError) return false;
 
     this.handledError = error;
-    this.handler(error);
+    this.withOwner(() => this.handler(error));
     return true;
   }
 }
