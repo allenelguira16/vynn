@@ -149,10 +149,10 @@ export function resolveStream(
     boundary: NonNullable<SSR_ASYNC["ssrErrorBoundary"]>,
     error: Error,
   ): Promise<void> {
-    const fallback = boundary.renderFallback(error);
-    if (!fallback) return;
-
     try {
+      const fallback = boundary.renderFallback(error);
+      if (!fallback) return;
+
       const html = await resolve(fallback);
       if (!streamClosed) enqueuePatch(renderErrorBoundaryPatch(boundary.id, html));
     } catch (fallbackError) {
