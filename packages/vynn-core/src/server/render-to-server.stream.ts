@@ -9,7 +9,7 @@ import {
   ERROR_BOUNDARY_END_SSR_MARKER,
   APPLY_ERROR_BOUNDARY_PATCH_SSR_KEY,
 } from "../const";
-import { getOwner, runWithOwner } from "../life-cycle/owner";
+import { getOwner } from "../life-cycle/owner";
 import {
   SSR_ASYNC,
   SSR_COMMENT,
@@ -24,8 +24,8 @@ import {
 } from "../render/resolve-node";
 import { renderHeadPatch, type SsrHeadManager } from "./head";
 import {
+  createSSRUtilitiesRenderer,
   joinHTMLElements,
-  renderAsyncUtilities,
   renderNode,
   renderText,
 } from "./render-to-server.util";
@@ -35,9 +35,7 @@ export function resolveStream(
   head: SsrHeadManager,
   disposeRenderOwner: () => void,
 ): ReadableStream<Uint8Array> {
-  const owner = getOwner();
-
-  if (!owner) {
+  if (!getOwner()) {
     throw new Error("[vynn]: Streaming SSR requires an active render owner.");
   }
 
@@ -50,6 +48,7 @@ export function resolveStream(
   let streamClosed = false;
   let renderOwnerReleased = false;
   let previousHead = "";
+  let renderUtilities: () => string = () => "";
 
   const queuedPatches: string[] = [];
 
@@ -113,7 +112,7 @@ export function resolveStream(
     if (pendingTasks !== 0 || !initialChunkSent) return;
 
     try {
-      enqueueChunk(runWithOwner(owner, renderAsyncUtilities));
+      enqueueChunk(renderUtilities());
       controller.close();
     } catch (error) {
       controller.error(error);
@@ -125,7 +124,7 @@ export function resolveStream(
 
   async function renderAsyncNode(node: SSR_ASYNC): Promise<string> {
     const id = nextBoundaryId++;
-    const fallbackNodes = runWithOwner(owner, node.fallback);
+    const fallbackNodes = node.withOwner(node.fallback);
     const fallbackHTML = await resolve(fallbackNodes);
 
     if (streamClosed) return "";
@@ -146,7 +145,8 @@ export function resolveStream(
   async function renderAsyncChildren(node: SSR_ASYNC, boundaryId: number): Promise<void> {
     try {
       await Promise.all(node.promises);
-      enqueuePatch(renderPatch(boundaryId, await resolve(node.children())));
+      const children = node.withOwner(node.children);
+      enqueuePatch(renderPatch(boundaryId, await resolve(children)));
     } finally {
       await finishTask();
     }
@@ -154,11 +154,12 @@ export function resolveStream(
 
   async function renderDeferredNode(node: SSR_DEFERRED): Promise<string> {
     await Promise.all(node.promises);
-    return await resolve(node.children());
+    const children = node.withOwner(node.children);
+    return await resolve(children);
   }
 
   async function renderErrorBoundary(node: SSR_ERROR_BOUNDARY): Promise<string> {
-    return await resolve(node.fallback());
+    return await resolve(node.withOwner(node.fallback));
   }
 
   async function renderElement(node: SSR_ELEMENT): Promise<string> {
@@ -211,11 +212,8 @@ export function resolveStream(
     return joinHTMLElements(html);
   }
 
-  async function renderInitialHTML(): Promise<void> {
+  async function renderInitialHTML(app: SSR_NODE[]): Promise<void> {
     try {
-      const app = runWithOwner(owner, () => resolveNode(App)) as unknown as SSR_NODE[];
-      previousHead = head.render();
-
       const html = await resolve(app);
       if (streamClosed) return;
 
@@ -237,9 +235,23 @@ export function resolveStream(
     start(streamController) {
       controller = streamController;
 
-      // Hold the stream open until the initial HTML has been rendered.
+      // Resolve the app synchronously while the render's active owner is still
+      // on the stack. Async continuations use the owner captured by each SSR node.
       pendingTasks++;
-      void renderInitialHTML();
+
+      try {
+        const app = resolveNode(App) as unknown as SSR_NODE[];
+        previousHead = head.render();
+        renderUtilities = createSSRUtilitiesRenderer();
+        void renderInitialHTML(app);
+      } catch (error) {
+        const reason =
+          error instanceof SSRDeferredError || error instanceof SSRBoundaryFailure
+            ? error.reason
+            : error;
+
+        failStream(reason);
+      }
     },
 
     cancel() {

@@ -16,6 +16,11 @@ import { getCurrentDOMNamespace, getElementNamespace, withDOMNamespace } from ".
  */
 export abstract class SSR_NODE {
   parent: SSR_ELEMENT | null = null;
+  readonly owner = getOwner();
+
+  withOwner<T>(render: () => T): T {
+    return runWithOwner(this.owner, render);
+  }
 }
 
 /** A server-side representation of an HTML or SVG element. */
@@ -96,7 +101,7 @@ export abstract class SSR_PENDING extends SSR_NODE {
     public errorBoundary?: ErrorBoundary,
   ) {
     super();
-    this.children = captureSSRRender(children);
+    this.children = captureSSRRender(this, children);
     this.promises = promises;
   }
 }
@@ -112,7 +117,7 @@ export class SSR_ASYNC extends SSR_PENDING {
     errorBoundary?: ErrorBoundary,
   ) {
     super(children, promises, errorBoundary);
-    this.fallback = captureSSRRender(fallback);
+    this.fallback = captureSSRRender(this, fallback);
   }
 }
 
@@ -138,8 +143,8 @@ export class SSR_ERROR_BOUNDARY extends SSR_NODE {
   constructor(id: number, fallback: () => SSR_NODE[], children: () => SSR_NODE[], error: Error) {
     super();
     this.id = id;
-    this.fallback = captureSSRRender(fallback);
-    this.children = captureSSRRender(children);
+    this.fallback = captureSSRRender(this, fallback);
+    this.children = captureSSRRender(this, children);
     this.error = error;
   }
 }
@@ -148,11 +153,10 @@ export class SSR_ERROR_BOUNDARY extends SSR_NODE {
  * Captures the current owner and DOM namespace for work that may run after
  * the current synchronous render stack has completed.
  */
-function captureSSRRender(render: () => SSR_NODE[]): () => SSR_NODE[] {
-  const owner = getOwner();
+function captureSSRRender(node: SSR_NODE, render: () => SSR_NODE[]): () => SSR_NODE[] {
   const namespace = getCurrentDOMNamespace();
 
-  return () => runWithOwner(owner, () => withDOMNamespace(namespace, render));
+  return () => node.withOwner(() => withDOMNamespace(namespace, render));
 }
 
 export function createSSRErrorBoundary(

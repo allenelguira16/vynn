@@ -14,6 +14,7 @@ import { lazy } from "../src/components/lazy";
 import { registerSsrModule } from "../src/context/ssr-module-context";
 import { createOwner, disposeOwner, getOwner, runWithOwner } from "../src/life-cycle/owner";
 import { $head, $headTmpl } from "../src/render/$head";
+import { $cmpnt } from "../src/render/$cmpnt";
 import { $insert } from "../src/render/$insert";
 import { $txt } from "../src/render/$txt";
 import {
@@ -255,6 +256,54 @@ describe("renderToServer modes", () => {
 
     expect(rendered.body).toContain("The resource is no longer needed");
     expect(rendered.body).not.toContain("stale resource failure");
+  });
+
+
+  it("restores each streamed async boundary's component owner after its promise settles", async () => {
+    const owners: NonNullable<ReturnType<typeof getOwner>>[] = [];
+    const ownerParents: (NonNullable<ReturnType<typeof getOwner>> | null)[] = [];
+    let renderOwner: NonNullable<ReturnType<typeof getOwner>> | undefined;
+
+    function createAsyncComponent(label: string) {
+      return $cmpnt(() => {
+        const componentOwner = getOwner();
+
+        return createSSRAsync(
+          () => [createSSRText(`Loading ${label}`)],
+          () => {
+            expect(getOwner()).toBe(componentOwner);
+            owners.push(getOwner()!);
+            ownerParents.push(getOwner()!.parent);
+            return [createSSRText(`Resolved ${label}`)];
+          },
+          [Promise.resolve()],
+        ) as unknown as JSX.Element;
+      });
+    }
+
+    const First = createAsyncComponent("first");
+    const Second = createAsyncComponent("second");
+
+    const rendered = renderToServer(() => {
+      renderOwner = getOwner()!;
+      return [First(), Second()];
+    }, "stream");
+
+    const reader = rendered.body.getReader();
+    const chunks: string[] = [];
+
+    while (true) {
+      const result = await reader.read();
+      if (result.done) break;
+      chunks.push(new TextDecoder().decode(result.value));
+    }
+
+    expect(chunks.join("")).toContain("Resolved first");
+    expect(chunks.join("")).toContain("Resolved second");
+    expect(owners).toHaveLength(2);
+    expect(owners[0]).not.toBe(owners[1]);
+    expect(ownerParents[0]).toBe(renderOwner);
+    expect(ownerParents[1]).toBe(renderOwner);
   });
 
   it("handles async render failures within an ErrorBoundary", async () => {

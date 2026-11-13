@@ -14,8 +14,8 @@ import {
   SSRDeferredError,
 } from "../render/resolve-node";
 import {
+  createSSRUtilitiesRenderer,
   joinHTMLElements,
-  renderAsyncUtilities,
   renderNode,
   renderText,
 } from "./render-to-server.util";
@@ -23,11 +23,11 @@ import {
 export async function resolveAsync(App: () => JSX.Element, owner: Owner): Promise<string> {
   async function resolveAsyncBoundary(node: SSR_ASYNC | SSR_DEFERRED): Promise<string> {
     await Promise.all(node.promises);
-    return await resolve(node.children());
+    return await resolve(node.withOwner(node.children));
   }
 
   async function resolveErrorBoundary(node: SSR_ERROR_BOUNDARY): Promise<string> {
-    return await resolve(node.fallback());
+    return await resolve(node.withOwner(node.fallback));
   }
 
   async function resolveElement(node: SSR_ELEMENT): Promise<string> {
@@ -74,11 +74,11 @@ export async function resolveAsync(App: () => JSX.Element, owner: Owner): Promis
   }
 
   try {
+    const renderUtilities = runWithOwner(owner, createSSRUtilitiesRenderer);
     const app = runWithOwner(owner, () => resolveNode(App)) as unknown as SSR_NODE[];
     const html = await resolve(app);
-    const utilities = runWithOwner(owner, renderAsyncUtilities);
 
-    return html + utilities;
+    return html + renderUtilities();
   } catch (error) {
     if (error instanceof SSRDeferredError || error instanceof SSRBoundaryFailure) {
       throw error.reason;

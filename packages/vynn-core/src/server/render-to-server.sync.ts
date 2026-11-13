@@ -20,7 +20,7 @@ import {
 
 export function resolveSync(App: () => JSX.Element, owner: Owner) {
   function resolveErrorBoundary(node: SSR_ERROR_BOUNDARY) {
-    return resolve(node.fallback());
+    return resolve(node.withOwner(node.fallback));
   }
 
   function resolveElement(node: SSR_ELEMENT) {
@@ -38,7 +38,7 @@ export function resolveSync(App: () => JSX.Element, owner: Owner) {
     for (const node of nodes.flat(Infinity).filter(Boolean)) {
       if (node instanceof SSR_ASYNC) {
         // Sync SSR never waits for async work. It can only render its fallback.
-        html.push(resolve(node.fallback()));
+        html.push(resolve(node.withOwner(node.fallback)));
         continue;
       }
 
