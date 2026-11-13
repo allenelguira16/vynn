@@ -154,7 +154,10 @@ export function resolveStream(
       if (!fallback) return;
 
       const html = await resolve(fallback);
-      if (!streamClosed) enqueuePatch(renderErrorBoundaryPatch(boundary.id, html));
+      if (!streamClosed) {
+        enqueueHeadPatch();
+        enqueuePatch(renderErrorBoundaryPatch(boundary.id, html));
+      }
     } catch (fallbackError) {
       const reason = fallbackError instanceof SSRDeferredError ? fallbackError.reason : fallbackError;
 
@@ -175,7 +178,9 @@ export function resolveStream(
   async function renderAsyncChildren(node: SSR_ASYNC, boundaryId: number): Promise<void> {
     try {
       await Promise.all(node.promises);
-      enqueuePatch(renderPatch(boundaryId, await resolve(node.children())));
+      const children = await resolve(node.children());
+      enqueueHeadPatch();
+      enqueuePatch(renderPatch(boundaryId, children));
     } catch (error) {
       const reason = error instanceof SSRDeferredError ? error.reason : error;
       const boundary = node.ssrErrorBoundary;
