@@ -1,4 +1,5 @@
 import { ERROR_BOUNDARY_DATA_SSR_KEY } from "../const";
+import type { SSR_NODE } from "../render/resolve-node";
 import { getContext, getOwner, modifyContext, setContext } from "../life-cycle/owner";
 import { isServer } from "./is-server-context";
 
@@ -13,6 +14,13 @@ export type ErrorBoundary = (error: Error) => void;
 const ERROR_BOUNDARY = Symbol("vynn.error-boundary");
 const ERROR_BOUNDARY_ID = Symbol("vynn.error-boundary-id");
 const ERROR_BOUNDARY_VALUES = Symbol("vynn.error-boundary-values");
+const SSR_ERROR_BOUNDARY = Symbol("vynn.ssr-error-boundary");
+
+export interface SSRErrorBoundary {
+  readonly id: number;
+  readonly parent?: SSRErrorBoundary;
+  renderFallback(error: Error): SSR_NODE[] | undefined;
+}
 
 export function getErrorBoundary(): ErrorBoundary | undefined {
   return getContext<ErrorBoundary | undefined>(ERROR_BOUNDARY);
@@ -20,6 +28,14 @@ export function getErrorBoundary(): ErrorBoundary | undefined {
 
 export function enterErrorBoundary(boundary: ErrorBoundary | undefined): void {
   setContext(ERROR_BOUNDARY, boundary);
+}
+
+export function getSSRErrorBoundary(): SSRErrorBoundary | undefined {
+  return getContext<SSRErrorBoundary>(SSR_ERROR_BOUNDARY);
+}
+
+export function enterSSRErrorBoundary(boundary: SSRErrorBoundary | undefined): void {
+  setContext(SSR_ERROR_BOUNDARY, boundary);
 }
 
 export type ErrorBoundarySSRState =
