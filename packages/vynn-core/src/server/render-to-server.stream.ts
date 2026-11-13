@@ -206,7 +206,7 @@ export function resolveStream(
   }
 
   async function renderErrorBoundary(node: SSR_ERROR_BOUNDARY): Promise<string> {
-    let childrenHTML: string;
+    let childrenHTML = "";
 
     try {
       childrenHTML = await resolve(node.children());
@@ -227,7 +227,7 @@ export function resolveStream(
       return renderErrorBoundaryRange(node.id, fallbackHTML);
     }
 
-    return renderErrorBoundaryRange(node.id, childrenHTML!);
+    return renderErrorBoundaryRange(node.id, childrenHTML);
   }
 
   async function renderElement(node: SSR_ELEMENT): Promise<string> {
