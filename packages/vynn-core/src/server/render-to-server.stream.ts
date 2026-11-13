@@ -26,6 +26,7 @@ import { renderHeadPatch, type SsrHeadManager } from "./head";
 import {
   createSSRUtilitiesRenderer,
   joinHTMLElements,
+  renderErrorBoundaryRange,
   renderNode,
   renderText,
 } from "./render-to-server.util";
@@ -142,11 +143,40 @@ export function resolveStream(
     );
   }
 
+  async function patchErrorBoundary(
+    boundary: SSR_ERROR_BOUNDARY | undefined,
+    error: unknown,
+  ): Promise<void> {
+    const reason =
+      error instanceof SSRDeferredError || error instanceof SSRBoundaryFailure
+        ? error.reason
+        : error;
+
+    if (!boundary || !(reason instanceof Error)) {
+      failStream(reason);
+      return;
+    }
+
+    // Only the first failure claims a boundary. Other pending siblings are
+    // discarded once this boundary has switched to its fallback.
+    if (!boundary.handle(reason)) return;
+
+    try {
+      const fallbackHTML = await resolve(boundary.fallback(reason));
+      enqueuePatch(renderErrorBoundaryPatch(boundary.id, fallbackHTML));
+      enqueueHeadPatch();
+    } catch (fallbackError) {
+      await patchErrorBoundary(boundary.parentBoundary, fallbackError);
+    }
+  }
+
   async function renderAsyncChildren(node: SSR_ASYNC, boundaryId: number): Promise<void> {
     try {
       await Promise.all(node.promises);
       const children = node.withOwner(node.children);
       enqueuePatch(renderPatch(boundaryId, await resolve(children)));
+    } catch (error) {
+      await patchErrorBoundary(node.errorBoundary, error);
     } finally {
       await finishTask();
     }
@@ -159,7 +189,20 @@ export function resolveStream(
   }
 
   async function renderErrorBoundary(node: SSR_ERROR_BOUNDARY): Promise<string> {
-    return await resolve(node.withOwner(node.fallback));
+    try {
+      const children = node.children();
+      return renderErrorBoundaryRange(node.id, await resolve(children));
+    } catch (error) {
+      const reason =
+        error instanceof SSRDeferredError || error instanceof SSRBoundaryFailure
+          ? error.reason
+          : error;
+
+      if (!(reason instanceof Error) || !node.handle(reason)) throw reason;
+
+      const fallbackHTML = await resolve(node.fallback(reason));
+      return renderErrorBoundaryRange(node.id, fallbackHTML);
+    }
   }
 
   async function renderElement(node: SSR_ELEMENT): Promise<string> {
@@ -273,9 +316,9 @@ function renderPatch(id: number, html: string) {
   return `<template id="${id}">${html}</template><script>${APPLY_PATCH_SSR_KEY}(${id});document.currentScript.remove();</script>`;
 }
 
-// function renderErrorBoundaryPatch(id: number, html: string) {
-//   return `<template id="vynn-eb-${id}">${html}</template><script>${APPLY_ERROR_BOUNDARY_PATCH_SSR_KEY}(${id});document.currentScript.remove();</script>`;
-// }
+function renderErrorBoundaryPatch(id: number, html: string) {
+  return `<template id="vynn-eb-${id}">${html}</template><script>${APPLY_ERROR_BOUNDARY_PATCH_SSR_KEY}(${id});document.currentScript.remove();</script>`;
+}
 
 function renderPatchRuntime(): string {
   return `<script>
