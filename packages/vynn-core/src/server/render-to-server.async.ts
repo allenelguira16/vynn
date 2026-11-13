@@ -28,7 +28,7 @@ export async function resolveAsync(App: () => JSX.Element, owner: Owner): Promis
   }
 
   async function resolveErrorBoundary(node: SSR_ERROR_BOUNDARY): Promise<string> {
-    let childrenHTML: string;
+    let childrenHTML = "";
 
     try {
       childrenHTML = await resolve(node.children());
@@ -48,7 +48,7 @@ export async function resolveAsync(App: () => JSX.Element, owner: Owner): Promis
       return renderErrorBoundaryRange(node.id, await resolve(node.fallback(node.error)));
     }
 
-    return renderErrorBoundaryRange(node.id, childrenHTML!);
+    return renderErrorBoundaryRange(node.id, childrenHTML);
   }
 
   async function resolveElement(node: SSR_ELEMENT): Promise<string> {
