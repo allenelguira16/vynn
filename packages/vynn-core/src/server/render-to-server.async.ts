@@ -28,18 +28,27 @@ export async function resolveAsync(App: () => JSX.Element, owner: Owner): Promis
   }
 
   async function resolveErrorBoundary(node: SSR_ERROR_BOUNDARY): Promise<string> {
+    let childrenHTML: string;
+
     try {
-      return renderErrorBoundaryRange(node.id, await resolve(node.children()));
+      childrenHTML = await resolve(node.children());
     } catch (error) {
       const reason =
         error instanceof SSRDeferredError || error instanceof SSRBoundaryFailure
           ? error.reason
           : error;
 
-      if (!(reason instanceof Error) || !node.handle(reason)) throw reason;
+      if (!(reason instanceof Error)) throw reason;
 
-      return renderErrorBoundaryRange(node.id, await resolve(node.fallback(reason)));
+      if (!node.hasError && !node.handle(reason)) throw reason;
+      if (node.error !== reason) throw reason;
     }
+
+    if (node.error) {
+      return renderErrorBoundaryRange(node.id, await resolve(node.fallback(node.error)));
+    }
+
+    return renderErrorBoundaryRange(node.id, childrenHTML!);
   }
 
   async function resolveElement(node: SSR_ELEMENT): Promise<string> {
