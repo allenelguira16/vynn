@@ -22,6 +22,8 @@ import {
   SSRBoundaryFailure,
   SSRDeferredError,
   resolveNode,
+  resolveSSRAsyncChildren,
+  resolveSSRDeferredChildren,
 } from "../render/resolve-node";
 import { renderHeadPatch, type SsrHeadManager } from "./head";
 import {
@@ -177,8 +179,8 @@ export function resolveStream(
 
   async function renderAsyncChildren(node: SSR_ASYNC, boundaryId: number): Promise<void> {
     try {
-      await Promise.all(node.promises);
-      const children = await resolve(node.children());
+      const childNodes = await resolveSSRAsyncChildren(node);
+      const children = await resolve(childNodes);
       enqueueHeadPatch();
       enqueuePatch(renderPatch(boundaryId, children));
     } catch (error) {
@@ -202,14 +204,8 @@ export function resolveStream(
   }
 
   async function renderDeferredNode(node: SSR_DEFERRED): Promise<string> {
-    try {
-      await Promise.all(node.promises);
-    } catch (error) {
-      if (node.blocking) throw new SSRDeferredError(error);
-      throw error;
-    }
-
-    return await resolve(node.children());
+    const childNodes = await resolveSSRDeferredChildren(node);
+    return await resolve(childNodes);
   }
 
   async function renderErrorBoundary(node: SSR_ERROR_BOUNDARY): Promise<string> {
