@@ -172,6 +172,10 @@ export class SSR_ERROR_BOUNDARY extends SSR_NODE {
       );
   }
 
+  get hasError(): boolean {
+    return this.handledError !== undefined;
+  }
+
   /** Claim the first Error handled by this boundary. */
   handle(error: unknown): error is Error {
     if (!(error instanceof Error) || this.handledError) return false;
