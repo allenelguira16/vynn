@@ -78,7 +78,7 @@ export function renderToServer(App: () => JSX.Element, mode: RenderMode, request
 
         switch (mode) {
           case "sync": {
-            const body = resolveSync(App);
+            const body = resolveSync(App, owner);
             return createResult(body);
           }
 
@@ -96,8 +96,9 @@ export function renderToServer(App: () => JSX.Element, mode: RenderMode, request
             return createResult(body);
           }
 
-          default:
+          default: {
             throw new Error("[vynn]: Unsupported SSR render mode: " + String(mode));
+          }
         }
       } finally {
         if (disposeOnExit) {

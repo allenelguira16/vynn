@@ -5,12 +5,12 @@ import { sleep } from "../../utils";
 
 export default function StackedSuspense() {
   const msg3 = $state(async () => {
-    await sleep(300);
+    await sleep(3000);
 
     return "hello world 3";
   });
   const msg2 = $state(async () => {
-    await sleep(200);
+    await sleep(2000);
 
     return "hello world 2";
   });
@@ -37,7 +37,7 @@ export default function StackedSuspense() {
 
 const Component = () => {
   const msg = $state(async () => {
-    await sleep(100);
+    await sleep(1000);
 
     return `hello world`;
   });

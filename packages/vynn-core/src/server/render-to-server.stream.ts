@@ -1,5 +1,5 @@
-import type { ErrorBoundary } from "../context/error-boundary-context";
 import type { JSX } from "../types/jsx";
+
 import {
   APPLY_HEAD_PATCH_SSR_KEY,
   APPLY_PATCH_SSR_KEY,
@@ -10,7 +10,6 @@ import {
   APPLY_ERROR_BOUNDARY_PATCH_SSR_KEY,
 } from "../const";
 import { getOwner, runWithOwner } from "../life-cycle/owner";
-import { NotReadyError } from "../reactivity_new/not-ready-error";
 import {
   SSR_ASYNC,
   SSR_COMMENT,
@@ -20,21 +19,15 @@ import {
   type SSR_NODE,
   SSR_TEXT,
   SSRBoundaryFailure,
-  SSRBoundaryPatchHandledError,
   SSRDeferredError,
   resolveNode,
-  resolveSSRAsyncChildren,
-  resolveSSRDeferredChildren,
 } from "../render/resolve-node";
 import { renderHeadPatch, type SsrHeadManager } from "./head";
 import {
-  getSSRErrorBoundary,
   joinHTMLElements,
   renderAsyncUtilities,
-  renderErrorBoundaryRange,
   renderNode,
   renderText,
-  withSSRErrorBoundary,
 } from "./render-to-server.util";
 
 export function resolveStream(
@@ -130,68 +123,10 @@ export function resolveStream(
     }
   }
 
-  function getBackgroundErrorBoundary(
-    error: unknown,
-    fallbackBoundary?: ErrorBoundary,
-  ): ErrorBoundary | undefined {
-    if (error instanceof SSRBoundaryFailure) {
-      return error.handled ? error.boundary : error.boundary.handle(error.reason);
-    }
-
-    if (error instanceof Error && !(error instanceof NotReadyError) && fallbackBoundary) {
-      return fallbackBoundary.handle(error);
-    }
-
-    return undefined;
-  }
-
-  async function recoverBackgroundError(
-    error: unknown,
-    fallbackBoundary?: ErrorBoundary,
-  ): Promise<void> {
-    if (streamClosed || error instanceof SSRBoundaryPatchHandledError) return;
-
-    if (error instanceof SSRDeferredError) {
-      failStream(error.reason);
-      return;
-    }
-
-    let boundary: ErrorBoundary | undefined;
-
-    try {
-      boundary = getBackgroundErrorBoundary(error, fallbackBoundary);
-    } catch (boundaryError) {
-      failStream(boundaryError);
-      return;
-    }
-
-    if (!boundary) {
-      failStream(error);
-      return;
-    }
-
-    try {
-      const html = await resolveNodes(boundary.render(), true);
-
-      if (streamClosed || !boundary.isActive()) return;
-
-      enqueueHeadPatch();
-      enqueuePatch(renderErrorBoundaryPatch(boundary.id, html));
-    } catch (renderError) {
-      if (renderError instanceof SSRBoundaryPatchHandledError) return;
-
-      await recoverBackgroundError(renderError, boundary);
-    }
-  }
-
-  async function renderAsyncNode(
-    node: SSR_ASYNC,
-    background: boolean,
-    availableErrorBoundaryIds: ReadonlySet<number>,
-  ): Promise<string> {
+  async function renderAsyncNode(node: SSR_ASYNC): Promise<string> {
     const id = nextBoundaryId++;
     const fallbackNodes = runWithOwner(owner, node.fallback);
-    const fallbackHTML = await resolveNodes(fallbackNodes, background, availableErrorBoundaryIds);
+    const fallbackHTML = await resolve(fallbackNodes);
 
     if (streamClosed) return "";
 
@@ -199,7 +134,7 @@ export function resolveStream(
 
     // Keep the fallback in the initial HTML while the real children resolve.
     pendingTasks++;
-    void renderAsyncChildren(node, id, availableErrorBoundaryIds);
+    void renderAsyncChildren(node, id);
 
     return (
       `<!--${FALLBACK_START_SSR_MARKER}:${id}-->` +
@@ -208,82 +143,26 @@ export function resolveStream(
     );
   }
 
-  async function renderAsyncChildren(
-    node: SSR_ASYNC,
-    boundaryId: number,
-    availableErrorBoundaryIds: ReadonlySet<number>,
-  ): Promise<void> {
+  async function renderAsyncChildren(node: SSR_ASYNC, boundaryId: number): Promise<void> {
     try {
-      const childNodes = await resolveSSRAsyncChildren(node);
-      if (streamClosed) return;
-
-      enqueueHeadPatch();
-
-      const children = await resolveNodes(childNodes, true, new Set(availableErrorBoundaryIds));
-      if (streamClosed) return;
-
-      enqueueHeadPatch();
-      enqueuePatch(renderPatch(boundaryId, children));
-    } catch (error) {
-      await recoverBackgroundError(error, node.errorBoundary);
+      await Promise.all(node.promises);
+      enqueuePatch(renderPatch(boundaryId, await resolve(node.children())));
     } finally {
       await finishTask();
     }
   }
 
-  async function renderDeferredNode(
-    node: SSR_DEFERRED,
-    background: boolean,
-    availableErrorBoundaryIds: ReadonlySet<number>,
-  ): Promise<string> {
-    return withSSRErrorBoundary(node.errorBoundary, async () => {
-      const childNodes = await resolveSSRDeferredChildren(node);
-      enqueueHeadPatch();
-
-      const children = await resolveNodes(childNodes, background, availableErrorBoundaryIds);
-      enqueueHeadPatch();
-
-      return children;
-    });
+  async function renderDeferredNode(node: SSR_DEFERRED): Promise<string> {
+    await Promise.all(node.promises);
+    return await resolve(node.children());
   }
 
-  async function renderErrorBoundary(
-    node: SSR_ERROR_BOUNDARY,
-    background: boolean,
-    availableErrorBoundaryIds: ReadonlySet<number>,
-  ): Promise<string> {
-    const boundaryChildIds = new Set(availableErrorBoundaryIds);
-    boundaryChildIds.add(node.id);
-
-    let children: string;
-
-    try {
-      const childNodes = runWithOwner(owner, node.children);
-      children = await resolveNodes(childNodes, background, boundaryChildIds);
-    } catch (error) {
-      const boundary = getSSRErrorBoundary(error, node.errorBoundary, node.id);
-      children = await resolveNodes(boundary.render(), background, availableErrorBoundaryIds);
-
-      enqueueHeadPatch();
-
-      if (background && availableErrorBoundaryIds.has(boundary.id)) {
-        if (boundary.isActive()) {
-          enqueuePatch(renderErrorBoundaryPatch(boundary.id, children));
-        }
-
-        throw new SSRBoundaryPatchHandledError();
-      }
-    }
-
-    return renderErrorBoundaryRange(node.id, children);
+  async function renderErrorBoundary(node: SSR_ERROR_BOUNDARY): Promise<string> {
+    return await resolve(node.fallback());
   }
 
-  async function renderElement(
-    node: SSR_ELEMENT,
-    background: boolean,
-    availableErrorBoundaryIds: ReadonlySet<number>,
-  ): Promise<string> {
-    const children = await resolveNodes(node.children, background, availableErrorBoundaryIds);
+  async function renderElement(node: SSR_ELEMENT): Promise<string> {
+    const children = await resolve(node.children);
 
     return renderNode({
       type: node.type,
@@ -293,28 +172,24 @@ export function resolveStream(
     });
   }
 
-  async function resolveNodes(
-    app: SSR_NODE[],
-    background = false,
-    availableErrorBoundaryIds: ReadonlySet<number> = new Set(),
-  ): Promise<string> {
+  async function resolve(app: SSR_NODE[]): Promise<string> {
     const html: string[] = [];
 
     for (const node of app.flat(Infinity).filter(Boolean)) {
       if (streamClosed) break;
 
       if (node instanceof SSR_ASYNC) {
-        html.push(await renderAsyncNode(node, background, availableErrorBoundaryIds));
+        html.push(await renderAsyncNode(node));
         continue;
       }
 
       if (node instanceof SSR_DEFERRED) {
-        html.push(await renderDeferredNode(node, background, availableErrorBoundaryIds));
+        html.push(await renderDeferredNode(node));
         continue;
       }
 
       if (node instanceof SSR_ERROR_BOUNDARY) {
-        html.push(await renderErrorBoundary(node, background, availableErrorBoundaryIds));
+        html.push(await renderErrorBoundary(node));
         continue;
       }
 
@@ -329,7 +204,7 @@ export function resolveStream(
       }
 
       if (node instanceof SSR_ELEMENT) {
-        html.push(await renderElement(node, background, availableErrorBoundaryIds));
+        html.push(await renderElement(node));
       }
     }
 
@@ -341,7 +216,7 @@ export function resolveStream(
       const app = runWithOwner(owner, () => resolveNode(App)) as unknown as SSR_NODE[];
       previousHead = head.render();
 
-      const html = await resolveNodes(app);
+      const html = await resolve(app);
       if (streamClosed) return;
 
       enqueueChunk(renderPatchRuntime() + html);
@@ -378,9 +253,9 @@ function renderPatch(id: number, html: string) {
   return `<template id="${id}">${html}</template><script>${APPLY_PATCH_SSR_KEY}(${id});document.currentScript.remove();</script>`;
 }
 
-function renderErrorBoundaryPatch(id: number, html: string) {
-  return `<template id="vynn-eb-${id}">${html}</template><script>${APPLY_ERROR_BOUNDARY_PATCH_SSR_KEY}(${id});document.currentScript.remove();</script>`;
-}
+// function renderErrorBoundaryPatch(id: number, html: string) {
+//   return `<template id="vynn-eb-${id}">${html}</template><script>${APPLY_ERROR_BOUNDARY_PATCH_SSR_KEY}(${id});document.currentScript.remove();</script>`;
+// }
 
 function renderPatchRuntime(): string {
   return `<script>

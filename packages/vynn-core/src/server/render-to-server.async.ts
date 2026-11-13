@@ -1,3 +1,6 @@
+import type { JSX } from "../types/jsx";
+
+import { runWithOwner, type Owner } from "../life-cycle/owner";
 import {
   SSR_ASYNC,
   SSR_COMMENT,
@@ -7,46 +10,24 @@ import {
   type SSR_NODE,
   SSR_TEXT,
   resolveNode,
-  resolveSSRAsyncChildren,
-  resolveSSRDeferredChildren,
   SSRBoundaryFailure,
   SSRDeferredError,
 } from "../render/resolve-node";
-import { runWithOwner, type Owner } from "../life-cycle/owner";
-import type { JSX } from "../types/jsx";
 import {
-  getSSRErrorBoundary,
   joinHTMLElements,
   renderAsyncUtilities,
-  renderErrorBoundaryRange,
   renderNode,
   renderText,
-  withSSRErrorBoundary,
 } from "./render-to-server.util";
 
 export async function resolveAsync(App: () => JSX.Element, owner: Owner): Promise<string> {
   async function resolveAsyncBoundary(node: SSR_ASYNC | SSR_DEFERRED): Promise<string> {
-    return withSSRErrorBoundary(node.errorBoundary, async () => {
-      const children =
-        node instanceof SSR_ASYNC
-          ? await resolveSSRAsyncChildren(node)
-          : await resolveSSRDeferredChildren(node);
-
-      return resolve(children);
-    });
+    await Promise.all(node.promises);
+    return await resolve(node.children());
   }
 
   async function resolveErrorBoundary(node: SSR_ERROR_BOUNDARY): Promise<string> {
-    let children: string;
-
-    try {
-      children = await resolve(runWithOwner(owner, node.children));
-    } catch (error) {
-      const boundary = getSSRErrorBoundary(error, node.errorBoundary, node.id);
-      children = await resolve(boundary.render());
-    }
-
-    return renderErrorBoundaryRange(node.id, children);
+    return await resolve(node.fallback());
   }
 
   async function resolveElement(node: SSR_ELEMENT): Promise<string> {

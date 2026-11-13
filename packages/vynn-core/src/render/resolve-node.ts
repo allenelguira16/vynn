@@ -130,15 +130,17 @@ export class SSR_DEFERRED extends SSR_PENDING {
 
 /** An SSR error boundary whose children are rendered under its captured context. */
 export class SSR_ERROR_BOUNDARY extends SSR_NODE {
+  readonly id: number;
   readonly children: () => SSR_NODE[];
+  readonly fallback: () => SSR_NODE[];
+  readonly error: Error;
 
-  constructor(
-    public id: number,
-    children: () => SSR_NODE[],
-    public errorBoundary: ErrorBoundary,
-  ) {
+  constructor(id: number, fallback: () => SSR_NODE[], children: () => SSR_NODE[], error: Error) {
     super();
+    this.id = id;
+    this.fallback = captureSSRRender(fallback);
     this.children = captureSSRRender(children);
+    this.error = error;
   }
 }
 
@@ -155,10 +157,11 @@ function captureSSRRender(render: () => SSR_NODE[]): () => SSR_NODE[] {
 
 export function createSSRErrorBoundary(
   id: number,
+  fallback: () => SSR_NODE[],
   children: () => SSR_NODE[],
-  errorBoundary: ErrorBoundary,
+  error: Error,
 ): SSR_ERROR_BOUNDARY {
-  return new SSR_ERROR_BOUNDARY(id, children, errorBoundary);
+  return new SSR_ERROR_BOUNDARY(id, fallback, children, error);
 }
 
 export function createSSRNode(type: string): SSR_ELEMENT {
@@ -203,73 +206,73 @@ export class SSRBoundaryFailure {
 
 export class SSRBoundaryPatchHandledError {}
 
-// Repeated async reads can discover another resource after the first set has
-// settled. Track every promise encountered during retries so a rejection is
-// never lost merely because the next render no longer reads that resource.
-async function resolveSSRChildrenAfterPromises(
-  initialPromises: Promise<unknown>[],
-  renderChildren: () => SSR_NODE[],
-): Promise<SSR_NODE[]> {
-  const promises = new Map<Promise<unknown>, PromiseSettledResult<unknown> | undefined>();
+// // Repeated async reads can discover another resource after the first set has
+// // settled. Track every promise encountered during retries so a rejection is
+// // never lost merely because the next render no longer reads that resource.
+// async function resolveSSRChildrenAfterPromises(
+//   initialPromises: Promise<unknown>[],
+//   renderChildren: () => SSR_NODE[],
+// ): Promise<SSR_NODE[]> {
+//   const promises = new Map<Promise<unknown>, PromiseSettledResult<unknown> | undefined>();
 
-  for (const promise of initialPromises) {
-    promises.set(promise, undefined);
-  }
+//   for (const promise of initialPromises) {
+//     promises.set(promise, undefined);
+//   }
 
-  while (true) {
-    const pending = [...promises.keys()].filter((promise) => promises.get(promise) === undefined);
+//   while (true) {
+//     const pending = [...promises.keys()].filter((promise) => promises.get(promise) === undefined);
 
-    if (pending.length > 0) {
-      const settled = await Promise.allSettled(pending);
+//     if (pending.length > 0) {
+//       const settled = await Promise.allSettled(pending);
 
-      for (let index = 0; index < pending.length; index++) {
-        promises.set(pending[index], settled[index]);
-      }
-    }
+//       for (let index = 0; index < pending.length; index++) {
+//         promises.set(pending[index], settled[index]);
+//       }
+//     }
 
-    let children: SSR_NODE[];
+//     let children: SSR_NODE[];
 
-    try {
-      children = renderChildren();
-    } catch (error) {
-      if (!(error instanceof NotReadyError)) throw error;
+//     try {
+//       children = renderChildren();
+//     } catch (error) {
+//       if (!(error instanceof NotReadyError)) throw error;
 
-      const state = promises.get(error.promise);
+//       const state = promises.get(error.promise);
 
-      if (state) {
-        if (state.status === "rejected") throw state.reason;
+//       if (state) {
+//         if (state.status === "rejected") throw state.reason;
 
-        // A resource that still suspends on an already-fulfilled promise is
-        // not making progress. Preserve the suspension instead of spinning.
-        throw error;
-      }
+//         // A resource that still suspends on an already-fulfilled promise is
+//         // not making progress. Preserve the suspension instead of spinning.
+//         throw error;
+//       }
 
-      promises.set(error.promise, undefined);
-      continue;
-    }
+//       promises.set(error.promise, undefined);
+//       continue;
+//     }
 
-    // A rejected promise only fails this render when the retried child
-    // still reads it. A conditional branch may no longer depend on a resource
-    // that was pending during the first render.
-    return children;
-  }
-}
+//     // A rejected promise only fails this render when the retried child
+//     // still reads it. A conditional branch may no longer depend on a resource
+//     // that was pending during the first render.
+//     return children;
+//   }
+// }
 
-export function resolveSSRAsyncChildren(node: SSR_ASYNC): Promise<SSR_NODE[]> {
-  return resolveSSRChildrenAfterPromises(node.promises, node.children);
-}
+// export function resolveSSRAsyncChildren(node: SSR_ASYNC): Promise<SSR_NODE[]> {
+//   return resolveSSRChildrenAfterPromises(node.promises, node.children);
+// }
 
-export function resolveSSRDeferredChildren(node: SSR_DEFERRED): Promise<SSR_NODE[]> {
-  if (node.blocking) {
-    return Promise.all(node.promises)
-      .catch((reason: unknown) => {
-        throw new SSRDeferredError(reason);
-      })
-      .then(() => node.children());
-  }
+// export function resolveSSRDeferredChildren(node: SSR_DEFERRED): Promise<SSR_NODE[]> {
+//   if (node.blocking) {
+//     return Promise.all(node.promises)
+//       .catch((reason: unknown) => {
+//         throw new SSRDeferredError(reason);
+//       })
+//       .then(() => node.children());
+//   }
 
-  return resolveSSRChildrenAfterPromises(node.promises, node.children);
-}
+//   return resolveSSRChildrenAfterPromises(node.promises, node.children);
+// }
 
 /**
  * Resolves an SSR child expression and collects pending promises.

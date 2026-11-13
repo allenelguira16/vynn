@@ -1,6 +1,6 @@
 import type { JSX } from "../types/jsx";
 
-import { getOwner, runWithOwner } from "../life-cycle/owner";
+import { runWithOwner, type Owner } from "../life-cycle/owner";
 import {
   SSR_ASYNC,
   SSR_COMMENT,
@@ -12,35 +12,18 @@ import {
   resolveNode,
 } from "../render/resolve-node";
 import {
-  getSSRErrorBoundary,
   joinHTMLElements,
   renderAsyncUtilities,
-  renderErrorBoundaryRange,
   renderNode,
   renderText,
 } from "./render-to-server.util";
 
-export function resolveSync(App: () => JSX.Element): string {
-  const owner = getOwner();
-
-  if (!owner) {
-    throw new Error("[vynn]: Synchronous SSR requires an active render owner.");
+export function resolveSync(App: () => JSX.Element, owner: Owner) {
+  function resolveErrorBoundary(node: SSR_ERROR_BOUNDARY) {
+    return resolve(node.fallback());
   }
 
-  function resolveErrorBoundary(node: SSR_ERROR_BOUNDARY): string {
-    let children: string;
-
-    try {
-      children = resolve(node.children());
-    } catch (error) {
-      const boundary = getSSRErrorBoundary(error, node.errorBoundary, node.id);
-      children = resolve(boundary.render());
-    }
-
-    return renderErrorBoundaryRange(node.id, children);
-  }
-
-  function resolveElement(node: SSR_ELEMENT): string {
+  function resolveElement(node: SSR_ELEMENT) {
     return renderNode({
       type: node.type,
       attributes: node.attributes,
@@ -49,7 +32,7 @@ export function resolveSync(App: () => JSX.Element): string {
     });
   }
 
-  function resolve(nodes: SSR_NODE[]): string {
+  function resolve(nodes: SSR_NODE[]) {
     const html: string[] = [];
 
     for (const node of nodes.flat(Infinity).filter(Boolean)) {

@@ -145,7 +145,7 @@ function handleEffectError(error: unknown): void {
   const boundary = getErrorBoundary();
 
   if (error instanceof Error && boundary) {
-    boundary.handle(error);
+    boundary(error);
     return;
   }
 

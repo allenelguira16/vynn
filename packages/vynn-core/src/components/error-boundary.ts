@@ -3,18 +3,15 @@ import type { Owner } from "../life-cycle/owner";
 
 import {
   enterErrorBoundary,
-  getErrorBoundary,
   getErrorBoundaryID,
   getErrorBoundaryValue,
   getErrorBoundaryValues,
-  type ErrorBoundary as ErrorBoundaryHandle,
 } from "../context/error-boundary-context";
 import { isServer } from "../context/is-server-context";
 import { createOwner, disposeOwner, getOwner, runWithOwner } from "../life-cycle/owner";
 import { $state } from "../reactivity_new/state";
-import { NotReadyError } from "../reactivity_new/not-ready-error";
 import { $cmpnt, $nodes } from "../render";
-import { createSSRErrorBoundary, resolveSSRChild } from "../render/resolve-node";
+import { createSSRErrorBoundary, resolveNode, SSR_NODE } from "../render/resolve-node";
 
 export type ErrorBoundarySSRState =
   | { status: "children" }
@@ -37,175 +34,65 @@ export const ErrorBoundary = $cmpnt(function ErrorBoundary(props: {
     throw new Error("ErrorBoundary requires an owner.");
   }
 
-  const owner: Owner = currentOwner;
-
-  // Capture the enclosing boundary before registering this one.
-  const parentBoundary = getErrorBoundary();
-
-  const view = $state<JSX.Element | undefined>(() => undefined);
-  let viewOwner: Owner | undefined;
-  let failed = false;
-
-  function disposeViewOwner() {
-    if (!viewOwner) {
-      return;
-    }
-
-    const previousOwner = viewOwner;
-    viewOwner = undefined;
-
-    disposeOwner(previousOwner);
-  }
-
-  function reset() {
-    if (!failed) {
-      return;
-    }
-
-    failed = false;
-    renderChildren();
-  }
-
-  function renderFallback(error: Error): ErrorBoundaryHandle {
-    disposeViewOwner();
-
-    const fallbackOwner = createOwner(owner);
-    viewOwner = fallbackOwner;
-
-    let fallbackView: JSX.Element;
+  if (isServer()) {
+    const values = getErrorBoundaryValues();
 
     try {
-      fallbackView = runWithOwner(fallbackOwner, () => {
-        // Errors inside the fallback belong to the enclosing boundary,
-        // not the boundary whose fallback is currently being rendered.
-        enterErrorBoundary(parentBoundary);
-
-        return props.fallback?.(error, reset);
-      });
-      if (isServer()) {
-        const values = getErrorBoundaryValues();
-        if (values) {
-          values[errorBoundaryID] = {
-            status: "fallback",
-            message: error.message,
-            name: error.name,
-          };
-        }
-      }
-    } catch (fallbackError) {
-      if (viewOwner === fallbackOwner) {
-        disposeViewOwner();
-      }
-
-      if (fallbackError instanceof NotReadyError || !(fallbackError instanceof Error)) {
-        throw fallbackError;
-      }
-
-      if (parentBoundary) {
-        return parentBoundary.handle(fallbackError);
-      }
-
-      throw fallbackError;
-    }
-
-    view.value = fallbackView;
-    return boundary;
-  }
-
-  function handleError(error: Error): ErrorBoundaryHandle {
-    // Pending async values are handled by Await and SSR deferral.
-    if (error instanceof NotReadyError) {
-      throw error;
-    }
-
-    // An async task may outlive the route or owner that created this boundary.
-    // Do not render into a disposed subtree; let the enclosing boundary decide.
-    if (owner.disposed) {
-      if (parentBoundary) return parentBoundary.handle(error);
-      throw error;
-    }
-
-    // An error while rendering our own fallback must escape to the
-    // enclosing boundary instead of repeatedly rendering this fallback.
-    if (failed) {
-      disposeViewOwner();
-
-      if (parentBoundary) {
-        return parentBoundary.handle(error);
-      }
-
-      throw error;
-    }
-
-    failed = true;
-
-    // Remove the failed subtree before creating the fallback.
-    disposeViewOwner();
-    return renderFallback(error);
-  }
-
-  function renderChildren(): void {
-    disposeViewOwner();
-
-    const nextOwner = createOwner(owner);
-    viewOwner = nextOwner;
-
-    let nextView: JSX.Element;
-
-    try {
-      nextView = runWithOwner(nextOwner, () => props.children);
-      if (isServer()) {
-        const values = getErrorBoundaryValues();
+      try {
+        return props.children;
+      } finally {
         if (values) values[errorBoundaryID] = { status: "children" };
       }
     } catch (error) {
-      if (viewOwner === nextOwner) {
-        disposeViewOwner();
-      }
+      if (!(error instanceof Error)) throw error;
 
-      // Do not turn async suspension or arbitrary thrown values into
-      // ordinary application errors.
-      if (error instanceof NotReadyError || !(error instanceof Error)) {
-        throw error;
-      }
+      if (values)
+        values[errorBoundaryID] = {
+          status: "fallback",
+          message: error.message,
+          name: error.name,
+        };
 
-      handleError(error);
-      return;
-    }
-
-    // An inner render effect may already have handled an error,
-    // disposed this child owner, and rendered the fallback.
-    if (!failed && viewOwner === nextOwner) {
-      view.value = nextView;
+      return createSSRErrorBoundary(
+        errorBoundaryID,
+        () => {
+          return resolveNode(() =>
+            props.fallback?.(error, () => undefined),
+          ) as unknown as SSR_NODE[];
+        },
+        () => {
+          return resolveNode(() => props.children) as unknown as SSR_NODE[];
+        },
+        error,
+      ) as unknown as JSX.Element;
     }
   }
 
-  const boundary: ErrorBoundaryHandle = {
-    id: errorBoundaryID,
-    handle: (error) => runWithOwner(owner, () => handleError(error)),
-    render: () => runWithOwner(viewOwner ?? owner, () => resolveSSRChild(() => view.value)),
-    isActive: () => !owner.disposed,
-  };
+  const error = $state<Error | undefined>(() => undefined);
 
-  enterErrorBoundary(boundary);
+  enterErrorBoundary((newError) => {
+    error.value = newError;
+  });
 
-  // console.log();
+  let viewOwner: Owner | undefined;
+
   if (ssrData?.status === "fallback") {
-    // The server already failed, so a restored fallback must remain retryable.
-    // Preserve the original error name as well as its message for the fallback.
-    failed = true;
-
-    const error = new Error(ssrData.message);
-    error.name = ssrData.name;
-
-    renderFallback(error);
-  } else {
-    renderChildren();
+    error.value = new Error(ssrData.message);
   }
 
-  // Keep the boundary's own reactive output alive when its child owner
-  // is replaced by a fallback or recreated by reset().
-  return isServer()
-    ? (createSSRErrorBoundary(errorBoundaryID, boundary.render, boundary) as unknown as JSX.Element)
-    : $nodes(() => view.value);
+  return $nodes(() => {
+    if (viewOwner) {
+      disposeOwner(viewOwner);
+      viewOwner = undefined;
+    }
+    viewOwner ??= createOwner();
+
+    return runWithOwner(viewOwner, () => {
+      if (!error.value) {
+        return props.children;
+      }
+
+      return props.fallback?.(error.value!, () => (error.value = undefined));
+    });
+  });
 });
