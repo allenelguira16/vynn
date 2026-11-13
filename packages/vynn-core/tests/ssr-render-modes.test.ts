@@ -163,8 +163,8 @@ describe("renderToServer modes", () => {
     };
     let registeredHandler: typeof handler | undefined;
     let registeredSsrBoundary: unknown;
-    let registeredBoundaryOwner: ReturnType<typeof getOwner>;
-    let handlerOwner: ReturnType<typeof getOwner>;
+    let registeredBoundaryOwner: ReturnType<typeof getOwner> = null;
+    let handlerOwner: ReturnType<typeof getOwner> = null;
 
     const rendered = renderToServer(() => {
       const boundary = createSSRErrorBoundary(
