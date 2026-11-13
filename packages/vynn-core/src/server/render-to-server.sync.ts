@@ -23,18 +23,27 @@ import {
 
 export function resolveSync(App: () => JSX.Element, owner: Owner) {
   function resolveErrorBoundary(node: SSR_ERROR_BOUNDARY) {
+    let childrenHTML: string;
+
     try {
-      return renderErrorBoundaryRange(node.id, resolve(node.children()));
+      childrenHTML = resolve(node.children());
     } catch (error) {
       const reason =
         error instanceof SSRDeferredError || error instanceof SSRBoundaryFailure
           ? error.reason
           : error;
 
-      if (!(reason instanceof Error) || !node.handle(reason)) throw reason;
+      if (!(reason instanceof Error)) throw reason;
 
-      return renderErrorBoundaryRange(node.id, resolve(node.fallback(reason)));
+      if (!node.hasError && !node.handle(reason)) throw reason;
+      if (node.error !== reason) throw reason;
     }
+
+    if (node.error) {
+      return renderErrorBoundaryRange(node.id, resolve(node.fallback(node.error)));
+    }
+
+    return renderErrorBoundaryRange(node.id, childrenHTML!);
   }
 
   function resolveElement(node: SSR_ELEMENT) {
