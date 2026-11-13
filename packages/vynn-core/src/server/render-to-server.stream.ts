@@ -157,9 +157,15 @@ export function resolveStream(
       return;
     }
 
-    // Only the first failure claims a boundary. Other pending siblings are
-    // discarded once this boundary has switched to its fallback.
-    if (!boundary.handle(reason)) return;
+    // A shared error handler may already have claimed this error (for
+    // example, when a render effect reports it). Only emit one fallback patch.
+    if (!boundary.hasError) {
+      if (!boundary.handle(reason)) return;
+    } else if (boundary.error !== reason) {
+      return;
+    }
+
+    if (!boundary.claimFallbackPatch()) return;
 
     try {
       const fallbackHTML = await resolve(boundary.fallback(reason));
@@ -179,10 +185,13 @@ export function resolveStream(
       const children = node.withOwner(node.children);
       const html = await resolve(children);
 
-      // A sibling may have failed while this branch was resolving.
-      if (!node.errorBoundary?.hasError) {
-        enqueuePatch(renderPatch(boundaryId, html));
+      // The shared handler may have claimed an error without throwing.
+      if (node.errorBoundary?.error) {
+        await patchErrorBoundary(node.errorBoundary, node.errorBoundary.error);
+        return;
       }
+
+      enqueuePatch(renderPatch(boundaryId, html));
     } catch (error) {
       await patchErrorBoundary(node.errorBoundary, error);
     } finally {
@@ -197,20 +206,28 @@ export function resolveStream(
   }
 
   async function renderErrorBoundary(node: SSR_ERROR_BOUNDARY): Promise<string> {
+    let childrenHTML: string;
+
     try {
-      const children = node.children();
-      return renderErrorBoundaryRange(node.id, await resolve(children));
+      childrenHTML = await resolve(node.children());
     } catch (error) {
       const reason =
         error instanceof SSRDeferredError || error instanceof SSRBoundaryFailure
           ? error.reason
           : error;
 
-      if (!(reason instanceof Error) || !node.handle(reason)) throw reason;
+      if (!(reason instanceof Error)) throw reason;
 
-      const fallbackHTML = await resolve(node.fallback(reason));
+      if (!node.hasError && !node.handle(reason)) throw reason;
+      if (node.error !== reason) throw reason;
+    }
+
+    if (node.error) {
+      const fallbackHTML = await resolve(node.fallback(node.error));
       return renderErrorBoundaryRange(node.id, fallbackHTML);
     }
+
+    return renderErrorBoundaryRange(node.id, childrenHTML!);
   }
 
   async function renderElement(node: SSR_ELEMENT): Promise<string> {
