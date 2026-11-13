@@ -189,6 +189,7 @@ export class SSR_ERROR_BOUNDARY extends SSR_NODE {
     this.handler(error);
     return true;
   }
+}
 
 /**
  * Captures the current owner and DOM namespace for work that may run after
