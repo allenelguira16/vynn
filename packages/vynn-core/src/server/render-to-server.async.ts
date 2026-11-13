@@ -1,5 +1,6 @@
 import type { JSX } from "../types/jsx";
 
+import { NotReadyError } from "../reactivity_new/not-ready-error";
 import { runWithOwner, type Owner } from "../life-cycle/owner";
 import {
   SSR_ASYNC,
@@ -15,6 +16,7 @@ import {
 } from "../render/resolve-node";
 import {
   joinHTMLElements,
+  renderErrorBoundaryRange,
   renderAsyncUtilities,
   renderNode,
   renderText,
@@ -22,12 +24,38 @@ import {
 
 export async function resolveAsync(App: () => JSX.Element, owner: Owner): Promise<string> {
   async function resolveAsyncBoundary(node: SSR_ASYNC | SSR_DEFERRED): Promise<string> {
-    await Promise.all(node.promises);
-    return await resolve(node.children());
+    try {
+      await Promise.all(node.promises);
+      return await resolve(node.children());
+    } catch (error) {
+      // Blocking deferred work (such as a route guard) is control flow, not
+      // a render error that an ErrorBoundary should turn into fallback UI.
+      if (node instanceof SSR_DEFERRED && node.blocking) {
+        throw new SSRDeferredError(error);
+      }
+
+      throw error;
+    }
   }
 
   async function resolveErrorBoundary(node: SSR_ERROR_BOUNDARY): Promise<string> {
-    return await resolve(node.fallback());
+    try {
+      const children = await resolve(node.children());
+      node.markResolved();
+      return renderErrorBoundaryRange(node.id, children);
+    } catch (error) {
+      if (
+        error instanceof SSRDeferredError ||
+        error instanceof NotReadyError ||
+        !(error instanceof Error)
+      ) {
+        throw error;
+      }
+
+      const fallback = node.renderFallback(error);
+      const html = fallback ? await resolve(fallback) : "";
+      return renderErrorBoundaryRange(node.id, html);
+    }
   }
 
   async function resolveElement(node: SSR_ELEMENT): Promise<string> {
