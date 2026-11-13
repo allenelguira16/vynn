@@ -96,8 +96,6 @@ export function createAsyncResource<T>(
       }
     }
 
-    if (owner?.disposed) return;
-
     record.value = {
       status: "rejected",
       error,
