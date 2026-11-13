@@ -9,6 +9,7 @@ import {
   ERROR_BOUNDARY_END_SSR_MARKER,
   APPLY_ERROR_BOUNDARY_PATCH_SSR_KEY,
 } from "../const";
+import { NotReadyError } from "../reactivity_new/not-ready-error";
 import { getOwner, runWithOwner } from "../life-cycle/owner";
 import {
   SSR_ASYNC,
@@ -25,6 +26,7 @@ import {
 import { renderHeadPatch, type SsrHeadManager } from "./head";
 import {
   joinHTMLElements,
+  renderErrorBoundaryRange,
   renderAsyncUtilities,
   renderNode,
   renderText,
@@ -143,22 +145,85 @@ export function resolveStream(
     );
   }
 
+  async function recoverBoundaryError(
+    boundary: NonNullable<SSR_ASYNC["ssrErrorBoundary"]>,
+    error: Error,
+  ): Promise<void> {
+    const fallback = boundary.renderFallback(error);
+    if (!fallback) return;
+
+    try {
+      const html = await resolve(fallback);
+      if (!streamClosed) enqueuePatch(renderErrorBoundaryPatch(boundary.id, html));
+    } catch (fallbackError) {
+      const reason = fallbackError instanceof SSRDeferredError ? fallbackError.reason : fallbackError;
+
+      if (
+        fallbackError instanceof SSRDeferredError ||
+        fallbackError instanceof NotReadyError ||
+        !(reason instanceof Error) ||
+        !boundary.parent
+      ) {
+        failStream(reason);
+        return;
+      }
+
+      await recoverBoundaryError(boundary.parent, reason);
+    }
+  }
+
   async function renderAsyncChildren(node: SSR_ASYNC, boundaryId: number): Promise<void> {
     try {
       await Promise.all(node.promises);
       enqueuePatch(renderPatch(boundaryId, await resolve(node.children())));
+    } catch (error) {
+      const reason = error instanceof SSRDeferredError ? error.reason : error;
+      const boundary = node.ssrErrorBoundary;
+
+      if (
+        error instanceof SSRDeferredError ||
+        error instanceof NotReadyError ||
+        !(reason instanceof Error) ||
+        !boundary
+      ) {
+        failStream(reason);
+        return;
+      }
+
+      await recoverBoundaryError(boundary, reason);
     } finally {
       await finishTask();
     }
   }
 
   async function renderDeferredNode(node: SSR_DEFERRED): Promise<string> {
-    await Promise.all(node.promises);
-    return await resolve(node.children());
+    try {
+      await Promise.all(node.promises);
+      return await resolve(node.children());
+    } catch (error) {
+      if (node.blocking) throw new SSRDeferredError(error);
+      throw error;
+    }
   }
 
   async function renderErrorBoundary(node: SSR_ERROR_BOUNDARY): Promise<string> {
-    return await resolve(node.fallback());
+    try {
+      const children = await resolve(node.children());
+      node.markResolved();
+      return renderErrorBoundaryRange(node.id, children);
+    } catch (error) {
+      if (
+        error instanceof SSRDeferredError ||
+        error instanceof NotReadyError ||
+        !(error instanceof Error)
+      ) {
+        throw error;
+      }
+
+      const fallback = node.renderFallback(error);
+      const fallbackHTML = fallback ? await resolve(fallback) : "";
+      return renderErrorBoundaryRange(node.id, fallbackHTML);
+    }
   }
 
   async function renderElement(node: SSR_ELEMENT): Promise<string> {
@@ -253,9 +318,9 @@ function renderPatch(id: number, html: string) {
   return `<template id="${id}">${html}</template><script>${APPLY_PATCH_SSR_KEY}(${id});document.currentScript.remove();</script>`;
 }
 
-// function renderErrorBoundaryPatch(id: number, html: string) {
-//   return `<template id="vynn-eb-${id}">${html}</template><script>${APPLY_ERROR_BOUNDARY_PATCH_SSR_KEY}(${id});document.currentScript.remove();</script>`;
-// }
+function renderErrorBoundaryPatch(id: number, html: string) {
+  return `<template id="vynn-eb-${id}">${html}</template><script>${APPLY_ERROR_BOUNDARY_PATCH_SSR_KEY}(${id});document.currentScript.remove();</script>`;
+}
 
 function renderPatchRuntime(): string {
   return `<script>
