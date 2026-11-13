@@ -146,6 +146,7 @@ export class SSR_ERROR_BOUNDARY extends SSR_NODE {
   readonly fallback: (error: Error) => SSR_NODE[];
   readonly parentContext?: ErrorBoundaryContext;
   private handledError?: Error;
+  private fallbackPatchClaimed = false;
 
   constructor(
     id: number,
@@ -179,6 +180,18 @@ export class SSR_ERROR_BOUNDARY extends SSR_NODE {
 
   get hasError(): boolean {
     return this.handledError !== undefined;
+  }
+
+  get error(): Error | undefined {
+    return this.handledError;
+  }
+
+  /** Claim the fallback patch once, after this boundary has handled an error. */
+  claimFallbackPatch(): boolean {
+    if (!this.handledError || this.fallbackPatchClaimed) return false;
+
+    this.fallbackPatchClaimed = true;
+    return true;
   }
 
   /** Claim the first Error handled by this boundary and invoke its handler. */
