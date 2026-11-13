@@ -1,5 +1,5 @@
 import { ERROR_BOUNDARY_DATA_SSR_KEY } from "../const";
-import { getContext, getOwner, modifyContext, setContext, type Owner } from "../life-cycle/owner";
+import { getContext, getOwner, modifyContext, setContext } from "../life-cycle/owner";
 import type { SSR_ERROR_BOUNDARY } from "../render/resolve-node";
 import { isServer } from "./is-server-context";
 
