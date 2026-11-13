@@ -1,5 +1,6 @@
 import type { JSX } from "../types/jsx";
 
+import { NotReadyError } from "../reactivity_new/not-ready-error";
 import { runWithOwner, type Owner } from "../life-cycle/owner";
 import {
   SSR_ASYNC,
@@ -13,6 +14,7 @@ import {
 } from "../render/resolve-node";
 import {
   joinHTMLElements,
+  renderErrorBoundaryRange,
   renderAsyncUtilities,
   renderNode,
   renderText,
@@ -20,7 +22,16 @@ import {
 
 export function resolveSync(App: () => JSX.Element, owner: Owner) {
   function resolveErrorBoundary(node: SSR_ERROR_BOUNDARY) {
-    return resolve(node.fallback());
+    try {
+      const children = resolve(node.children());
+      node.markResolved();
+      return renderErrorBoundaryRange(node.id, children);
+    } catch (error) {
+      if (error instanceof NotReadyError || !(error instanceof Error)) throw error;
+
+      const fallback = node.renderFallback(error);
+      return renderErrorBoundaryRange(node.id, fallback ? resolve(fallback) : "");
+    }
   }
 
   function resolveElement(node: SSR_ELEMENT) {
