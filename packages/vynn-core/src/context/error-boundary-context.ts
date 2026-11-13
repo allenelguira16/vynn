@@ -23,7 +23,16 @@ export function getErrorBoundaryContext(): ErrorBoundaryContext | undefined {
 }
 
 export function getErrorBoundary(): ErrorBoundary | undefined {
-  return getErrorBoundaryContext()?.handler;
+  const context = getErrorBoundaryContext();
+
+  if (!context) return undefined;
+  if (!context.ssrBoundary) return context.handler;
+
+  // Effects and other runtime error sources use the same handler path as
+  // async SSR rendering, so the descriptor can claim the error exactly once.
+  return (error) => {
+    context.ssrBoundary?.handle(error);
+  };
 }
 
 /**
