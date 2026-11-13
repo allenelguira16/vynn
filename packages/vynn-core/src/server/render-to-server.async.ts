@@ -1,16 +1,16 @@
 import {
-  type SSR_ASYNC,
-  type SSR_DEFERRED,
-  type SSR_ELEMENT,
-  type SSR_ERROR_BOUNDARY,
+  SSR_ASYNC,
+  SSR_COMMENT,
+  SSR_DEFERRED,
+  SSR_ELEMENT,
+  SSR_ERROR_BOUNDARY,
   type SSR_NODE,
+  SSR_TEXT,
   resolveNode,
   resolveSSRAsyncChildren,
   resolveSSRDeferredChildren,
   SSRBoundaryFailure,
   SSRDeferredError,
-  isSSRErrorBoundary,
-  isSSRElement,
 } from "../render/resolve-node";
 import { runWithOwner, type Owner } from "../life-cycle/owner";
 import type { JSX } from "../types/jsx";
@@ -28,7 +28,7 @@ export async function resolveAsync(App: () => JSX.Element, owner: Owner): Promis
   async function resolveAsyncBoundary(node: SSR_ASYNC | SSR_DEFERRED): Promise<string> {
     return withSSRErrorBoundary(node.errorBoundary, async () => {
       const children =
-        node.type === "#async"
+        node instanceof SSR_ASYNC
           ? await resolveSSRAsyncChildren(node)
           : await resolveSSRDeferredChildren(node);
 
@@ -64,22 +64,27 @@ export async function resolveAsync(App: () => JSX.Element, owner: Owner): Promis
     const html: string[] = [];
 
     for (const node of app.flat(Infinity).filter(Boolean)) {
-      if ("promises" in node) {
+      if (node instanceof SSR_ASYNC || node instanceof SSR_DEFERRED) {
         html.push(await resolveAsyncBoundary(node));
         continue;
       }
 
-      if (isSSRErrorBoundary(node)) {
+      if (node instanceof SSR_ERROR_BOUNDARY) {
         html.push(await resolveErrorBoundary(node));
         continue;
       }
 
-      if ("value" in node) {
-        html.push(node.type === "#text" ? renderText(node) : `<!--${node.value}-->`);
+      if (node instanceof SSR_TEXT) {
+        html.push(renderText(node));
         continue;
       }
 
-      if (isSSRElement(node)) {
+      if (node instanceof SSR_COMMENT) {
+        html.push(`<!--${node.value}-->`);
+        continue;
+      }
+
+      if (node instanceof SSR_ELEMENT) {
         html.push(await resolveElement(node));
       }
     }

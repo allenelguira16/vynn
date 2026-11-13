@@ -5,7 +5,11 @@ import { sleep } from "../../utils";
 
 function ComponentWillThrow(): JSX.Element {
   const willThrow = () => {
-    throw new Error("ComponentWIllThrow catched, please retry again");
+    if (typeof window === "undefined") {
+      throw new Error("ComponentWIllThrow catched, please retry again");
+    }
+
+    return "hi";
   };
 
   return (

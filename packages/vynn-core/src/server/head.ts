@@ -9,9 +9,11 @@ import {
 } from "../context/head-context";
 import { assertSafeAttributeName } from "../render/attribute-name";
 import {
-  isSSRElement,
-  isSSRErrorBoundary,
-  type SSR_ELEMENT,
+  SSR_COMMENT,
+  SSR_ELEMENT,
+  SSR_ERROR_BOUNDARY,
+  SSR_PENDING,
+  SSR_TEXT,
   type SSR_NODE,
 } from "../render/resolve-node";
 import { escapeHtml } from "../utils/escape-html";
@@ -52,20 +54,24 @@ function serializeAttributes(attributes: Record<string, string>): string {
 }
 
 function serializeSsrNode(node: SSR_NODE): string {
-  if ("value" in node) {
-    return node.type === "#text" ? escapeHtml(node.value) : `<!--${node.value}-->`;
+  if (node instanceof SSR_TEXT) {
+    return escapeHtml(node.value);
   }
 
-  if ("promises" in node) {
+  if (node instanceof SSR_COMMENT) {
+    return `<!--${node.value}-->`;
+  }
+
+  if (node instanceof SSR_PENDING) {
     // Deferred metadata is emitted by the streaming head-patch mechanism.
     return "";
   }
 
-  if (isSSRErrorBoundary(node)) {
+  if (node instanceof SSR_ERROR_BOUNDARY) {
     return node.children().map(serializeSsrNode).join("");
   }
 
-  if (!isSSRElement(node)) return "";
+  if (!(node instanceof SSR_ELEMENT)) return "";
 
   const attributes = serializeAttributes(node.attributes);
   const suffix = attributes ? ` ${attributes}` : "";

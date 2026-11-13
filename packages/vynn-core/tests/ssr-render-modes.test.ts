@@ -16,10 +16,57 @@ import { createOwner, disposeOwner, getOwner, runWithOwner } from "../src/life-c
 import { $head, $headTmpl } from "../src/render/$head";
 import { $insert } from "../src/render/$insert";
 import { $txt } from "../src/render/$txt";
-import { createSSRAsync, createSSRDeferred, createSSRText } from "../src/render/resolve-node";
+import {
+  createSSRAsync,
+  createSSRComment,
+  createSSRDeferred,
+  createSSRNode,
+  createSSRText,
+  SSR_ASYNC,
+  SSR_COMMENT,
+  SSR_DEFERRED,
+  SSR_ELEMENT,
+  SSR_NODE,
+  SSR_PENDING,
+  SSR_TEXT,
+} from "../src/render/resolve-node";
 import { renderToServer } from "../src/server/render-to-server";
 
 describe("renderToServer modes", () => {
+  it("uses SSR node classes with consistent parent tracking", () => {
+    const element = createSSRNode("div");
+    const text = createSSRText("content");
+    const comment = createSSRComment("marker");
+    const asyncNode = createSSRAsync(() => [], () => [], []);
+    const deferredNode = createSSRDeferred(() => [], []);
+
+    expect(element).toBeInstanceOf(SSR_NODE);
+    expect(element).toBeInstanceOf(SSR_ELEMENT);
+    expect(text).toBeInstanceOf(SSR_NODE);
+    expect(text).toBeInstanceOf(SSR_TEXT);
+    expect(comment).toBeInstanceOf(SSR_NODE);
+    expect(comment).toBeInstanceOf(SSR_COMMENT);
+    expect(asyncNode).toBeInstanceOf(SSR_NODE);
+    expect(asyncNode).toBeInstanceOf(SSR_PENDING);
+    expect(asyncNode).toBeInstanceOf(SSR_ASYNC);
+    expect(deferredNode).toBeInstanceOf(SSR_NODE);
+    expect(deferredNode).toBeInstanceOf(SSR_PENDING);
+    expect(deferredNode).toBeInstanceOf(SSR_DEFERRED);
+
+    element.appendChild(text);
+    element.appendChild(comment);
+    element.insertBefore(comment, text);
+
+    expect(element.children).toEqual([comment, text]);
+    expect(comment.parent).toBe(element);
+    expect(text.parent).toBe(element);
+
+    element.removeChild(comment);
+
+    expect(comment.parent).toBeNull();
+    expect(element.children).toEqual([text]);
+  });
+
   it("does not override output configuration for a standalone server-functions build", async () => {
     const plugin = vynnAppPlugin({
       ssr: false,

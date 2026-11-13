@@ -12,16 +12,16 @@ import {
 import { getOwner, runWithOwner } from "../life-cycle/owner";
 import { NotReadyError } from "../reactivity_new/not-ready-error";
 import {
-  type SSR_ASYNC,
-  type SSR_DEFERRED,
-  type SSR_ELEMENT,
-  type SSR_ERROR_BOUNDARY,
+  SSR_ASYNC,
+  SSR_COMMENT,
+  SSR_DEFERRED,
+  SSR_ELEMENT,
+  SSR_ERROR_BOUNDARY,
   type SSR_NODE,
+  SSR_TEXT,
   SSRBoundaryFailure,
   SSRBoundaryPatchHandledError,
   SSRDeferredError,
-  isSSRErrorBoundary,
-  isSSRElement,
   resolveNode,
   resolveSSRAsyncChildren,
   resolveSSRDeferredChildren,
@@ -303,27 +303,32 @@ export function resolveStream(
     for (const node of app.flat(Infinity).filter(Boolean)) {
       if (streamClosed) break;
 
-      if ("promises" in node) {
-        const rendered =
-          node.type === "#async"
-            ? await renderAsyncNode(node, background, availableErrorBoundaryIds)
-            : await renderDeferredNode(node, background, availableErrorBoundaryIds);
-
-        html.push(rendered);
+      if (node instanceof SSR_ASYNC) {
+        html.push(await renderAsyncNode(node, background, availableErrorBoundaryIds));
         continue;
       }
 
-      if (isSSRErrorBoundary(node)) {
+      if (node instanceof SSR_DEFERRED) {
+        html.push(await renderDeferredNode(node, background, availableErrorBoundaryIds));
+        continue;
+      }
+
+      if (node instanceof SSR_ERROR_BOUNDARY) {
         html.push(await renderErrorBoundary(node, background, availableErrorBoundaryIds));
         continue;
       }
 
-      if ("value" in node) {
-        html.push(node.type === "#text" ? renderText(node) : `<!--${node.value}-->`);
+      if (node instanceof SSR_TEXT) {
+        html.push(renderText(node));
         continue;
       }
 
-      if (isSSRElement(node)) {
+      if (node instanceof SSR_COMMENT) {
+        html.push(`<!--${node.value}-->`);
+        continue;
+      }
+
+      if (node instanceof SSR_ELEMENT) {
         html.push(await renderElement(node, background, availableErrorBoundaryIds));
       }
     }

@@ -191,7 +191,14 @@ export const ErrorBoundary = $cmpnt(function ErrorBoundary(props: {
 
   // console.log();
   if (ssrData?.status === "fallback") {
-    renderFallback(new Error(ssrData.message));
+    // The server already failed, so a restored fallback must remain retryable.
+    // Preserve the original error name as well as its message for the fallback.
+    failed = true;
+
+    const error = new Error(ssrData.message);
+    error.name = ssrData.name;
+
+    renderFallback(error);
   } else {
     renderChildren();
   }

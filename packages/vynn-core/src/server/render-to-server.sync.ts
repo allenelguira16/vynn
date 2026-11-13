@@ -2,11 +2,13 @@ import type { JSX } from "../types/jsx";
 
 import { getOwner, runWithOwner } from "../life-cycle/owner";
 import {
-  type SSR_ELEMENT,
-  type SSR_ERROR_BOUNDARY,
+  SSR_ASYNC,
+  SSR_COMMENT,
+  SSR_DEFERRED,
+  SSR_ELEMENT,
+  SSR_ERROR_BOUNDARY,
   type SSR_NODE,
-  isSSRErrorBoundary,
-  isSSRElement,
+  SSR_TEXT,
   resolveNode,
 } from "../render/resolve-node";
 import {
@@ -51,26 +53,32 @@ export function resolveSync(App: () => JSX.Element): string {
     const html: string[] = [];
 
     for (const node of nodes.flat(Infinity).filter(Boolean)) {
-      if ("promises" in node) {
+      if (node instanceof SSR_ASYNC) {
         // Sync SSR never waits for async work. It can only render its fallback.
-        if (node.type === "#async") {
-          html.push(resolve(node.fallback()));
-        }
-
+        html.push(resolve(node.fallback()));
         continue;
       }
 
-      if (isSSRErrorBoundary(node)) {
+      if (node instanceof SSR_DEFERRED) {
+        continue;
+      }
+
+      if (node instanceof SSR_ERROR_BOUNDARY) {
         html.push(resolveErrorBoundary(node));
         continue;
       }
 
-      if ("value" in node) {
-        html.push(node.type === "#text" ? renderText(node) : `<!--${node.value}-->`);
+      if (node instanceof SSR_TEXT) {
+        html.push(renderText(node));
         continue;
       }
 
-      if (isSSRElement(node)) {
+      if (node instanceof SSR_COMMENT) {
+        html.push(`<!--${node.value}-->`);
+        continue;
+      }
+
+      if (node instanceof SSR_ELEMENT) {
         html.push(resolveElement(node));
       }
     }

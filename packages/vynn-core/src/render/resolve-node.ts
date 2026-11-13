@@ -8,67 +8,149 @@ import { NotReadyError } from "../reactivity_new/not-ready-error";
 import { isCreatingHeadElement, isHeadElement } from "./$head";
 import { getCurrentDOMNamespace, getElementNamespace, withDOMNamespace } from "./namespace";
 
-export type SSR_NODE =
-  | SSR_ELEMENT
-  | SSR_TEXT
-  | SSR_ASYNC
-  | SSR_DEFERRED
-  | SSR_COMMENT
-  | SSR_ERROR_BOUNDARY;
+/**
+ * Base class for every server-rendering node.
+ *
+ * Node classes provide runtime identity to the SSR renderers without relying
+ * on reserved string tags or structural property checks.
+ */
+export abstract class SSR_NODE {
+  parent: SSR_ELEMENT | null = null;
+}
 
-export type SSR_ELEMENT = {
-  type: string;
-  children: SSR_NODE[];
-  parent: SSR_ELEMENT | null;
-  attributes: Record<string, string>;
+/** A server-side representation of an HTML or SVG element. */
+export class SSR_ELEMENT extends SSR_NODE {
+  children: SSR_NODE[] = [];
+  attributes: Record<string, string> = {};
   innerHTML?: string;
   namespaceURI: string;
 
-  insertBefore(node: SSR_NODE, before: SSR_NODE | null): void;
-  appendChild(node: SSR_NODE): void;
-  removeChild(node: SSR_NODE): void;
-};
+  constructor(public type: string) {
+    super();
+    this.namespaceURI = getElementNamespace(type);
+  }
 
-export type SSR_TEXT = {
-  type: "#text";
-  value: string;
-  parent: SSR_ELEMENT | null;
-};
+  insertBefore(child: SSR_NODE, before: SSR_NODE | null): void {
+    if (child === before) return;
 
-export type SSR_COMMENT = {
-  type: "#comment";
-  value: string;
-  parent: SSR_ELEMENT | null;
-};
+    if (child.parent) {
+      child.parent.removeChild(child);
+    }
 
-export type SSR_ASYNC = {
-  type: "#async";
-  children: () => SSR_NODE[];
-  fallback: () => SSR_NODE[];
-  promises: Promise<unknown>[];
-  errorBoundary?: ErrorBoundary;
-  parent: SSR_ELEMENT | null;
-};
+    if (before === null) {
+      this.children.push(child);
+      child.parent = this;
+      return;
+    }
 
-export type SSR_ERROR_BOUNDARY = {
-  type: "#error-boundary";
-  id: number;
-  children: () => SSR_NODE[];
-  errorBoundary: ErrorBoundary;
-  parent: null;
-};
+    const index = this.children.indexOf(before);
 
-/**
- * SSR_ELEMENT uses a broad string tag, so the tag alone cannot discriminate
- * it from the special SSR node variants. These guards narrow by their
- * structural shape as well as their reserved node type.
- */
-export function isSSRErrorBoundary(node: SSR_NODE): node is SSR_ERROR_BOUNDARY {
-  return node.type === "#error-boundary" && typeof node.children === "function";
+    if (index === -1) {
+      throw new Error("The reference node is not a child of this node.");
+    }
+
+    this.children.splice(index, 0, child);
+    child.parent = this;
+  }
+
+  appendChild(child: SSR_NODE): void {
+    this.insertBefore(child, null);
+  }
+
+  removeChild(child: SSR_NODE): void {
+    const index = this.children.indexOf(child);
+
+    if (index === -1) return;
+
+    this.children.splice(index, 1);
+    child.parent = null;
+  }
 }
 
-export function isSSRElement(node: SSR_NODE): node is SSR_ELEMENT {
-  return "children" in node && Array.isArray(node.children) && "attributes" in node;
+/** A server-side text node. */
+export class SSR_TEXT extends SSR_NODE {
+  constructor(public value: string) {
+    super();
+  }
+}
+
+/** A server-side comment node. */
+export class SSR_COMMENT extends SSR_NODE {
+  constructor(public value: string) {
+    super();
+  }
+}
+
+/**
+ * Shared representation for SSR work that can resolve asynchronously.
+ * The children callback is always executed with its captured owner and
+ * DOM namespace, including when it is retried later.
+ */
+export abstract class SSR_PENDING extends SSR_NODE {
+  readonly children: () => SSR_NODE[];
+  readonly promises: Promise<unknown>[];
+
+  protected constructor(
+    children: () => SSR_NODE[],
+    promises: Promise<unknown>[],
+    public errorBoundary?: ErrorBoundary,
+  ) {
+    super();
+    this.children = captureSSRRender(children);
+    this.promises = promises;
+  }
+}
+
+/** An asynchronous boundary with fallback content. */
+export class SSR_ASYNC extends SSR_PENDING {
+  readonly fallback: () => SSR_NODE[];
+
+  constructor(
+    fallback: () => SSR_NODE[],
+    children: () => SSR_NODE[],
+    promises: Promise<unknown>[],
+    errorBoundary?: ErrorBoundary,
+  ) {
+    super(children, promises, errorBoundary);
+    this.fallback = captureSSRRender(fallback);
+  }
+}
+
+/** Deferred SSR work, optionally required to finish before rendering. */
+export class SSR_DEFERRED extends SSR_PENDING {
+  constructor(
+    children: () => SSR_NODE[],
+    promises: Promise<unknown>[],
+    public blocking: boolean,
+    errorBoundary?: ErrorBoundary,
+  ) {
+    super(children, promises, errorBoundary);
+  }
+}
+
+/** An SSR error boundary whose children are rendered under its captured context. */
+export class SSR_ERROR_BOUNDARY extends SSR_NODE {
+  readonly children: () => SSR_NODE[];
+
+  constructor(
+    public id: number,
+    children: () => SSR_NODE[],
+    public errorBoundary: ErrorBoundary,
+  ) {
+    super();
+    this.children = captureSSRRender(children);
+  }
+}
+
+/**
+ * Captures the current owner and DOM namespace for work that may run after
+ * the current synchronous render stack has completed.
+ */
+function captureSSRRender(render: () => SSR_NODE[]): () => SSR_NODE[] {
+  const owner = getOwner();
+  const namespace = getCurrentDOMNamespace();
+
+  return () => runWithOwner(owner, () => withDOMNamespace(namespace, render));
 }
 
 export function createSSRErrorBoundary(
@@ -76,79 +158,19 @@ export function createSSRErrorBoundary(
   children: () => SSR_NODE[],
   errorBoundary: ErrorBoundary,
 ): SSR_ERROR_BOUNDARY {
-  const owner = getOwner();
-
-  return {
-    type: "#error-boundary",
-    id,
-    parent: null,
-    children: () => runWithOwner(owner, children),
-    errorBoundary,
-  };
+  return new SSR_ERROR_BOUNDARY(id, children, errorBoundary);
 }
 
 export function createSSRNode(type: string): SSR_ELEMENT {
-  const node: SSR_ELEMENT = {
-    type,
-    namespaceURI: getElementNamespace(type),
-    children: [],
-    parent: null,
-    attributes: {},
-
-    insertBefore(child, before) {
-      if (child === before) return;
-
-      if (child.parent) {
-        child.parent.removeChild(child);
-      }
-
-      if (before === null) {
-        node.children.push(child);
-        child.parent = node;
-        return;
-      }
-
-      const index = node.children.indexOf(before);
-
-      if (index === -1) {
-        throw new Error("The reference node is not a child of this node.");
-      }
-
-      node.children.splice(index, 0, child);
-      child.parent = node;
-    },
-
-    appendChild(child) {
-      node.insertBefore(child, null);
-    },
-
-    removeChild(child) {
-      const index = node.children.indexOf(child);
-
-      if (index === -1) return;
-
-      node.children.splice(index, 1);
-      child.parent = null;
-    },
-  };
-
-  return node;
+  return new SSR_ELEMENT(type);
 }
 
 export function createSSRText(value: string): SSR_TEXT {
-  return {
-    type: "#text",
-    value,
-    parent: null,
-  };
+  return new SSR_TEXT(value);
 }
 
 export function createSSRComment(value: string): SSR_COMMENT {
-  return {
-    type: "#comment",
-    value,
-    parent: null,
-  };
+  return new SSR_COMMENT(value);
 }
 
 export function createSSRAsync(
@@ -156,41 +178,15 @@ export function createSSRAsync(
   children: () => SSR_NODE[],
   promises: Promise<unknown>[],
 ): SSR_ASYNC {
-  const owner = getOwner();
-  const namespace = getCurrentDOMNamespace();
-
-  return {
-    type: "#async",
-    parent: null,
-    fallback: () => runWithOwner(owner, () => withDOMNamespace(namespace, fallback)),
-    children: () => runWithOwner(owner, () => withDOMNamespace(namespace, children)),
-    promises,
-    errorBoundary: getErrorBoundary(),
-  };
+  return new SSR_ASYNC(fallback, children, promises, getErrorBoundary());
 }
-
-export type SSR_DEFERRED = {
-  type: "#deferred";
-  promises: Promise<unknown>[];
-  children: () => SSR_NODE[];
-  blocking: boolean;
-  errorBoundary?: ErrorBoundary;
-  parent: SSR_ELEMENT | null;
-};
 
 export function createSSRDeferred(
   children: () => SSR_NODE[],
   promises: Promise<unknown>[],
   blocking = false,
 ): SSR_DEFERRED {
-  return {
-    type: "#deferred",
-    promises,
-    children,
-    blocking,
-    errorBoundary: getErrorBoundary(),
-    parent: null,
-  };
+  return new SSR_DEFERRED(children, promises, blocking, getErrorBoundary());
 }
 
 export class SSRDeferredError {
@@ -282,19 +278,12 @@ export function resolveSSRDeferredChildren(node: SSR_DEFERRED): Promise<SSR_NODE
  * the expression after the collected promises settle.
  */
 export function resolveSSRChild(child: () => JSX.Element): SSR_NODE[] {
-  const owner = getOwner();
-
   try {
     return resolveNode(child) as unknown as SSR_NODE[];
   } catch (error) {
     if (!(error instanceof NotReadyError)) throw error;
 
-    return [
-      createSSRDeferred(
-        () => runWithOwner(owner, () => resolveSSRChild(child)),
-        [error.promise],
-      ),
-    ];
+    return [createSSRDeferred(() => resolveSSRChild(child), [error.promise])];
   }
 }
 
