@@ -231,27 +231,35 @@ export function resolveStream(
     }
   }
 
+  // Resolve the initial app while this render's owner is synchronously active.
+  // Every async continuation then uses the owner captured by its SSR node.
+  let initialApp: SSR_NODE[] = [];
+  let initialError: unknown;
+  let hasInitialError = false;
+
+  try {
+    initialApp = resolveNode(App) as unknown as SSR_NODE[];
+    previousHead = head.render();
+    renderUtilities = createSSRUtilitiesRenderer();
+  } catch (error) {
+    hasInitialError = true;
+    initialError =
+      error instanceof SSRDeferredError || error instanceof SSRBoundaryFailure
+        ? error.reason
+        : error;
+  }
+
   return new ReadableStream<Uint8Array>({
     start(streamController) {
       controller = streamController;
-
-      // Resolve the app synchronously while the render's active owner is still
-      // on the stack. Async continuations use the owner captured by each SSR node.
       pendingTasks++;
 
-      try {
-        const app = resolveNode(App) as unknown as SSR_NODE[];
-        previousHead = head.render();
-        renderUtilities = createSSRUtilitiesRenderer();
-        void renderInitialHTML(app);
-      } catch (error) {
-        const reason =
-          error instanceof SSRDeferredError || error instanceof SSRBoundaryFailure
-            ? error.reason
-            : error;
-
-        failStream(reason);
+      if (hasInitialError) {
+        failStream(initialError);
+        return;
       }
+
+      void renderInitialHTML(initialApp);
     },
 
     cancel() {
