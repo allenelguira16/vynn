@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { initializeAsyncContext } from "../src/context/async-context";
 import { enterErrorBoundary } from "../src/context/error-boundary-context";
 import { createOwner, disposeOwner, runWithOwner } from "../src/life-cycle/owner";
+import { createReactiveEffect } from "../src/reactivity_new/effect";
 import { NotReadyError } from "../src/reactivity_new/not-ready-error";
 import { createAsyncResource } from "../src/reactivity_new/resource";
 
@@ -74,6 +75,30 @@ describe("async resource error boundaries", () => {
 
       expect(boundaryErrors).toEqual([failure]);
       expect(runWithOwner(owner, () => resource.value)).toBeUndefined();
+    } finally {
+      disposeOwner(owner);
+    }
+  });
+
+  it("still routes synchronous render errors through the nearest boundary", () => {
+    const owner = createOwner(null);
+    const failure = new Error("synchronous render failed");
+    const boundaryErrors: Error[] = [];
+
+    try {
+      runWithOwner(owner, () => {
+        initializeAsyncContext();
+        enterErrorBoundary((error) => boundaryErrors.push(error));
+
+        createReactiveEffect(
+          () => {
+            throw failure;
+          },
+          { phase: "render" },
+        );
+      });
+
+      expect(boundaryErrors).toEqual([failure]);
     } finally {
       disposeOwner(owner);
     }
