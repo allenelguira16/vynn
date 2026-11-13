@@ -199,11 +199,12 @@ export function resolveStream(
   async function renderDeferredNode(node: SSR_DEFERRED): Promise<string> {
     try {
       await Promise.all(node.promises);
-      return await resolve(node.children());
     } catch (error) {
       if (node.blocking) throw new SSRDeferredError(error);
       throw error;
     }
+
+    return await resolve(node.children());
   }
 
   async function renderErrorBoundary(node: SSR_ERROR_BOUNDARY): Promise<string> {
