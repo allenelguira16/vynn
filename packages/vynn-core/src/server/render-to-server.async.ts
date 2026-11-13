@@ -1,6 +1,8 @@
-import { runWithOwner, type Owner } from "../life-cycle/owner";
-import { NotReadyError } from "../reactivity_new/not-ready-error";
 import {
+  type SSR_ASYNC,
+  type SSR_DEFERRED,
+  type SSR_ELEMENT,
+  type SSR_ERROR_BOUNDARY,
   type SSR_NODE,
   resolveNode,
   resolveSSRAsyncChildren,
@@ -10,118 +12,75 @@ import {
   isSSRErrorBoundary,
   isSSRElement,
 } from "../render/resolve-node";
-import { JSX } from "../types/jsx";
+import { runWithOwner, type Owner } from "../life-cycle/owner";
+import type { JSX } from "../types/jsx";
 import {
+  getSSRErrorBoundary,
   joinHTMLElements,
   renderAsyncUtilities,
   renderErrorBoundaryRange,
   renderNode,
   renderText,
+  withSSRErrorBoundary,
 } from "./render-to-server.util";
 
 export async function resolveAsync(App: () => JSX.Element, owner: Owner): Promise<string> {
+  async function resolveAsyncBoundary(node: SSR_ASYNC | SSR_DEFERRED): Promise<string> {
+    return withSSRErrorBoundary(node.errorBoundary, async () => {
+      const children =
+        node.type === "#async"
+          ? await resolveSSRAsyncChildren(node)
+          : await resolveSSRDeferredChildren(node);
+
+      return resolve(children);
+    });
+  }
+
+  async function resolveErrorBoundary(node: SSR_ERROR_BOUNDARY): Promise<string> {
+    let children: string;
+
+    try {
+      children = await resolve(runWithOwner(owner, node.children));
+    } catch (error) {
+      const boundary = getSSRErrorBoundary(error, node.errorBoundary, node.id);
+      children = await resolve(boundary.render());
+    }
+
+    return renderErrorBoundaryRange(node.id, children);
+  }
+
+  async function resolveElement(node: SSR_ELEMENT): Promise<string> {
+    const children = await resolve(node.children);
+
+    return renderNode({
+      type: node.type,
+      attributes: node.attributes,
+      innerHTML: node.innerHTML,
+      children,
+    });
+  }
+
   async function resolve(app: SSR_NODE[]): Promise<string> {
     const html: string[] = [];
 
     for (const node of app.flat(Infinity).filter(Boolean)) {
-      if ("promises" in node && node.type === "#async") {
-        try {
-          const children = await resolveSSRAsyncChildren(node);
-          html.push(await resolve(children));
-        } catch (error) {
-          if (
-            error instanceof SSRDeferredError ||
-            error instanceof SSRBoundaryFailure ||
-            error instanceof NotReadyError
-          ) {
-            throw error;
-          }
+      if ("promises" in node) {
+        html.push(await resolveAsyncBoundary(node));
+        continue;
+      }
 
-          if (error instanceof Error && node.errorBoundary) {
-            throw new SSRBoundaryFailure(error, node.errorBoundary);
-          }
+      if (isSSRErrorBoundary(node)) {
+        html.push(await resolveErrorBoundary(node));
+        continue;
+      }
 
-          throw error;
-        }
-      } else if ("promises" in node && node.type === "#deferred") {
-        let children: SSR_NODE[];
+      if ("value" in node) {
+        html.push(node.type === "#text" ? renderText(node) : `<!--${node.value}-->`);
+        continue;
+      }
 
-        try {
-          children = await resolveSSRDeferredChildren(node);
-        } catch (error) {
-          if (
-            error instanceof SSRDeferredError ||
-            error instanceof SSRBoundaryFailure ||
-            error instanceof NotReadyError
-          ) {
-            throw error;
-          }
-
-          if (error instanceof Error && node.errorBoundary) {
-            throw new SSRBoundaryFailure(error, node.errorBoundary);
-          }
-
-          throw error;
-        }
-
-        try {
-          html.push(await resolve(children));
-        } catch (error) {
-          if (
-            error instanceof SSRDeferredError ||
-            error instanceof SSRBoundaryFailure ||
-            error instanceof NotReadyError
-          ) {
-            throw error;
-          }
-
-          if (error instanceof Error && node.errorBoundary) {
-            throw new SSRBoundaryFailure(error, node.errorBoundary);
-          }
-
-          throw error;
-        }
-      } else if (isSSRErrorBoundary(node)) {
-        let children: string;
-
-        try {
-          children = await resolve(runWithOwner(owner, node.children));
-        } catch (error) {
-          let boundary: import("../context/error-boundary-context").ErrorBoundary;
-
-          if (error instanceof SSRBoundaryFailure) {
-            boundary = error.handled ? error.boundary : error.boundary.handle(error.reason);
-
-            if (boundary.id !== node.id) {
-              throw new SSRBoundaryFailure(error.reason, boundary, true);
-            }
-          } else if (error instanceof Error) {
-            boundary = node.errorBoundary.handle(error);
-
-            if (boundary.id !== node.id) {
-              throw new SSRBoundaryFailure(error, boundary, true);
-            }
-          } else {
-            throw error;
-          }
-
-          children = await resolve(boundary.render());
-        }
-
-        html.push(renderErrorBoundaryRange(node.id, children));
-      } else if ("value" in node && node.type === "#text") {
-        html.push(renderText(node));
-      } else if ("value" in node && node.type === "#comment") {
-        html.push(`<!--${node.value}-->`);
-      } else if (isSSRElement(node)) {
-        html.push(
-          renderNode({
-            type: node.type,
-            attributes: node.attributes,
-            innerHTML: node.innerHTML,
-            children: await resolve(node.children),
-          }),
-        );
+      if (isSSRElement(node)) {
+        html.push(await resolveElement(node));
       }
     }
 
@@ -130,13 +89,15 @@ export async function resolveAsync(App: () => JSX.Element, owner: Owner): Promis
 
   try {
     const app = runWithOwner(owner, () => resolveNode(App)) as unknown as SSR_NODE[];
-    const resolved = await resolve(app);
+    const html = await resolve(app);
     const utilities = runWithOwner(owner, renderAsyncUtilities);
 
-    return resolved + utilities;
+    return html + utilities;
   } catch (error) {
-    if (error instanceof SSRDeferredError) throw error.reason;
-    if (error instanceof SSRBoundaryFailure) throw error.reason;
+    if (error instanceof SSRDeferredError || error instanceof SSRBoundaryFailure) {
+      throw error.reason;
+    }
+
     throw error;
   }
 }

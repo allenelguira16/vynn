@@ -1,3 +1,5 @@
+import type { ErrorBoundary } from "../context/error-boundary-context";
+import { NotReadyError } from "../reactivity_new/not-ready-error";
 import {
   ASYNC_DATA_SSR_KEY,
   EMPTY_TEXT_SSR_MARKER,
@@ -11,7 +13,13 @@ import { getAsyncValues } from "../context/async-context";
 import { getErrorBoundaryValues } from "../context/error-boundary-context";
 import { getRenderMode } from "../context/render-mode";
 import { assertSafeAttributeName } from "../render/attribute-name";
-import { SSR_ELEMENT, SSR_TEXT } from "../render/resolve-node";
+import {
+  SSRBoundaryFailure,
+  SSRBoundaryPatchHandledError,
+  SSRDeferredError,
+  SSR_ELEMENT,
+  SSR_TEXT,
+} from "../render/resolve-node";
 import { serializeServerFunctionValue } from "../server-functions/serialization";
 import { escapeHtml } from "../utils/escape-html";
 
@@ -135,4 +143,62 @@ function serializeForInlineScript(value: unknown): string {
     .replace(/&/g, "\\u0026")
     .replace(/\u2028/g, "\\u2028")
     .replace(/\u2029/g, "\\u2029");
+}
+
+
+/**
+ * Resolves work that belongs to an async or deferred SSR boundary.
+ * Errors used for SSR control flow must pass through unchanged.
+ */
+export async function withSSRErrorBoundary<T>(
+  boundary: ErrorBoundary | undefined,
+  render: () => T | Promise<T>,
+): Promise<T> {
+  try {
+    return await render();
+  } catch (error) {
+    if (
+      error instanceof SSRBoundaryFailure ||
+      error instanceof SSRBoundaryPatchHandledError ||
+      error instanceof SSRDeferredError ||
+      error instanceof NotReadyError
+    ) {
+      throw error;
+    }
+
+    if (error instanceof Error && boundary) {
+      throw new SSRBoundaryFailure(error, boundary);
+    }
+
+    throw error;
+  }
+}
+
+/**
+ * Finds the boundary that should handle an error caught by an SSR boundary
+ * node. If a nested boundary owns the error, propagate it to that boundary.
+ */
+export function getSSRErrorBoundary(
+  error: unknown,
+  fallbackBoundary: ErrorBoundary,
+  currentBoundaryId: number,
+): ErrorBoundary {
+  let boundary: ErrorBoundary;
+  let reason: Error;
+
+  if (error instanceof SSRBoundaryFailure) {
+    reason = error.reason;
+    boundary = error.handled ? error.boundary : error.boundary.handle(reason);
+  } else if (error instanceof Error) {
+    reason = error;
+    boundary = fallbackBoundary.handle(error);
+  } else {
+    throw error;
+  }
+
+  if (boundary.id !== currentBoundaryId) {
+    throw new SSRBoundaryFailure(reason, boundary, true);
+  }
+
+  return boundary;
 }

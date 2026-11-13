@@ -2,78 +2,85 @@ import type { JSX } from "../types/jsx";
 
 import { getOwner, runWithOwner } from "../life-cycle/owner";
 import {
+  type SSR_ELEMENT,
+  type SSR_ERROR_BOUNDARY,
   type SSR_NODE,
-  SSRBoundaryFailure,
   isSSRErrorBoundary,
   isSSRElement,
   resolveNode,
 } from "../render/resolve-node";
 import {
+  getSSRErrorBoundary,
   joinHTMLElements,
   renderAsyncUtilities,
+  renderErrorBoundaryRange,
   renderNode,
   renderText,
-  renderErrorBoundaryRange,
 } from "./render-to-server.util";
 
 export function resolveSync(App: () => JSX.Element): string {
   const owner = getOwner();
+
   if (!owner) {
     throw new Error("[vynn]: Synchronous SSR requires an active render owner.");
   }
 
-  function resolve(app: SSR_NODE[]): string {
+  function resolveErrorBoundary(node: SSR_ERROR_BOUNDARY): string {
+    let children: string;
+
+    try {
+      children = resolve(node.children());
+    } catch (error) {
+      const boundary = getSSRErrorBoundary(error, node.errorBoundary, node.id);
+      children = resolve(boundary.render());
+    }
+
+    return renderErrorBoundaryRange(node.id, children);
+  }
+
+  function resolveElement(node: SSR_ELEMENT): string {
+    return renderNode({
+      type: node.type,
+      attributes: node.attributes,
+      innerHTML: node.innerHTML,
+      children: resolve(node.children),
+    });
+  }
+
+  function resolve(nodes: SSR_NODE[]): string {
     const html: string[] = [];
 
-    for (const node of app.flat(Infinity).filter(Boolean)) {
+    for (const node of nodes.flat(Infinity).filter(Boolean)) {
       if ("promises" in node) {
-        if (node.type === "#async") html.push(resolve(node.fallback()));
-      } else if (isSSRErrorBoundary(node)) {
-        let children: string;
-
-        try {
-          children = resolve(node.children());
-        } catch (error) {
-          if (error instanceof SSRBoundaryFailure) {
-            const boundary = error.handled ? error.boundary : error.boundary.handle(error.reason);
-
-            if (boundary.id !== node.id) {
-              throw new SSRBoundaryFailure(error.reason, boundary, true);
-            }
-
-            children = resolve(boundary.render());
-          } else if (error instanceof Error) {
-            const boundary = node.errorBoundary.handle(error);
-            if (boundary.id !== node.id) {
-              throw new SSRBoundaryFailure(error, boundary, true);
-            }
-
-            children = resolve(boundary.render());
-          } else {
-            throw error;
-          }
+        // Sync SSR never waits for async work. It can only render its fallback.
+        if (node.type === "#async") {
+          html.push(resolve(node.fallback()));
         }
 
-        html.push(renderErrorBoundaryRange(node.id, children));
-      } else if ("value" in node && node.type === "#text") {
-        html.push(renderText(node));
-      } else if ("value" in node && node.type === "#comment") {
-        html.push(`<!--${node.value}-->`);
-      } else if (isSSRElement(node)) {
-        html.push(
-          renderNode({
-            type: node.type,
-            attributes: node.attributes,
-            innerHTML: node.innerHTML,
-            children: resolve(node.children),
-          }),
-        );
+        continue;
+      }
+
+      if (isSSRErrorBoundary(node)) {
+        html.push(resolveErrorBoundary(node));
+        continue;
+      }
+
+      if ("value" in node) {
+        html.push(node.type === "#text" ? renderText(node) : `<!--${node.value}-->`);
+        continue;
+      }
+
+      if (isSSRElement(node)) {
+        html.push(resolveElement(node));
       }
     }
 
     return joinHTMLElements(html);
   }
 
-  const html = resolve(resolveNode(App) as unknown as SSR_NODE[]);
-  return html + runWithOwner(owner, renderAsyncUtilities);
+  const app = resolveNode(App) as unknown as SSR_NODE[];
+  const html = resolve(app);
+  const utilities = runWithOwner(owner, renderAsyncUtilities);
+
+  return html + utilities;
 }

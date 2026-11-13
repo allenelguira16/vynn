@@ -4,7 +4,7 @@ import { ButtonPageList } from "../components/button-page-list";
 import { Template } from "../components/template";
 import { name } from "../utils";
 
-export default function RootPage(props: PropsWithChildren) {
+export default function LayoutPage(props: PropsWithChildren) {
   let el!: HTMLDivElement;
 
   return (
