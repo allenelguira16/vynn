@@ -9,7 +9,10 @@ import {
   createServerEntry,
   createSsrHandlerCode,
 } from "../../vite-plugin/src/plugins/app/documents.ts";
+import { Await } from "../src/components/await";
 import { ErrorBoundary } from "../src/components/error-boundary";
+import { $computed } from "../src/reactivity_new/computed";
+import { $state } from "../src/reactivity_new/state";
 import { lazy } from "../src/components/lazy";
 import { registerSsrModule } from "../src/context/ssr-module-context";
 import { createOwner, disposeOwner, getOwner, runWithOwner } from "../src/life-cycle/owner";
@@ -445,6 +448,89 @@ describe("renderToServer modes", () => {
     reject(redirect);
 
     await expect(read).rejects.toBe(redirect);
+  });
+
+  it("catches rejected async $computed values inside Await in async SSR mode", async () => {
+    const gate = Promise.resolve();
+
+    const rendered = await renderToServer(
+      () =>
+        ErrorBoundary({
+          children: (() => {
+            const source = $state(() => 0);
+            const value = $computed(async () => {
+              const current = source.value;
+              await gate;
+              if (current === 0) throw new Error("async computed failed");
+              return current;
+            });
+
+            return Await({
+              fallback: "Loading async computed",
+              children: (() => `Value: ${value.value}`) as unknown as JSX.Element,
+            });
+          }) as unknown as JSX.Element,
+          fallback: (error) => `Caught: ${error.message}`,
+        }),
+      "async",
+    );
+
+    expect(rendered.body).toContain("Caught: async computed failed");
+    expect(rendered.body).not.toContain("Loading async computed");
+    expect(rendered.body).toContain("<!--eb:0-->");
+    expect(rendered.body).toContain("$EBD");
+  });
+
+  it("patches the nearest ErrorBoundary when an async $computed inside Await rejects during streaming", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    const rendered = renderToServer(
+      () =>
+        ErrorBoundary({
+          children: (() => {
+            const source = $state(() => 0);
+            const value = $computed(async () => {
+              const current = source.value;
+              await gate;
+              if (current === 0) throw new Error("streamed async computed failed");
+              return current;
+            });
+
+            return Await({
+              fallback: "Loading async computed",
+              children: (() => `Value: ${value.value}`) as unknown as JSX.Element,
+            });
+          }) as unknown as JSX.Element,
+          fallback: (error) => `Caught: ${error.message}`,
+        }),
+      "stream",
+    );
+
+    const reader = rendered.body.getReader();
+    const initial = await reader.read();
+
+    expect(initial.done).toBe(false);
+
+    const initialHTML = new TextDecoder().decode(initial.value);
+    expect(initialHTML).toContain("Loading async computed");
+    expect(initialHTML).toContain("<!--eb:0-->");
+
+    release();
+
+    const patches: string[] = [];
+    while (true) {
+      const result = await reader.read();
+      if (result.done) break;
+      patches.push(new TextDecoder().decode(result.value));
+    }
+
+    const patchHTML = patches.join("");
+    expect(patchHTML).toContain('template id="vynn-eb-0"');
+    expect(patchHTML).toContain("$AEBP(0)");
+    expect(patchHTML).toContain("Caught: streamed async computed failed");
   });
 
   it("returns the readable stream inside the render result in stream mode", () => {
