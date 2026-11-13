@@ -1,3 +1,4 @@
+import { getErrorBoundary } from "../context/error-boundary-context";
 import { getOwner, runWithOwner, type Owner } from "../life-cycle/owner";
 import { NotReadyError } from "./not-ready-error";
 
@@ -140,6 +141,14 @@ function removeDependencies(effect: ReactiveEffect): void {
 
 function handleEffectError(error: unknown): void {
   if (error instanceof NotReadyError) return;
+
+  const boundary = getErrorBoundary();
+
+  if (error instanceof Error && boundary) {
+    boundary(error);
+    return;
+  }
+
   throw error;
 }
 
