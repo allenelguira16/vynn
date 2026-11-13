@@ -70,7 +70,7 @@ export function createAsyncResource<T>(
     previous: T | undefined,
     hasPrevious: boolean,
   ): void {
-    if (currentVersion !== version) return;
+    if (currentVersion !== version || owner?.disposed) return;
 
     if (error instanceof NotReadyError) {
       record.value = {
@@ -83,15 +83,20 @@ export function createAsyncResource<T>(
       return;
     }
 
-    const boundary =
-      error instanceof Error
-        ? (errorBoundary ??= getErrorBoundary())
-        : undefined;
-    const boundaryHandled = boundary !== undefined;
+    let boundaryHandled = false;
 
     // Dispatch before publishing the rejected record. A client ErrorBoundary
     // can dispose the resource's view owner while switching to its fallback.
-    if (boundary) boundary(error);
+    if (error instanceof Error) {
+      const boundary = (errorBoundary ??= getErrorBoundary());
+
+      if (boundary) {
+        boundary(error);
+        boundaryHandled = true;
+      }
+    }
+
+    if (owner?.disposed) return;
 
     record.value = {
       status: "rejected",
