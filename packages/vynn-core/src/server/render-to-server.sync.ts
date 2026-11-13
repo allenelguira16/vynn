@@ -23,7 +23,7 @@ import {
 
 export function resolveSync(App: () => JSX.Element, owner: Owner) {
   function resolveErrorBoundary(node: SSR_ERROR_BOUNDARY) {
-    let childrenHTML: string;
+    let childrenHTML = "";
 
     try {
       childrenHTML = resolve(node.children());
@@ -43,7 +43,7 @@ export function resolveSync(App: () => JSX.Element, owner: Owner) {
       return renderErrorBoundaryRange(node.id, resolve(node.fallback(node.error)));
     }
 
-    return renderErrorBoundaryRange(node.id, childrenHTML!);
+    return renderErrorBoundaryRange(node.id, childrenHTML);
   }
 
   function resolveElement(node: SSR_ELEMENT) {
