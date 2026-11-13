@@ -119,7 +119,7 @@ export class SSR_ASYNC extends SSR_PENDING {
     fallback: () => SSR_NODE[],
     children: () => SSR_NODE[],
     promises: Promise<unknown>[],
-    errorBoundary?: ErrorBoundary,
+    errorBoundary?: SSR_ERROR_BOUNDARY,
   ) {
     super(children, promises, errorBoundary);
     this.fallback = captureSSRRender(this, fallback);
@@ -132,7 +132,7 @@ export class SSR_DEFERRED extends SSR_PENDING {
     children: () => SSR_NODE[],
     promises: Promise<unknown>[],
     public blocking: boolean,
-    errorBoundary?: ErrorBoundary,
+    errorBoundary?: SSR_ERROR_BOUNDARY,
   ) {
     super(children, promises, errorBoundary);
   }
