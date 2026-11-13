@@ -81,7 +81,7 @@ function createReactiveEffect(callback: () => void | (() => void), phase: Effect
 
               const errorBoundary = getErrorBoundary();
               if (error instanceof Error && errorBoundary) {
-                errorBoundary.handle(error);
+                errorBoundary(error);
                 return;
               }
 
