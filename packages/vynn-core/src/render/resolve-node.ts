@@ -1,10 +1,11 @@
 import { claimHydrationText, isHydrationClaimActive } from "../client/hydration";
 import { synchronizeHydrationText } from "../client/hydration-diagnostics";
 import {
-  enterSSRErrorBoundary,
-  getSSRErrorBoundary,
+  enterErrorBoundary,
+  getErrorBoundaryContext,
   type ErrorBoundary,
-  withSSRErrorBoundary,
+  type ErrorBoundaryContext,
+  withErrorBoundaryContext,
 } from "../context/error-boundary-context";
 import { isServer } from "../context/is-server-context";
 import { JSX } from "../jsx-runtime";
@@ -143,31 +144,35 @@ export class SSR_ERROR_BOUNDARY extends SSR_NODE {
   readonly id: number;
   readonly children: () => SSR_NODE[];
   readonly fallback: (error: Error) => SSR_NODE[];
-  readonly parentBoundary?: SSR_ERROR_BOUNDARY;
+  readonly parentContext?: ErrorBoundaryContext;
   private handledError?: Error;
 
   constructor(
     id: number,
     fallback: (error: Error) => SSR_NODE[],
     children: () => SSR_NODE[],
-    parentBoundary?: SSR_ERROR_BOUNDARY,
-    private readonly onError?: (error: Error) => void,
+    private readonly handler: ErrorBoundary,
+    parentContext?: ErrorBoundaryContext,
   ) {
     super();
     this.id = id;
-    this.parentBoundary = parentBoundary;
+    this.parentContext = parentContext;
 
     const namespace = getCurrentDOMNamespace();
+    const context: ErrorBoundaryContext = {
+      handler: this.handler,
+      ssrBoundary: this,
+    };
 
     this.children = () =>
       this.withOwner(() =>
-        withDOMNamespace(namespace, () => withSSRErrorBoundary(this, children)),
+        withDOMNamespace(namespace, () => withErrorBoundaryContext(context, children)),
       );
 
     this.fallback = (error) =>
       this.withOwner(() =>
         withDOMNamespace(namespace, () =>
-          withSSRErrorBoundary(parentBoundary, () => fallback(error)),
+          withErrorBoundaryContext(parentContext, () => fallback(error)),
         ),
       );
   }
@@ -176,15 +181,14 @@ export class SSR_ERROR_BOUNDARY extends SSR_NODE {
     return this.handledError !== undefined;
   }
 
-  /** Claim the first Error handled by this boundary. */
+  /** Claim the first Error handled by this boundary and invoke its handler. */
   handle(error: unknown): error is Error {
     if (!(error instanceof Error) || this.handledError) return false;
 
     this.handledError = error;
-    this.onError?.(error);
+    this.handler(error);
     return true;
   }
-}
 
 /**
  * Captures the current owner and DOM namespace for work that may run after
@@ -200,17 +204,18 @@ export function createSSRErrorBoundary(
   id: number,
   fallback: (error: Error) => SSR_NODE[],
   children: () => SSR_NODE[],
-  onError?: (error: Error) => void,
+  handler: ErrorBoundary,
 ): SSR_ERROR_BOUNDARY {
+  const parentContext = getErrorBoundaryContext();
   const boundary = new SSR_ERROR_BOUNDARY(
     id,
     fallback,
     children,
-    getSSRErrorBoundary(),
-    onError,
+    handler,
+    parentContext,
   );
 
-  enterSSRErrorBoundary(boundary);
+  enterErrorBoundary(handler, boundary);
 
   return boundary;
 }
@@ -232,7 +237,7 @@ export function createSSRAsync(
   children: () => SSR_NODE[],
   promises: Promise<unknown>[],
 ): SSR_ASYNC {
-  return new SSR_ASYNC(fallback, children, promises, getSSRErrorBoundary());
+  return new SSR_ASYNC(fallback, children, promises, getErrorBoundaryContext()?.ssrBoundary);
 }
 
 export function createSSRDeferred(
@@ -240,7 +245,7 @@ export function createSSRDeferred(
   promises: Promise<unknown>[],
   blocking = false,
 ): SSR_DEFERRED {
-  return new SSR_DEFERRED(children, promises, blocking, getSSRErrorBoundary());
+  return new SSR_DEFERRED(children, promises, blocking, getErrorBoundaryContext()?.ssrBoundary);
 }
 
 export class SSRDeferredError {
