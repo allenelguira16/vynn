@@ -37,35 +37,25 @@ export const ErrorBoundary = $cmpnt(function ErrorBoundary(props: {
   if (isServer()) {
     const values = getErrorBoundaryValues();
 
-    try {
-      try {
-        return props.children;
-      } finally {
-        if (values) values[errorBoundaryID] = { status: "children" };
-      }
-    } catch (error) {
-      if (!(error instanceof Error)) throw error;
+    if (values) values[errorBoundaryID] = { status: "children" };
 
-      if (values)
-        values[errorBoundaryID] = {
-          status: "fallback",
-          message: error.message,
-          name: error.name,
-        };
-
-      return createSSRErrorBoundary(
-        errorBoundaryID,
-        () => {
-          return resolveNode(() =>
-            props.fallback?.(error, () => undefined),
-          ) as unknown as SSR_NODE[];
-        },
-        () => {
-          return resolveNode(() => props.children) as unknown as SSR_NODE[];
-        },
-        error,
-      ) as unknown as JSX.Element;
-    }
+    return createSSRErrorBoundary(
+      errorBoundaryID,
+      (error) =>
+        resolveNode(() =>
+          props.fallback?.(error, () => undefined),
+        ) as unknown as SSR_NODE[],
+      () => resolveNode(() => props.children) as unknown as SSR_NODE[],
+      (error) => {
+        if (values) {
+          values[errorBoundaryID] = {
+            status: "fallback",
+            message: error.message,
+            name: error.name,
+          };
+        }
+      },
+    ) as unknown as JSX.Element;
   }
 
   const error = $state<Error | undefined>(() => undefined);
