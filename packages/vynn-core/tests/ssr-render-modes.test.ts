@@ -12,6 +12,10 @@ import {
 import { ErrorBoundary } from "../src/components/error-boundary";
 import { lazy } from "../src/components/lazy";
 import { registerSsrModule } from "../src/context/ssr-module-context";
+import {
+  getErrorBoundary,
+  getErrorBoundaryContext,
+} from "../src/context/error-boundary-context";
 import { createOwner, disposeOwner, getOwner, runWithOwner } from "../src/life-cycle/owner";
 import { $head, $headTmpl } from "../src/render/$head";
 import { $cmpnt } from "../src/render/$cmpnt";
@@ -149,6 +153,33 @@ describe("renderToServer modes", () => {
     expect(rendered.body).toContain("Body");
     expect(rendered.head.render()).toContain('<title key="title">Synchronous page</title>');
     expect([...rendered.modules]).toEqual(["src/pages/synchronous.tsx"]);
+  });
+
+  it("registers the handler and SSR descriptor through one error boundary context", () => {
+    const errors: Error[] = [];
+    const handler = (error: Error) => errors.push(error);
+    let registeredHandler: typeof handler | undefined;
+    let registeredSsrBoundary: unknown;
+
+    const rendered = renderToServer(() => {
+      const boundary = createSSRErrorBoundary(
+        0,
+        () => [],
+        () => [],
+        handler,
+      );
+
+      registeredHandler = getErrorBoundary();
+      registeredSsrBoundary = getErrorBoundaryContext()?.ssrBoundary;
+
+      return boundary as unknown as JSX.Element;
+    }, "sync");
+
+    expect(registeredHandler).toBe(handler);
+    expect(registeredSsrBoundary).toBeDefined();
+    expect(errors).toHaveLength(0);
+    expect(rendered.body).toContain("<!--eb:0-->");
+    expect(rendered.body).toContain("<!--/eb:0-->");
   });
 
   it("creates an independent root Owner instead of reusing the caller Owner", () => {
