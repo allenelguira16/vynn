@@ -1,6 +1,7 @@
 import type { JSX } from "../types/jsx";
 
 import { runWithOwner, type Owner } from "../life-cycle/owner";
+import { NotReadyError } from "../reactivity_new/not-ready-error";
 import {
   SSR_ASYNC,
   SSR_COMMENT,
@@ -15,12 +16,26 @@ import {
   joinHTMLElements,
   renderAsyncUtilities,
   renderNode,
+  renderErrorBoundaryRange,
   renderText,
 } from "./render-to-server.util";
 
 export function resolveSync(App: () => JSX.Element, owner: Owner) {
   function resolveErrorBoundary(node: SSR_ERROR_BOUNDARY) {
-    return resolve(node.fallback());
+    try {
+      return renderErrorBoundaryRange(node.id, resolve(node.children()));
+    } catch (error) {
+      // Sync SSR never waits for pending resources. A later async render mode
+      // can retry the same boundary after its pending promise settles.
+      if (error instanceof NotReadyError) {
+        return renderErrorBoundaryRange(node.id, "");
+      }
+
+      if (!(error instanceof Error)) throw error;
+
+      node.handleError(error);
+      return renderErrorBoundaryRange(node.id, resolve(node.fallback(error)));
+    }
   }
 
   function resolveElement(node: SSR_ELEMENT) {
