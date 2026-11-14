@@ -1,6 +1,5 @@
 import type { JSX } from "../jsx-runtime";
 import {
-  enterErrorBoundary,
   getErrorBoundary,
   getErrorBoundaryID,
   getErrorBoundaryValue,
@@ -8,10 +7,16 @@ import {
 } from "../context/error-boundary-context";
 import { isServer } from "../context/is-server-context";
 import { createBoundary } from "../life-cycle/boundary";
-import { getOwner } from "../life-cycle/owner";
+import { createOwner, disposeOwner, getOwner, runWithOwner, type Owner } from "../life-cycle/owner";
+import { NotReadyError } from "../reactivity_new/not-ready-error";
 import { $state } from "../reactivity_new/state";
 import { $cmpnt, $nodes } from "../render";
-import { createSSRErrorBoundary, resolveNode, resolveSSRChild, SSR_NODE } from "../render/resolve-node";
+import {
+  createSSRErrorBoundary,
+  resolveNode,
+  resolveSSRChild,
+  SSR_NODE,
+} from "../render/resolve-node";
 
 export type ErrorBoundarySSRState =
   | { status: "children" }
@@ -28,7 +33,6 @@ export const ErrorBoundary = $cmpnt(function ErrorBoundary(props: {
   const currentOwner = getOwner();
   const errorBoundaryID = getErrorBoundaryID();
   const ssrData = getErrorBoundaryValue(errorBoundaryID);
-  // console.log(ssrData);
 
   if (!currentOwner) {
     throw new Error("ErrorBoundary requires an owner.");
@@ -37,20 +41,28 @@ export const ErrorBoundary = $cmpnt(function ErrorBoundary(props: {
   if (isServer()) {
     const values = getErrorBoundaryValues();
     const parentErrorBoundary = getErrorBoundary();
-
     if (values) values[errorBoundaryID] = { status: "children" };
 
-    // Create the boundary before evaluating children so resources created
-    // during that evaluation capture this boundary as their error handler.
-    // Resolve the child tree now, not later in the SSR renderer: async resource
-    // IDs must be allocated in the same tree order as they are during hydration.
+    let ssrBoundary: ReturnType<typeof createSSRErrorBoundary> | undefined;
+    const boundaryOwner = createBoundary({
+      onError(error) {
+        ssrBoundary?.handleError(error);
+      },
+    });
+    const childrenOwner = createOwner(boundaryOwner);
+    const fallbackOwner = createOwner(currentOwner);
     let children: SSR_NODE[] = [];
 
-    const boundary = createSSRErrorBoundary(
+    // The SSR node owns the serialized boundary markers. The owner scope only
+    // installs error policy; it does not render or switch either branch.
+    ssrBoundary = createSSRErrorBoundary(
       errorBoundaryID,
       (error) =>
-        resolveNode(() => props.fallback?.(error, () => undefined)) as unknown as SSR_NODE[],
-      () => children,
+        runWithOwner(
+          fallbackOwner,
+          () => resolveNode(() => props.fallback?.(error, () => undefined)) as unknown as SSR_NODE[],
+        ),
+      () => runWithOwner(childrenOwner, () => children),
       (error) => {
         if (values) {
           values[errorBoundaryID] = {
@@ -63,46 +75,100 @@ export const ErrorBoundary = $cmpnt(function ErrorBoundary(props: {
       parentErrorBoundary,
     );
 
-    // Install the handler before resolving children. resolveSSRChild preserves
-    // a pending subtree as SSR_DEFERRED without delaying resource creation.
-    enterErrorBoundary((error) => boundary.handleError(error));
-
     let childError: unknown;
 
     try {
-      children = resolveSSRChild(() => props.children) as unknown as SSR_NODE[];
+      children = runWithOwner(
+        childrenOwner,
+        () => resolveSSRChild(() => props.children) as unknown as SSR_NODE[],
+      );
     } catch (error) {
       childError = error;
     }
 
     if (childError !== undefined) {
       if (!(childError instanceof Error)) throw childError;
-      boundary.handleError(childError);
+      ssrBoundary.handleError(childError);
     }
 
-    return boundary as unknown as JSX.Element;
+    return ssrBoundary as unknown as JSX.Element;
   }
 
   const error = $state<Error | undefined>(() => undefined);
-  const boundary = createBoundary({
-    onError: (newError) => {
-      error.value = newError;
-    },
-  });
+  const handleError = (newError: Error) => {
+    error.value = newError;
+  };
+  const boundaryOwner = createBoundary({ onError: handleError });
 
   if (ssrData?.status === "fallback") {
     error.value = new Error(ssrData.message);
   }
 
-  return $nodes(() =>
-    boundary.renderBranch(error.value ? "fallback" : "children", () =>
-      resolveNode(() => {
-        if (!error.value) {
-          return props.children;
-        }
+  // Branch owners are deliberately separate from the boundary scope:
+  // children are beneath its error policy; fallback is its sibling.
+  let childrenOwner: Owner | undefined;
+  let fallbackOwner: Owner | undefined;
 
-        return props.fallback?.(error.value, () => (error.value = undefined));
-      }) as unknown as JSX.Element,
-    ),
-  );
+  function disposeChildren(): void {
+    if (childrenOwner && !childrenOwner.disposed) {
+      disposeOwner(childrenOwner);
+    }
+    childrenOwner = undefined;
+  }
+
+  function disposeFallback(): void {
+    if (fallbackOwner && !fallbackOwner.disposed) {
+      disposeOwner(fallbackOwner);
+    }
+    fallbackOwner = undefined;
+  }
+
+  function renderChildren(): JSX.Element {
+    const owner = (childrenOwner ??= createOwner(boundaryOwner));
+
+    return runWithOwner(owner, () => {
+      try {
+        return resolveNode(() => props.children) as unknown as JSX.Element;
+      } catch (caught) {
+        // A synchronous render throw happens inside the outer $nodes effect,
+        // whose owner is intentionally outside this boundary scope. Route it
+        // here; asynchronous failures are routed by resources/effects through
+        // the same owner-scoped handler.
+        if (caught instanceof NotReadyError) throw caught;
+        if (!(caught instanceof Error)) throw caught;
+
+        handleError(caught);
+        return [] as unknown as JSX.Element;
+      }
+    });
+  }
+
+  function renderFallback(currentError: Error): JSX.Element {
+    const owner = (fallbackOwner ??= createOwner(currentOwner));
+
+    return runWithOwner(
+      owner,
+      () =>
+        resolveNode(
+          () => props.fallback?.(currentError, () => {
+            error.value = undefined;
+          }),
+        ) as unknown as JSX.Element,
+    );
+  }
+
+  // This output effect is owned by the ErrorBoundary component's parent
+  // scope, not its boundary owner. That keeps fallback failures visible to
+  // the enclosing ErrorBoundary rather than recapturing them here.
+  return $nodes(() => {
+    const currentError = error.value;
+
+    if (currentError) {
+      disposeChildren();
+      return renderFallback(currentError);
+    }
+
+    disposeFallback();
+    return renderChildren();
+  });
 });
