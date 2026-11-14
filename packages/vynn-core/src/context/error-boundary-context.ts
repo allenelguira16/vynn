@@ -1,5 +1,12 @@
 import { ERROR_BOUNDARY_DATA_SSR_KEY } from "../const";
-import { getContext, getOwner, modifyContext, setContext } from "../life-cycle/owner";
+import {
+  getContext,
+  getOwner,
+  getOwnerBoundaryHandler,
+  modifyContext,
+  setContext,
+  setOwnerBoundaryHandler,
+} from "../life-cycle/owner";
 import { isServer } from "./is-server-context";
 
 export type ErrorBoundary = (error: Error) => void;
@@ -10,16 +17,15 @@ export type ErrorBoundary = (error: Error) => void;
 //   isActive(): boolean;
 // };
 
-const ERROR_BOUNDARY = Symbol("vynn.error-boundary");
 const ERROR_BOUNDARY_ID = Symbol("vynn.error-boundary-id");
 const ERROR_BOUNDARY_VALUES = Symbol("vynn.error-boundary-values");
 
 export function getErrorBoundary(): ErrorBoundary | undefined {
-  return getContext<ErrorBoundary | undefined>(ERROR_BOUNDARY);
+  return getOwnerBoundaryHandler("onError") as ErrorBoundary | undefined;
 }
 
 export function enterErrorBoundary(boundary: ErrorBoundary | undefined): void {
-  setContext(ERROR_BOUNDARY, boundary);
+  setOwnerBoundaryHandler("onError", boundary);
 }
 
 export type ErrorBoundarySSRState =
