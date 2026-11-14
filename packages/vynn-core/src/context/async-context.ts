@@ -47,10 +47,10 @@ export function initializeAsyncContext(): void {
 }
 
 /**
- * Give each lazy instance an independent async-data sequence.
+ * Give each lazy instance an independent resource-ID prefix.
  *
- * The sequence is inherited by ordinary descendants and shadowed by nested
- * lazy instances, so sibling module resolution order cannot exchange IDs.
+ * Descendant resources inherit the prefix, while nested lazy instances use
+ * their own prefix. Their local IDs are assigned by their component owners.
  */
 export function initializeLazyAsyncScope(lazyID: string): void {
   setContext<AsyncIdScope>(ASYNC_ID, {
@@ -59,11 +59,11 @@ export function initializeLazyAsyncScope(lazyID: string): void {
 }
 
 /**
- * Returns the next async hydration ID when an async context is available.
+ * Returns a component-scoped async hydration ID.
  *
- * Async resources may be created outside a component or Vynn render tree.
- * Those resources simply skip SSR result serialization and hydration
- * restoration because there is no request-scoped async value registry.
+ * The resource index belongs to the nearest component owner, so resources
+ * created in a skipped subtree cannot shift IDs belonging to sibling
+ * components. Resources created without an owner skip SSR serialization.
  */
 export function getAsyncIDIfAvailable(): string | undefined {
   const scope = getContext<AsyncIdScope>(ASYNC_ID);
