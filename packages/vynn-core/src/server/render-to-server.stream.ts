@@ -174,7 +174,7 @@ export function resolveStream(
       return renderErrorBoundaryRange(node.id, await resolve(node.fallback(node.error)));
     }
 
-    let html: string;
+    let html = "";
 
     try {
       html = await resolve(node.children());
