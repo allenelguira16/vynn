@@ -7,6 +7,7 @@ import { getAsyncIDIfAvailable, initializeAsyncContext } from "../src/context/as
 import { hydrateToDOM } from "../src/client/hydrate-to-dom";
 import { createComponentOwner, createOwner, disposeOwner, runWithOwner } from "../src/life-cycle/owner";
 import { renderToDOM } from "../src/client/render-to-dom";
+import { createBoundary } from "../src/life-cycle/boundary";
 import { Await } from "../src/components/await";
 import { ErrorBoundary } from "../src/components/error-boundary";
 import { ERROR_BOUNDARY_DATA_SSR_KEY } from "../src/const";
@@ -78,6 +79,41 @@ describe("ErrorBoundary hydration", () => {
     expect(host.textContent).not.toContain("Try Again");
 
     unmount();
+  });
+
+  it("keeps fallback resource IDs stable when the failed child branch is skipped", () => {
+    function getFallbackResourceID(renderFailedChild: boolean): string | undefined {
+      const root = createOwner(null);
+
+      try {
+        return runWithOwner(root, () => {
+          initializeAsyncContext();
+
+          const boundaryComponentOwner = createComponentOwner();
+
+          return runWithOwner(boundaryComponentOwner, () => {
+            const boundaryOwner = createBoundary();
+            const childrenOwner = createComponentOwner(boundaryOwner);
+            const fallbackOwner = createComponentOwner(boundaryComponentOwner);
+
+            if (renderFailedChild) {
+              const failedChild = createComponentOwner(childrenOwner);
+              runWithOwner(failedChild, getAsyncIDIfAvailable);
+            }
+
+            return runWithOwner(fallbackOwner, getAsyncIDIfAvailable);
+          });
+        });
+      } finally {
+        disposeOwner(root);
+      }
+    }
+
+    const serverFallbackID = getFallbackResourceID(true);
+    const clientFallbackID = getFallbackResourceID(false);
+
+    expect(serverFallbackID).toBe("root:root.0.1:0");
+    expect(clientFallbackID).toBe(serverFallbackID);
   });
 
   it("keeps sibling resource IDs stable when a boundary subtree is skipped", () => {
