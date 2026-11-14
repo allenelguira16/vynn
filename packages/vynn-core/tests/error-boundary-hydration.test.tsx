@@ -109,6 +109,43 @@ describe("ErrorBoundary hydration", () => {
     }
   });
 
+  it("routes a delayed rejection from nested JSX to its nearest ErrorBoundary", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+
+    function ComponentWillThrowAfterAsync(): JSX.Element {
+      const count = $computed(async () => {
+        await new Promise<void>((resolve) => setTimeout(resolve, 20));
+        throw new Error("delayed nested component failed");
+      });
+
+      return (
+        <div>
+          <div>test</div>
+          <div>{count.value}</div>
+        </div>
+      );
+    }
+
+    const unmount = renderToDOM(
+      () => (
+        <ErrorBoundary fallback={(error) => <p>Handled: {error.message}</p>}>
+          <ComponentWillThrowAfterAsync />
+        </ErrorBoundary>
+      ),
+      host,
+    );
+
+    try {
+      await new Promise<void>((resolve) => setTimeout(resolve, 40));
+
+      expect(host.textContent).toContain("Handled: delayed nested component failed");
+      expect(host.textContent).not.toContain("test");
+    } finally {
+      unmount();
+    }
+  });
+
   it("routes an Await child rejection to an enclosing ErrorBoundary", async () => {
     const host = document.createElement("div");
     document.body.append(host);
