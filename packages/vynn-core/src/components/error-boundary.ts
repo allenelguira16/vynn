@@ -11,7 +11,7 @@ import { createBoundary } from "../life-cycle/boundary";
 import { getOwner } from "../life-cycle/owner";
 import { $state } from "../reactivity_new/state";
 import { $cmpnt, $nodes } from "../render";
-import { createSSRErrorBoundary, resolveNode, SSR_NODE } from "../render/resolve-node";
+import { createSSRErrorBoundary, resolveNode, resolveSSRChild, SSR_NODE } from "../render/resolve-node";
 
 export type ErrorBoundarySSRState =
   | { status: "children" }
@@ -40,11 +40,17 @@ export const ErrorBoundary = $cmpnt(function ErrorBoundary(props: {
 
     if (values) values[errorBoundaryID] = { status: "children" };
 
+    // Create the boundary before evaluating children so resources created
+    // during that evaluation capture this boundary as their error handler.
+    // Resolve the child tree now, not later in the SSR renderer: async resource
+    // IDs must be allocated in the same tree order as they are during hydration.
+    let children: SSR_NODE[] = [];
+
     const boundary = createSSRErrorBoundary(
       errorBoundaryID,
       (error) =>
         resolveNode(() => props.fallback?.(error, () => undefined)) as unknown as SSR_NODE[],
-      () => resolveNode(() => props.children) as unknown as SSR_NODE[],
+      () => children,
       (error) => {
         if (values) {
           values[errorBoundaryID] = {
@@ -57,10 +63,16 @@ export const ErrorBoundary = $cmpnt(function ErrorBoundary(props: {
       parentErrorBoundary,
     );
 
-    // Deferred SSR work may settle after this component has returned. Keep
-    // the boundary handler on its owner so nested SSR async nodes can report
-    // failures to this boundary while the renderer is resolving them.
+    // Install the handler before resolving children. resolveSSRChild preserves
+    // a pending subtree as SSR_DEFERRED without delaying resource creation.
     enterErrorBoundary((error) => boundary.handleError(error));
+
+    try {
+      children = resolveSSRChild(() => props.children) as unknown as SSR_NODE[];
+    } catch (error) {
+      if (!(error instanceof Error)) throw error;
+      boundary.handleError(error);
+    }
 
     return boundary as unknown as JSX.Element;
   }
