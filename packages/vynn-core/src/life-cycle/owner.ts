@@ -11,6 +11,10 @@ export interface Owner {
   disposed?: boolean;
   context: Map<string | symbol, unknown>;
   nodeCount: number;
+  /** Stable component-tree identity used by async resource hydration. */
+  componentID?: string;
+  nextComponentID: number;
+  nextAsyncResourceID: number;
   boundary?: OwnerBoundaryHandlers;
 }
 
@@ -76,9 +80,34 @@ export function createOwner(parent = currentOwner): Owner {
     mount: [],
     context: new Map<string | symbol, unknown>(),
     nodeCount: 0,
+    componentID: parent ? undefined : "root",
+    nextComponentID: 0,
+    nextAsyncResourceID: 0,
   };
 
   parent?.children.push(owner);
+
+  return owner;
+}
+
+/**
+ * Creates an owner for a component. Component IDs are assigned among
+ * component owners rather than all runtime owners, so internal boundary and
+ * branch owners do not affect async resource identity.
+ */
+export function createComponentOwner(parent = currentOwner): Owner {
+  const owner = createOwner(parent);
+  let componentParent = parent;
+
+  while (componentParent && componentParent.componentID === undefined) {
+    componentParent = componentParent.parent;
+  }
+
+  if (componentParent) {
+    owner.componentID = `${componentParent.componentID}.${componentParent.nextComponentID++}`;
+  } else {
+    owner.componentID = "root";
+  }
 
   return owner;
 }
