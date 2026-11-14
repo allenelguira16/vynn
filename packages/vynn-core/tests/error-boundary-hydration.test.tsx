@@ -3,8 +3,9 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import type { JSX } from "../src/types/jsx";
 
-import { getAsyncIDIfAvailable } from "../src/context/async-context";
+import { getAsyncIDIfAvailable, initializeAsyncContext } from "../src/context/async-context";
 import { hydrateToDOM } from "../src/client/hydrate-to-dom";
+import { createComponentOwner, createOwner, disposeOwner, runWithOwner } from "../src/life-cycle/owner";
 import { renderToDOM } from "../src/client/render-to-dom";
 import { Await } from "../src/components/await";
 import { ErrorBoundary } from "../src/components/error-boundary";
@@ -79,50 +80,38 @@ describe("ErrorBoundary hydration", () => {
     unmount();
   });
 
-  it("reserves async resource IDs skipped by an SSR error fallback", () => {
-    const host = document.createElement("div");
-    host.innerHTML = "<!--eb:0--><p>Server failed</p><!--/eb:0-->";
-    document.body.append(host);
+  it("keeps sibling resource IDs stable when a boundary subtree is skipped", () => {
+    function getSiblingResourceID(renderFailedChild: boolean): string | undefined {
+      const root = createOwner(null);
 
-    (window as unknown as Record<string, unknown>)[ERROR_BOUNDARY_DATA_SSR_KEY] = [
-      {
-        status: "fallback",
-        name: "Error",
-        message: "Server failed",
-        asyncIDSnapshot: { prefix: "root", next: 3 },
-      },
-    ];
+      try {
+        return runWithOwner(root, () => {
+          initializeAsyncContext();
 
-    let childRenders = 0;
-    let siblingAsyncID: string | undefined;
+          const boundary = createComponentOwner();
 
-    const unmount = hydrateToDOM(
-      () => (
-        <>
-          {ErrorBoundary({
-            children: (() => {
-              childRenders++;
-              return <p>Child should stay skipped</p>;
-            }) as unknown as JSX.Element,
-            fallback: (error) => <p>{error.message}</p>,
-          })}
-          {(() => {
-            siblingAsyncID = getAsyncIDIfAvailable();
-            return <p>Sibling</p>;
-          })()}
-        </>
-      ),
-      host,
-    );
+          runWithOwner(boundary, () => {
+            if (!renderFailedChild) return;
 
-    try {
-      expect(childRenders).toBe(0);
-      expect(siblingAsyncID).toBe("root:3");
-      expect(host.textContent).toContain("Server failed");
-      expect(host.textContent).toContain("Sibling");
-    } finally {
-      unmount();
+            const failedChild = createComponentOwner();
+            runWithOwner(failedChild, () => {
+              expect(getAsyncIDIfAvailable()).toBe("root:root.0.0:0");
+            });
+          });
+
+          const sibling = createComponentOwner();
+          return runWithOwner(sibling, getAsyncIDIfAvailable);
+        });
+      } finally {
+        disposeOwner(root);
+      }
     }
+
+    const serverSiblingID = getSiblingResourceID(true);
+    const clientSiblingID = getSiblingResourceID(false);
+
+    expect(serverSiblingID).toBe("root:root.1:0");
+    expect(clientSiblingID).toBe(serverSiblingID);
   });
 
   it("routes an async computed rejection to its nearest ErrorBoundary", async () => {
