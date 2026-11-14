@@ -5,8 +5,8 @@ import { enterAsyncBoundary } from "../context/async-context";
 import { isServer } from "../context/is-server-context";
 import { isPromiseFromLazy } from "../context/lazy-context";
 import { getOwner, runWithOwner } from "../life-cycle/owner";
-import { $state } from "../reactivity_new/state";
 import { untrack } from "../reactivity_new/effect";
+import { $state } from "../reactivity_new/state";
 import { $cmpnt } from "../render/$cmpnt";
 import { $if } from "../render/$if";
 import { SSR_NODE, createSSRAsync, resolveNode } from "../render/resolve-node";
@@ -58,15 +58,15 @@ export const Await = $cmpnt(function Await(props: {
     const isPending = $state(() => false);
 
     enterAsyncBoundary((promise) => {
-      // Ignore lazy imports only while their server-rendered range is being claimed.
-      // Lazy imports started by later client-side navigation must show the fallback.
       if (!isResolved && (!isPromiseFromLazy(promise) || !isHydrationClaimActive())) {
         isPending.value = true;
       }
 
-      promise.then(() => {
+      const clearPending = () => {
         isPending.value = false;
-      });
+      };
+
+      void promise.then(clearPending, clearPending);
     });
 
     try {
