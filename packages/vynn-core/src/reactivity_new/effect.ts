@@ -1,5 +1,4 @@
-import { getErrorBoundary } from "../context/error-boundary-context";
-import { getOwner, runWithOwner, type Owner } from "../life-cycle/owner";
+import { getOwner, getOwnerBoundaryHandler, runWithOwner, type Owner } from "../life-cycle/owner";
 import { NotReadyError } from "./not-ready-error";
 
 export type EffectPhase = "render" | "effect";
@@ -139,10 +138,13 @@ function removeDependencies(effect: ReactiveEffect): void {
   effect.dependencies.length = 0;
 }
 
-function handleEffectError(error: unknown): void {
+function handleEffectError(error: unknown, owner: Owner | null): void {
   if (error instanceof NotReadyError) return;
 
-  const boundary = getErrorBoundary();
+  // Resolve against the effect's captured owner rather than ambient context.
+  // Scheduler callbacks can run after the render stack that created the effect
+  // has completed, but the owner ancestry remains the authoritative scope.
+  const boundary = getOwnerBoundaryHandler("onError", owner);
 
   if (error instanceof Error && boundary) {
     boundary(error);
@@ -176,7 +178,7 @@ function runEffect(effect: ReactiveEffect): void {
         try {
           cleanup();
         } catch (error) {
-          handleEffectError(error);
+          handleEffectError(error, effect.owner);
         }
       }
 
@@ -189,7 +191,7 @@ function runEffect(effect: ReactiveEffect): void {
           try {
             return effect.callback();
           } catch (error) {
-            handleEffectError(error);
+            handleEffectError(error, effect.owner);
             return undefined;
           }
         });
