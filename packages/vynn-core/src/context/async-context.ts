@@ -1,12 +1,16 @@
 import { ASYNC_DATA_SSR_KEY } from "../const";
-import { getContext, modifyContext, setContext } from "../life-cycle/owner";
+import {
+  getContext,
+  getOwnerBoundaryHandler,
+  modifyContext,
+  setContext,
+  setOwnerBoundaryHandler,
+} from "../life-cycle/owner";
 import { deserializeServerFunctionValue } from "../server-functions/serialization";
 import { isServer } from "./is-server-context";
 
 export type AsyncBoundary<T = unknown> = (promise: Promise<T>) => void;
 
-const ASYNC_BOUNDARY = Symbol("vynn.async-boundary");
-const AWAIT_BOUNDARY = Symbol("vynn.await-boundary");
 const ASYNC_ID = Symbol("vynn.async-id");
 const ASYNC_VALUES = Symbol("vynn.async-values");
 
@@ -21,20 +25,19 @@ export type AsyncHydrationValue<T = unknown> = {
 };
 
 export function isInsideAwaitBoundary(): boolean {
-  return getContext<boolean>(AWAIT_BOUNDARY) ?? false;
+  return getOwnerBoundaryHandler("onPending") !== undefined;
 }
 
 export function getAsyncBoundary<T = unknown>(): AsyncBoundary<T> | undefined {
-  return getContext<AsyncBoundary<T>>(ASYNC_BOUNDARY);
+  return getOwnerBoundaryHandler("onPending") as AsyncBoundary<T> | undefined;
 }
 
 /**
- * Permanently sets the boundary on the current owner.
- * Use for a component-level boundary such as client-side Await.
+ * Installs a pending handler on the current owner. Descendant resources find
+ * it through owner ancestry, without a separate async-boundary context value.
  */
 export function enterAsyncBoundary<T>(boundary: AsyncBoundary<T>): void {
-  setContext(ASYNC_BOUNDARY, boundary);
-  setContext(AWAIT_BOUNDARY, true);
+  setOwnerBoundaryHandler("onPending", boundary as (promise: Promise<unknown>) => void);
 }
 
 export function initializeAsyncContext(): void {
