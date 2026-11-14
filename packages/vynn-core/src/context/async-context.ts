@@ -19,6 +19,34 @@ type AsyncIdScope = {
   next: number;
 };
 
+export type AsyncIDSnapshot = {
+  prefix: string;
+  next: number;
+};
+
+/** Capture the current hydration-ID cursor for an SSR boundary subtree. */
+export function getAsyncIDSnapshot(): AsyncIDSnapshot | undefined {
+  const scope = getContext<AsyncIdScope>(ASYNC_ID);
+
+  return scope ? { prefix: scope.prefix, next: scope.next } : undefined;
+}
+
+/**
+ * Reserve IDs consumed by a subtree that is skipped during hydration because
+ * its server render selected an error fallback.
+ */
+export function restoreAsyncIDSnapshot(snapshot?: AsyncIDSnapshot): void {
+  if (!snapshot) return;
+
+  const scope = getContext<AsyncIdScope>(ASYNC_ID);
+  if (!scope || scope.prefix !== snapshot.prefix) return;
+
+  modifyContext<AsyncIdScope>(ASYNC_ID, (current) => ({
+    ...current,
+    next: Math.max(current.next, snapshot.next),
+  }));
+}
+
 export type AsyncHydrationValue<T = unknown> = {
   found: boolean;
   value: T | undefined;
