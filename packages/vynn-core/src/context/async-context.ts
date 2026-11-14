@@ -80,7 +80,9 @@ export function getAsyncIDIfAvailable(): string | undefined {
 
   if (!owner) return undefined;
 
-  const resourceIndex = owner.nextAsyncResourceID++;
+  const resourceIndex = owner.nextAsyncResourceID ?? 0;
+  owner.nextAsyncResourceID = resourceIndex + 1;
+
   return `${scope.prefix}:${owner.componentID}:${resourceIndex}`;
 }
 
