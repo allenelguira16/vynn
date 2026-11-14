@@ -123,13 +123,13 @@ describe("$computed", () => {
 
         // Only the asynchronous computed reserves root:0. The synchronous
         // computed must not shift the identity used by SSR async resources.
-        expect(getAsyncID()).toBe("root:1");
+        expect(getAsyncID()).toBe("root:root:1");
 
         await Promise.resolve();
 
         runWithOwner(owner, () => {
           expect(asynchronous!.value).toBe(42);
-          expect(getAsyncValues()).toEqual({ "root:0": 42 });
+          expect(getAsyncValues()).toEqual({ "root:root:0": 42 });
         });
       });
     } finally {
@@ -570,7 +570,7 @@ describe("$async", () => {
     const owner = createOwner(null);
     const windowValues = window as unknown as Record<string, unknown>;
     windowValues[ASYNC_DATA_SSR_KEY] = {
-      "root:0": 10,
+      "root:root:0": 10,
     };
 
     let source: { value: number } | undefined;
@@ -615,7 +615,7 @@ describe("$async", () => {
     const owner = createOwner(null);
     const windowValues = window as unknown as Record<string, unknown>;
     windowValues[ASYNC_DATA_SSR_KEY] = {
-      "root:1": 99,
+      "root:root:1": 99,
     };
 
     let dependency: { value: number } | undefined;
@@ -821,7 +821,7 @@ describe("$async", () => {
       runWithOwner(owner, () => {
         expect(data.value).toBe("rendered");
         expect(getAsyncValues()).toEqual({
-          "root:0": "rendered",
+          "root:root:0": "rendered",
         });
       });
     } finally {
