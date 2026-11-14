@@ -286,16 +286,12 @@ describe("renderToServer modes", () => {
         throw new Error("async computed rejected");
       });
 
-      const root = createSSRNode("div");
-      const label = createSSRNode("div");
-      label.appendChild(createSSRText("test"));
-      root.appendChild(label);
-
-      const value = createSSRNode("div");
-      value.appendChild(createSSRText(String(count.value)));
-      root.appendChild(value);
-
-      return root as unknown as JSX.Element;
+      return (
+        <div>
+          <div>test</div>
+          <div>{count.value}</div>
+        </div>
+      );
     };
 
     const renderApp = () =>
