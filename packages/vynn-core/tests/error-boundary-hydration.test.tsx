@@ -114,6 +114,30 @@ describe("ErrorBoundary hydration", () => {
     expect(clientSiblingID).toBe(serverSiblingID);
   });
 
+  it("catches synchronous child render errors without catching its own fallback", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+
+    function ComponentWillThrow(): JSX.Element {
+      throw new Error("synchronous child failed");
+    }
+
+    const unmount = renderToDOM(
+      () => (
+        <ErrorBoundary fallback={(error) => <p>Handled: {error.message}</p>}>
+          <ComponentWillThrow />
+        </ErrorBoundary>
+      ),
+      host,
+    );
+
+    try {
+      expect(host.textContent).toContain("Handled: synchronous child failed");
+    } finally {
+      unmount();
+    }
+  });
+
   it("routes an async computed rejection to its nearest ErrorBoundary", async () => {
     const host = document.createElement("div");
     document.body.append(host);
