@@ -6,7 +6,7 @@ import {
 } from "../context/async-context";
 import { isServer } from "../context/is-server-context";
 import { isAsyncGetterFromLazy, registerPromiseFromLazy } from "../context/lazy-context";
-import { getOwner, runWithOwner } from "../life-cycle/owner";
+import { getOwner, getOwnerBoundaryHandler, runWithOwner } from "../life-cycle/owner";
 import { NotReadyError } from "./not-ready-error";
 import { withFakeAsyncApis } from "./fake-async";
 import { createReactiveEffect, untrack } from "./effect";
@@ -123,7 +123,7 @@ export function createAsyncResource<T>(
             hasPrevious,
           };
 
-          promise.then(
+          const settlement = promise.then(
             (value) => {
               if (currentVersion !== version) return;
 
@@ -157,6 +157,27 @@ export function createAsyncResource<T>(
               });
             },
           );
+
+          // Updating a resource notifies render effects synchronously. If one
+          // of those effects fails before its own boundary dispatch can finish,
+          // the error would otherwise reject this detached promise chain and
+          // become an unhandled rejection. Use the resource owner's boundary as
+          // a final dispatch point, preserving the normal uncaught-error path
+          // when no ErrorBoundary owns the resource.
+          void settlement.catch((error: unknown) => {
+            if (error instanceof NotReadyError || owner?.disposed) return;
+
+            const boundary = getOwnerBoundaryHandler("onError", owner);
+
+            if (error instanceof Error && boundary) {
+              boundary(error);
+              return;
+            }
+
+            queueMicrotask(() => {
+              throw error;
+            });
+          });
         } catch (error) {
           if (error instanceof NotReadyError) {
             record.value = {
