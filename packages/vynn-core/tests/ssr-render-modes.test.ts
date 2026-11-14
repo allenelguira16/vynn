@@ -282,7 +282,7 @@ describe("renderToServer modes", () => {
   it("catches async computed rejections after await in async and streaming SSR", async () => {
     const renderChild = () => {
       const count = $computed(async () => {
-        await Promise.resolve();
+        await new Promise<void>((resolve) => setTimeout(resolve, 10));
         throw new Error("async computed rejected");
       });
 
