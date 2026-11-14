@@ -1,5 +1,7 @@
 import type { JSX } from "../jsx-runtime";
 import {
+  enterErrorBoundary,
+  getErrorBoundary,
   getErrorBoundaryID,
   getErrorBoundaryValue,
   getErrorBoundaryValues,
@@ -34,36 +36,33 @@ export const ErrorBoundary = $cmpnt(function ErrorBoundary(props: {
 
   if (isServer()) {
     const values = getErrorBoundaryValues();
+    const parentErrorBoundary = getErrorBoundary();
 
-    try {
-      try {
-        return props.children;
-      } finally {
-        if (values) values[errorBoundaryID] = { status: "children" };
-      }
-    } catch (error) {
-      if (!(error instanceof Error)) throw error;
+    if (values) values[errorBoundaryID] = { status: "children" };
 
-      if (values)
-        values[errorBoundaryID] = {
-          status: "fallback",
-          message: error.message,
-          name: error.name,
-        };
+    const boundary = createSSRErrorBoundary(
+      errorBoundaryID,
+      (error) =>
+        resolveNode(() => props.fallback?.(error, () => undefined)) as unknown as SSR_NODE[],
+      () => resolveNode(() => props.children) as unknown as SSR_NODE[],
+      (error) => {
+        if (values) {
+          values[errorBoundaryID] = {
+            status: "fallback",
+            message: error.message,
+            name: error.name,
+          };
+        }
+      },
+      parentErrorBoundary,
+    );
 
-      return createSSRErrorBoundary(
-        errorBoundaryID,
-        () => {
-          return resolveNode(() =>
-            props.fallback?.(error, () => undefined),
-          ) as unknown as SSR_NODE[];
-        },
-        () => {
-          return resolveNode(() => props.children) as unknown as SSR_NODE[];
-        },
-        error,
-      ) as unknown as JSX.Element;
-    }
+    // Deferred SSR work may settle after this component has returned. Keep
+    // the boundary handler on its owner so nested SSR async nodes can report
+    // failures to this boundary while the renderer is resolving them.
+    enterErrorBoundary((error) => boundary.handleError(error));
+
+    return boundary as unknown as JSX.Element;
   }
 
   const error = $state<Error | undefined>(() => undefined);
