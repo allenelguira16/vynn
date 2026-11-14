@@ -13,8 +13,8 @@ export interface Owner {
   nodeCount: number;
   /** Stable component-tree identity used by async resource hydration. */
   componentID?: string;
-  nextComponentID: number;
-  nextAsyncResourceID: number;
+  nextComponentID?: number;
+  nextAsyncResourceID?: number;
   boundary?: OwnerBoundaryHandlers;
 }
 
@@ -104,7 +104,9 @@ export function createComponentOwner(parent = currentOwner): Owner {
   }
 
   if (componentParent) {
-    owner.componentID = `${componentParent.componentID}.${componentParent.nextComponentID++}`;
+    const index = componentParent.nextComponentID ?? 0;
+    componentParent.nextComponentID = index + 1;
+    owner.componentID = `${componentParent.componentID}.${index}`;
   } else {
     owner.componentID = "root";
   }
