@@ -1,8 +1,8 @@
 import { ASYNC_DATA_SSR_KEY } from "../const";
 import {
   getContext,
+  getOwner,
   getOwnerBoundaryHandler,
-  modifyContext,
   setContext,
   setOwnerBoundaryHandler,
 } from "../life-cycle/owner";
@@ -16,36 +16,7 @@ const ASYNC_VALUES = Symbol("vynn.async-values");
 
 type AsyncIdScope = {
   prefix: string;
-  next: number;
 };
-
-export type AsyncIDSnapshot = {
-  prefix: string;
-  next: number;
-};
-
-/** Capture the current hydration-ID cursor for an SSR boundary subtree. */
-export function getAsyncIDSnapshot(): AsyncIDSnapshot | undefined {
-  const scope = getContext<AsyncIdScope>(ASYNC_ID);
-
-  return scope ? { prefix: scope.prefix, next: scope.next } : undefined;
-}
-
-/**
- * Reserve IDs consumed by a subtree that is skipped during hydration because
- * its server render selected an error fallback.
- */
-export function restoreAsyncIDSnapshot(snapshot?: AsyncIDSnapshot): void {
-  if (!snapshot) return;
-
-  const scope = getContext<AsyncIdScope>(ASYNC_ID);
-  if (!scope || scope.prefix !== snapshot.prefix) return;
-
-  modifyContext<AsyncIdScope>(ASYNC_ID, (current) => ({
-    ...current,
-    next: Math.max(current.next, snapshot.next),
-  }));
-}
 
 export type AsyncHydrationValue<T = unknown> = {
   found: boolean;
@@ -71,7 +42,6 @@ export function enterAsyncBoundary<T>(boundary: AsyncBoundary<T>): void {
 export function initializeAsyncContext(): void {
   setContext<AsyncIdScope>(ASYNC_ID, {
     prefix: "root",
-    next: 0,
   });
   setContext<Record<string, unknown>>(ASYNC_VALUES, Object.create(null));
 }
@@ -85,7 +55,6 @@ export function initializeAsyncContext(): void {
 export function initializeLazyAsyncScope(lazyID: string): void {
   setContext<AsyncIdScope>(ASYNC_ID, {
     prefix: `lazy:${lazyID}`,
-    next: 0,
   });
 }
 
@@ -98,17 +67,21 @@ export function initializeLazyAsyncScope(lazyID: string): void {
  */
 export function getAsyncIDIfAvailable(): string | undefined {
   const scope = getContext<AsyncIdScope>(ASYNC_ID);
+  if (!scope) return undefined;
 
-  if (!scope) {
-    return undefined;
+  // Resource identity is local to the owning component. A skipped or failed
+  // sibling subtree therefore cannot shift the IDs assigned to later
+  // resources during hydration.
+  let owner = getOwner();
+
+  while (owner && owner.componentID === undefined) {
+    owner = owner.parent;
   }
 
-  modifyContext<AsyncIdScope>(ASYNC_ID, (current) => ({
-    ...current,
-    next: current.next + 1,
-  }));
+  if (!owner) return undefined;
 
-  return `${scope.prefix}:${scope.next}`;
+  const resourceIndex = owner.nextAsyncResourceID++;
+  return `${scope.prefix}:${owner.componentID}:${resourceIndex}`;
 }
 
 /**
