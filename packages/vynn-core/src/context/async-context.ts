@@ -25,10 +25,6 @@ export type AsyncHydrationValue<T = unknown> = {
   value: T | undefined;
 };
 
-export function isInsideAwaitBoundary(): boolean {
-  return getOwnerBoundaryHandler("onPending") !== undefined;
-}
-
 export function getAsyncBoundary<T = unknown>(): AsyncBoundary<T> | undefined {
   return getOwnerBoundaryHandler("onPending") as AsyncBoundary<T> | undefined;
 }
