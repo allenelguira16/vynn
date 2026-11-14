@@ -7,6 +7,7 @@ import {
   setContext,
   setOwnerBoundaryHandler,
 } from "../life-cycle/owner";
+import type { AsyncIDSnapshot } from "./async-context";
 import { isServer } from "./is-server-context";
 
 export type ErrorBoundary = (error: Error) => void;
@@ -34,6 +35,7 @@ export type ErrorBoundarySSRState =
       status: "fallback";
       name: string;
       message: string;
+      asyncIDSnapshot?: AsyncIDSnapshot;
     };
 
 export function initializeErrorBoundaryContext() {
