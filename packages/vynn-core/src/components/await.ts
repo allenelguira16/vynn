@@ -6,6 +6,7 @@ import { createBoundary } from "../life-cycle/boundary";
 import { isServer } from "../context/is-server-context";
 import { isPromiseFromLazy } from "../context/lazy-context";
 import { runWithOwner } from "../life-cycle/owner";
+import { NotReadyError } from "../reactivity_new/not-ready-error";
 import { $state } from "../reactivity_new/state";
 import { untrack } from "../reactivity_new/effect";
 import { $cmpnt } from "../render/$cmpnt";
@@ -41,25 +42,30 @@ export const Await = $cmpnt(function Await(props: {
     return runWithOwner(boundary.owner, () => {
       try {
         boundary.renderBranch("children", () => children());
-      } finally {
-        if (!pending.length) {
-          return boundary.renderBranch("children", () => resolveNode(children));
-        }
-
-        return createSSRAsync(
-          () =>
-            boundary.renderBranch(
-              "fallback",
-              () => resolveNode(fallback) as unknown as SSR_NODE[],
-            ),
-          () =>
-            boundary.renderBranch(
-              "children",
-              () => resolveNode(children) as unknown as SSR_NODE[],
-            ),
-          pending,
-        ) as unknown as JSX.Element;
+      } catch (error) {
+        // The pending handler records the promise before the resource suspends.
+        // Continue building the SSR async node instead of letting the internal
+        // NotReadyError escape the component boundary.
+        if (!(error instanceof NotReadyError)) throw error;
       }
+
+      if (!pending.length) {
+        return boundary.renderBranch("children", () => resolveNode(children));
+      }
+
+      return createSSRAsync(
+        () =>
+          boundary.renderBranch(
+            "fallback",
+            () => resolveNode(fallback) as unknown as SSR_NODE[],
+          ),
+        () =>
+          boundary.renderBranch(
+            "children",
+            () => resolveNode(children) as unknown as SSR_NODE[],
+          ),
+        pending,
+      ) as unknown as JSX.Element;
     });
   }
 
