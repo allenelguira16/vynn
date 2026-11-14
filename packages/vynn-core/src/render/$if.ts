@@ -17,10 +17,13 @@ type IfBranch = {
   shortCircuitText?: Text;
 };
 
+export type IfBranchRenderer = (active: boolean, render: () => Node[]) => Node[];
+
 export function $if(
   condition: () => unknown,
   consequent: () => JSX.Element,
   alternate?: () => JSX.Element,
+  renderBranch?: IfBranchRenderer,
 ): JSX.Element {
   const namespace = getCurrentDOMNamespace();
   const renderInNamespace = <T>(callback: () => T): T => withDOMNamespace(namespace, callback);
@@ -72,13 +75,15 @@ export function $if(
           : document.createTextNode(renderShortCircuitValue(value))
         : undefined;
 
-    const content = key
-      ? renderInNamespace(() => resolveNode(consequent))
-      : alternate
-        ? renderInNamespace(() => resolveNode(alternate))
-        : shortCircuitText
-          ? [shortCircuitText]
-          : [];
+    const renderContent = () =>
+      key
+        ? renderInNamespace(() => resolveNode(consequent))
+        : alternate
+          ? renderInNamespace(() => resolveNode(alternate))
+          : shortCircuitText
+            ? [shortCircuitText]
+            : [];
+    const content = renderBranch ? renderBranch(key, renderContent) : renderContent();
 
     const nodes = [start, ...content, end];
     const fragment = document.createDocumentFragment();
