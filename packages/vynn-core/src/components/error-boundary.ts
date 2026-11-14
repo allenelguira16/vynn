@@ -1,4 +1,5 @@
 import type { JSX } from "../jsx-runtime";
+import { getAsyncIDSnapshot, restoreAsyncIDSnapshot } from "../context/async-context";
 import {
   enterErrorBoundary,
   getErrorBoundary,
@@ -19,6 +20,7 @@ export type ErrorBoundarySSRState =
       status: "fallback";
       name: string;
       message: string;
+      asyncIDSnapshot?: ReturnType<typeof getAsyncIDSnapshot>;
     };
 
 export const ErrorBoundary = $cmpnt(function ErrorBoundary(props: {
@@ -44,6 +46,8 @@ export const ErrorBoundary = $cmpnt(function ErrorBoundary(props: {
     // during that evaluation capture this boundary as their error handler.
     // Resolve the child tree now, not later in the SSR renderer: async resource
     // IDs must be allocated in the same tree order as they are during hydration.
+    const asyncIDStart = getAsyncIDSnapshot();
+    let asyncIDEnd = asyncIDStart;
     let children: SSR_NODE[] = [];
 
     const boundary = createSSRErrorBoundary(
@@ -57,6 +61,7 @@ export const ErrorBoundary = $cmpnt(function ErrorBoundary(props: {
             status: "fallback",
             message: error.message,
             name: error.name,
+            asyncIDSnapshot: asyncIDEnd,
           };
         }
       },
@@ -67,11 +72,19 @@ export const ErrorBoundary = $cmpnt(function ErrorBoundary(props: {
     // a pending subtree as SSR_DEFERRED without delaying resource creation.
     enterErrorBoundary((error) => boundary.handleError(error));
 
+    let childError: unknown;
+
     try {
       children = resolveSSRChild(() => props.children) as unknown as SSR_NODE[];
     } catch (error) {
-      if (!(error instanceof Error)) throw error;
-      boundary.handleError(error);
+      childError = error;
+    } finally {
+      asyncIDEnd = getAsyncIDSnapshot();
+    }
+
+    if (childError !== undefined) {
+      if (!(childError instanceof Error)) throw childError;
+      boundary.handleError(childError);
     }
 
     return boundary as unknown as JSX.Element;
@@ -85,6 +98,10 @@ export const ErrorBoundary = $cmpnt(function ErrorBoundary(props: {
   });
 
   if (ssrData?.status === "fallback") {
+    // The browser skips the failed child subtree, but the server may already
+    // have assigned async hydration IDs to resources created inside it.
+    // Reserve those IDs so following siblings read their own serialized data.
+    restoreAsyncIDSnapshot(ssrData.asyncIDSnapshot);
     error.value = new Error(ssrData.message);
   }
 
