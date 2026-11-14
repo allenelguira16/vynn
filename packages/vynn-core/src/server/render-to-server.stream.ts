@@ -152,7 +152,10 @@ export function resolveStream(
       const children = await resolveSSRAsyncChildren(node);
       enqueuePatch(renderPatch(boundaryId, await resolve(children)));
     } catch (error) {
-      if (error instanceof Error && node.errorBoundary) {
+      // Blocking deferred failures intentionally bypass ErrorBoundary recovery.
+      if (error instanceof SSRDeferredError || error instanceof SSRBoundaryFailure) {
+        failStream(error.reason);
+      } else if (error instanceof Error && node.errorBoundary) {
         try {
           node.errorBoundary(error);
         } catch (boundaryError) {
