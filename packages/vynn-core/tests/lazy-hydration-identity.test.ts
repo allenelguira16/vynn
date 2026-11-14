@@ -27,7 +27,7 @@ describe("lazy hydration identities", () => {
   it("keeps lazy component loaders eager without consuming async hydration IDs", async () => {
     const owner = createOwner(null);
     const windowValues = window as unknown as Record<string, unknown>;
-    const serverSnapshot = { "lazy:0:0": "server-only-value" };
+    const serverSnapshot = { "lazy:0:root:0": "server-only-value" };
     windowValues[ASYNC_DATA_SSR_KEY] = serverSnapshot;
 
     let executions = 0;
@@ -56,7 +56,7 @@ describe("lazy hydration identities", () => {
 
         // A lazy module load must not consume an ID that belongs to a real
         // async resource rendered inside the loaded component.
-        expect(getAsyncID()).toBe("lazy:0:0");
+        expect(getAsyncID()).toBe("lazy:0:root:0");
 
         let boundaryPromise: Promise<unknown> | undefined;
         let readError: unknown;
@@ -160,15 +160,15 @@ describe("lazy hydration identities", () => {
       rootID = getAsyncID();
     });
 
-    expect(firstID).toBe("lazy:0:0");
-    expect(firstNextID).toBe("lazy:0:1");
-    expect(secondID).toBe("lazy:1:0");
-    expect(rootID).toBe("root:0");
+    expect(firstID).toBe("lazy:0:root:0");
+    expect(firstNextID).toBe("lazy:0:root:1");
+    expect(secondID).toBe("lazy:1:root:0");
+    expect(rootID).toBe("root:root:0");
 
     runWithOwner(root, () => {
       expect(getAsyncValues()).toMatchObject({
-        "lazy:0:0": "first",
-        "lazy:1:0": "second",
+        "lazy:0:root:0": "first",
+        "lazy:1:root:0": "second",
       });
     });
 
@@ -179,7 +179,7 @@ describe("lazy hydration identities", () => {
     const root = createOwner(null);
     const windowValues = window as unknown as Record<string, unknown>;
     windowValues[ASYNC_DATA_SSR_KEY] = {
-      "lazy:0:0": false,
+      "lazy:0:root:0": false,
     };
 
     let hydrationValue: ReturnType<typeof getAsyncValue<boolean>> | undefined;
