@@ -7,7 +7,7 @@ import {
 } from "../context/error-boundary-context";
 import { isServer } from "../context/is-server-context";
 import { createBoundary } from "../life-cycle/boundary";
-import { createOwner, disposeOwner, getOwner, runWithOwner, type Owner } from "../life-cycle/owner";
+import { createComponentOwner, disposeOwner, getOwner, runWithOwner, type Owner } from "../life-cycle/owner";
 import { NotReadyError } from "../reactivity_new/not-ready-error";
 import { $state } from "../reactivity_new/state";
 import { $cmpnt, $nodes } from "../render";
@@ -49,8 +49,8 @@ export const ErrorBoundary = $cmpnt(function ErrorBoundary(props: {
         ssrBoundary?.handleError(error);
       },
     });
-    const childrenOwner = createOwner(boundaryOwner);
-    const fallbackOwner = createOwner(currentOwner);
+    const childrenOwner = createComponentOwner(boundaryOwner);
+    const fallbackOwner = createComponentOwner(currentOwner);
     let children: SSR_NODE[] = [];
 
     // The SSR node owns the serialized boundary markers. The owner scope only
@@ -106,8 +106,10 @@ export const ErrorBoundary = $cmpnt(function ErrorBoundary(props: {
 
   // Branch owners are deliberately separate from the boundary scope:
   // children are beneath its error policy; fallback is its sibling.
-  let childrenOwner: Owner | undefined;
-  let fallbackOwner: Owner | undefined;
+  // Reserve both branch identities up front so a hydration pass that starts
+  // on the fallback does not reuse IDs consumed by a failed server child tree.
+  let childrenOwner: Owner | undefined = createComponentOwner(boundaryOwner);
+  let fallbackOwner: Owner | undefined = createComponentOwner(currentOwner);
 
   function disposeChildren(): void {
     if (childrenOwner && !childrenOwner.disposed) {
@@ -124,7 +126,7 @@ export const ErrorBoundary = $cmpnt(function ErrorBoundary(props: {
   }
 
   function renderChildren(): JSX.Element {
-    const owner = (childrenOwner ??= createOwner(boundaryOwner));
+    const owner = (childrenOwner ??= createComponentOwner(boundaryOwner));
 
     return runWithOwner(owner, () => {
       try {
@@ -144,7 +146,7 @@ export const ErrorBoundary = $cmpnt(function ErrorBoundary(props: {
   }
 
   function renderFallback(currentError: Error): JSX.Element {
-    const owner = (fallbackOwner ??= createOwner(currentOwner));
+    const owner = (fallbackOwner ??= createComponentOwner(currentOwner));
 
     return runWithOwner(
       owner,
