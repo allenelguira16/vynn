@@ -2,7 +2,7 @@ import type { JSX } from "../jsx-runtime";
 
 import { runAfterHydration } from "../client/hydration";
 import { isServer } from "../context/is-server-context";
-import { createOwner, runWithOwner } from "../life-cycle/owner";
+import { createComponentOwner, runWithOwner } from "../life-cycle/owner";
 import { untrack } from "../reactivity_new/effect";
 import {
   addUnmountListener,
@@ -32,7 +32,7 @@ export function $cmpnt<P>(Component: (props: P) => JSX.Element): (props?: P) => 
 
 export function $cmpnt<P>(Component: ((props?: P) => JSX.Element) | (() => JSX.Element)) {
   return (props?: P): JSX.Element => {
-    const owner = createOwner();
+    const owner = createComponentOwner();
     // owner.Component = Component;
     let marker: Node | undefined;
 
