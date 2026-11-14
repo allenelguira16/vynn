@@ -77,15 +77,13 @@ export const ErrorBoundary = $cmpnt(function ErrorBoundary(props: {
     error.value = new Error(ssrData.message);
   }
 
-  return $nodes(
-    () => {
+  return $nodes(() =>
+    boundary.renderBranch(error.value ? "fallback" : "children", () => {
       if (!error.value) {
         return props.children;
       }
 
-      return props.fallback?.(error.value!, () => (error.value = undefined));
-    },
-    undefined,
-    (render) => boundary.renderBranch(error.value ? "fallback" : "children", render),
+      return props.fallback?.(error.value, () => (error.value = undefined));
+    }),
   );
 });
