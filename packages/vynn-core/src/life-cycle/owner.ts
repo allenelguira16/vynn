@@ -1,3 +1,8 @@
+export interface OwnerBoundaryHandlers {
+  onError?: (error: Error) => void;
+  onPending?: (promise: Promise<unknown>) => void;
+}
+
 export interface Owner {
   parent: Owner | null;
   children: Owner[];
@@ -6,6 +11,7 @@ export interface Owner {
   disposed?: boolean;
   context: Map<string | symbol, unknown>;
   nodeCount: number;
+  boundary?: OwnerBoundaryHandlers;
 }
 
 let currentOwner: Owner | null = null;
@@ -17,6 +23,41 @@ let currentOwner: Owner | null = null;
  */
 export function getOwner(): Owner | null {
   return currentOwner;
+}
+
+/**
+ * Finds the nearest boundary handler of the requested kind in an owner's
+ * ancestry. Boundary handlers are runtime ownership metadata, not general
+ * user context values.
+ */
+export function getOwnerBoundaryHandler<K extends keyof OwnerBoundaryHandlers>(
+  key: K,
+  owner: Owner | null = currentOwner,
+): OwnerBoundaryHandlers[K] | undefined {
+  let current = owner;
+
+  while (current) {
+    const handler = current.boundary?.[key];
+    if (handler) return handler;
+
+    current = current.parent;
+  }
+
+  return undefined;
+}
+
+/**
+ * Installs or clears a boundary handler directly on an owner.
+ */
+export function setOwnerBoundaryHandler<K extends keyof OwnerBoundaryHandlers>(
+  key: K,
+  handler: OwnerBoundaryHandlers[K] | undefined,
+  owner: Owner | null = currentOwner,
+): void {
+  if (!owner) return;
+
+  const boundary = (owner.boundary ??= {});
+  boundary[key] = handler;
 }
 
 /**
