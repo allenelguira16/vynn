@@ -83,7 +83,7 @@ export const ErrorBoundary = $cmpnt(function ErrorBoundary(props: {
         return props.children;
       }
 
-      return props.fallback?.(error.value, () => (error.value = undefined));
+      return props.fallback?.(error.value!, () => (error.value = undefined));
     },
     undefined,
     (render) => boundary.renderBranch(error.value ? "fallback" : "children", render),
