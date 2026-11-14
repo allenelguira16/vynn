@@ -6,7 +6,7 @@ export const Template = (props: { title: string; children: JSX.Element; card?: b
       {props.card && (
         <div class="card shadow-sm w-full">
           <div class="card-body">
-            <h1 class="card-title text-2xl">{props.title}</h1>
+            <h1 class="card-title text-xl">{props.title}</h1>
             {props.children}
           </div>
         </div>
