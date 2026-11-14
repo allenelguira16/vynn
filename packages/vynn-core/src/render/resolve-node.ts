@@ -128,19 +128,45 @@ export class SSR_DEFERRED extends SSR_PENDING {
   }
 }
 
-/** An SSR error boundary whose children are rendered under its captured context. */
+/** An SSR error boundary whose children and fallback retain their owner scopes. */
 export class SSR_ERROR_BOUNDARY extends SSR_NODE {
-  readonly id: number;
+  private failure?: Error;
+  private streamErrorHandler?: (error: Error) => void;
   readonly children: () => SSR_NODE[];
-  readonly fallback: () => SSR_NODE[];
-  readonly error: Error;
+  readonly fallback: (error: Error) => SSR_NODE[];
 
-  constructor(id: number, fallback: () => SSR_NODE[], children: () => SSR_NODE[], error: Error) {
+  constructor(
+    public readonly id: number,
+    fallback: (error: Error) => SSR_NODE[],
+    children: () => SSR_NODE[],
+    private readonly onError?: (error: Error) => void,
+    readonly parentErrorBoundary?: ErrorBoundary,
+  ) {
     super();
-    this.id = id;
-    this.fallback = captureSSRRender(fallback);
-    this.children = captureSSRRender(children);
-    this.error = error;
+
+    const owner = getOwner();
+    const parentOwner = owner?.parent ?? null;
+    const namespace = getCurrentDOMNamespace();
+
+    this.children = captureSSRRender(children, owner, namespace);
+    this.fallback = (error) =>
+      runWithOwner(parentOwner, () => withDOMNamespace(namespace, () => fallback(error)));
+  }
+
+  get error(): Error | undefined {
+    return this.failure;
+  }
+
+  handleError(error: Error): void {
+    if (this.failure) return;
+
+    this.failure = error;
+    this.onError?.(error);
+    this.streamErrorHandler?.(error);
+  }
+
+  setStreamErrorHandler(handler: ((error: Error) => void) | undefined): void {
+    this.streamErrorHandler = handler;
   }
 }
 
@@ -148,20 +174,22 @@ export class SSR_ERROR_BOUNDARY extends SSR_NODE {
  * Captures the current owner and DOM namespace for work that may run after
  * the current synchronous render stack has completed.
  */
-function captureSSRRender(render: () => SSR_NODE[]): () => SSR_NODE[] {
-  const owner = getOwner();
-  const namespace = getCurrentDOMNamespace();
-
+function captureSSRRender(
+  render: () => SSR_NODE[],
+  owner = getOwner(),
+  namespace = getCurrentDOMNamespace(),
+): () => SSR_NODE[] {
   return () => runWithOwner(owner, () => withDOMNamespace(namespace, render));
 }
 
 export function createSSRErrorBoundary(
   id: number,
-  fallback: () => SSR_NODE[],
+  fallback: (error: Error) => SSR_NODE[],
   children: () => SSR_NODE[],
-  error: Error,
+  onError?: (error: Error) => void,
+  parentErrorBoundary?: ErrorBoundary,
 ): SSR_ERROR_BOUNDARY {
-  return new SSR_ERROR_BOUNDARY(id, fallback, children, error);
+  return new SSR_ERROR_BOUNDARY(id, fallback, children, onError, parentErrorBoundary);
 }
 
 export function createSSRNode(type: string): SSR_ELEMENT {
