@@ -59,12 +59,12 @@ export function createBoundary(options: BoundaryOptions = {}): BoundaryControlle
 
   function branchOwner(branch: BoundaryBranch): Owner {
     if (retainBranches) {
-      let branch = retainedOwners.get(arguments[0] as BoundaryBranch);
-      if (!branch) {
-        branch = createBranchOwner(arguments[0] as BoundaryBranch);
-        retainedOwners.set(arguments[0] as BoundaryBranch, branch);
-      }
-      return branch;
+      const retained = retainedOwners.get(branch);
+      if (retained) return retained;
+
+      const created = createBranchOwner(branch);
+      retainedOwners.set(branch, created);
+      return created;
     }
 
     if (activeBranch !== branch) {
