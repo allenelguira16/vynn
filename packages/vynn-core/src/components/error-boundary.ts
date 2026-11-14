@@ -78,12 +78,14 @@ export const ErrorBoundary = $cmpnt(function ErrorBoundary(props: {
   }
 
   return $nodes(() =>
-    boundary.renderBranch(error.value ? "fallback" : "children", () => {
-      if (!error.value) {
-        return props.children;
-      }
+    boundary.renderBranch(error.value ? "fallback" : "children", () =>
+      resolveNode(() => {
+        if (!error.value) {
+          return props.children;
+        }
 
-      return props.fallback?.(error.value, () => (error.value = undefined));
-    }),
+        return props.fallback?.(error.value, () => (error.value = undefined));
+      }) as unknown as JSX.Element,
+    ),
   );
 });
