@@ -101,7 +101,7 @@ export function createBoundary(options: BoundaryOptions = {}): BoundaryControlle
           return render();
         } catch (error) {
           if (!handleError(error, branch)) throw error;
-          return [] as T;
+          return [] as unknown as T;
         }
       });
     },
