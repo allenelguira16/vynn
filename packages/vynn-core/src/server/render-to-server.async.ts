@@ -13,6 +13,8 @@ import {
   resolveNode,
   SSRBoundaryFailure,
   SSRDeferredError,
+  resolveSSRAsyncChildren,
+  resolveSSRDeferredChildren,
 } from "../render/resolve-node";
 import {
   joinHTMLElements,
@@ -24,8 +26,12 @@ import {
 
 export async function resolveAsync(App: () => JSX.Element, owner: Owner): Promise<string> {
   async function resolveAsyncBoundary(node: SSR_ASYNC | SSR_DEFERRED): Promise<string> {
-    await Promise.all(node.promises);
-    return await resolve(node.children());
+    const children =
+      node instanceof SSR_ASYNC
+        ? await resolveSSRAsyncChildren(node)
+        : await resolveSSRDeferredChildren(node);
+
+    return await resolve(children);
   }
 
   async function resolveErrorBoundary(node: SSR_ERROR_BOUNDARY): Promise<string> {
