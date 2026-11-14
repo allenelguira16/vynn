@@ -101,10 +101,18 @@ export const Await = $cmpnt(function Await(props: {
     });
 
     try {
+      // Resolve each branch while its owner is active. $if only chooses and
+      // parks the resulting node ranges; it does not manage boundary scopes.
       const renderFallback = () =>
-        boundary.renderBranch("fallback", () => fallback());
+        boundary.renderBranch(
+          "fallback",
+          () => resolveNode(fallback) as unknown as JSX.Element,
+        );
       const renderChildren = () =>
-        boundary.renderBranch("children", () => children());
+        boundary.renderBranch(
+          "children",
+          () => resolveNode(children) as unknown as JSX.Element,
+        );
 
       return runWithOwner(boundary.owner, () =>
         $if(() => isPending.value, renderFallback, renderChildren),
