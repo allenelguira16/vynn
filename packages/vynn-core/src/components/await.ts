@@ -101,14 +101,13 @@ export const Await = $cmpnt(function Await(props: {
     });
 
     try {
+      const renderFallback = () =>
+        boundary.renderBranch("fallback", () => fallback());
+      const renderChildren = () =>
+        boundary.renderBranch("children", () => children());
+
       return runWithOwner(boundary.owner, () =>
-        $if(
-          () => isPending.value,
-          () => fallback(),
-          () => children(),
-          (active, render) =>
-            boundary.renderBranch(active ? "fallback" : "children", render),
-        ),
+        $if(() => isPending.value, renderFallback, renderChildren),
       );
     } finally {
       isResolved = true;
