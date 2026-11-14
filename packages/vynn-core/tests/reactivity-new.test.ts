@@ -86,6 +86,105 @@ describe("new reactivity API", () => {
     stop();
   });
 
+  it("evaluates synchronous computed getters eagerly", () => {
+    let getterRuns = 0;
+    const value = $computed(() => {
+      getterRuns++;
+      return 42;
+    });
+
+    expect(getterRuns).toBe(1);
+    expect(value.value).toBe(42);
+    expect(getterRuns).toBe(1);
+  });
+
+  it("starts async state, store, and computed initializers eagerly in an owner", async () => {
+    const owner = createOwner();
+    let stateRuns = 0;
+    let storeRuns = 0;
+    let computedRuns = 0;
+
+    const values = runWithOwner(owner, () => ({
+      state: $state(async () => {
+        stateRuns++;
+        return 42;
+      }),
+      store: $store(async () => {
+        storeRuns++;
+        return { count: 1 };
+      }),
+      computed: $computed(async () => {
+        computedRuns++;
+        return 84;
+      }),
+    }));
+
+    expect([stateRuns, storeRuns, computedRuns]).toEqual([1, 1, 1]);
+
+    await flushEffects();
+
+    expect(values.state.value).toBe(42);
+    expect(values.store.count).toBe(1);
+    expect(values.computed.value).toBe(84);
+
+    disposeOwner(owner);
+  });
+
+  it("suspends computed values when an async dependency refreshes", async () => {
+    const url = $state(() => "/first");
+    const resolvers = new Map<string, () => void>();
+
+    const state = $state(async () => {
+      const requestedUrl = url.value;
+      await new Promise<void>((resolve) => {
+        resolvers.set(requestedUrl, resolve);
+      });
+      return requestedUrl;
+    });
+    const computed = $computed(() => state.value.toUpperCase());
+
+    let initialPromise: Promise<unknown> | undefined;
+    try {
+      computed.value;
+    } catch (error) {
+      expect(error).toBeInstanceOf(NotReadyError);
+      initialPromise = (error as NotReadyError).promise;
+    }
+
+    expect(initialPromise).toBeDefined();
+    expect(isPending(state)).toBe(true);
+    expect(isPending(computed)).toBe(true);
+
+    resolvers.get("/first")?.();
+    await initialPromise;
+
+    expect(computed.value).toBe("/FIRST");
+    expect(isPending(state)).toBe(false);
+    expect(isPending(computed)).toBe(false);
+
+    url.value = "/second";
+
+    expect(isPending(state)).toBe(true);
+    expect(isPending(computed)).toBe(true);
+
+    let refreshPromise: Promise<unknown> | undefined;
+    try {
+      computed.value;
+    } catch (error) {
+      expect(error).toBeInstanceOf(NotReadyError);
+      refreshPromise = (error as NotReadyError).promise;
+    }
+
+    expect(refreshPromise).toBeDefined();
+
+    resolvers.get("/second")?.();
+    await refreshPromise;
+
+    expect(computed.value).toBe("/SECOND");
+    expect(isPending(state)).toBe(false);
+    expect(isPending(computed)).toBe(false);
+  });
+
   it("reacts to nested object changes, additions, deletion and iteration", async () => {
     const state = $store<{
       profile: { name: string };
@@ -207,7 +306,7 @@ describe("new reactivity API", () => {
     expect(store.count).toBe(2);
   });
 
-  it("does not reconcile a stale async-store snapshot while a refresh is pending", async () => {
+  it("suspends async store reads while a refresh is pending", async () => {
     const url = $state(() => "/first");
     const resolvers = new Map<string, () => void>();
 
@@ -241,19 +340,26 @@ describe("new reactivity API", () => {
 
     expect(store.results.map((item) => item.name)).toEqual(["Bulbasaur", "Ivysaur"]);
 
-    // Local sorting replaces the array while the resource retains its
-    // original resolved response as the stale-while-revalidate value.
+    // Local sorting updates the current store snapshot. A later successful
+    // refresh reconciles the new server response into the same root store.
     store.results = [...store.results].reverse();
     expect(store.results.map((item) => item.name)).toEqual(["Ivysaur", "Bulbasaur"]);
 
-    // Entering pending must not replay the previous API response over the
-    // user's local order.
+    // The resource no longer exposes its previous snapshot while refreshing.
     url.value = "/second";
     expect(isPending(store)).toBe(true);
-    expect(store.results.map((item) => item.name)).toEqual(["Ivysaur", "Bulbasaur"]);
 
+    let refreshPromise: Promise<unknown> | undefined;
+    try {
+      store.results;
+    } catch (error) {
+      expect(error).toBeInstanceOf(NotReadyError);
+      refreshPromise = (error as NotReadyError).promise;
+    }
+
+    expect(refreshPromise).toBeDefined();
     resolvers.get("/second")?.();
-    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    await refreshPromise;
 
     expect(store.results.map((item) => item.name)).toEqual(["Charmander", "Charmeleon"]);
     expect(isPending(store)).toBe(false);

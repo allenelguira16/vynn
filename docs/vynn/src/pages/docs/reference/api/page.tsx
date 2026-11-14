@@ -36,11 +36,10 @@ const ApiReferencePage = () => (
           </tr>
           <tr>
             <td>
-              <code>$computed()</code>, <code>Computed&lt;T&gt;</code>, <code>ComputedOptions</code>
+              <code>$computed()</code>, <code>Computed&lt;T&gt;</code>
             </td>
             <td>
-              Read-only derived values, including Promise-returning getters and lazy initial
-              evaluation.
+              Read-only derived values, including Promise-returning getters.
             </td>
           </tr>
           <tr>

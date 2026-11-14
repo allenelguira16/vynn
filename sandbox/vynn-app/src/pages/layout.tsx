@@ -13,8 +13,12 @@ export default function LayoutPage(props: PropsWithChildren) {
         <nav class="flex h-screen w-1/8">
           <ButtonPageList />
         </nav>
-        <div class="flex-1 overflow-auto h-screen p-4" ref={el}>
-          {props.children}
+        <div class="flex-1 overflow-auto h-screen p-4">
+          <div class="container mx-auto">
+            <div class="flex flex-col gap-8" ref={el}>
+              {props.children}
+            </div>
+          </div>
         </div>
       </div>
       <Portal mount={el}>

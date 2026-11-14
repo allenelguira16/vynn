@@ -12,9 +12,7 @@ export function $state<T>(initializer: () => T | Promise<T>): State<T> {
   }
 
   if (isAsyncFunction(initializer)) {
-    return createAsyncResource(initializer as () => Promise<T>, {
-      retainPrevious: true,
-    });
+    return createAsyncResource(initializer as () => Promise<T>);
   }
 
   return createCell(initializer() as T);

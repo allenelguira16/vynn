@@ -10,25 +10,15 @@ import { isAsyncFunction } from "./utils";
 
 export type Computed<T> = VynnReadonlyRef<T>;
 
-export type ComputedOptions = {
-  lazy?: boolean;
-};
-
-export function $computed<T>(getter: () => Promise<T>, options?: ComputedOptions): Computed<T>;
-export function $computed<T>(getter: () => T, options?: ComputedOptions): Computed<T>;
-export function $computed<T>(
-  getter: () => T | Promise<T>,
-  options: ComputedOptions = {},
-): Computed<T> {
+export function $computed<T>(getter: () => Promise<T>): Computed<T>;
+export function $computed<T>(getter: () => T): Computed<T>;
+export function $computed<T>(getter: () => T | Promise<T>): Computed<T> {
   if (typeof getter !== "function") {
     throw new TypeError("[vynn]: $computed() requires a getter function.");
   }
 
   if (isAsyncFunction(getter) || isAsyncGetterFromLazy(getter)) {
-    const resource = createAsyncResource(getter as () => Promise<T>, {
-      lazy: options.lazy ?? false,
-      retainPrevious: true,
-    });
+    const resource = createAsyncResource(getter as () => Promise<T>);
 
     const computed = markRef({
       get value(): T {
@@ -52,7 +42,7 @@ export function $computed<T>(
 
       if (dirty) computation.run();
 
-      if (pendingError && !hasValue) {
+      if (pendingError) {
         const boundary = getAsyncBoundary();
         boundary?.(pendingError.promise);
 
@@ -96,7 +86,6 @@ export function $computed<T>(
     },
     {
       phase: "render",
-      lazy: options.lazy ?? false,
       scheduler: () => {
         if (dirty) return;
         dirty = true;
@@ -109,7 +98,7 @@ export function $computed<T>(
     // A synchronous computed can still be waiting on an async dependency.
     // During SSR, force its first value read so the active Await boundary
     // captures that dependency and retries after it settles.
-    if (isServer() && pendingError && !hasValue) {
+    if (isServer() && pendingError) {
       void computed.value;
     }
 

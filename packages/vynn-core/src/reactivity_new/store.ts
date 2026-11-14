@@ -624,9 +624,7 @@ export function $store<T extends object>(
     return createReactiveObject(value) as Store<T>;
   }
 
-  const resource = createAsyncResource(initializer as () => Promise<T>, {
-    retainPrevious: true,
-  });
+  const resource = createAsyncResource(initializer as () => Promise<T>);
   const target = Object.create(null) as Record<PropertyKey, unknown>;
   const owner = getOwner();
 
@@ -638,10 +636,7 @@ export function $store<T extends object>(
 
   createReactiveEffect(
     () => {
-      // Retain the last resolved value for reads while refreshing, but do not
-      // reconcile that stale snapshot back into the mutable store. Doing so
-      // would overwrite local edits (for example, a user's current sort order)
-      // as soon as a new request enters its pending state.
+      // Do not reconcile until the current resource run has resolved.
       if (isPending(resource)) return;
 
       const nextValue = resource.value;

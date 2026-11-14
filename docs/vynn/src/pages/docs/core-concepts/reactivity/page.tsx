@@ -208,7 +208,7 @@ const ReactivityPage = () => (
       </li>
     </ul>
     <p>
-      Next, learn how dependency tracking behaves with async getters, lazy computed values, and
+      Next, learn how dependency tracking behaves with async getters, eager computed values, and
       nested stores in <a href="/docs/core-concepts/advanced-reactivity">Advanced reactivity</a>.
     </p>
   </article>

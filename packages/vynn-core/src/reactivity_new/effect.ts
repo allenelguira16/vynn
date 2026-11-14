@@ -19,7 +19,6 @@ export interface ReactiveEffect {
 
 export type ReactiveEffectOptions = {
   phase?: EffectPhase;
-  lazy?: boolean;
   owner?: Owner | null;
   scheduler?: () => void;
 };
@@ -299,7 +298,7 @@ export function createReactiveEffect(
     owner.cleanups.push(() => stopReactiveEffect(effect));
   }
 
-  if (!options.lazy) runEffect(effect);
+  runEffect(effect);
 
   return effect;
 }

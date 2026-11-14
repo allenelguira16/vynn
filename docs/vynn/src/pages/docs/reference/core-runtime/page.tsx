@@ -132,15 +132,6 @@ const CoreRuntimePage = () => (
           </tr>
           <tr>
             <td>
-              <code>ComputedOptions</code>
-            </td>
-            <td>
-              Options for computed values. Currently exposes <code>lazy</code> to defer the initial
-              evaluation until the first read.
-            </td>
-          </tr>
-          <tr>
-            <td>
               <code>FC&lt;P&gt;</code>
             </td>
             <td>

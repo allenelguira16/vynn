@@ -7,12 +7,12 @@ import {
 import { isServer } from "../context/is-server-context";
 import { isAsyncGetterFromLazy, registerPromiseFromLazy } from "../context/lazy-context";
 import { getOwner, runWithOwner } from "../life-cycle/owner";
-import { NotReadyError } from "./not-ready-error";
+import { createReactiveEffect } from "./effect";
 import { withFakeAsyncApis } from "./fake-async";
-import { createReactiveEffect, untrack } from "./effect";
+import { NotReadyError } from "./not-ready-error";
+import { isPending, registerPending } from "./pending";
 import { createCell, markRef, type VynnRef } from "./ref";
 import { isPromiseLike } from "./utils";
-import { isPending, registerPending } from "./pending";
 
 export { isPending };
 
@@ -21,8 +21,6 @@ type ResourceRecord<T> =
       status: "pending";
       promise: Promise<unknown>;
       version: number;
-      previous: T | undefined;
-      hasPrevious: boolean;
     }
   | {
       status: "resolved";
@@ -33,22 +31,11 @@ type ResourceRecord<T> =
       status: "rejected";
       error: unknown;
       version: number;
-      previous: T | undefined;
-      hasPrevious: boolean;
     };
 
 export type Async<T> = VynnRef<T>;
 
-export type ResourceOptions = {
-  lazy?: boolean;
-  retainPrevious?: boolean;
-};
-
-export function createAsyncResource<T>(
-  getter: () => Promise<T>,
-  options: ResourceOptions = {},
-): VynnRef<T> {
-  const { lazy = false, retainPrevious = true } = options;
+export function createAsyncResource<T>(getter: () => Promise<T>): VynnRef<T> {
   const owner = getOwner();
   const record = createCell<ResourceRecord<T> | undefined>(undefined);
 
@@ -56,7 +43,7 @@ export function createAsyncResource<T>(
   let started = false;
   const lazyGetter = isAsyncGetterFromLazy(getter);
 
-  let asyncID: string | undefined = lazyGetter || lazy ? undefined : getAsyncIDIfAvailable();
+  let asyncID: string | undefined = lazyGetter ? undefined : getAsyncIDIfAvailable();
   let asyncValues = getAsyncValues();
   let hasReadHydrationValue = false;
   let hydrationValue: { found: boolean; value: T | undefined } | undefined;
@@ -65,7 +52,7 @@ export function createAsyncResource<T>(
     if (started) return;
     started = true;
 
-    if (!lazyGetter && !lazy && asyncID === undefined) {
+    if (!lazyGetter && asyncID === undefined) {
       asyncID = getAsyncIDIfAvailable();
     }
 
@@ -74,18 +61,6 @@ export function createAsyncResource<T>(
     createReactiveEffect(
       () => {
         const currentVersion = ++version;
-        const previousRecord = untrack(() => record.value);
-        let previous: T | undefined;
-        let hasPrevious = false;
-
-        if (previousRecord?.status === "resolved") {
-          previous = previousRecord.value;
-          hasPrevious = true;
-        } else if (previousRecord?.status === "pending" || previousRecord?.status === "rejected") {
-          previous = previousRecord.previous;
-          hasPrevious = previousRecord.hasPrevious;
-        }
-
         try {
           if (!lazyGetter && asyncID !== undefined && !hasReadHydrationValue) {
             hydrationValue = getAsyncValue<T>(asyncID);
@@ -119,8 +94,6 @@ export function createAsyncResource<T>(
             status: "pending",
             promise,
             version: currentVersion,
-            previous,
-            hasPrevious,
           };
 
           promise.then(
@@ -141,8 +114,6 @@ export function createAsyncResource<T>(
                     status: "pending",
                     promise: error.promise,
                     version: currentVersion,
-                    previous,
-                    hasPrevious,
                   };
                   return;
                 }
@@ -151,8 +122,6 @@ export function createAsyncResource<T>(
                   status: "rejected",
                   error,
                   version: currentVersion,
-                  previous,
-                  hasPrevious,
                 };
               });
             },
@@ -163,8 +132,6 @@ export function createAsyncResource<T>(
               status: "pending",
               promise: error.promise,
               version: currentVersion,
-              previous,
-              hasPrevious,
             };
             return;
           }
@@ -173,8 +140,6 @@ export function createAsyncResource<T>(
             status: "rejected",
             error,
             version: currentVersion,
-            previous,
-            hasPrevious,
           };
         }
       },
@@ -193,8 +158,6 @@ export function createAsyncResource<T>(
       }
 
       if (current.status === "pending") {
-        if (retainPrevious && current.hasPrevious) return current.previous as T;
-
         const boundary = getAsyncBoundary();
 
         // Lazy components already defer their own server-rendered range.
@@ -226,9 +189,7 @@ export function createAsyncResource<T>(
     // During SSR, reading isPending() must participate in the same async
     // boundary as reading resource.value. Otherwise the server can serialize
     // a permanently pending UI state without waiting for the first result.
-    // Keep lazy resources lazy; ordinary resources suspend through Await and
-    // are checked again after their promise settles.
-    if (isServer() && !lazy) {
+    if (isServer()) {
       void resource.value;
     }
 
@@ -237,7 +198,7 @@ export function createAsyncResource<T>(
 
   // Ownerless module resources are activated by their first read so they can
   // acquire the request-local hydration scope of the render that consumes them.
-  if (!lazy && (owner !== null || asyncID !== undefined)) start();
+  if (owner !== null || asyncID !== undefined) start();
 
   return resource;
 }

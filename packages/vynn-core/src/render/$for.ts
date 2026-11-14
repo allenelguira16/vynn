@@ -2,8 +2,8 @@ import type { JSX } from "../types/jsx";
 
 import { isServer } from "../context/is-server-context";
 import { $computed } from "../reactivity_new/computed";
-import { $state, type State } from "../reactivity_new/state";
 import { untrack } from "../reactivity_new/effect";
+import { $state, type State } from "../reactivity_new/state";
 import { $nodes } from "./$nodes";
 import { getCurrentDOMNamespace, withDOMNamespace } from "./namespace";
 
@@ -21,20 +21,27 @@ export function $for<T>(
   const renderEach = (item: T, index: State<number>): JSX.Element =>
     withDOMNamespace(namespace, () => each(item, index));
 
-  const createRowNode = (index: State<number>): JSX.Element =>
+  const createRowNode = (item: T, index: State<number>): JSX.Element =>
     $nodes(() => {
-      // Resolve the row from the source array inside its own render effect.
-      // Async $store reconciliation can mutate an item in place while keeping
-      // its identity, so relying only on reads from a captured item is not
-      // enough to invalidate component props created from destructured values.
-      const currentItems = items();
-      const currentItem = currentItems[index.value];
-
-      return renderEach(currentItem, index);
+      // Keep each row associated with its matched item, not its current array
+      // position. Reordering then moves the existing row without invoking its
+      // component callback again or recreating component-local state.
+      //
+      // Reactive reads performed by the callback remain tracked here. When an
+      // item is mutated in place (for example, by async-store reconciliation),
+      // only the row that reads the changed property is refreshed.
+      return renderEach(item, index);
     });
 
   if (isServer()) {
-    return $nodes(() => items().map((item, i) => renderEach(item, $state(() => i))));
+    return $nodes(() =>
+      items().map((item, i) =>
+        renderEach(
+          item,
+          $state(() => i),
+        ),
+      ),
+    );
   }
 
   // const result = $state<JSX.Element[]>([]);
@@ -44,6 +51,15 @@ export function $for<T>(
 
   const value = $computed(() => {
     const newItems = items();
+
+    // The diff below is intentionally untracked, but the list itself must
+    // subscribe to its array structure and slots. Otherwise in-place store
+    // reconciliation can invalidate individual rows without updating the
+    // parent list to remove rows whose indexes no longer exist.
+    const newItemsLength = newItems.length;
+    for (let i = 0; i < newItemsLength; i++) {
+      void newItems[i];
+    }
 
     untrack(() => {
       /*
@@ -55,7 +71,7 @@ export function $for<T>(
 
           return {
             item: value,
-            node: createRowNode(indexState),
+            node: createRowNode(value, indexState),
             index: indexState,
           };
         });
@@ -121,7 +137,7 @@ export function $for<T>(
 
           newEntries.push({
             item: newItem,
-            node: createRowNode(indexState),
+            node: createRowNode(newItem, indexState),
             index: indexState,
           });
         }

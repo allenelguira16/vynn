@@ -26,7 +26,7 @@ function createRoutes(beforeLoad: () => Promise<never>): Route[] {
 }
 
 describe("SSR redirects under Await", () => {
-  it("streams a lazy async computed through Await without blocking initial HTML", async () => {
+  it("streams an eager async computed through Await without blocking initial HTML", async () => {
     let resolveValue!: (value: string) => void;
     let getterRuns = 0;
 
@@ -38,7 +38,6 @@ describe("SSR redirects under Await", () => {
             resolveValue = resolve;
           });
         },
-        { lazy: true },
       );
 
       return Await({

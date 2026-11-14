@@ -271,7 +271,6 @@ function RouteView<TContext>(
         throw error;
       }
     },
-    { lazy: true },
   );
 
   let scheduledRedirect: unknown;

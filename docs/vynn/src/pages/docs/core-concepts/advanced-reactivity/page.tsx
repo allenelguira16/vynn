@@ -51,39 +51,32 @@ const AdvancedReactivityPage = () => (
       the getter instead.
     </p>
 
-    <h2>Refreshes keep the last resolved value</h2>
+    <h2>Async refreshes suspend reads</h2>
     <p>
-      Async-derived state and computed values retain their most recent successful value while a
-      replacement request is pending. This lets a screen continue showing useful content while fresh
-      data is loading. A first read with no resolved value can suspend and be handled by an
-      <code>Await</code> boundary.
+      Async <code>$state()</code> and <code>$computed()</code> values do not return their previous
+      result while a replacement request is pending. Reading the value suspends until the current
+      run resolves. A synchronous <code>$computed()</code> that depends on an async value suspends
+      too, rather than exposing its previously calculated result.
     </p>
     <p>
-      Use <code>isPending()</code> when the UI needs to show that a value is refreshing without
-      replacing the current content:
+      Put async reads inside <code>Await</code>. After its children have rendered once, the boundary
+      keeps the existing DOM in place during later refreshes. This preserves the visible interface
+      without making stale resource values readable. <code>isPending()</code> reports whether the
+      current run is pending; it does not provide a previous value.
     </p>
     <CodeBlock
       lang="tsx"
       code={
-        'import { Await, $state, isPending } from "vynn";\n\nfunction RefreshingProfile() {\n  const profile = $state(async () => {\n    const response = await fetch("/api/profile");\n    if (!response.ok) throw new Error("Could not load profile.");\n    return (await response.json()) as { name: string };\n  });\n\n  return (\n    <Await fallback={<p>Loading profile...</p>}>\n      <section>\n        <p>{profile.value.name}</p>\n        {isPending(profile) && <span>Refreshing...</span>}\n      </section>\n    </Await>\n  );\n}'
+        'import { Await, $computed, $state } from "vynn";\n\nfunction ProfileSummary() {\n  const userId = $state("42");\n  const profile = $computed(async () => {\n    const id = userId.value;\n    const response = await fetch("/api/users/" + id);\n    if (!response.ok) throw new Error("Could not load profile.");\n    return (await response.json()) as { name: string };\n  });\n\n  return (\n    <Await fallback={<p>Loading profile...</p>}>\n      <p>{profile.value.name}</p>\n    </Await>\n  );\n}'
       }
     />
 
-    <h2>Use lazy computed values when useful</h2>
+    <h2>Computed values evaluate eagerly</h2>
     <p>
-      Computed values evaluate eagerly by default. Pass <code>{"{ lazy: true }"}</code> to defer the
-      first evaluation until the value is read. This can be useful for expensive derived work that
-      may never be needed on a particular route or screen.
-    </p>
-    <CodeBlock
-      lang="tsx"
-      code={
-        'import { $computed, $state } from "vynn";\n\nconst data = $state({ value: 10 });\nconst report = $computed(() => buildExpensiveReport(data.value), { lazy: true });\n\n// The getter starts when report.value is first read.\nconst firstSection = report.value.sections[0];'
-      }
-    />
-    <p>
-      Lazy evaluation changes when the first computation starts; it does not turn the computed value
-      into writable state. The value remains read-only.
+      A synchronous <code>$computed()</code> getter runs when the computed value is created. Async
+      computed getters also start immediately when created inside an active owner, such as a
+      component. There is no per-computed lazy option, so create expensive derived values only in
+      the parts of the application that need them.
     </p>
 
     <h2>Stores track structure as well as values</h2>

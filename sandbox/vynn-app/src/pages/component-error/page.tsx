@@ -19,7 +19,22 @@ function ComponentWillThrow(): JSX.Element {
   );
 }
 
-function ComponentWillThrowLater(): JSX.Element {
+function ComponentWillThrowAfterAsync(): JSX.Element {
+  const count = $computed(async () => {
+    // throw new Error("ComponentWillThrowAfterAsync catched, please retry again");
+    await sleep(100);
+
+    return 0;
+  });
+
+  return (
+    <div>
+      <div>Count: {count.value}</div>
+    </div>
+  );
+}
+
+function ComponentWillThrowAfterCount(): JSX.Element {
   const baseCount = $state(() => 0);
   const count = $computed(async () => {
     const count = baseCount.value;
@@ -30,7 +45,7 @@ function ComponentWillThrowLater(): JSX.Element {
   });
 
   const willThrow = () => {
-    throw new Error("ComponentWIllThrowLater catched, please retry again");
+    throw new Error("ComponentWillThrowAfterCount catched, please retry again");
   };
 
   return (
@@ -51,42 +66,68 @@ function ComponentWillThrowLater(): JSX.Element {
 export default function ComponentError() {
   return (
     <Template title="Error Boundary">
-      <ErrorBoundary
-        fallback={(error, reset) => (
-          <div>
-            <p>{String(error)}</p>
-            <button
-              class="btn"
-              onClick={() => {
-                console.log("hi?");
-                reset();
-              }}
-            >
-              Try Again
-            </button>
-          </div>
-        )}
-      >
-        <ComponentWillThrow />
-      </ErrorBoundary>
-      <ErrorBoundary
-        fallback={(error, reset) => (
-          <div>
-            <p>{String(error)}</p>
-            <button
-              class="btn"
-              onClick={() => {
-                console.log("hi!");
-                reset();
-              }}
-            >
-              Try Again
-            </button>
-          </div>
-        )}
-      >
-        <ComponentWillThrowLater />
-      </ErrorBoundary>
+      <div class="flex gap-4">
+        <Template title="ComponentWillThrow" card>
+          <ErrorBoundary
+            fallback={(error, reset) => (
+              <div>
+                <p>{String(error)}</p>
+                <button
+                  class="btn"
+                  onClick={() => {
+                    console.log("hi?");
+                    reset();
+                  }}
+                >
+                  Try Again
+                </button>
+              </div>
+            )}
+          >
+            <ComponentWillThrow />
+          </ErrorBoundary>
+        </Template>
+        <Template title="ComponentWillThrowAfterAsync" card>
+          <ErrorBoundary
+            fallback={(error, reset) => (
+              <div>
+                <p>{String(error)}</p>
+                <button
+                  class="btn"
+                  onClick={() => {
+                    console.log("hi~");
+                    reset();
+                  }}
+                >
+                  Try Again
+                </button>
+              </div>
+            )}
+          >
+            <ComponentWillThrowAfterAsync />
+          </ErrorBoundary>
+        </Template>
+        <Template title="ComponentWillThrowAfterCount" card>
+          <ErrorBoundary
+            fallback={(error, reset) => (
+              <div>
+                <p>{String(error)}</p>
+                <button
+                  class="btn"
+                  onClick={() => {
+                    console.log("hi!");
+                    reset();
+                  }}
+                >
+                  Try Again
+                </button>
+              </div>
+            )}
+          >
+            <ComponentWillThrowAfterCount />
+          </ErrorBoundary>
+        </Template>
+      </div>
     </Template>
   );
 }

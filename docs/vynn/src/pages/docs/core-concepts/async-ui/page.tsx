@@ -104,21 +104,28 @@ const AsyncUiPage = () => (
       looking at them.
     </p>
 
-    <h2>Show refresh state without hiding content</h2>
+    <h2>What happens during a refresh</h2>
     <p>
-      Async-derived values retain their most recent resolved value while a new request is pending.
-      Use <code>isPending()</code> to show a small refresh indicator while keeping the existing
-      value on screen.
+      Async resources do not retain their previous resolved value. A read made while a replacement
+      request is pending suspends until that request resolves. You can use <code>isPending()</code>
+      to inspect the resource status, but it does not make the old value available.
+    </p>
+    <p>
+      An <code>Await</code> boundary behaves differently from the resource: after its children have
+      rendered successfully, it keeps that existing DOM in place during later refreshes. The
+      fallback is used for the initial load, while the refreshed value becomes available when the
+      request completes.
     </p>
     <CodeBlock
       lang="tsx"
       code={
-        'import { Await, $state, isPending } from "vynn";\n\nfunction WeatherSummary() {\n  const weather = $state(async () => {\n    const response = await fetch("/api/weather");\n    if (!response.ok) throw new Error("Weather is unavailable.");\n    return (await response.json()) as { summary: string };\n  });\n\n  return (\n    <Await fallback={<p>Loading weather...</p>}>\n      <section>\n        <p>{weather.value.summary}</p>\n        {isPending(weather) && <span>Updating...</span>}\n      </section>\n    </Await>\n  );\n}'
+        'import { Await, $state } from "vynn";\n\nfunction WeatherSummary() {\n  const weather = $state(async () => {\n    const response = await fetch("/api/weather");\n    if (!response.ok) throw new Error("Weather is unavailable.");\n    return (await response.json()) as { summary: string };\n  });\n\n  return (\n    <Await fallback={<p>Loading weather...</p>}>\n      <section>\n        <p>{weather.value.summary}</p>\n      </section>\n    </Await>\n  );\n}'
       }
     />
     <p>
-      A first read has no previous value to return, so it can still suspend. Place that first read
-      inside an <code>Await</code> boundary when the component needs a loading fallback.
+      Do not rely on <code>resource.value</code> to return the previous result during a refresh. When
+      an application needs cached data to remain readable, model that snapshot explicitly in
+      separate state.
     </p>
 
     <h2>Derive async values from state</h2>
