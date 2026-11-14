@@ -165,7 +165,7 @@ export function createAsyncResource<T>(
           // a final dispatch point, preserving the normal uncaught-error path
           // when no ErrorBoundary owns the resource.
           void settlement.catch((error: unknown) => {
-            if (error instanceof NotReadyError || owner?.disposed) return;
+            if (error instanceof NotReadyError) return;
 
             const boundary = getOwnerBoundaryHandler("onError", owner);
 
