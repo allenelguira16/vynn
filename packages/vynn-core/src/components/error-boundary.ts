@@ -1,14 +1,12 @@
 import type { JSX } from "../jsx-runtime";
-import type { Owner } from "../life-cycle/owner";
-
 import {
-  enterErrorBoundary,
   getErrorBoundaryID,
   getErrorBoundaryValue,
   getErrorBoundaryValues,
 } from "../context/error-boundary-context";
 import { isServer } from "../context/is-server-context";
-import { createOwner, disposeOwner, getOwner, runWithOwner } from "../life-cycle/owner";
+import { createBoundary } from "../life-cycle/boundary";
+import { getOwner, runWithOwner } from "../life-cycle/owner";
 import { $state } from "../reactivity_new/state";
 import { $cmpnt, $nodes } from "../render";
 import { createSSRErrorBoundary, resolveNode, SSR_NODE } from "../render/resolve-node";
@@ -69,30 +67,25 @@ export const ErrorBoundary = $cmpnt(function ErrorBoundary(props: {
   }
 
   const error = $state<Error | undefined>(() => undefined);
-
-  enterErrorBoundary((newError) => {
-    error.value = newError;
+  const boundary = createBoundary({
+    onError: (newError) => {
+      error.value = newError;
+    },
   });
-
-  let viewOwner: Owner | undefined;
 
   if (ssrData?.status === "fallback") {
     error.value = new Error(ssrData.message);
   }
 
-  return $nodes(() => {
-    if (viewOwner) {
-      disposeOwner(viewOwner);
-      viewOwner = undefined;
-    }
-    viewOwner ??= createOwner();
-
-    return runWithOwner(viewOwner, () => {
+  return $nodes(
+    () => {
       if (!error.value) {
         return props.children;
       }
 
-      return props.fallback?.(error.value!, () => (error.value = undefined));
-    });
-  });
+      return props.fallback?.(error.value, () => (error.value = undefined));
+    },
+    undefined,
+    (render) => boundary.renderBranch(error.value ? "fallback" : "children", render),
+  );
 });
