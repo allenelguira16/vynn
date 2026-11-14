@@ -54,7 +54,7 @@ function createHeadContext(): HeadContext {
 }
 
 /** Returns the head registry associated with the current owner, when present. */
-export function getOptionalHeadContext(): HeadContext | undefined {
+function getOptionalHeadContext(): HeadContext | undefined {
   return getContext<HeadContext>(HEAD_CONTEXT);
 }
 
