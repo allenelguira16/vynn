@@ -303,6 +303,9 @@ describe("renderToServer modes", () => {
     const asyncResult = await renderToServer(renderApp, "async");
     expect(asyncResult.body).toContain("Caught: async computed rejected");
     expect(asyncResult.body).not.toContain("test");
+    expect(asyncResult.body).toContain(
+      '"asyncIDSnapshot":{"prefix":"root","next":1}',
+    );
 
     const streamResult = renderToServer(renderApp, "stream");
     const reader = streamResult.body.getReader();
