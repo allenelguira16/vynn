@@ -5,6 +5,7 @@ import {
   getOwnerBoundaryHandler,
   setContext,
   setOwnerBoundaryHandler,
+  type Owner,
 } from "../life-cycle/owner";
 import { deserializeServerFunctionValue } from "../server-functions/serialization";
 import { isServer } from "./is-server-context";
@@ -16,6 +17,7 @@ const ASYNC_VALUES = Symbol("vynn.async-values");
 
 type AsyncIdScope = {
   prefix: string;
+  owner: Owner;
 };
 
 export type AsyncHydrationValue<T = unknown> = {
@@ -40,8 +42,12 @@ export function enterAsyncBoundary<T>(boundary: AsyncBoundary<T>): void {
 }
 
 export function initializeAsyncContext(): void {
+  const owner = getOwner();
+  if (!owner) return;
+
   setContext<AsyncIdScope>(ASYNC_ID, {
     prefix: "root",
+    owner,
   });
   setContext<Record<string, unknown>>(ASYNC_VALUES, Object.create(null));
 }
@@ -53,8 +59,12 @@ export function initializeAsyncContext(): void {
  * their own prefix. Their local IDs are assigned by their component owners.
  */
 export function initializeLazyAsyncScope(lazyID: string): void {
+  const owner = getOwner();
+  if (!owner) return;
+
   setContext<AsyncIdScope>(ASYNC_ID, {
     prefix: `lazy:${lazyID}`,
+    owner,
   });
 }
 
@@ -72,18 +82,39 @@ export function getAsyncIDIfAvailable(): string | undefined {
   // Resource identity is local to the owning component. A skipped or failed
   // sibling subtree therefore cannot shift the IDs assigned to later
   // resources during hydration.
-  let owner = getOwner();
+  let componentOwner = getOwner();
 
-  while (owner && owner.componentID === undefined) {
-    owner = owner.parent;
+  while (componentOwner && componentOwner.componentID === undefined) {
+    componentOwner = componentOwner.parent;
   }
 
-  if (!owner) return undefined;
+  // Only use a descendant component owner as the resource counter. If the
+  // current owner is the lazy scope owner itself (or an ordinary owner inside
+  // that scope), keep the counter local to the scope instead.
+  let resourceOwner = scope.owner;
 
-  const resourceIndex = owner.nextAsyncResourceID ?? 0;
-  owner.nextAsyncResourceID = resourceIndex + 1;
+  if (componentOwner && componentOwner !== scope.owner) {
+    let ancestor: Owner | null = componentOwner;
 
-  return `${scope.prefix}:${owner.componentID}:${resourceIndex}`;
+    while (ancestor && ancestor !== scope.owner) {
+      ancestor = ancestor.parent;
+    }
+
+    if (ancestor === scope.owner) {
+      resourceOwner = componentOwner;
+    }
+  }
+
+  let identityOwner: Owner | null = resourceOwner;
+
+  while (identityOwner && identityOwner.componentID === undefined) {
+    identityOwner = identityOwner.parent;
+  }
+
+  const resourceIndex = resourceOwner.nextAsyncResourceID ?? 0;
+  resourceOwner.nextAsyncResourceID = resourceIndex + 1;
+
+  return `${scope.prefix}:${identityOwner?.componentID ?? "root"}:${resourceIndex}`;
 }
 
 /**
