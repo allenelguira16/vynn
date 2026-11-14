@@ -5,7 +5,7 @@ import { getErrorBoundary } from "../context/error-boundary-context";
 import { createBoundary } from "../life-cycle/boundary";
 import { isServer } from "../context/is-server-context";
 import { isPromiseFromLazy } from "../context/lazy-context";
-import { runWithOwner } from "../life-cycle/owner";
+import { createOwner, getOwner, runWithOwner, type Owner } from "../life-cycle/owner";
 import { NotReadyError } from "../reactivity_new/not-ready-error";
 import { $state } from "../reactivity_new/state";
 import { untrack } from "../reactivity_new/effect";
@@ -30,38 +30,40 @@ export const Await = $cmpnt(function Await(props: {
 }): JSX.Element {
   const fallback = memo(() => props.fallback);
   const children = memo(() => props.children);
-  const boundary = createBoundary({ retainBranches: true });
+  const parentOwner = getOwner();
 
   if (isServer()) {
-    const pending: Promise<any>[] = [];
-
-    boundary.setPendingHandler((promise) => {
-      pending.push(promise);
+    const pending: Promise<unknown>[] = [];
+    const boundaryOwner = createBoundary({
+      onPending(promise) {
+        pending.push(promise);
+      },
     });
+    const childrenOwner = createOwner(boundaryOwner);
+    let fallbackOwner: Owner | undefined;
 
-    return runWithOwner(boundary.owner, () => {
+    return runWithOwner(childrenOwner, () => {
       try {
-        boundary.renderBranch("children", () => children());
+        // Preserve the initial child evaluation in the boundary's scope. It
+        // may register pending work before resolveNode materializes the tree.
+        children();
       } catch (error) {
-        // The pending handler records the promise before the resource suspends.
-        // Continue building the SSR async node instead of letting the internal
-        // NotReadyError escape the component boundary.
         if (!(error instanceof NotReadyError)) throw error;
       }
 
       if (!pending.length) {
-        return boundary.renderBranch("children", () => resolveNode(children));
+        return resolveNode(children) as unknown as JSX.Element;
       }
 
       return createSSRAsync(
         () =>
-          boundary.renderBranch(
-            "fallback",
+          runWithOwner(
+            (fallbackOwner ??= createOwner(parentOwner)),
             () => resolveNode(fallback) as unknown as SSR_NODE[],
           ),
         () =>
-          boundary.renderBranch(
-            "children",
+          runWithOwner(
+            childrenOwner,
             () => resolveNode(children) as unknown as SSR_NODE[],
           ),
         pending,
@@ -73,48 +75,49 @@ export const Await = $cmpnt(function Await(props: {
     let isResolved = false;
     const isPending = $state(() => false);
     const errorBoundary = getErrorBoundary();
-
-    boundary.setPendingHandler((promise) => {
-      // Ignore lazy imports only while their server-rendered range is being claimed.
-      // Lazy imports started by later client-side navigation must show the fallback.
-      if (!isResolved && (!isPromiseFromLazy(promise) || !isHydrationClaimActive())) {
-        isPending.value = true;
-      }
-
-      const settle = () => {
-        isPending.value = false;
-      };
-
-      // Observe both outcomes. A rejected child resource remains rejected and
-      // is surfaced when the children render again; this handler only settles
-      // Await's pending bookkeeping.
-      void promise.then(settle, settle).catch((error: unknown) => {
-        if (error instanceof Error && errorBoundary) {
-          errorBoundary(error);
-          return;
+    const boundaryOwner = createBoundary({
+      onPending(promise) {
+        // Ignore lazy imports only while their server-rendered range is being claimed.
+        // Lazy imports started by later client-side navigation must show the fallback.
+        if (!isResolved && (!isPromiseFromLazy(promise) || !isHydrationClaimActive())) {
+          isPending.value = true;
         }
 
-        queueMicrotask(() => {
-          throw error;
+        const settle = () => {
+          isPending.value = false;
+        };
+
+        // Observe both outcomes. A rejected child resource remains rejected and
+        // is surfaced when the children render again; this handler only settles
+        // Await's pending bookkeeping.
+        void promise.then(settle, settle).catch((error: unknown) => {
+          if (error instanceof Error && errorBoundary) {
+            errorBoundary(error);
+            return;
+          }
+
+          queueMicrotask(() => {
+            throw error;
+          });
         });
-      });
+      },
     });
 
-    try {
-      // Resolve each branch while its owner is active. $if only chooses and
-      // parks the resulting node ranges; it does not manage boundary scopes.
-      const renderFallback = () =>
-        boundary.renderBranch(
-          "fallback",
-          () => resolveNode(fallback) as unknown as JSX.Element,
-        );
-      const renderChildren = () =>
-        boundary.renderBranch(
-          "children",
-          () => resolveNode(children) as unknown as JSX.Element,
-        );
+    // Await owns two independent scopes: children inherit its pending policy,
+    // while fallback content is a sibling and cannot suspend this same Await.
+    const childrenOwner = createOwner(boundaryOwner);
+    let fallbackOwner: Owner | undefined;
 
-      return runWithOwner(boundary.owner, () =>
+    const renderFallback = () =>
+      runWithOwner(
+        (fallbackOwner ??= createOwner(parentOwner)),
+        () => resolveNode(fallback) as unknown as JSX.Element,
+      );
+    const renderChildren = () =>
+      runWithOwner(childrenOwner, () => resolveNode(children) as unknown as JSX.Element);
+
+    try {
+      return runWithOwner(parentOwner, () =>
         $if(() => isPending.value, renderFallback, renderChildren),
       );
     } finally {
