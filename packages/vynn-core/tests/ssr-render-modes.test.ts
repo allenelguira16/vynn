@@ -10,6 +10,7 @@ import {
   createSsrHandlerCode,
 } from "../../vite-plugin/src/plugins/app/documents.ts";
 import { ErrorBoundary } from "../src/components/error-boundary";
+import { $computed } from "../src/reactivity_new/computed";
 import { lazy } from "../src/components/lazy";
 import { registerSsrModule } from "../src/context/ssr-module-context";
 import { createOwner, disposeOwner, getOwner, runWithOwner } from "../src/life-cycle/owner";
@@ -276,6 +277,50 @@ describe("renderToServer modes", () => {
 
     expect(rendered.body).toContain("Caught: async render failed");
     expect(rendered.body).toContain("$EBD");
+  });
+
+  it("catches async computed rejections after await in async and streaming SSR", async () => {
+    const renderChild = () => {
+      const count = $computed(async () => {
+        await Promise.resolve();
+        throw new Error("async computed rejected");
+      });
+
+      const root = createSSRNode("div");
+      const label = createSSRNode("div");
+      label.appendChild(createSSRText("test"));
+      root.appendChild(label);
+
+      const value = createSSRNode("div");
+      value.appendChild(createSSRText(String(count.value)));
+      root.appendChild(value);
+
+      return root as unknown as JSX.Element;
+    };
+
+    const renderApp = () =>
+      ErrorBoundary({
+        children: renderChild as unknown as JSX.Element,
+        fallback: (error) => `Caught: ${error.message}`,
+      });
+
+    const asyncResult = await renderToServer(renderApp, "async");
+    expect(asyncResult.body).toContain("Caught: async computed rejected");
+    expect(asyncResult.body).not.toContain("test");
+
+    const streamResult = renderToServer(renderApp, "stream");
+    const reader = streamResult.body.getReader();
+    const chunks: string[] = [];
+
+    while (true) {
+      const result = await reader.read();
+      if (result.done) break;
+      chunks.push(new TextDecoder().decode(result.value));
+    }
+
+    const streamedHTML = chunks.join("");
+    expect(streamedHTML).toContain("Caught: async computed rejected");
+    expect(streamedHTML).not.toContain("test");
   });
 
   it("routes guarded child render errors to ErrorBoundary after the guard resolves", async () => {
