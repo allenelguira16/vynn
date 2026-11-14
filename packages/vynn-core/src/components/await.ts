@@ -5,7 +5,7 @@ import { getErrorBoundary } from "../context/error-boundary-context";
 import { createBoundary } from "../life-cycle/boundary";
 import { isServer } from "../context/is-server-context";
 import { isPromiseFromLazy } from "../context/lazy-context";
-import { createOwner, getOwner, runWithOwner, type Owner } from "../life-cycle/owner";
+import { createComponentOwner, getOwner, runWithOwner } from "../life-cycle/owner";
 import { NotReadyError } from "../reactivity_new/not-ready-error";
 import { $state } from "../reactivity_new/state";
 import { untrack } from "../reactivity_new/effect";
@@ -39,8 +39,11 @@ export const Await = $cmpnt(function Await(props: {
         pending.push(promise);
       },
     });
-    const childrenOwner = createOwner(boundaryOwner);
-    let fallbackOwner: Owner | undefined;
+    // Allocate both branch identities before rendering either branch. A server
+    // pass that falls back and a client hydration pass that skips the children
+    // must still assign the fallback subtree the same component identity.
+    const childrenOwner = createComponentOwner(boundaryOwner);
+    const fallbackOwner = createComponentOwner(parentOwner);
 
     return runWithOwner(childrenOwner, () => {
       try {
@@ -58,7 +61,7 @@ export const Await = $cmpnt(function Await(props: {
       return createSSRAsync(
         () =>
           runWithOwner(
-            (fallbackOwner ??= createOwner(parentOwner)),
+            fallbackOwner,
             () => resolveNode(fallback) as unknown as SSR_NODE[],
           ),
         () =>
@@ -105,12 +108,14 @@ export const Await = $cmpnt(function Await(props: {
 
     // Await owns two independent scopes: children inherit its pending policy,
     // while fallback content is a sibling and cannot suspend this same Await.
-    const childrenOwner = createOwner(boundaryOwner);
-    let fallbackOwner: Owner | undefined;
+    // Keep both branch identities stable across SSR and hydration, even
+    // when the initial client pass starts directly in the fallback branch.
+    const childrenOwner = createComponentOwner(boundaryOwner);
+    const fallbackOwner = createComponentOwner(parentOwner);
 
     const renderFallback = () =>
       runWithOwner(
-        (fallbackOwner ??= createOwner(parentOwner)),
+        fallbackOwner,
         () => resolveNode(fallback) as unknown as JSX.Element,
       );
     const renderChildren = () =>
