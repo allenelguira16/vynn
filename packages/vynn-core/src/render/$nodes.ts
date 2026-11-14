@@ -10,9 +10,12 @@ import { resolveNode, resolveSSRChild } from "./resolve-node";
 // This allows an outer region to clean up nodes inserted later by nested regions.
 const rangeEndByStart = new WeakMap<Node, Node>();
 
+export type NodesRenderScope = (render: () => Node[]) => Node[];
+
 export function $nodes(
   child: () => JSX.Element,
   existingRange?: ServerRenderedLazyRange,
+  renderScope?: NodesRenderScope,
 ): JSX.Element {
   const namespace = getCurrentDOMNamespace();
   const renderChild = () => withDOMNamespace(namespace, child);
@@ -32,7 +35,8 @@ export function $nodes(
 
   $renderEffect(() => {
     // Resolve first. If NotReadyError occurs, preserve the current DOM.
-    const nextNodes = resolveNode(renderChild);
+    const render = () => resolveNode(renderChild);
+    const nextNodes = renderScope ? renderScope(render) : render();
     const previousNodes = nodes;
 
     nodes = nextNodes;
