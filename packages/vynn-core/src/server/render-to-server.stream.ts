@@ -10,6 +10,7 @@ import {
   APPLY_ERROR_BOUNDARY_PATCH_SSR_KEY,
 } from "../const";
 import { getOwner, runWithOwner } from "../life-cycle/owner";
+import { NotReadyError } from "../reactivity_new/not-ready-error";
 import {
   SSR_ASYNC,
   SSR_COMMENT,
@@ -26,6 +27,7 @@ import { renderHeadPatch, type SsrHeadManager } from "./head";
 import {
   joinHTMLElements,
   renderAsyncUtilities,
+  renderErrorBoundaryRange,
   renderNode,
   renderText,
 } from "./render-to-server.util";
@@ -147,6 +149,16 @@ export function resolveStream(
     try {
       await Promise.all(node.promises);
       enqueuePatch(renderPatch(boundaryId, await resolve(node.children())));
+    } catch (error) {
+      if (error instanceof Error && node.errorBoundary) {
+        try {
+          node.errorBoundary(error);
+        } catch (boundaryError) {
+          failStream(boundaryError);
+        }
+      } else {
+        failStream(error);
+      }
     } finally {
       await finishTask();
     }
@@ -158,7 +170,64 @@ export function resolveStream(
   }
 
   async function renderErrorBoundary(node: SSR_ERROR_BOUNDARY): Promise<string> {
-    return await resolve(node.fallback());
+    if (node.error) {
+      return renderErrorBoundaryRange(node.id, await resolve(node.fallback(node.error)));
+    }
+
+    let html: string;
+
+    try {
+      html = await resolve(node.children());
+    } catch (caught) {
+      let error: unknown = caught;
+
+      if (error instanceof NotReadyError) {
+        try {
+          await error.promise;
+          return renderErrorBoundary(node);
+        } catch (reason) {
+          error = reason;
+        }
+      }
+
+      if (!(error instanceof Error)) throw error;
+
+      node.handleError(error);
+    }
+
+    const failure = node.error;
+
+    if (failure) {
+      html = await resolve(node.fallback(failure));
+    } else {
+      // Nested SSR_ASYNC work can reject after this boundary has emitted its
+      // initial HTML. Keep the boundary range alive so the renderer can replace
+      // the whole subtree with this boundary's fallback.
+      node.setStreamErrorHandler((error) => scheduleErrorBoundaryPatch(node, error));
+    }
+
+    return renderErrorBoundaryRange(node.id, html);
+  }
+
+  function scheduleErrorBoundaryPatch(node: SSR_ERROR_BOUNDARY, error: Error): void {
+    if (streamClosed) return;
+
+    pendingTasks++;
+
+    void (async () => {
+      try {
+        const fallbackHTML = await resolve(node.fallback(error));
+        enqueuePatch(renderErrorBoundaryPatch(node.id, fallbackHTML));
+      } catch (fallbackError) {
+        if (fallbackError instanceof Error && node.parentErrorBoundary) {
+          node.parentErrorBoundary(fallbackError);
+        } else {
+          failStream(fallbackError);
+        }
+      } finally {
+        await finishTask();
+      }
+    })();
   }
 
   async function renderElement(node: SSR_ELEMENT): Promise<string> {
@@ -253,9 +322,9 @@ function renderPatch(id: number, html: string) {
   return `<template id="${id}">${html}</template><script>${APPLY_PATCH_SSR_KEY}(${id});document.currentScript.remove();</script>`;
 }
 
-// function renderErrorBoundaryPatch(id: number, html: string) {
-//   return `<template id="vynn-eb-${id}">${html}</template><script>${APPLY_ERROR_BOUNDARY_PATCH_SSR_KEY}(${id});document.currentScript.remove();</script>`;
-// }
+function renderErrorBoundaryPatch(id: number, html: string) {
+  return `<template id="vynn-eb-${id}">${html}</template><script>${APPLY_ERROR_BOUNDARY_PATCH_SSR_KEY}(${id});document.currentScript.remove();</script>`;
+}
 
 function renderPatchRuntime(): string {
   return `<script>
