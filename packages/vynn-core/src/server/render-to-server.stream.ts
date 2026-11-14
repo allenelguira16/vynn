@@ -18,8 +18,6 @@ import {
   SSR_ERROR_BOUNDARY,
   type SSR_NODE,
   SSR_TEXT,
-  SSRBoundaryFailure,
-  SSRDeferredError,
   resolveNode,
 } from "../render/resolve-node";
 import { renderHeadPatch, type SsrHeadManager } from "./head";
@@ -222,12 +220,7 @@ export function resolveStream(
       enqueueChunk(renderPatchRuntime() + html);
       flushQueuedPatches();
     } catch (error) {
-      const reason =
-        error instanceof SSRDeferredError || error instanceof SSRBoundaryFailure
-          ? error.reason
-          : error;
-
-      failStream(reason);
+      failStream(error);
     } finally {
       await finishTask();
     }

@@ -10,8 +10,6 @@ import {
   type SSR_NODE,
   SSR_TEXT,
   resolveNode,
-  SSRBoundaryFailure,
-  SSRDeferredError,
 } from "../render/resolve-node";
 import {
   joinHTMLElements,
@@ -73,17 +71,9 @@ export async function resolveAsync(App: () => JSX.Element, owner: Owner): Promis
     return joinHTMLElements(html);
   }
 
-  try {
-    const app = runWithOwner(owner, () => resolveNode(App)) as unknown as SSR_NODE[];
-    const html = await resolve(app);
-    const utilities = runWithOwner(owner, renderAsyncUtilities);
+  const app = runWithOwner(owner, () => resolveNode(App)) as unknown as SSR_NODE[];
+  const html = await resolve(app);
+  const utilities = runWithOwner(owner, renderAsyncUtilities);
 
-    return html + utilities;
-  } catch (error) {
-    if (error instanceof SSRDeferredError || error instanceof SSRBoundaryFailure) {
-      throw error.reason;
-    }
-
-    throw error;
-  }
+  return html + utilities;
 }
