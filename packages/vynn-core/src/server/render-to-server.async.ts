@@ -1,6 +1,7 @@
 import type { JSX } from "../types/jsx";
 
 import { runWithOwner, type Owner } from "../life-cycle/owner";
+import { NotReadyError } from "../reactivity_new/not-ready-error";
 import {
   SSR_ASYNC,
   SSR_COMMENT,
@@ -16,6 +17,7 @@ import {
 import {
   joinHTMLElements,
   renderAsyncUtilities,
+  renderErrorBoundaryRange,
   renderNode,
   renderText,
 } from "./render-to-server.util";
@@ -27,7 +29,36 @@ export async function resolveAsync(App: () => JSX.Element, owner: Owner): Promis
   }
 
   async function resolveErrorBoundary(node: SSR_ERROR_BOUNDARY): Promise<string> {
-    return await resolve(node.fallback());
+    if (node.error) {
+      return renderErrorBoundaryRange(node.id, await resolve(node.fallback(node.error)));
+    }
+
+    try {
+      const children = await resolve(node.children());
+      const error = node.error;
+
+      return renderErrorBoundaryRange(
+        node.id,
+        error ? await resolve(node.fallback(error)) : children,
+      );
+    } catch (caught) {
+      let error: unknown = caught;
+
+      if (error instanceof NotReadyError) {
+        try {
+          await error.promise;
+          return resolveErrorBoundary(node);
+        } catch (reason) {
+          error = reason;
+        }
+      }
+
+      if (!(error instanceof Error)) throw error;
+
+      node.handleError(error);
+
+      return renderErrorBoundaryRange(node.id, await resolve(node.fallback(error)));
+    }
   }
 
   async function resolveElement(node: SSR_ELEMENT): Promise<string> {
