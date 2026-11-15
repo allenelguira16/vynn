@@ -6,7 +6,6 @@ import {
   withServerRenderedLazy,
 } from "../client/hydration";
 import { LAZY_END_SSR_MARKER, LAZY_START_SSR_MARKER } from "../const";
-import { initializeLazyAsyncScope } from "../context/async-context";
 import { isServer } from "../context/is-server-context";
 import {
   getLazyID,
@@ -63,9 +62,9 @@ export function lazy<M extends Record<string, unknown>, K extends keyof M = "def
   return $cmpnt(function LazyComponent(props: Parameters<Component>[0]): JSX.Element {
     const lazyID = getLazyID();
 
-    // Descendant lazy and async identities are scoped to this instance.
+    // Descendant lazy marker IDs use this scope. Async resources derive their
+    // hydration IDs from this component's owner.
     initializeLazyScope(lazyID);
-    initializeLazyAsyncScope(lazyID);
 
     if (isServer()) registerSsrModule(moduleId);
 

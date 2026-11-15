@@ -1,12 +1,7 @@
-import {
-  getAsyncBoundary,
-  getAsyncIDIfAvailable,
-  getAsyncValue,
-  getAsyncValues,
-} from "../context/async-context";
+import { getAsyncBoundary, getAsyncValue, getAsyncValues } from "../context/async-context";
 import { isServer } from "../context/is-server-context";
 import { isAsyncGetterFromLazy, registerPromiseFromLazy } from "../context/lazy-context";
-import { getOwner, runWithOwner } from "../life-cycle/owner";
+import { createOwner, createOwnerID, getOwner, runWithOwner } from "../life-cycle/owner";
 import { $renderEffect } from "./$effect";
 import { createCell } from "./cell";
 import { NotReadyError } from "./not-ready-error";
@@ -85,11 +80,14 @@ export function createAsyncResource<T>(
 ): Async<T> {
   const { lazy = false } = options;
   const isLazy = isAsyncGetterFromLazy(getter);
-  // Reserve the hydration ID at creation time when a render context exists.
-  // Module-level resources acquire it when first read inside a render instead.
-  let asyncID = isLazy || lazy ? undefined : getAsyncIDIfAvailable();
-  let asyncValues = getAsyncValues();
+  // Each resource has its own identity-bearing owner. Module-level resources
+  // acquire a slot from their first consuming render because they have no
+  // creation owner.
   const owner = getOwner();
+  const resourceOwner = owner ? createOwner(owner) : null;
+  const effectOwner = resourceOwner ?? owner;
+  let resourceOwnerID = isLazy ? undefined : resourceOwner?.id;
+  let asyncValues = getAsyncValues();
   const result = createCell<AsyncRecord<T> | undefined>(undefined);
 
   let version = 0;
@@ -104,8 +102,8 @@ export function createAsyncResource<T>(
 
     // A resource created outside a component can still be first consumed
     // inside a render. Acquire that render's hydration scope at first use.
-    if (!isLazy && asyncID === undefined) {
-      asyncID = getAsyncIDIfAvailable();
+    if (!isLazy && resourceOwnerID === undefined) {
+      resourceOwnerID = createOwnerID(getOwner());
     }
 
     if (!asyncValues) {
@@ -115,7 +113,7 @@ export function createAsyncResource<T>(
     // Bind the resource effect to the creation owner, not the owner that
     // happened to perform the first read. An ownerless module-level resource
     // intentionally remains alive for the lifetime of its module.
-    runWithOwner(owner, () => {
+    runWithOwner(effectOwner, () => {
       $renderEffect(() => {
         transaction(() => {
           const currentVersion = ++version;
@@ -123,8 +121,8 @@ export function createAsyncResource<T>(
           // Read the server snapshot only once. If a dependency suspends while
           // hydration tracking runs, keep the snapshot for the retry instead
           // of consuming the ID and accidentally starting a duplicate request.
-          if (!isLazy && asyncID !== undefined && !hasReadHydrationData) {
-            hydrationData = getAsyncValue<T>(asyncID);
+          if (!isLazy && resourceOwnerID !== undefined && !hasReadHydrationData) {
+            hydrationData = getAsyncValue<T>(resourceOwnerID);
             hasReadHydrationData = true;
           }
 
@@ -230,8 +228,8 @@ export function createAsyncResource<T>(
           pendingPromise.then(
             (value) => {
               if (currentVersion !== version) return;
-              if (asyncValues && asyncID !== undefined) {
-                asyncValues[asyncID] = value;
+              if (asyncValues && resourceOwnerID !== undefined) {
+                asyncValues[resourceOwnerID] = value;
               }
 
               result.value = {
@@ -325,7 +323,7 @@ export function createAsyncResource<T>(
 
   // A module-level resource has no request context yet. Keep its first read as
   // the activation point so SSR can attach the correct request-local ID/data.
-  if (!lazy && (owner !== null || asyncID !== undefined)) {
+  if (!lazy && (owner !== null || resourceOwnerID !== undefined)) {
     initialize();
   }
 

@@ -1,17 +1,8 @@
-import type { AsyncIDReservations } from "./async-context";
-import type { LazyIDReservations } from "./lazy-context";
-
 import { ERROR_BOUNDARY_DATA_SSR_KEY } from "../const";
 import { getContext, getOwner, modifyContext, setContext } from "../life-cycle/owner";
 import { isServer } from "./is-server-context";
 
 export type ErrorBoundary = (error: Error) => void;
-// export type ErrorBoundary = {
-//   id: number;
-//   handle(error: Error): ErrorBoundary;
-//   render(): import("../render/resolve-node").SSR_NODE[];
-//   isActive(): boolean;
-// };
 
 const ERROR_BOUNDARY = Symbol("vynn.error-boundary");
 const ERROR_BOUNDARY_ID = Symbol("vynn.error-boundary-id");
@@ -31,8 +22,6 @@ export type ErrorBoundarySSRState =
       status: "fallback";
       name: string;
       message: string;
-      asyncIDs?: AsyncIDReservations;
-      lazyIDs?: LazyIDReservations;
     };
 
 export function initializeErrorBoundaryContext() {

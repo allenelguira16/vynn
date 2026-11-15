@@ -159,16 +159,16 @@ describe("SSR async ErrorBoundary", () => {
     const asyncValues = JSON.parse(hydrationData![1]) as Record<string, unknown>;
     const errorBoundaries = JSON.parse(hydrationData![2]) as Array<{
       status: string;
-      asyncIDs?: Record<string, number>;
+      ownerIDs?: Record<string, number>;
     }>;
 
     // The rejected resource correctly has no fulfilled value in $AD, but its
-    // allocated ID is reserved so the following sibling keeps root:1.
-    expect(asyncValues).not.toHaveProperty("root:0");
-    expect(asyncValues["root:1"]).toEqual(["string", "after boundary"]);
+    // allocated ID is reserved so the following sibling keeps owner ID 01.
+    expect(asyncValues).not.toHaveProperty("000");
+    expect(asyncValues["01"]).toEqual(["string", "after boundary"]);
     expect(errorBoundaries[0]).toMatchObject({
       status: "fallback",
-      asyncIDs: { root: 1 },
+      ownerIDs: { "00": 1 },
     });
   });
 
@@ -238,8 +238,8 @@ describe("SSR async ErrorBoundary", () => {
 
     // Async resources created inside the boundary must keep the IDs they
     // receive during normal component traversal, before following siblings.
-    expect(values["root:0"]).toEqual(["string", "inside boundary"]);
-    expect(values["root:1"]).toEqual(["string", "after boundary"]);
+    expect(values["000"]).toEqual(["string", "inside boundary"]);
+    expect(values["01"]).toEqual(["string", "after boundary"]);
   });
 });
 

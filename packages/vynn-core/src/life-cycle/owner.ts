@@ -5,15 +5,133 @@ export interface Owner {
   mount: (() => void | (() => void))[];
   disposed?: boolean;
   context: Map<string | symbol, unknown>;
+  /** Stable hydration identity for this owner, when it owns an identity slot. */
+  id: string | undefined;
+  /** Nearest ancestor (or self) that owns the hydration ID sequence. */
+  identityOwner: Owner | null;
+  /** Number of identity-bearing children allocated by this owner. */
   nodeCount: number;
 }
+
+export type OwnerOptions = {
+  /**
+   * Transparent owners carry their parent's identity scope without consuming
+   * a hydration ID. Use for lifecycle/context scopes absent from SSR markup.
+   */
+  identity?: boolean;
+};
+
+type OwnerIDReservations = Map<string, number>;
+type OwnerIDTracker = Map<string, number>;
+
+const OWNER_ID_RESERVATIONS = Symbol("vynn.owner-id-reservations");
+const OWNER_ID_TRACKERS = Symbol("vynn.owner-id-trackers");
+
+const ROOT_OWNER_ID = "0";
 
 let currentOwner: Owner | null = null;
 
 /**
+ * Encode one child index so hierarchical owner IDs can be concatenated
+ * without separators. Single-digit indexes use one character; multi-digit
+ * indexes carry a width marker (a=2 digits, b=3 digits, etc.).
+ */
+function appendOwnerID(parentID: string, index: number): string {
+  const value = String(index);
+  const width = value.length - 1;
+  const marker = width > 0 ? String.fromCharCode(96 + width) : "";
+
+  return parentID + marker + value;
+}
+
+function getOwnerContext<T>(owner: Owner | null, key: string | symbol): T | undefined {
+  while (owner) {
+    if (owner.context.has(key)) {
+      return owner.context.get(key) as T;
+    }
+
+    owner = owner.parent;
+  }
+
+  return undefined;
+}
+
+function recordOwnerIDReservation(
+  scopeOwner: Owner | null,
+  identityParent: Owner,
+  next: number,
+): void {
+  const id = identityParent.id;
+  if (!id) return;
+
+  // Read trackers from the actual owner scope. The identity parent can be
+  // above a transparent owner that installed a nested tracker.
+  const trackers = getOwnerContext<OwnerIDTracker[]>(scopeOwner, OWNER_ID_TRACKERS);
+
+  for (const tracker of trackers ?? []) {
+    tracker.set(id, Math.max(tracker.get(id) ?? 0, next));
+  }
+
+  const reservations = getOwnerContext<OwnerIDReservations>(scopeOwner, OWNER_ID_RESERVATIONS);
+  reservations?.set(id, Math.max(reservations.get(id) ?? 0, next));
+}
+
+/**
+ * Allocate one child identity from the nearest identity-bearing owner.
+ *
+ * This is used by module-level async resources, which have no lifecycle owner
+ * at declaration time but can acquire an identity on their first render read.
+ */
+export function createOwnerID(parent = currentOwner): string | undefined {
+  const identityParent = parent?.identityOwner;
+
+  if (!identityParent?.id) return undefined;
+
+  const index = identityParent.nodeCount++;
+  recordOwnerIDReservation(parent, identityParent, identityParent.nodeCount);
+
+  return appendOwnerID(identityParent.id, index);
+}
+
+/**
+ * Add an owner-ID tracker to the current owner context. Trackers are inherited
+ * as a stack so nested ErrorBoundaries record their own allocations while
+ * outer boundaries still account for the complete descendant subtree.
+ */
+export function enterOwnerIDTracker(tracker: OwnerIDTracker): void {
+  const inherited = getContext<OwnerIDTracker[]>(OWNER_ID_TRACKERS) ?? [];
+  setContext(OWNER_ID_TRACKERS, [...inherited, tracker]);
+}
+
+/**
+ * Restore owner-child cursors for descendants skipped by an SSR ErrorBoundary
+ * fallback. Reservations for not-yet-created nested owners remain in the
+ * request-local registry and are applied when those owners are created.
+ */
+export function reserveOwnerIDReservations(reservations?: Record<string, number>): void {
+  if (!reservations) return;
+
+  const registry = getContext<OwnerIDReservations>(OWNER_ID_RESERVATIONS);
+  const activeIdentityOwner = currentOwner?.identityOwner;
+
+  for (const [id, next] of Object.entries(reservations)) {
+    if (!Number.isSafeInteger(next) || next < 0) continue;
+
+    const previous = registry?.get(id) ?? 0;
+    if (registry && next > previous) {
+      registry.set(id, next);
+    }
+
+    if (activeIdentityOwner?.id === id && next > activeIdentityOwner.nodeCount) {
+      activeIdentityOwner.nodeCount = next;
+    }
+  }
+}
+
+/**
  * Returns the owner currently associated with the executing code.
  *
- * @returns The current owner, or null when no owner is active.
+ * @returns The owner, or null when no owner is active.
  */
 export function getOwner(): Owner | null {
   return currentOwner;
@@ -22,20 +140,50 @@ export function getOwner(): Owner | null {
 /**
  * Creates a new owner and optionally attaches it to a parent owner.
  *
- * By default, the current owner is used as the parent.
+ * Identity-bearing owners consume one child slot from the nearest
+ * identity-bearing parent. A root owner starts the compact owner-ID scope.
+ * Pass { identity: false } for lifecycle-only scopes that should not affect
+ * hydration identity allocation.
  *
  * @param parent The parent owner, or the current owner when omitted.
+ * @param options Owner identity options.
  * @returns The newly created owner.
  */
-export function createOwner(parent = currentOwner): Owner {
+export function createOwner(parent = currentOwner, options: OwnerOptions = {}): Owner {
+  const hasIdentity = options.identity !== false;
+  const identityParent = parent?.identityOwner ?? null;
+  let id: string | undefined;
+
+  if (hasIdentity) {
+    if (parent === null) {
+      id = ROOT_OWNER_ID;
+    } else if (identityParent?.id) {
+      const index = identityParent.nodeCount++;
+      id = appendOwnerID(identityParent.id, index);
+      recordOwnerIDReservation(parent, identityParent, identityParent.nodeCount);
+    }
+  }
+
+  const reservations = parent
+    ? getOwnerContext<OwnerIDReservations>(parent, OWNER_ID_RESERVATIONS)
+    : undefined;
+
   const owner: Owner = {
     parent,
     children: [],
     cleanups: [],
     mount: [],
     context: new Map<string | symbol, unknown>(),
-    nodeCount: 0,
+    id,
+    identityOwner: null,
+    nodeCount: id ? (reservations?.get(id) ?? 0) : 0,
   };
+
+  owner.identityOwner = hasIdentity ? owner : identityParent;
+
+  if (parent === null && hasIdentity) {
+    owner.context.set(OWNER_ID_RESERVATIONS, new Map<string, number>());
+  }
 
   parent?.children.push(owner);
 
@@ -106,6 +254,7 @@ export function disposeOwner(owner: Owner): void {
   }
 
   owner.parent = null;
+  owner.identityOwner = null;
 
   if (errors.length === 1) {
     throw errors[0];
@@ -196,15 +345,5 @@ export function modifyContext<T>(key: string | symbol, updater: (current: T) => 
  * @returns The nearest matching value, or undefined if none exists.
  */
 export function getContext<T>(key: string | symbol): T | undefined {
-  let owner = currentOwner;
-
-  while (owner) {
-    if (owner.context.has(key)) {
-      return owner.context.get(key) as T;
-    }
-
-    owner = owner.parent;
-  }
-
-  return undefined;
+  return getOwnerContext<T>(currentOwner, key);
 }

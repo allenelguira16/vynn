@@ -4,7 +4,7 @@ const pages = [
   { label: "All", path: "/" },
   { label: "Lazy", path: "/lazy" },
   { label: "Forms", path: "/forms" },
-  { label: "Contexts", path: "/contexts" },
+  { label: "Context", path: "/context" },
   { label: "Dropdown Lists", path: "/dropdown-list" },
   { label: "Component Error", path: "/component-error" },
   { label: "Non Async Suspense", path: "/non-async-suspense" },

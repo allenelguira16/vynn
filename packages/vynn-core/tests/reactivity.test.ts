@@ -4,7 +4,6 @@ import { describe, expect, it } from "vitest";
 import { ASYNC_DATA_SSR_KEY } from "../src/const";
 import {
   enterAsyncBoundary,
-  getAsyncID,
   getAsyncValues,
   initializeAsyncContext,
 } from "../src/context/async-context";
@@ -121,15 +120,15 @@ describe("$computed", () => {
         const asynchronous = $computed(async () => 42);
         expect(isPending(asynchronous)).toBe(true);
 
-        // Only the asynchronous computed reserves root:0. The synchronous
-        // computed must not shift the identity used by SSR async resources.
-        expect(getAsyncID()).toBe("root:1");
+        // Only the asynchronous computed creates an identity-bearing resource
+        // owner. The synchronous computed must not consume an owner slot.
+        expect(owner.children.map((child) => child.id)).toEqual(["00"]);
 
         await Promise.resolve();
 
         runWithOwner(owner, () => {
           expect(asynchronous!.value).toBe(42);
-          expect(getAsyncValues()).toEqual({ "root:0": 42 });
+          expect(getAsyncValues()).toEqual({ "00": 42 });
         });
       });
     } finally {
@@ -570,7 +569,7 @@ describe("$async", () => {
     const owner = createOwner(null);
     const windowValues = window as unknown as Record<string, unknown>;
     windowValues[ASYNC_DATA_SSR_KEY] = {
-      "root:0": 10,
+      "00": 10,
     };
 
     let source: { value: number } | undefined;
@@ -615,7 +614,7 @@ describe("$async", () => {
     const owner = createOwner(null);
     const windowValues = window as unknown as Record<string, unknown>;
     windowValues[ASYNC_DATA_SSR_KEY] = {
-      "root:1": 99,
+      "01": 99,
     };
 
     let dependency: { value: number } | undefined;
@@ -821,7 +820,7 @@ describe("$async", () => {
       runWithOwner(owner, () => {
         expect(data.value).toBe("rendered");
         expect(getAsyncValues()).toEqual({
-          "root:0": "rendered",
+          "00": "rendered",
         });
       });
     } finally {

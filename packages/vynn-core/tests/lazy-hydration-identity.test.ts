@@ -5,12 +5,9 @@ import { ErrorBoundary } from "../src/components/error-boundary";
 import { ASYNC_DATA_SSR_KEY, ERROR_BOUNDARY_DATA_SSR_KEY } from "../src/const";
 import {
   enterAsyncBoundary,
-  getAsyncID,
   getAsyncValue,
   getAsyncValues,
   initializeAsyncContext,
-  initializeLazyAsyncScope,
-  reserveAsyncIDReservations,
 } from "../src/context/async-context";
 import { initializeErrorBoundaryContext } from "../src/context/error-boundary-context";
 import {
@@ -27,16 +24,50 @@ import {
   reserveLazyIDReservations,
   regsterAsyncGetterFromLazy,
 } from "../src/context/lazy-context";
-import { createOwner, disposeOwner, runWithOwner } from "../src/life-cycle/owner";
+import {
+  createOwner,
+  disposeOwner,
+  reserveOwnerIDReservations,
+  runWithOwner,
+} from "../src/life-cycle/owner";
 import { $computed } from "../src/reactivity/$computed";
 import { isPending } from "../src/reactivity/async";
 import { NotReadyError } from "../src/reactivity/not-ready-error";
 
-describe("lazy hydration identities", () => {
-  it("keeps lazy component loaders eager without consuming async hydration IDs", async () => {
+describe("owner-based hydration identities", () => {
+  it("encodes multi-digit owner indexes without path separators", () => {
+    const root = createOwner(null);
+
+    try {
+      const children = Array.from({ length: 12 }, () => createOwner(root));
+      const nested = createOwner(children[10]!);
+
+      expect(root.id).toBe("0");
+      expect(children.map((owner) => owner.id)).toEqual([
+        "00",
+        "01",
+        "02",
+        "03",
+        "04",
+        "05",
+        "06",
+        "07",
+        "08",
+        "09",
+        "0a10",
+        "0a11",
+      ]);
+      expect(nested.id).toBe("0a100");
+      expect(new Set(children.map((owner) => owner.id)).size).toBe(children.length);
+    } finally {
+      disposeOwner(root);
+    }
+  });
+
+  it("gives lazy loaders owner identities without serializing their promises", async () => {
     const owner = createOwner(null);
     const windowValues = window as unknown as Record<string, unknown>;
-    const serverSnapshot = { "lazy:0:0": "server-only-value" };
+    const serverSnapshot = { "00": "server-only-value" };
     windowValues[ASYNC_DATA_SSR_KEY] = serverSnapshot;
 
     let executions = 0;
@@ -52,20 +83,20 @@ describe("lazy hydration identities", () => {
     try {
       runWithOwner(owner, () => {
         initializeAsyncContext();
-        initializeLazyAsyncScope("0");
         regsterAsyncGetterFromLazy(loadComponent);
 
         component = $computed(loadComponent);
 
-        // The function is not declared with async syntax, so $computed must use
-        // its lazy-loader marker to recognize the returned Promise.
+        // The loader still has a stable owner identity, but its module promise
+        // is intentionally not serialized as an async resource value.
         expect(executions).toBe(1);
         expect(isPending(component!)).toBe(true);
+        expect(owner.children[0]?.id).toBe("00");
         expect(getAsyncValues()).toEqual({});
 
-        // A lazy module load must not consume an ID that belongs to a real
-        // async resource rendered inside the loaded component.
-        expect(getAsyncID()).toBe("lazy:0:0");
+        // The next real async resource gets the next owner slot.
+        const realResource = $computed(async () => "real resource");
+        expect(owner.children[1]?.id).toBe("01");
 
         let boundaryPromise: Promise<unknown> | undefined;
         let readError: unknown;
@@ -85,13 +116,18 @@ describe("lazy hydration identities", () => {
         expect(boundaryPromise).toBe(loadPromise);
         expect(isPromiseFromLazy(boundaryPromise!)).toBe(true);
         expect(windowValues[ASYNC_DATA_SSR_KEY]).toBe(serverSnapshot);
+
+        return realResource;
       });
 
       await loadPromise;
+      await Promise.resolve();
 
       runWithOwner(owner, () => {
         expect(component!.value).toBe(componentExport);
         expect(isPending(component!)).toBe(false);
+        expect(getAsyncValues()).toEqual({ "01": "real resource" });
+        expect(windowValues[ASYNC_DATA_SSR_KEY]).toBe(serverSnapshot);
       });
     } finally {
       delete windowValues[ASYNC_DATA_SSR_KEY];
@@ -130,6 +166,8 @@ describe("lazy hydration identities", () => {
       firstChildID = getLazyID();
     });
 
+    expect(firstParent.id).toBe("00");
+    expect(secondParent.id).toBe("01");
     expect(firstID).toBe("0");
     expect(secondID).toBe("1");
     expect(firstChildID).toBe("0.0");
@@ -138,53 +176,60 @@ describe("lazy hydration identities", () => {
     disposeOwner(root);
   });
 
-  it("uses an independent async-data sequence for each lazy instance", () => {
+  it("derives async hydration keys from each resource owner's hierarchy", async () => {
     const root = createOwner(null);
     const firstLazy = createOwner(root);
     const secondLazy = createOwner(root);
 
     runWithOwner(root, initializeAsyncContext);
 
-    runWithOwner(firstLazy, () => initializeLazyAsyncScope("0"));
-    runWithOwner(secondLazy, () => initializeLazyAsyncScope("1"));
-
     let firstID = "";
     let firstNextID = "";
     let secondID = "";
     let rootID = "";
 
-    // Reverse the module resolution order.
+    // Create the second lazy branch first to show that IDs depend on owner
+    // structure, not on the order in which promises settle.
     runWithOwner(secondLazy, () => {
-      secondID = getAsyncID();
-      getAsyncValues()![secondID] = "second";
+      $computed(async () => "second");
+      secondID = secondLazy.children[0]!.id!;
     });
 
     runWithOwner(firstLazy, () => {
-      firstID = getAsyncID();
-      firstNextID = getAsyncID();
-      getAsyncValues()![firstID] = "first";
+      $computed(async () => "first");
+      $computed(async () => "first-next");
+      firstID = firstLazy.children[0]!.id!;
+      firstNextID = firstLazy.children[1]!.id!;
     });
 
     runWithOwner(root, () => {
-      rootID = getAsyncID();
+      $computed(async () => "root");
+      rootID = root.children[2]!.id!;
     });
 
-    expect(firstID).toBe("lazy:0:0");
-    expect(firstNextID).toBe("lazy:0:1");
-    expect(secondID).toBe("lazy:1:0");
-    expect(rootID).toBe("root:0");
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(firstLazy.id).toBe("00");
+    expect(secondLazy.id).toBe("01");
+    expect(firstID).toBe("000");
+    expect(firstNextID).toBe("001");
+    expect(secondID).toBe("010");
+    expect(rootID).toBe("02");
 
     runWithOwner(root, () => {
       expect(getAsyncValues()).toMatchObject({
-        "lazy:0:0": "first",
-        "lazy:1:0": "second",
+        "000": "first",
+        "001": "first-next",
+        "010": "second",
+        "02": "root",
       });
     });
 
     disposeOwner(root);
   });
 
-  it("tracks async and lazy IDs consumed by descendants skipped by an ErrorBoundary", () => {
+  it("tracks owner and lazy ID reservations for descendants skipped by an ErrorBoundary", () => {
     const serverRoot = createOwner(null);
     const serverBoundary = createOwner(serverRoot);
     const tracker = createHydrationIDTracker();
@@ -197,25 +242,22 @@ describe("lazy hydration identities", () => {
     runWithOwner(serverBoundary, () => {
       enterHydrationIDTracker(tracker);
 
-      expect(getAsyncID()).toBe("root:0");
       expect(getLazyID()).toBe("0");
 
-      const nestedLazy = createOwner(serverBoundary);
-      runWithOwner(nestedLazy, () => {
-        initializeLazyScope("skipped");
-        initializeLazyAsyncScope("skipped");
+      const skippedChild = createOwner(serverBoundary);
+      const nestedChild = createOwner(skippedChild);
 
+      runWithOwner(nestedChild, () => {
+        initializeLazyScope("skipped");
         expect(getLazyID()).toBe("skipped.0");
-        expect(getAsyncID()).toBe("lazy:skipped:0");
-        expect(getAsyncID()).toBe("lazy:skipped:1");
       });
     });
 
-    const { asyncIDs, lazyIDs } = getHydrationIDReservations(tracker);
+    const { ownerIDs, lazyIDs } = getHydrationIDReservations(tracker);
 
-    expect(asyncIDs).toEqual({
-      root: 1,
-      "lazy:skipped": 2,
+    expect(ownerIDs).toEqual({
+      "00": 1,
+      "000": 1,
     });
     expect(lazyIDs).toEqual({
       "": 1,
@@ -229,22 +271,22 @@ describe("lazy hydration identities", () => {
       initializeAsyncContext();
       initializeLazyContext();
     });
+
     runWithOwner(clientBoundary, () => {
-      reserveAsyncIDReservations(asyncIDs);
+      reserveOwnerIDReservations(ownerIDs);
       reserveLazyIDReservations(lazyIDs);
 
-      // Both root allocators skip IDs created by the rejected child.
-      expect(getAsyncID()).toBe("root:1");
+      // The skipped child occupied owner ID 000, so the next owner starts at 001.
+      const laterChild = createOwner(clientBoundary);
+      expect(laterChild.id).toBe("001");
       expect(getLazyID()).toBe("1");
 
-      const laterLazy = createOwner(clientBoundary);
+      const laterLazy = createOwner(laterChild);
       runWithOwner(laterLazy, () => {
         initializeLazyScope("skipped");
-        initializeLazyAsyncScope("skipped");
 
-        // Nested lazy scopes restore their own cursors when initialized.
+        // Nested lazy scopes restore their independent cursor as well.
         expect(getLazyID()).toBe("skipped.1");
-        expect(getAsyncID()).toBe("lazy:skipped:2");
       });
     });
 
@@ -252,7 +294,7 @@ describe("lazy hydration identities", () => {
     disposeOwner(clientRoot);
   });
 
-  it("restores async ID reservations when hydrating an ErrorBoundary fallback", () => {
+  it("restores owner ID reservations when hydrating an ErrorBoundary fallback", () => {
     const root = createOwner(null);
     const windowValues = window as unknown as Record<string, unknown>;
 
@@ -261,9 +303,9 @@ describe("lazy hydration identities", () => {
         status: "fallback",
         name: "Error",
         message: "server-side failure",
-        asyncIDs: {
-          root: 1,
-          "lazy:skipped": 2,
+        ownerIDs: {
+          "00": 1,
+          "000": 1,
         },
         lazyIDs: {
           "": 1,
@@ -283,16 +325,14 @@ describe("lazy hydration identities", () => {
           fallback: () => "Fallback",
         });
 
-        expect(getAsyncID()).toBe("root:1");
+        const boundaryOwner = root.children.find((child) => child.id === "00");
+        expect(boundaryOwner?.nodeCount).toBe(1);
         expect(getLazyID()).toBe("1");
 
-        const skippedLazy = createOwner(root);
+        const skippedLazy = createOwner(boundaryOwner!);
         runWithOwner(skippedLazy, () => {
           initializeLazyScope("skipped");
           expect(getLazyID()).toBe("skipped.2");
-
-          initializeLazyAsyncScope("skipped");
-          expect(getAsyncID()).toBe("lazy:skipped:2");
         });
       });
     } finally {
@@ -301,19 +341,19 @@ describe("lazy hydration identities", () => {
     }
   });
 
-  it("restores serialized falsy async values instead of rerunning their getter", () => {
+  it("restores serialized falsy async values using the resource owner's ID", () => {
     const root = createOwner(null);
     const windowValues = window as unknown as Record<string, unknown>;
     windowValues[ASYNC_DATA_SSR_KEY] = {
-      "lazy:0:0": false,
+      "00": false,
     };
 
     let hydrationValue: ReturnType<typeof getAsyncValue<boolean>> | undefined;
 
     runWithOwner(root, () => {
       initializeAsyncContext();
-      initializeLazyAsyncScope("0");
-      hydrationValue = getAsyncValue<boolean>(getAsyncID());
+      const resourceOwner = createOwner();
+      hydrationValue = getAsyncValue<boolean>(resourceOwner.id!);
     });
 
     expect(hydrationValue).toEqual({

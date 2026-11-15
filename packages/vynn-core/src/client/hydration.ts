@@ -234,7 +234,7 @@ export function withServerRenderedLazy<T>(lazyID: string | number, callback: () 
 
   // Keep this scope on a dedicated owner. Writing it to the caller's owner
   // would leak the lazy boundary into sibling route renders created later.
-  const owner = createOwner();
+  const owner = createOwner(undefined, { identity: false });
 
   return runWithOwner(owner, () => {
     setContext(LAZY_HYDRATION, scope);

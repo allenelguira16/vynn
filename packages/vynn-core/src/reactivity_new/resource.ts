@@ -1,12 +1,7 @@
-import {
-  getAsyncBoundary,
-  getAsyncIDIfAvailable,
-  getAsyncValue,
-  getAsyncValues,
-} from "../context/async-context";
+import { getAsyncBoundary, getAsyncValue, getAsyncValues } from "../context/async-context";
 import { isServer } from "../context/is-server-context";
 import { isAsyncGetterFromLazy, registerPromiseFromLazy } from "../context/lazy-context";
-import { getOwner, runWithOwner } from "../life-cycle/owner";
+import { createOwner, createOwnerID, getOwner, runWithOwner } from "../life-cycle/owner";
 import { createReactiveEffect } from "./effect";
 import { withFakeAsyncApis } from "./fake-async";
 import { NotReadyError } from "./not-ready-error";
@@ -37,13 +32,15 @@ export type Async<T> = VynnRef<T>;
 
 export function createAsyncResource<T>(getter: () => Promise<T>): VynnRef<T> {
   const owner = getOwner();
+  const resourceOwner = owner ? createOwner(owner) : null;
+  const effectOwner = resourceOwner ?? owner;
   const record = createCell<ResourceRecord<T> | undefined>(undefined);
 
   let version = 0;
   let started = false;
   const lazyGetter = isAsyncGetterFromLazy(getter);
 
-  let asyncID: string | undefined = lazyGetter ? undefined : getAsyncIDIfAvailable();
+  let resourceOwnerID: string | undefined = lazyGetter ? undefined : resourceOwner?.id;
   let asyncValues = getAsyncValues();
   let hasReadHydrationValue = false;
   let hydrationValue: { found: boolean; value: T | undefined } | undefined;
@@ -52,8 +49,8 @@ export function createAsyncResource<T>(getter: () => Promise<T>): VynnRef<T> {
     if (started) return;
     started = true;
 
-    if (!lazyGetter && asyncID === undefined) {
-      asyncID = getAsyncIDIfAvailable();
+    if (!lazyGetter && resourceOwnerID === undefined) {
+      resourceOwnerID = createOwnerID(getOwner());
     }
 
     if (!asyncValues) asyncValues = getAsyncValues();
@@ -62,8 +59,8 @@ export function createAsyncResource<T>(getter: () => Promise<T>): VynnRef<T> {
       () => {
         const currentVersion = ++version;
         try {
-          if (!lazyGetter && asyncID !== undefined && !hasReadHydrationValue) {
-            hydrationValue = getAsyncValue<T>(asyncID);
+          if (!lazyGetter && resourceOwnerID !== undefined && !hasReadHydrationValue) {
+            hydrationValue = getAsyncValue<T>(resourceOwnerID);
             hasReadHydrationValue = true;
           }
 
@@ -100,15 +97,16 @@ export function createAsyncResource<T>(getter: () => Promise<T>): VynnRef<T> {
             (value) => {
               if (currentVersion !== version) return;
 
-              runWithOwner(owner, () => {
-                if (asyncValues && asyncID !== undefined) asyncValues[asyncID] = value;
+              runWithOwner(effectOwner, () => {
+                if (asyncValues && resourceOwnerID !== undefined)
+                  asyncValues[resourceOwnerID] = value;
                 record.value = { status: "resolved", value, version: currentVersion };
               });
             },
             (error: unknown) => {
               if (currentVersion !== version) return;
 
-              runWithOwner(owner, () => {
+              runWithOwner(effectOwner, () => {
                 if (error instanceof NotReadyError) {
                   record.value = {
                     status: "pending",
@@ -143,7 +141,7 @@ export function createAsyncResource<T>(getter: () => Promise<T>): VynnRef<T> {
           };
         }
       },
-      { phase: "render", owner },
+      { phase: "render", owner: effectOwner },
     );
   }
 
@@ -198,7 +196,7 @@ export function createAsyncResource<T>(getter: () => Promise<T>): VynnRef<T> {
 
   // Ownerless module resources are activated by their first read so they can
   // acquire the request-local hydration scope of the render that consumes them.
-  if (owner !== null || asyncID !== undefined) start();
+  if (owner !== null || resourceOwnerID !== undefined) start();
 
   return resource;
 }

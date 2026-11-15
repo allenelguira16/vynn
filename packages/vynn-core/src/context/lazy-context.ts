@@ -1,7 +1,4 @@
 import { getContext, modifyContext, setContext } from "../life-cycle/owner";
-import { recordLazyIDReservation } from "./hydration-id-context";
-
-// LAZY ID CONTEXT
 
 const LAZY_ID = Symbol("vynn.lazy-id");
 const LAZY_ID_RESERVATIONS = Symbol("vynn.lazy-id-reservations");
@@ -51,7 +48,6 @@ export function getLazyID(): string {
   if (reservations) {
     reservations.set(scope.prefix, Math.max(reservations.get(scope.prefix) ?? 0, next));
   }
-  recordLazyIDReservation(scope.prefix, next);
 
   return scope.prefix ? `${scope.prefix}.${scope.next}` : String(scope.next);
 }
