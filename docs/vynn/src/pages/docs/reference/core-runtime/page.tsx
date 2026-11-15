@@ -214,5 +214,4 @@ const CoreRuntimePage = () => (
   </article>
 );
 
-
 export default CoreRuntimePage;

@@ -107,10 +107,7 @@ export function $computed<T>(
           boundary(pendingError.promise);
         }
 
-        throw new NotReadyError(
-          pendingError.promise,
-          boundary ?? pendingError.boundary,
-        );
+        throw new NotReadyError(pendingError.promise, boundary ?? pendingError.boundary);
       }
 
       return currentValue;

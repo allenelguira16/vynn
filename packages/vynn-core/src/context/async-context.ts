@@ -1,7 +1,7 @@
 import { ASYNC_DATA_SSR_KEY } from "../const";
 import { getContext, modifyContext, setContext } from "../life-cycle/owner";
-import { recordAsyncIDReservation } from "./hydration-id-context";
 import { deserializeServerFunctionValue } from "../server-functions/serialization";
+import { recordAsyncIDReservation } from "./hydration-id-context";
 import { isServer } from "./is-server-context";
 
 export type AsyncBoundary<T = unknown> = (promise: Promise<T>) => void;

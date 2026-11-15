@@ -5,8 +5,8 @@ const BasicRoutingPage = () => (
     <p class="mb-3 text-sm font-semibold uppercase tracking-wider text-primary">Routing</p>
     <h1>Basic routing</h1>
     <p class="lead">
-      Define routes as objects with a <code>path</code> and a <code>component</code>. Pass the
-      route list to <code>Router</code> to render the page that matches the current URL.
+      Define routes as objects with a <code>path</code> and a <code>component</code>. Pass the route
+      list to <code>Router</code> to render the page that matches the current URL.
     </p>
 
     <h2>Define a route list</h2>
@@ -27,9 +27,9 @@ export function App(props: { url: string }) {
 }`}
     />
     <p>
-      <code>url</code> supplies the initial request URL. In an app rendered by the Vynn Vite
-      plugin, the root component receives it as <code>props.url</code>. Passing it to the router
-      keeps the server render aligned with the requested page.
+      <code>url</code> supplies the initial request URL. In an app rendered by the Vynn Vite plugin,
+      the root component receives it as <code>props.url</code>. Passing it to the router keeps the
+      server render aligned with the requested page.
     </p>
 
     <h2>Nest routes under a layout</h2>
@@ -71,8 +71,8 @@ export function App(props: { url: string }) {
     />
     <p>
       The parent path is combined with each child path. Here, the child route <code>about</code>
-      resolves to <code>/about</code>. A child path of <code>/</code> represents the parent's
-      index page.
+      resolves to <code>/about</code>. A child path of <code>/</code> represents the parent's index
+      page.
     </p>
 
     <h2>Use a router instance when you need it</h2>

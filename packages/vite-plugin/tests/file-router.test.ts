@@ -1,8 +1,7 @@
-import { afterEach, describe, expect, it } from "vitest";
-
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { transformFileRouterCalls } from "../src/plugins/file-router";
 
@@ -49,7 +48,10 @@ describe("Vynn App Router transform", () => {
       "src/app/users/[id]/page.tsx",
       "export default function User() { return null; } export function beforeLoad() {}",
     );
-    writeAppFile("src/app/components/button.tsx", "export default function Button() { return null; }");
+    writeAppFile(
+      "src/app/components/button.tsx",
+      "export default function Button() { return null; }",
+    );
     writeAppFile("src/app/_private/page.tsx", "export default function Private() { return null; }");
     writeAppFile("src/app/example.test.tsx", "export default function TestPage() { return null; }");
 
@@ -70,12 +72,8 @@ describe("Vynn App Router transform", () => {
     expect(transformed).toContain(
       'appRoutes("/src/app", import.meta.glob(["/src/app/**/{page,layout,not-found}.{js,jsx,ts,tsx,mjs,mts}", "!/src/app/**/_*/**/{page,layout,not-found}.{js,jsx,ts,tsx,mjs,mts}"])',
     );
-    expect(transformed).toContain(
-      '"path":"/src/app/page.tsx","kind":"page","beforeLoad":false',
-    );
-    expect(transformed).toContain(
-      '"path":"/src/app/layout.tsx","kind":"layout","beforeLoad":true',
-    );
+    expect(transformed).toContain('"path":"/src/app/page.tsx","kind":"page","beforeLoad":false');
+    expect(transformed).toContain('"path":"/src/app/layout.tsx","kind":"layout","beforeLoad":true');
     expect(transformed).toContain(
       '"path":"/src/app/not-found.tsx","kind":"not-found","beforeLoad":false',
     );
@@ -117,9 +115,9 @@ describe("Vynn App Router transform", () => {
     const source =
       'import { toFileRouter } from "vynn-router"; const routes = toFileRouter(getAppDirectory());';
 
-    expect(() =>
-      transformFileRouterCalls(source, resolve(root, "src", "routes.ts"), root),
-    ).toThrow("directory must be a string literal");
+    expect(() => transformFileRouterCalls(source, resolve(root, "src", "routes.ts"), root)).toThrow(
+      "directory must be a string literal",
+    );
   });
 
   it("rejects unsupported parallel route folders", () => {
@@ -129,9 +127,9 @@ describe("Vynn App Router transform", () => {
     const source =
       'import { toFileRouter } from "vynn-router"; const routes = toFileRouter("/src/app");';
 
-    expect(() =>
-      transformFileRouterCalls(source, resolve(root, "src", "routes.ts"), root),
-    ).toThrow("Parallel route slots are not supported yet");
+    expect(() => transformFileRouterCalls(source, resolve(root, "src", "routes.ts"), root)).toThrow(
+      "Parallel route slots are not supported yet",
+    );
   });
 
   it("rejects unsupported intercepting route folders", () => {
@@ -141,9 +139,9 @@ describe("Vynn App Router transform", () => {
     const source =
       'import { toFileRouter } from "vynn-router"; const routes = toFileRouter("/src/app");';
 
-    expect(() =>
-      transformFileRouterCalls(source, resolve(root, "src", "routes.ts"), root),
-    ).toThrow("Intercepting route folders are not supported yet");
+    expect(() => transformFileRouterCalls(source, resolve(root, "src", "routes.ts"), root)).toThrow(
+      "Intercepting route folders are not supported yet",
+    );
   });
 
   it("requires page and layout files to have a default export", () => {
@@ -153,9 +151,9 @@ describe("Vynn App Router transform", () => {
     const source =
       'import { toFileRouter } from "vynn-router"; const routes = toFileRouter("/src/app");';
 
-    expect(() =>
-      transformFileRouterCalls(source, resolve(root, "src", "routes.ts"), root),
-    ).toThrow("must have a default component export");
+    expect(() => transformFileRouterCalls(source, resolve(root, "src", "routes.ts"), root)).toThrow(
+      "must have a default component export",
+    );
   });
 
   it("ignores unrelated router imports and unbound function names", () => {

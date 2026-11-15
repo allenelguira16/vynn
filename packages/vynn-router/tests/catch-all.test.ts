@@ -110,7 +110,6 @@ describe("router catch-all routes", () => {
   });
 });
 
-
 describe("router not-found fallback", () => {
   it("renders the configured notFound component only when no route matches", async () => {
     const notFound = () => "Not found";

@@ -4,8 +4,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { JSX } from "../src/types/jsx";
 
 import { hydrateToDOM } from "../src/client/hydrate-to-dom";
-import { ERROR_BOUNDARY_DATA_SSR_KEY } from "../src/const";
 import { ErrorBoundary } from "../src/components/error-boundary";
+import { ERROR_BOUNDARY_DATA_SSR_KEY } from "../src/const";
 
 afterEach(() => {
   document.body.innerHTML = "";

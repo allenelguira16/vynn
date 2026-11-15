@@ -31,14 +31,12 @@ describe("SSR redirects under Await", () => {
     let getterRuns = 0;
 
     const rendered = renderToServer(() => {
-      const value = $computed(
-        async () => {
-          getterRuns += 1;
-          return new Promise<string>((resolve) => {
-            resolveValue = resolve;
-          });
-        },
-      );
+      const value = $computed(async () => {
+        getterRuns += 1;
+        return new Promise<string>((resolve) => {
+          resolveValue = resolve;
+        });
+      });
 
       return Await({
         fallback: "Loading",

@@ -198,5 +198,4 @@ const ComponentsPage = () => (
   </article>
 );
 
-
 export default ComponentsPage;

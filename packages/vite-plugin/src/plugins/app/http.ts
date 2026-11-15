@@ -4,11 +4,7 @@ import { once } from "node:events";
 import { isAbsolute, relative, sep } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import {
-  constants as zlibConstants,
-  createBrotliCompress,
-  createGzip,
-} from "node:zlib";
+import { constants as zlibConstants, createBrotliCompress, createGzip } from "node:zlib";
 
 import { VYNN_SSR_CSS_URL } from "../ssr-css.ts";
 import { CLIENT_ENTRY_ID, type ResolvedEntries } from "./shared.ts";
@@ -142,9 +138,7 @@ export function negotiateResponseEncoding(
     const qualityParameter = parameters.find((parameter) => parameter.trim().startsWith("q="));
     const qualityValue = qualityParameter ? Number(qualityParameter.trim().slice(2)) : 1;
     const quality =
-      Number.isFinite(qualityValue) && qualityValue >= 0 && qualityValue <= 1
-        ? qualityValue
-        : 0;
+      Number.isFinite(qualityValue) && qualityValue >= 0 && qualityValue <= 1 ? qualityValue : 0;
 
     qualities.set(rawEncoding, quality);
   }
@@ -225,9 +219,7 @@ async function writeCompressedResponse(
       : createGzip();
   const reader = body.getReader();
   const flushMode =
-    encoding === "br"
-      ? zlibConstants.BROTLI_OPERATION_FLUSH
-      : zlibConstants.Z_SYNC_FLUSH;
+    encoding === "br" ? zlibConstants.BROTLI_OPERATION_FLUSH : zlibConstants.Z_SYNC_FLUSH;
 
   const cancelOnClose = () => {
     if (res.writableFinished) return;

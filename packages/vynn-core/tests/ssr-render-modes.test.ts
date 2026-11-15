@@ -37,7 +37,11 @@ describe("renderToServer modes", () => {
     const element = createSSRNode("div");
     const text = createSSRText("content");
     const comment = createSSRComment("marker");
-    const asyncNode = createSSRAsync(() => [], () => [], []);
+    const asyncNode = createSSRAsync(
+      () => [],
+      () => [],
+      [],
+    );
     const deferredNode = createSSRDeferred(() => [], []);
 
     expect(element).toBeInstanceOf(SSR_NODE);
@@ -206,29 +210,17 @@ describe("renderToServer modes", () => {
   });
 
   it("resolves new async lazy resources in async SSR mode", async () => {
-    const LazyPage = lazy(
-      () => Promise.resolve({ Page: () => "Loaded lazy page" }),
-      "Page",
-    );
+    const LazyPage = lazy(() => Promise.resolve({ Page: () => "Loaded lazy page" }), "Page");
 
-    const rendered = await renderToServer(
-      () => LazyPage(undefined as never),
-      "async",
-    );
+    const rendered = await renderToServer(() => LazyPage(undefined as never), "async");
 
     expect(rendered.body).toContain("Loaded lazy page");
   });
 
   it("resolves new async lazy resources in streaming SSR mode", async () => {
-    const LazyPage = lazy(
-      () => Promise.resolve({ Page: () => "Loaded lazy page" }),
-      "Page",
-    );
+    const LazyPage = lazy(() => Promise.resolve({ Page: () => "Loaded lazy page" }), "Page");
 
-    const rendered = renderToServer(
-      () => LazyPage(undefined as never),
-      "stream",
-    );
+    const rendered = renderToServer(() => LazyPage(undefined as never), "stream");
 
     const reader = rendered.body.getReader();
     const chunks: string[] = [];

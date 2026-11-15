@@ -69,9 +69,10 @@ const CompilerPage = () => (
       This is a simplified view of the generated module. Generated runtime helpers keep their
       original <code>$</code> prefix and receive a leading underscore in the local alias, such as
       <code>$cmpnt as _$cmpnt</code>. The underscore marks compiler-generated bindings without
-      hiding the Vynn helper name. Temporary names such as <code>el1</code> are allocated separately,
-      and numeric suffixes are used when a generated name would collide with a source identifier.
-      Exact formatting and import order may differ. The important parts are the transformations:
+      hiding the Vynn helper name. Temporary names such as <code>el1</code> are allocated
+      separately, and numeric suffixes are used when a generated name would collide with a source
+      identifier. Exact formatting and import order may differ. The important parts are the
+      transformations:
     </p>
     <ol>
       <li>
@@ -294,6 +295,5 @@ const CompilerPage = () => (
     </p>
   </article>
 );
-
 
 export default CompilerPage;

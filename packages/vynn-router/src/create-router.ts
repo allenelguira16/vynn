@@ -2,8 +2,8 @@ import { $store } from "vynn";
 
 import type { Location, RouterInstance, RouterOptions, RouterState } from "./types";
 
-import { createBrowserHistory, createMemoryHistory } from "./history";
 import { isServer } from "./environment";
+import { createBrowserHistory, createMemoryHistory } from "./history";
 import {
   parseLocation,
   registerLocationNavigation,

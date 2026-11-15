@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 
+import { ErrorBoundary } from "../src/components/error-boundary";
 import { ASYNC_DATA_SSR_KEY, ERROR_BOUNDARY_DATA_SSR_KEY } from "../src/const";
 import {
   enterAsyncBoundary,
@@ -11,7 +12,6 @@ import {
   initializeLazyAsyncScope,
   reserveAsyncIDReservations,
 } from "../src/context/async-context";
-import { ErrorBoundary } from "../src/components/error-boundary";
 import { initializeErrorBoundaryContext } from "../src/context/error-boundary-context";
 import {
   createHydrationIDTracker,

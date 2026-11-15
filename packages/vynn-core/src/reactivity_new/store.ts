@@ -1,8 +1,16 @@
 import { getOwner } from "../life-cycle/owner";
-import { createReactiveEffect, batch, track, trigger, triggerAll, triggerArrayLength, untrack } from "./effect";
-import { createAsyncResource } from "./resource";
-import { isRef, type VynnReadonlyRef, type VynnRef } from "./ref";
+import {
+  createReactiveEffect,
+  batch,
+  track,
+  trigger,
+  triggerAll,
+  triggerArrayLength,
+  untrack,
+} from "./effect";
 import { isPending, registerPending } from "./pending";
+import { isRef, type VynnReadonlyRef, type VynnRef } from "./ref";
+import { createAsyncResource } from "./resource";
 import { isArrayIndex, isPlainObject } from "./utils";
 
 type StoreArrayValue<T> = T extends VynnReadonlyRef<unknown> ? T : StoreValue<T>;
@@ -61,12 +69,7 @@ function isSet(value: object): value is Set<unknown> {
 }
 
 function isProxyable(value: object): boolean {
-  return (
-    Array.isArray(value) ||
-    isPlainObject(value) ||
-    isMap(value) ||
-    isSet(value)
-  );
+  return Array.isArray(value) || isPlainObject(value) || isMap(value) || isSet(value);
 }
 
 function toRaw<T>(value: T): T {
@@ -151,7 +154,13 @@ function createArrayHandlers(beforeRead?: () => void): ProxyHandler<object> {
       if (typeof value === "function" && arrayMutatingMethods.has(key)) {
         return (...args: unknown[]) =>
           untrack(() =>
-            batch(() => Reflect.apply(value, receiver, args.map((argument) => toRaw(argument)))),
+            batch(() =>
+              Reflect.apply(
+                value,
+                receiver,
+                args.map((argument) => toRaw(argument)),
+              ),
+            ),
           );
       }
 
@@ -387,10 +396,18 @@ function createMapHandlers(): ProxyHandler<Map<unknown, unknown>> {
       }
 
       if (key === "forEach") {
-        return (callback: (value: unknown, key: unknown, map: Map<unknown, unknown>) => void, thisArg?: unknown) => {
+        return (
+          callback: (value: unknown, key: unknown, map: Map<unknown, unknown>) => void,
+          thisArg?: unknown,
+        ) => {
           track(target, ITERATE_KEY);
           target.forEach((value, mapKey) => {
-            callback.call(thisArg, toReactive(value), toReactive(mapKey), receiverFor(target) as Map<unknown, unknown>);
+            callback.call(
+              thisArg,
+              toReactive(value),
+              toReactive(mapKey),
+              receiverFor(target) as Map<unknown, unknown>,
+            );
           });
         };
       }
@@ -463,11 +480,19 @@ function createSetHandlers(): ProxyHandler<Set<unknown>> {
       }
 
       if (key === "forEach") {
-        return (callback: (value: unknown, key: unknown, set: Set<unknown>) => void, thisArg?: unknown) => {
+        return (
+          callback: (value: unknown, key: unknown, set: Set<unknown>) => void,
+          thisArg?: unknown,
+        ) => {
           track(target, ITERATE_KEY);
           target.forEach((value) => {
             const reactiveValue = toReactive(value);
-            callback.call(thisArg, reactiveValue, reactiveValue, receiverFor(target) as Set<unknown>);
+            callback.call(
+              thisArg,
+              reactiveValue,
+              reactiveValue,
+              receiverFor(target) as Set<unknown>,
+            );
           });
         };
       }
@@ -603,13 +628,9 @@ function reconcile(target: object, next: object): boolean {
   return changed;
 }
 
-export function $store<T extends object>(
-  initializer: () => Promise<T>,
-): Store<T>;
+export function $store<T extends object>(initializer: () => Promise<T>): Store<T>;
 export function $store<T extends object>(initializer: () => T): Store<T>;
-export function $store<T extends object>(
-  initializer: () => T | Promise<T>,
-): Store<T> {
+export function $store<T extends object>(initializer: () => T | Promise<T>): Store<T> {
   if (typeof initializer !== "function") {
     throw new TypeError("[vynn]: $store() requires an initializer function.");
   }
@@ -642,7 +663,9 @@ export function $store<T extends object>(
       const nextValue = resource.value;
 
       if (!isPlainObject(nextValue)) {
-        throw new TypeError("[vynn]: An async $store() initializer must resolve to a plain object.");
+        throw new TypeError(
+          "[vynn]: An async $store() initializer must resolve to a plain object.",
+        );
       }
 
       reconcile(target, toRaw(nextValue));

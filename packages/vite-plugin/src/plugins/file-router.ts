@@ -1,7 +1,8 @@
+import type { Plugin, ResolvedConfig } from "vite";
+
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, extname, isAbsolute, relative, resolve, sep } from "node:path";
 import { parseSync, visitorKeys } from "oxc-parser";
-import type { Plugin, ResolvedConfig } from "vite";
 
 type AstNode = {
   type?: string;
@@ -93,13 +94,14 @@ function visit(node: AstNode, callback: (node: AstNode) => void): void {
 
 function parseModule(source: string, filePath: string): AstNode {
   const extension = extname(filePath).toLowerCase();
-  const lang = extension === ".tsx" || extension === ".mtsx"
-    ? "tsx"
-    : extension === ".jsx" || extension === ".mjsx"
-      ? "jsx"
-      : extension === ".ts" || extension === ".mts" || extension === ".cts"
-        ? "ts"
-        : "js";
+  const lang =
+    extension === ".tsx" || extension === ".mtsx"
+      ? "tsx"
+      : extension === ".jsx" || extension === ".mjsx"
+        ? "jsx"
+        : extension === ".ts" || extension === ".mts" || extension === ".cts"
+          ? "ts"
+          : "js";
 
   const parsed = parseSync(filePath, source, {
     lang,
@@ -168,9 +170,7 @@ function isWithinDirectory(parent: string, child: string): boolean {
   const relativePath = relative(parent, child);
   return (
     relativePath === "" ||
-    (relativePath !== ".." &&
-      !relativePath.startsWith(".." + sep) &&
-      !isAbsolute(relativePath))
+    (relativePath !== ".." && !relativePath.startsWith(".." + sep) && !isAbsolute(relativePath))
   );
 }
 
@@ -201,9 +201,7 @@ function resolveAppDirectory(directory: string, importer: string, root: string):
   }
 
   if (!existsSync(absoluteDirectory)) {
-    throw new Error(
-      "[Vynn file router] App directory does not exist: " + absoluteDirectory,
-    );
+    throw new Error("[Vynn file router] App directory does not exist: " + absoluteDirectory);
   }
 
   return absoluteDirectory;
@@ -351,7 +349,7 @@ export function transformFileRouterCalls(
     if (!directory) {
       throw new Error(
         "[Vynn file router] The toFileRouter() directory must be a string literal. " +
-          "Use a path such as toFileRouter(\"/src/pages\").",
+          'Use a path such as toFileRouter("/src/pages").',
       );
     }
 
@@ -359,11 +357,7 @@ export function transformFileRouterCalls(
     const callEnd = call.end;
     const argumentStart = firstArgument.start;
 
-    if (
-      !isNodePosition(callStart) ||
-      !isNodePosition(callEnd) ||
-      !isNodePosition(argumentStart)
-    ) {
+    if (!isNodePosition(callStart) || !isNodePosition(callEnd) || !isNodePosition(argumentStart)) {
       throw new Error("[Vynn file router] Could not locate the toFileRouter() call in source.");
     }
 
@@ -395,10 +389,7 @@ export function transformFileRouterCalls(
   let transformed = source;
 
   for (const edit of edits.sort((left, right) => right.start - left.start)) {
-    transformed =
-      transformed.slice(0, edit.start) +
-      edit.replacement +
-      transformed.slice(edit.end);
+    transformed = transformed.slice(0, edit.start) + edit.replacement + transformed.slice(edit.end);
   }
 
   return transformed;

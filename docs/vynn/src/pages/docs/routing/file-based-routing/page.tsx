@@ -24,8 +24,8 @@ export default defineConfig({
 });`}
     />
     <p>
-      Create a route directory and pass its root-relative path to <code>toFileRouter()</code>.
-      You do not need to write an <code>import.meta.glob()</code> call yourself.
+      Create a route directory and pass its root-relative path to <code>toFileRouter()</code>. You
+      do not need to write an <code>import.meta.glob()</code> call yourself.
     </p>
     <CodeBlock
       lang="tsx"
@@ -49,15 +49,21 @@ export function App(props: { url: string }) {
         </thead>
         <tbody>
           <tr>
-            <td><code>page.tsx</code></td>
+            <td>
+              <code>page.tsx</code>
+            </td>
             <td>Defines the page for its folder's URL.</td>
           </tr>
           <tr>
-            <td><code>layout.tsx</code></td>
+            <td>
+              <code>layout.tsx</code>
+            </td>
             <td>Wraps the pages and nested routes in its folder.</td>
           </tr>
           <tr>
-            <td><code>not-found.tsx</code></td>
+            <td>
+              <code>not-found.tsx</code>
+            </td>
             <td>Defines fallback UI for unmatched routes in its scope.</td>
           </tr>
         </tbody>

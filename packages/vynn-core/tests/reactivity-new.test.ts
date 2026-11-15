@@ -3,10 +3,10 @@ import { describe, expect, it } from "vitest";
 import { createOwner, disposeOwner, runWithOwner } from "../src/life-cycle/owner";
 import { $computed } from "../src/reactivity_new/computed";
 import { $effect, $renderEffect, batch } from "../src/reactivity_new/effect";
+import { NotReadyError } from "../src/reactivity_new/not-ready-error";
 import { isPending } from "../src/reactivity_new/pending";
 import { $state } from "../src/reactivity_new/state";
 import { $store } from "../src/reactivity_new/store";
-import { NotReadyError } from "../src/reactivity_new/not-ready-error";
 
 async function flushEffects(): Promise<void> {
   await new Promise<void>((resolve) => queueMicrotask(resolve));
@@ -210,7 +210,11 @@ describe("new reactivity API", () => {
     await flushEffects();
 
     expect(names).toEqual(["Ada", "Grace"]);
-    expect(keys).toEqual([["profile", "enabled"], ["profile", "enabled", "extra"], ["profile", "extra"]]);
+    expect(keys).toEqual([
+      ["profile", "enabled"],
+      ["profile", "enabled", "extra"],
+      ["profile", "extra"],
+    ]);
 
     stopName();
     stopKeys();
@@ -318,9 +322,7 @@ describe("new reactivity API", () => {
       });
 
       const names =
-        requestedUrl === "/first"
-          ? ["Bulbasaur", "Ivysaur"]
-          : ["Charmander", "Charmeleon"];
+        requestedUrl === "/first" ? ["Bulbasaur", "Ivysaur"] : ["Charmander", "Charmeleon"];
 
       return {
         results: names.map((name) => ({ name, url: requestedUrl })),
@@ -384,9 +386,9 @@ describe("new reactivity API", () => {
     const renderedRows: string[] = [];
     const stop = $renderEffect(() => {
       renderedRows.push(
-        store.results.map(({ name, url: resultUrl }, index) =>
-          `${index}:${name}:${resultUrl}`,
-        ).join(","),
+        store.results
+          .map(({ name, url: resultUrl }, index) => `${index}:${name}:${resultUrl}`)
+          .join(","),
       );
     });
 

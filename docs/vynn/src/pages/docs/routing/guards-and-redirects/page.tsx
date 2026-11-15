@@ -55,9 +55,9 @@ const router = createRouter({
 
     <h2>Redirect to another route</h2>
     <p>
-      <code>redirect()</code> stops the current route from rendering and redirects to the target.
-      It works during server rendering and client navigation. You can provide a redirect status
-      for the server response.
+      <code>redirect()</code> stops the current route from rendering and redirects to the target. It
+      works during server rendering and client navigation. You can provide a redirect status for the
+      server response.
     </p>
     <CodeBlock
       lang="tsx"

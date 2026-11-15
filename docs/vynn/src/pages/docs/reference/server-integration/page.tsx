@@ -358,5 +358,4 @@ const ServerIntegrationPage = () => (
   </article>
 );
 
-
 export default ServerIntegrationPage;

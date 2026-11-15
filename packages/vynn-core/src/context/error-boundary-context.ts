@@ -1,6 +1,7 @@
-import { ERROR_BOUNDARY_DATA_SSR_KEY } from "../const";
 import type { AsyncIDReservations } from "./async-context";
 import type { LazyIDReservations } from "./lazy-context";
+
+import { ERROR_BOUNDARY_DATA_SSR_KEY } from "../const";
 import { getContext, getOwner, modifyContext, setContext } from "../life-cycle/owner";
 import { isServer } from "./is-server-context";
 

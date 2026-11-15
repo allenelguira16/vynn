@@ -58,10 +58,7 @@ export function commitClientRedirect(
     if (error.target.origin !== window.location.origin) {
       window.location.replace(error.target.href);
     } else {
-      replace(
-        error.target.pathname + error.target.search + error.target.hash,
-        routeLocation,
-      );
+      replace(error.target.pathname + error.target.search + error.target.hash, routeLocation);
     }
   };
 

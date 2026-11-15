@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
 
-import { Await } from "../src/components/await";
 import { renderToDOM } from "../src/client/render-to-dom";
+import { Await } from "../src/components/await";
 import { $computed } from "../src/reactivity_new/computed";
 import { isPending } from "../src/reactivity_new/pending";
 import { $state } from "../src/reactivity_new/state";
@@ -10,7 +10,11 @@ import { $store } from "../src/reactivity_new/store";
 import { renderToServer } from "../src/server/render-to-server";
 
 function Row(props: { name: string; url: string }) {
-  return <li>{props.name}|{props.url}</li>;
+  return (
+    <li>
+      {props.name}|{props.url}
+    </li>
+  );
 }
 
 afterEach(() => {
@@ -75,9 +79,7 @@ describe("async store list rendering", () => {
         });
 
         return {
-          results: [
-            { name: requestedUrl, url: requestedUrl },
-          ],
+          results: [{ name: requestedUrl, url: requestedUrl }],
         };
       });
 
@@ -261,27 +263,24 @@ describe("async store list rendering", () => {
   });
 
   it("renders the current async store array length during SSR", async () => {
-    const rendered = await renderToServer(
-      () => {
-        const pokedex = $store(async () => ({
-          results: Array.from({ length: 10 }, (_, index) => ({
-            name: `pokemon-${index}`,
-            url: `/pokemon/${index}`,
-          })),
-        }));
+    const rendered = await renderToServer(() => {
+      const pokedex = $store(async () => ({
+        results: Array.from({ length: 10 }, (_, index) => ({
+          name: `pokemon-${index}`,
+          url: `/pokemon/${index}`,
+        })),
+      }));
 
-        return (
-          <Await fallback={<p>Loading</p>}>
-            <ul>
-              {pokedex.results.map(({ name, url }, index) => (
-                <Row name={name} url={url} />
-              ))}
-            </ul>
-          </Await>
-        );
-      },
-      "async",
-    );
+      return (
+        <Await fallback={<p>Loading</p>}>
+          <ul>
+            {pokedex.results.map(({ name, url }, index) => (
+              <Row name={name} url={url} />
+            ))}
+          </ul>
+        </Await>
+      );
+    }, "async");
 
     expect(rendered.body.match(/<li/g)).toHaveLength(10);
     expect(rendered.body).toContain("pokemon-9");
@@ -291,23 +290,20 @@ describe("async store list rendering", () => {
   it("waits for async store settlement when isPending is rendered during SSR", async () => {
     let resolveStore!: (value: { ready: boolean }) => void;
 
-    const renderedPromise = renderToServer(
-      () => {
-        const store = $store(
-          async () =>
-            new Promise<{ ready: boolean }>((resolve) => {
-              resolveStore = resolve;
-            }),
-        );
+    const renderedPromise = renderToServer(() => {
+      const store = $store(
+        async () =>
+          new Promise<{ ready: boolean }>((resolve) => {
+            resolveStore = resolve;
+          }),
+      );
 
-        return (
-          <Await fallback={<p>Loading</p>}>
-            <button disabled={isPending(store)}>Continue</button>
-          </Await>
-        );
-      },
-      "async",
-    );
+      return (
+        <Await fallback={<p>Loading</p>}>
+          <button disabled={isPending(store)}>Continue</button>
+        </Await>
+      );
+    }, "async");
 
     // SSR should have registered the resource with Await rather than
     // serializing disabled=true before the initial request has settled.
@@ -323,23 +319,20 @@ describe("async store list rendering", () => {
   it("patches streaming SSR with the settled isPending attribute state", async () => {
     let resolveStore!: (value: { ready: boolean }) => void;
 
-    const rendered = renderToServer(
-      () => {
-        const store = $store(
-          async () =>
-            new Promise<{ ready: boolean }>((resolve) => {
-              resolveStore = resolve;
-            }),
-        );
+    const rendered = renderToServer(() => {
+      const store = $store(
+        async () =>
+          new Promise<{ ready: boolean }>((resolve) => {
+            resolveStore = resolve;
+          }),
+      );
 
-        return (
-          <Await fallback={<p>Loading</p>}>
-            <button disabled={isPending(store)}>Continue</button>
-          </Await>
-        );
-      },
-      "stream",
-    );
+      return (
+        <Await fallback={<p>Loading</p>}>
+          <button disabled={isPending(store)}>Continue</button>
+        </Await>
+      );
+    }, "stream");
 
     const reader = rendered.body.getReader();
     const decoder = new TextDecoder();
@@ -364,24 +357,21 @@ describe("async store list rendering", () => {
   it("waits for async dependencies when a computed pending state is rendered during SSR", async () => {
     let resolveValue!: (value: { ready: boolean }) => void;
 
-    const renderedPromise = renderToServer(
-      () => {
-        const state = $state(
-          async () =>
-            new Promise<{ ready: boolean }>((resolve) => {
-              resolveValue = resolve;
-            }),
-        );
-        const computed = $computed(() => state.value.ready);
+    const renderedPromise = renderToServer(() => {
+      const state = $state(
+        async () =>
+          new Promise<{ ready: boolean }>((resolve) => {
+            resolveValue = resolve;
+          }),
+      );
+      const computed = $computed(() => state.value.ready);
 
-        return (
-          <Await fallback={<p>Loading</p>}>
-            <button disabled={isPending(computed)}>Continue</button>
-          </Await>
-        );
-      },
-      "async",
-    );
+      return (
+        <Await fallback={<p>Loading</p>}>
+          <button disabled={isPending(computed)}>Continue</button>
+        </Await>
+      );
+    }, "async");
 
     resolveValue({ ready: true });
 

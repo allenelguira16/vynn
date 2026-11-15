@@ -2,13 +2,11 @@ import { onDestroy } from "vynn";
 
 import type { RouterInstance, RouterOptions } from "./types";
 
-import { createRouter } from "./create-router";
 import { LocationProvider } from "./context";
+import { createRouter } from "./create-router";
 import { RouteOutlet } from "./outlet";
 
-type RouterProps<TContext> =
-  | { router: RouterInstance<TContext> }
-  | RouterOptions<TContext>;
+type RouterProps<TContext> = { router: RouterInstance<TContext> } | RouterOptions<TContext>;
 
 /**
  * Renders a router instance.
@@ -29,11 +27,7 @@ export function Router<TContext = undefined>(props: RouterProps<TContext>) {
 
   return (
     <LocationProvider value={router.state.location}>
-      <RouteOutlet
-        routes={router.routes}
-        context={router.context}
-        notFound={router.notFound}
-      />
+      <RouteOutlet routes={router.routes} context={router.context} notFound={router.notFound} />
     </LocationProvider>
   );
 }

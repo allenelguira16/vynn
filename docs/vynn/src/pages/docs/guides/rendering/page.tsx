@@ -220,5 +220,4 @@ const RenderingPage = () => (
   </article>
 );
 
-
 export default RenderingPage;

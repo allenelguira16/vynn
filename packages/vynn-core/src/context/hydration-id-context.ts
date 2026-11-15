@@ -48,9 +48,7 @@ export function recordLazyIDReservation(prefix: string, next: number): void {
 }
 
 /** Read the current reservations, including allocations made by deferred SSR retries. */
-export function getHydrationIDReservations(
-  tracker: HydrationIDTracker,
-): HydrationIDReservations {
+export function getHydrationIDReservations(tracker: HydrationIDTracker): HydrationIDReservations {
   return {
     ...(tracker.asyncIDs.size > 0 ? { asyncIDs: Object.fromEntries(tracker.asyncIDs) } : {}),
     ...(tracker.lazyIDs.size > 0 ? { lazyIDs: Object.fromEntries(tracker.lazyIDs) } : {}),

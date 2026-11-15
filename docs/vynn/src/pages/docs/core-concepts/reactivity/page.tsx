@@ -214,5 +214,4 @@ const ReactivityPage = () => (
   </article>
 );
 
-
 export default ReactivityPage;

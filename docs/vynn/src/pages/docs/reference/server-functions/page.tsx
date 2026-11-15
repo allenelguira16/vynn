@@ -288,5 +288,4 @@ const ServerFunctionsReferencePage = () => (
   </article>
 );
 
-
 export default ServerFunctionsReferencePage;

@@ -106,5 +106,4 @@ const ContextLifecyclePage = () => (
   </article>
 );
 
-
 export default ContextLifecyclePage;

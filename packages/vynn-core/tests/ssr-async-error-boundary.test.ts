@@ -4,10 +4,10 @@ import type { JSX } from "../src/types/jsx";
 
 import { Await } from "../src/components/await";
 import { ErrorBoundary } from "../src/components/error-boundary";
+import { getLazyID, initializeLazyScope } from "../src/context/lazy-context";
+import { $state } from "../src/reactivity_new/state";
 import { $insert } from "../src/render/$insert";
 import { $tmpl } from "../src/render/$tmpl";
-import { $state } from "../src/reactivity_new/state";
-import { getLazyID, initializeLazyScope } from "../src/context/lazy-context";
 import { renderToServer } from "../src/server/render-to-server";
 
 function deferred<T>() {
@@ -62,7 +62,7 @@ describe("SSR async ErrorBoundary", () => {
     expect(html).toContain(`Caught: ${error.message}`);
     expect(html).toContain("<!--eb:0-->");
     expect(html).toContain("<!--/eb:0-->");
-    expect(html).not.toContain("template id=\"0\"");
+    expect(html).not.toContain('template id="0"');
   });
 
   it("streams the Await fallback and patches the enclosing ErrorBoundary on rejection", async () => {
@@ -241,7 +241,6 @@ describe("SSR async ErrorBoundary", () => {
     expect(values["root:0"]).toEqual(["string", "inside boundary"]);
     expect(values["root:1"]).toEqual(["string", "after boundary"]);
   });
-
 });
 
 async function readStreamFromReader(

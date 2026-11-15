@@ -1,13 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  toFileRouter,
-  type BeforeLoadContext,
-  type Route,
-} from "../src";
 import type { FileRouteModuleMap, FileRouteModuleMetadata } from "../src/file-router";
-import { PATHLESS_ROUTE, type InternalRoute } from "../src/route-meta";
+
+import { toFileRouter, type BeforeLoadContext, type Route } from "../src";
 import { findMatch } from "../src/outlet";
+import { PATHLESS_ROUTE, type InternalRoute } from "../src/route-meta";
 
 type Context = {
   tenant: string;
@@ -89,16 +86,8 @@ describe("toFileRouter", () => {
         (route) => (route as InternalRoute<Context>)[PATHLESS_ROUTE] === true,
       ) ?? [];
 
-    const marketingMatch = findMatch(
-      groups,
-      { pathname: "/blog/my-post", search: "" },
-      "/",
-    );
-    const dashboardMatch = findMatch(
-      groups,
-      { pathname: "/dashboard/settings", search: "" },
-      "/",
-    );
+    const marketingMatch = findMatch(groups, { pathname: "/blog/my-post", search: "" }, "/");
+    const dashboardMatch = findMatch(groups, { pathname: "/dashboard/settings", search: "" }, "/");
 
     expect(marketingMatch?.route).toBe(groups[0]);
     expect(dashboardMatch?.route).toBe(groups[1]);
@@ -239,12 +228,9 @@ describe("toFileRouter", () => {
   });
 
   it("requires the Vite transform to supply its module map", () => {
-    expect(() => toFileRouter("/src/app")).toThrow(
-      "must be transformed by the Vynn Vite plugin",
-    );
+    expect(() => toFileRouter("/src/app")).toThrow("must be transformed by the Vynn Vite plugin");
   });
 });
-
 
 describe("toFileRouter not-found files", () => {
   it("creates root and segment-level fallback routes", () => {
@@ -267,22 +253,34 @@ describe("toFileRouter not-found files", () => {
     expect(rootFallback).toBeDefined();
     expect(blogFallback).toBeDefined();
 
-    const rootMiss = findMatch(root.children ?? [], {
-      pathname: "/outside",
-      search: "",
-    }, "/");
+    const rootMiss = findMatch(
+      root.children ?? [],
+      {
+        pathname: "/outside",
+        search: "",
+      },
+      "/",
+    );
     expect(rootMiss?.route).toBe(rootFallback);
 
-    const blogParent = findMatch(root.children ?? [], {
-      pathname: "/blog/missing",
-      search: "",
-    }, "/");
+    const blogParent = findMatch(
+      root.children ?? [],
+      {
+        pathname: "/blog/missing",
+        search: "",
+      },
+      "/",
+    );
     expect(blogParent?.route).toBe(blog);
 
-    const blogMiss = findMatch(blog?.children ?? [], {
-      pathname: "/blog/missing",
-      search: "",
-    }, "/blog");
+    const blogMiss = findMatch(
+      blog?.children ?? [],
+      {
+        pathname: "/blog/missing",
+        search: "",
+      },
+      "/blog",
+    );
     expect(blogMiss?.route).toBe(blogFallback);
   });
 
@@ -299,10 +297,14 @@ describe("toFileRouter not-found files", () => {
     };
     const routes = toFileRouter("/src/app", modules, notFoundFiles);
     const rootChildren = routes[0].children ?? [];
-    const match = findMatch(rootChildren, {
-      pathname: "/a/path",
-      search: "",
-    }, "/");
+    const match = findMatch(
+      rootChildren,
+      {
+        pathname: "/a/path",
+        search: "",
+      },
+      "/",
+    );
 
     const explicitCatchAll = rootChildren.find((route) => route.path === "*" && route.children);
     expect(match?.route).toBe(explicitCatchAll);

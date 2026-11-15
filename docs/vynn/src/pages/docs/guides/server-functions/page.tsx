@@ -157,5 +157,4 @@ const ServerFunctionsPage = () => (
   </article>
 );
 
-
 export default ServerFunctionsPage;

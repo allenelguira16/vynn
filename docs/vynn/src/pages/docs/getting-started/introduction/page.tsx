@@ -118,5 +118,4 @@ export function Counter() {
   </article>
 );
 
-
 export default IntroductionPage;

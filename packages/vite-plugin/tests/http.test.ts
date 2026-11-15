@@ -1,7 +1,6 @@
 import { createServer, request as httpRequest, type IncomingMessage } from "node:http";
 import { resolve } from "node:path";
 import { brotliDecompressSync, gunzipSync } from "node:zlib";
-
 import { describe, expect, it } from "vitest";
 
 import {
@@ -13,18 +12,15 @@ import {
   writeResponse,
 } from "../src/plugins/app/http";
 
-function request(
-  method: string,
-  headers: Record<string, string> = {},
-): IncomingMessage {
+function request(method: string, headers: Record<string, string> = {}): IncomingMessage {
   return { method, headers } as unknown as IncomingMessage;
 }
 
 describe("isHtmlNavigation", () => {
   it("accepts document requests", () => {
-    expect(
-      isHtmlNavigation(request("GET", { accept: "text/html,application/xhtml+xml" })),
-    ).toBe(true);
+    expect(isHtmlNavigation(request("GET", { accept: "text/html,application/xhtml+xml" }))).toBe(
+      true,
+    );
     expect(
       isHtmlNavigation(
         request("GET", {
@@ -62,7 +58,6 @@ describe("isHtmlNavigation", () => {
   });
 });
 
-
 describe("HTTP URL helpers", () => {
   it("normalizes file paths into browser URLs", () => {
     const root = resolve("/project");
@@ -82,15 +77,10 @@ describe("HTTP URL helpers", () => {
   });
 
   it("adds the base path to incoming request URLs once", () => {
-    expect(addBaseToRequestUrl("/base", "/users?active=true")).toBe(
-      "/base/users?active=true",
-    );
-    expect(addBaseToRequestUrl("/base", "/base/users?active=true")).toBe(
-      "/base/users?active=true",
-    );
+    expect(addBaseToRequestUrl("/base", "/users?active=true")).toBe("/base/users?active=true");
+    expect(addBaseToRequestUrl("/base", "/base/users?active=true")).toBe("/base/users?active=true");
   });
 });
-
 
 describe("SSR response compression", () => {
   it("negotiates Brotli and Gzip quality values", () => {
@@ -172,9 +162,7 @@ describe("SSR response compression", () => {
       expect(String(result.headers.vary)).toContain("Accept-Language");
       expect(String(result.headers.vary)).toContain("Accept-Encoding");
       const decoded =
-        encoding === "br"
-          ? brotliDecompressSync(result.body)
-          : gunzipSync(result.body);
+        encoding === "br" ? brotliDecompressSync(result.body) : gunzipSync(result.body);
       expect(decoded.toString()).toBe(expected);
     } finally {
       await new Promise<void>((resolveClose, rejectClose) => {

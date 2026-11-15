@@ -111,5 +111,4 @@ export default defineConfig({
   </article>
 );
 
-
 export default InstallationPage;

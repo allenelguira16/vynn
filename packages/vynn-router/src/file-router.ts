@@ -57,7 +57,9 @@ function getDirectorySegments(directory: string, filePath: string): string[] {
 
   if (specialFile !== "page" && specialFile !== "layout" && specialFile !== "not-found") {
     throw new Error(
-      "[vynn-router] Expected a page, layout, or not-found module, received " + JSON.stringify(filePath) + ".",
+      "[vynn-router] Expected a page, layout, or not-found module, received " +
+        JSON.stringify(filePath) +
+        ".",
     );
   }
 

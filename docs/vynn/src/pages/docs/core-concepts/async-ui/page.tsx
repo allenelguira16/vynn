@@ -123,8 +123,8 @@ const AsyncUiPage = () => (
       }
     />
     <p>
-      Do not rely on <code>resource.value</code> to return the previous result during a refresh. When
-      an application needs cached data to remain readable, model that snapshot explicitly in
+      Do not rely on <code>resource.value</code> to return the previous result during a refresh.
+      When an application needs cached data to remain readable, model that snapshot explicitly in
       separate state.
     </p>
 
@@ -186,6 +186,5 @@ const AsyncUiPage = () => (
     </p>
   </article>
 );
-
 
 export default AsyncUiPage;

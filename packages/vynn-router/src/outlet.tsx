@@ -212,66 +212,64 @@ function RouteView<TContext>(
   // unfinished beforeLoad operation without reaching into Vynn's owner internals.
   onDestroy(() => activeGuardController?.abort());
 
-  const allowed = $computed<RouteGuardResult>(
-    async () => {
-      const revision = ++guardRevision;
+  const allowed = $computed<RouteGuardResult>(async () => {
+    const revision = ++guardRevision;
 
-      // This resource represents the one-time guard for this RouteView.
-      // Ensure any earlier invocation is no longer active if it is restarted.
-      activeGuardController?.abort();
+    // This resource represents the one-time guard for this RouteView.
+    // Ensure any earlier invocation is no longer active if it is restarted.
+    activeGuardController?.abort();
 
-      const { route, fullPath } = untrack(() => ({
-        route: props.route,
-        fullPath: props.fullPath,
-      }));
+    const { route, fullPath } = untrack(() => ({
+      route: props.route,
+      fullPath: props.fullPath,
+    }));
 
-      // Capture the location from when this RouteView was created.
-      // Later params or search changes must not rerun this route-entry check.
-      const location: Location = untrack(() => {
-        const activeLocation = currentLocation();
+    // Capture the location from when this RouteView was created.
+    // Later params or search changes must not rerun this route-entry check.
+    const location: Location = untrack(() => {
+      const activeLocation = currentLocation();
 
-        return {
-          pathname: activeLocation.pathname,
-          search: activeLocation.search,
-        };
-      });
+      return {
+        pathname: activeLocation.pathname,
+        search: activeLocation.search,
+      };
+    });
 
-      const controller = new AbortController();
-      activeGuardController = controller;
+    const controller = new AbortController();
+    activeGuardController = controller;
 
-      try {
-        // Keep the actual guard outside the async resource's initial synchronous
-        // tracking pass, including when the user callback reads reactive state.
-        await Promise.resolve();
+    try {
+      // Keep the actual guard outside the async resource's initial synchronous
+      // tracking pass, including when the user callback reads reactive state.
+      await Promise.resolve();
 
-        if (controller.signal.aborted) {
-          return { type: "allowed" };
-        }
-
-        await untrack(() =>
-          route.beforeLoad!({
-            context: props.context,
-            location,
-            params: getRouteParams(fullPath, location),
-            search: new URLSearchParams(location.search),
-            signal: controller.signal,
-          }),
-        );
-
+      if (controller.signal.aborted) {
         return { type: "allowed" };
-      } catch (error) {
-        if (isClientRedirect(error)) {
-          return {
-            type: "redirect",
-            signal: error,
-            revision,
-          };
-        }
-
-        throw error;
       }
-    },
-  );
+
+      await untrack(() =>
+        route.beforeLoad!({
+          context: props.context,
+          location,
+          params: getRouteParams(fullPath, location),
+          search: new URLSearchParams(location.search),
+          signal: controller.signal,
+        }),
+      );
+
+      return { type: "allowed" };
+    } catch (error) {
+      if (isClientRedirect(error)) {
+        return {
+          type: "redirect",
+          signal: error,
+          revision,
+        };
+      }
+
+      throw error;
+    }
+  });
 
   let scheduledRedirect: unknown;
 

@@ -1,11 +1,11 @@
 import { getAsyncBoundary } from "../context/async-context";
 import { isServer } from "../context/is-server-context";
 import { isAsyncGetterFromLazy } from "../context/lazy-context";
-import { NotReadyError } from "./not-ready-error";
 import { createReactiveEffect, track, trigger } from "./effect";
+import { NotReadyError } from "./not-ready-error";
 import { isPending, registerPending } from "./pending";
-import { createAsyncResource } from "./resource";
 import { markRef, type VynnReadonlyRef } from "./ref";
+import { createAsyncResource } from "./resource";
 import { isAsyncFunction } from "./utils";
 
 export type Computed<T> = VynnReadonlyRef<T>;
@@ -46,10 +46,7 @@ export function $computed<T>(getter: () => T | Promise<T>): Computed<T> {
         const boundary = getAsyncBoundary();
         boundary?.(pendingError.promise);
 
-        throw new NotReadyError(
-          pendingError.promise,
-          boundary ?? pendingError.boundary,
-        );
+        throw new NotReadyError(pendingError.promise, boundary ?? pendingError.boundary);
       }
 
       return value;

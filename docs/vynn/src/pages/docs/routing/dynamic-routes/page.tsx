@@ -35,8 +35,8 @@ export default function UserPage() {
 
     <h2>Route parameters in route objects</h2>
     <p>
-      With manually defined routes, use <code>:name</code> for a dynamic segment. The parameter
-      name is the part after the colon.
+      With manually defined routes, use <code>:name</code> for a dynamic segment. The parameter name
+      is the part after the colon.
     </p>
     <CodeBlock
       lang="tsx"
@@ -52,8 +52,8 @@ const routes: Route[] = [
 
     <h2>Catch-all segments</h2>
     <p>
-      A required catch-all captures one or more remaining path segments. An optional catch-all
-      also matches when no segments remain.
+      A required catch-all captures one or more remaining path segments. An optional catch-all also
+      matches when no segments remain.
     </p>
     <CodeBlock
       lang="bash"
@@ -66,8 +66,8 @@ const routes: Route[] = [
         └── page.tsx`}
     />
     <p>
-      For a catch-all route, the captured path is available as <code>$params["*"]</code>. In a
-      route object, use <code>*</code> for a required catch-all and <code>*?</code> for an optional
+      For a catch-all route, the captured path is available as <code>$params["*"]</code>. In a route
+      object, use <code>*</code> for a required catch-all and <code>*?</code> for an optional
       catch-all.
     </p>
     <CodeBlock

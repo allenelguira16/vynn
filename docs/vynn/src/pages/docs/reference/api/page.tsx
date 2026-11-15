@@ -38,9 +38,7 @@ const ApiReferencePage = () => (
             <td>
               <code>$computed()</code>, <code>Computed&lt;T&gt;</code>
             </td>
-            <td>
-              Read-only derived values, including Promise-returning getters.
-            </td>
+            <td>Read-only derived values, including Promise-returning getters.</td>
           </tr>
           <tr>
             <td>
@@ -278,6 +276,5 @@ const ApiReferencePage = () => (
     </p>
   </article>
 );
-
 
 export default ApiReferencePage;

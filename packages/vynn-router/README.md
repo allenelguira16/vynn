@@ -102,10 +102,10 @@ descendant pages, but does not make its own URL publicly accessible.
 
 Use bracketed folder names for dynamic URL segments:
 
-| Folder | Route |
-| --- | --- |
-| `[slug]/page.tsx` | `:slug` |
-| `[...slug]/page.tsx` | Required catch-all, `*` |
+| Folder                 | Route                    |
+| ---------------------- | ------------------------ |
+| `[slug]/page.tsx`      | `:slug`                  |
+| `[...slug]/page.tsx`   | Required catch-all, `*`  |
 | `[[...slug]]/page.tsx` | Optional catch-all, `*?` |
 
 Dynamic parameters are available through the existing router params API.
@@ -164,11 +164,7 @@ type AppContext = {
   tenant: string;
 };
 
-export async function beforeLoad({
-  context,
-  params,
-  signal,
-}: BeforeLoadContext<AppContext>) {
+export async function beforeLoad({ context, params, signal }: BeforeLoadContext<AppContext>) {
   const user = await getUser(context.tenant, params.id, { signal });
 
   if (!user) {

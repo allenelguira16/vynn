@@ -6,8 +6,8 @@ const NotFoundPage = () => (
     <h1>Not found</h1>
     <p class="lead">
       Render a fallback component when a URL does not match a page. Use the router's
-      <code>notFound</code> option with route objects, or add a <code>not-found.tsx</code> file
-      with file-based routing.
+      <code>notFound</code> option with route objects, or add a <code>not-found.tsx</code> file with
+      file-based routing.
     </p>
 
     <h2>Route objects</h2>
@@ -38,8 +38,7 @@ export function App(props: { url: string }) {
     <h2>File-based routes</h2>
     <p>
       Add <code>not-found.tsx</code> to your app directory. A root file handles unmatched routes
-      throughout the app. A file inside a route folder handles unmatched routes within that
-      segment.
+      throughout the app. A file inside a route folder handles unmatched routes within that segment.
     </p>
     <CodeBlock
       lang="bash"
@@ -52,8 +51,8 @@ export function App(props: { url: string }) {
     />
     <p>
       For example, <code>blog/not-found.tsx</code> handles an unknown path under
-      <code>/blog</code>. An explicitly declared catch-all page takes precedence over the
-      not-found fallback.
+      <code>/blog</code>. An explicitly declared catch-all page takes precedence over the not-found
+      fallback.
     </p>
 
     <h2>Keep the fallback simple</h2>

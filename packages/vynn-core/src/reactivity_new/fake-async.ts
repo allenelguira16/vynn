@@ -41,10 +41,7 @@ const FakePromise = Object.assign(
   },
 ) as unknown as PromiseConstructor;
 
-function restoreGlobal(
-  key: "Promise" | "fetch",
-  descriptor: PropertyDescriptor | undefined,
-): void {
+function restoreGlobal(key: "Promise" | "fetch", descriptor: PropertyDescriptor | undefined): void {
   if (descriptor) {
     Object.defineProperty(globalThis, key, descriptor);
   } else {
