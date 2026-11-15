@@ -48,7 +48,7 @@ const IntroductionPage = () => (
 import { $state } from "vynn";
 
 export function Counter() {
-  const count = $state(() => 0);
+  const count = $state(0);
 
   return (
     <button onClick={() => count.value++}>

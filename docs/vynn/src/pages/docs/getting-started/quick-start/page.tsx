@@ -54,7 +54,7 @@ export default defineConfig({
 import { $state } from "vynn";
 
 export function App() {
-  const count = $state(() => 0);
+  const count = $state(0);
 
   return (
     <html lang="en">

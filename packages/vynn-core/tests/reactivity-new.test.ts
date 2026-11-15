@@ -13,9 +13,12 @@ async function flushEffects(): Promise<void> {
 }
 
 describe("new reactivity API", () => {
-  it("requires function initializers for state and store", () => {
-    expect(() => $state(0 as never)).toThrow(/requires an initializer function/);
-    expect(() => $store({} as never)).toThrow(/requires an initializer function/);
+  it("accepts direct values for state and store", () => {
+    const count = $state(0);
+    const store = $store({ count: 0 });
+
+    expect(count.value).toBe(0);
+    expect(store.count).toBe(0);
   });
 
   it("does not attach SSR blocking policy to NotReadyError", () => {

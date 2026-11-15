@@ -36,6 +36,19 @@ describe("$state", () => {
     expect(count.value).toBe(1);
   });
 
+  it("runs synchronous initializers once", () => {
+    let executions = 0;
+
+    const count = $state(() => {
+      executions += 1;
+      return 10;
+    });
+
+    expect(count.value).toBe(10);
+    expect(count.value).toBe(10);
+    expect(executions).toBe(1);
+  });
+
   it("reruns effects when the value changes", async () => {
     const count = $state(0);
     const values: number[] = [];
@@ -369,6 +382,20 @@ describe("$computed", () => {
 });
 
 describe("$store", () => {
+  it("runs synchronous initializers once", () => {
+    let executions = 0;
+
+    const state = $store(() => {
+      executions += 1;
+      return { value: 1 };
+    });
+
+    expect(state.value).toBe(1);
+    state.value = 2;
+    expect(state.value).toBe(2);
+    expect(executions).toBe(1);
+  });
+
   it("tracks nested property changes", async () => {
     const user = $store({
       profile: {
@@ -1054,9 +1081,9 @@ describe("async-derived $state", () => {
     }
   });
 
-  it("preserves synchronous function values", () => {
+  it("preserves function values returned by an initializer", () => {
     const callback = () => 42;
-    const state = $state(callback);
+    const state = $state(() => callback);
 
     expect(state.value).toBe(callback);
   });

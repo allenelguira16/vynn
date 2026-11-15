@@ -52,7 +52,7 @@ const ContextLifecyclePage = () => (
     <CodeBlock
       lang="tsx"
       code={
-        'import { $store, createContext } from "vynn";\n\ntype Preferences = { density: "compact" | "comfortable" };\nconst [PreferencesProvider, usePreferences] = createContext<Preferences>();\n\nfunction App() {\n  const preferences = $store(() => ({ density: "comfortable" as "compact" | "comfortable" }));\n\n  return (\n    <PreferencesProvider value={preferences}>\n      <SettingsButton />\n    </PreferencesProvider>\n  );\n}\n\nfunction SettingsButton() {\n  const preferences = usePreferences();\n\n  return (\n    <button onClick={() => preferences.density = "compact"}>\n      Density: {preferences.density}\n    </button>\n  );\n}'
+        'import { $store, createContext } from "vynn";\n\ntype Preferences = { density: "compact" | "comfortable" };\nconst [PreferencesProvider, usePreferences] = createContext<Preferences>();\n\nfunction App() {\n  const preferences = $store({ density: "comfortable" as "compact" | "comfortable" });\n\n  return (\n    <PreferencesProvider value={preferences}>\n      <SettingsButton />\n    </PreferencesProvider>\n  );\n}\n\nfunction SettingsButton() {\n  const preferences = usePreferences();\n\n  return (\n    <button onClick={() => preferences.density = "compact"}>\n      Density: {preferences.density}\n    </button>\n  );\n}'
       }
     />
 
@@ -78,7 +78,7 @@ const ContextLifecyclePage = () => (
     <CodeBlock
       lang="tsx"
       code={
-        'import { $state, onMount } from "vynn";\n\nfunction OnlineStatus() {\n  const online = $state(() => false);\n\n  onMount(() => {\n    const update = () => {\n      online.value = navigator.onLine;\n    };\n\n    update();\n    window.addEventListener("online", update);\n    window.addEventListener("offline", update);\n\n    return () => {\n      window.removeEventListener("online", update);\n      window.removeEventListener("offline", update);\n    };\n  });\n\n  return <p>{online.value ? "Online" : "Offline"}</p>;\n}'
+        'import { $state, onMount } from "vynn";\n\nfunction OnlineStatus() {\n  const online = $state(false);\n\n  onMount(() => {\n    const update = () => {\n      online.value = navigator.onLine;\n    };\n\n    update();\n    window.addEventListener("online", update);\n    window.addEventListener("offline", update);\n\n    return () => {\n      window.removeEventListener("online", update);\n      window.removeEventListener("offline", update);\n    };\n  });\n\n  return <p>{online.value ? "Online" : "Offline"}</p>;\n}'
       }
     />
     <p>

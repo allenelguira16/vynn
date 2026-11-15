@@ -3,8 +3,8 @@ const ApiReferencePage = () => (
     <p class="mb-3 text-sm font-semibold uppercase tracking-wider text-primary">Reference</p>
     <h1>API overview</h1>
     <p class="lead">
-      This page maps the public APIs across Vynn Core, the router, and build tooling. Use it to find the
-      right package entry point before diving into a focused guide or reference.
+      This page maps the public APIs across Vynn Core, the router, and build tooling. Use it to find
+      the right package entry point before diving into a focused guide or reference.
     </p>
 
     <h2>Core package: vynn</h2>
@@ -22,8 +22,8 @@ const ApiReferencePage = () => (
               <code>$state()</code>, <code>State&lt;T&gt;</code>
             </td>
             <td>
-              Writable ref-like state. An async-function initializer creates writable async-derived
-              state.
+              Writable ref-like state. Accepts a direct initial value or a synchronous initializer
+              function; an async initializer creates writable async-derived state.
             </td>
           </tr>
           <tr>
@@ -31,8 +31,9 @@ const ApiReferencePage = () => (
               <code>$store()</code>, <code>Store&lt;T&gt;</code>
             </td>
             <td>
-              Deeply reactive object, array, <code>Map</code>, or <code>Set</code> proxy with property,
-              collection, and structural tracking.
+              Deeply reactive proxy for an object, array, <code>Map</code>, or <code>Set</code>.
+              Accepts a direct value or a synchronous initializer; an async initializer must resolve
+              to a plain object.
             </td>
           </tr>
           <tr>
@@ -125,10 +126,14 @@ const ApiReferencePage = () => (
       </table>
     </div>
     <p>
-      <code>$state()</code> and <code>$store()</code> both take initializer functions. Use
-      <code>$state(() =&gt; initialValue)</code> for synchronous state and
-      <code>$store(() =&gt; initialObject)</code> for synchronous stores. Passing an async
-      initializer creates an async resource; see <a href="/docs/core-concepts/async-ui">Async UI</a>.
+      <code>$state()</code> and <code>$store()</code> accept direct values or initializer functions.
+      Use <code>$state(initialValue)</code> and <code>$store(initialObject)</code> for values that
+      are already available. Pass a synchronous function when producing the initial value requires
+      computation; it runs once during initialization. Passing an async function creates an async
+      resource instead. Function arguments are always treated as initializers, so store a function
+      value with <code>$state(() =&gt; callback)</code>. See{" "}
+      <a href="/docs/core-concepts/reactivity">Reactivity</a> for the initialization model and{" "}
+      <a href="/docs/core-concepts/async-ui">Async UI</a> for async resources.
     </p>
     <p>
       Learn the standard application behavior in{" "}
@@ -145,38 +150,56 @@ const ApiReferencePage = () => (
     <div class="not-prose my-5 overflow-x-auto">
       <table class="table table-zebra">
         <thead>
-          <tr><th>Export</th><th>Purpose</th></tr>
+          <tr>
+            <th>Export</th>
+            <th>Purpose</th>
+          </tr>
         </thead>
         <tbody>
           <tr>
-            <td><code>Router</code>, <code>createRouter()</code>, <code>Route</code></td>
+            <td>
+              <code>Router</code>, <code>createRouter()</code>, <code>Route</code>
+            </td>
             <td>Render route trees and create independently managed router instances.</td>
           </tr>
           <tr>
-            <td><code>toFileRouter()</code></td>
+            <td>
+              <code>toFileRouter()</code>
+            </td>
             <td>Build a route tree from the Vite plugin's generated file-route modules.</td>
           </tr>
           <tr>
-            <td><code>Link</code>, <code>isActiveRoute()</code></td>
+            <td>
+              <code>Link</code>, <code>isActiveRoute()</code>
+            </td>
             <td>Render navigable anchors and check whether a path matches the active route.</td>
           </tr>
           <tr>
-            <td><code>$location</code>, <code>$params</code>, <code>$search</code></td>
+            <td>
+              <code>$location</code>, <code>$params</code>, <code>$search</code>
+            </td>
             <td>Read the reactive URL, path parameters, and query parameters.</td>
           </tr>
           <tr>
-            <td><code>navigate()</code>, <code>replace()</code>, <code>redirect()</code></td>
+            <td>
+              <code>navigate()</code>, <code>replace()</code>, <code>redirect()</code>
+            </td>
             <td>Navigate, replace the current history entry, or redirect from a route guard.</td>
           </tr>
           <tr>
-            <td><code>createBrowserHistory()</code>, <code>createMemoryHistory()</code></td>
+            <td>
+              <code>createBrowserHistory()</code>, <code>createMemoryHistory()</code>
+            </td>
             <td>Create browser-backed or in-memory router history.</td>
           </tr>
           <tr>
-            <td><code>BeforeLoadContext</code>, <code>Location</code>, <code>RouteParams</code>,
+            <td>
+              <code>BeforeLoadContext</code>, <code>Location</code>, <code>RouteParams</code>,
               <code>RouterInstance</code>, <code>RouterOptions</code>, <code>RouterState</code>,
-              <code>RouterHistory</code>, <code>MemoryHistory</code>, <code>MemoryHistoryOptions</code>,
-              <code>RedirectOptions</code>, <code>RedirectStatus</code></td>
+              <code>RouterHistory</code>, <code>MemoryHistory</code>,{" "}
+              <code>MemoryHistoryOptions</code>,<code>RedirectOptions</code>,{" "}
+              <code>RedirectStatus</code>
+            </td>
             <td>Types for route definitions, guards, router instances, history, and redirects.</td>
           </tr>
         </tbody>
@@ -317,8 +340,8 @@ const ApiReferencePage = () => (
       The default <code>vynn()</code> plugin integrates the JSX transform and application handling.
       Its <code>VynnPluginOptions</code> accepts <code>ssr</code>, <code>ssrMode</code>, and
       <code>serverFunctions</code>. The latter can be <code>true</code> or a
-      <code>VynnServerFunctionsOptions</code> object with <code>endpoint</code>,
-      <code>enabled</code>, <code>maxRequestBytes</code>, <code>allowedOrigins</code>, and
+      <code>VynnServerFunctionsOptions</code> object with <code>endpoint</code>,<code>enabled</code>
+      , <code>maxRequestBytes</code>, <code>allowedOrigins</code>, and
       <code>exposeErrors</code>. <code>ssrMode</code> accepts <code>"sync"</code>,
       <code>"async"</code>, or <code>"stream"</code> and defaults to <code>"stream"</code>.
     </p>

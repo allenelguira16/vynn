@@ -48,7 +48,7 @@ function ComponentWillThrowAfterAsync(): JSX.Element {
 }
 
 function ComponentWillThrowAfterCount(): JSX.Element {
-  const baseCount = $state(() => 0);
+  const baseCount = $state(0);
   const count = $computed(async () => {
     const count = baseCount.value;
 

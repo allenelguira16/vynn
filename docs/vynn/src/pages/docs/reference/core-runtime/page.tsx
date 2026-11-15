@@ -12,15 +12,15 @@ const CoreRuntimePage = () => (
 
     <h2>Group updates with batch and transaction</h2>
     <p>
-      <code>batch()</code> defers reactive queue flushing until the callback finishes, so a group
-      of writes is committed together. <code>transaction()</code> is an alias with identical
-      behavior. Both return the callback's result and flush queued updates even when the callback
-      exits by throwing.
+      <code>batch()</code> defers reactive queue flushing until the callback finishes, so a group of
+      writes is committed together. <code>transaction()</code> is an alias with identical behavior.
+      Both return the callback's result and flush queued updates even when the callback exits by
+      throwing.
     </p>
     <CodeBlock
       lang="tsx"
       code={
-        'import { $state, batch, transaction } from "vynn";\n\nconst first = $state(() => 0);\nconst second = $state(() => 0);\n\nbatch(() => {\n  first.value = 1;\n  second.value = 2;\n});\n\n// transaction() is an equivalent name for batch().\ntransaction(() => {\n  first.value += 1;\n  second.value += 1;\n});'
+        'import { $state, batch, transaction } from "vynn";\n\nconst first = $state(0);\nconst second = $state(0);\n\nbatch(() => {\n  first.value = 1;\n  second.value = 2;\n});\n\n// transaction() is an equivalent name for batch().\ntransaction(() => {\n  first.value += 1;\n  second.value += 1;\n});'
       }
     />
 
@@ -34,7 +34,7 @@ const CoreRuntimePage = () => (
     <CodeBlock
       lang="tsx"
       code={
-        'import { $renderEffect, $state } from "vynn";\n\nconst position = $state(() => 0);\n\nconst stop = $renderEffect(() => {\n  // This synchronization runs immediately, then synchronously\n  // when a transaction that changes position commits.\n  updatePosition(position.value);\n});\n\n// Stop the effect when its integration is no longer active.\nstop();'
+        'import { $renderEffect, $state } from "vynn";\n\nconst position = $state(0);\n\nconst stop = $renderEffect(() => {\n  // This synchronization runs immediately, then synchronously\n  // when a transaction that changes position commits.\n  updatePosition(position.value);\n});\n\n// Stop the effect when its integration is no longer active.\nstop();'
       }
     />
     <p>

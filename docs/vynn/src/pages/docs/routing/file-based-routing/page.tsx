@@ -94,9 +94,9 @@ export function App(props: { url: string }) {
     <h2>Run a guard from a route module</h2>
     <p>
       A page or layout module can export a named <code>beforeLoad</code> function alongside its
-      default component. The Vite plugin detects that export and connects it to the route, so you
-      do not need to define the same guard in a separate route-object list. The guard receives the
-      same context, location, params, search values, and abort signal as an object-defined route.
+      default component. The Vite plugin detects that export and connects it to the route, so you do
+      not need to define the same guard in a separate route-object list. The guard receives the same
+      context, location, params, search values, and abort signal as an object-defined route.
     </p>
     <CodeBlock
       lang="tsx"

@@ -46,10 +46,10 @@ export function registerLocationNavigation(
  * own store so route state remains scoped to that Router and concurrent SSR
  * renders never share request-specific state.
  */
-const defaultLocation = $store<Location>(() => ({
+const defaultLocation = $store<Location>({
   pathname: !isServer ? window.location.pathname : "/",
   search: !isServer ? window.location.search : "",
-}));
+});
 
 /**
  * Reactive location facade. Inside a Router it reads and writes that Router's

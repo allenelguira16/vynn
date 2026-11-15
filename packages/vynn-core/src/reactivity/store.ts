@@ -630,10 +630,10 @@ function reconcile(target: object, next: object): boolean {
 
 export function $store<T extends object>(initializer: () => Promise<T>): Store<T>;
 export function $store<T extends object>(initializer: () => T): Store<T>;
-export function $store<T extends object>(initializer: () => T | Promise<T>): Store<T> {
-  if (typeof initializer !== "function") {
-    throw new TypeError("[vynn]: $store() requires an initializer function.");
-  }
+export function $store<T extends object>(value: T): Store<T>;
+export function $store<T extends object>(source: T | (() => T | Promise<T>)): Store<T> {
+  const initializer =
+    typeof source === "function" ? (source as () => T | Promise<T>) : () => source;
 
   if (Object.prototype.toString.call(initializer) !== "[object AsyncFunction]") {
     const value = initializer();

@@ -37,7 +37,7 @@ const Input = () => {
   const forms = useNameContext();
   // console.log(forms);
 
-  const i = $state(() => 0);
+  const i = $state(0);
 
   onMount(() => {
     const cleanup = setInterval(() => {
