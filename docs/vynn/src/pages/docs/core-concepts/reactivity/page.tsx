@@ -72,13 +72,14 @@ const ReactivityPage = () => (
     <CodeBlock
       lang="tsx"
       code={
-        'import { $state } from "vynn";\n\nfunction Counter() {\n  const count = $state(0);\n\n  function increment() {\n    count.value += 1;\n  }\n\n  return (\n    <button onClick={increment}>\n      Count: {count.value}\n    </button>\n  );\n}'
+        'import { $state } from "vynn";\n\nfunction Counter() {\n  const count = $state(() => 0);\n\n  function increment() {\n    count.value += 1;\n  }\n\n  return (\n    <button onClick={increment}>\n      Count: {count.value}\n    </button>\n  );\n}'
       }
     />
     <p>
-      A state value can hold strings, numbers, booleans, objects, arrays, or even functions. A
-      normal function is stored as a value. An <em>async function</em> passed as the initializer is
-      treated as an async getter instead; see <a href="/docs/core-concepts/async-ui">Async UI</a>.
+      The initializer is a synchronous factory that runs once to create the initial value. It can
+      return a string, number, boolean, object, array, or function. To store a function, return it
+      from the initializer, for example <code>$state(() =&gt; callback)</code>. An <em>async
+      function</em> passed as the initializer creates async state instead; see <a href="/docs/core-concepts/async-ui">Async UI</a>.
     </p>
     <p>
       You can also provide a type without an initial value when the value will be assigned later:
@@ -86,20 +87,21 @@ const ReactivityPage = () => (
     <CodeBlock
       lang="tsx"
       code={
-        'type User = { id: string; name: string };\nconst selectedUser = $state<User>();\n\n// Until assigned, selectedUser.value is undefined.\nselectedUser.value = { id: "u-1", name: "Ada" };'
+        'type User = { id: string; name: string };\nconst selectedUser = $state<User | undefined>(() => undefined);\n\n// Until assigned, selectedUser.value is undefined.\nselectedUser.value = { id: "u-1", name: "Ada" };'
       }
     />
 
     <h2>2. Use stores for structured data</h2>
     <p>
-      <code>$store()</code> creates a deeply reactive proxy for an object or an array. You can
+      <code>$store()</code> takes an initializer function and creates a deeply reactive proxy for
+      the returned object, array, <code>Map</code>, or <code>Set</code>. You can
       update nested properties and array entries directly; you do not need to replace the entire
       value or create a new state for every field.
     </p>
     <CodeBlock
       lang="tsx"
       code={
-        'import { $store } from "vynn";\n\nfunction Profile() {\n  const user = $store({\n    name: "Ada",\n    preferences: {\n      theme: "light",\n      notifications: true,\n    },\n  });\n\n  function enableDarkMode() {\n    user.preferences.theme = "dark";\n  }\n\n  return (\n    <section>\n      <h2>{user.name}</h2>\n      <p>Theme: {user.preferences.theme}</p>\n      <button onClick={enableDarkMode}>Use dark theme</button>\n    </section>\n  );\n}'
+        'import { $store } from "vynn";\n\nfunction Profile() {\n  const user = $store(() => ({\n    name: "Ada",\n    preferences: {\n      theme: "light",\n      notifications: true,\n    },\n  }));\n\n  function enableDarkMode() {\n    user.preferences.theme = "dark";\n  }\n\n  return (\n    <section>\n      <h2>{user.name}</h2>\n      <p>Theme: {user.preferences.theme}</p>\n      <button onClick={enableDarkMode}>Use dark theme</button>\n    </section>\n  );\n}'
       }
     />
     <p>
@@ -118,7 +120,7 @@ const ReactivityPage = () => (
     <CodeBlock
       lang="tsx"
       code={
-        'import { $computed, $store } from "vynn";\n\ntype Todo = { id: number; title: string; done: boolean };\n\nfunction TodoList() {\n  const todos = $store<Todo[]>([\n    { id: 1, title: "Read the guide", done: false },\n    { id: 2, title: "Build something", done: false },\n  ]);\n  let nextId = 3;\n\n  const remaining = $computed(\n    () => todos.filter((todo) => !todo.done).length,\n  );\n\n  function addTodo() {\n    todos.push({ id: nextId++, title: "New task", done: false });\n  }\n\n  function removeTodo(todo: Todo) {\n    const index = todos.indexOf(todo);\n    if (index !== -1) todos.splice(index, 1);\n  }\n\n  return (\n    <section>\n      <p>{remaining.value} tasks remaining</p>\n      <button onClick={addTodo}>Add task</button>\n      <button onClick={() => todos.sort((a, b) => a.title.localeCompare(b.title))}>\n        Sort by title\n      </button>\n      <button onClick={() => todos.reverse()}>Reverse order</button>\n      <ul>\n        {todos.map((todo) => (\n          <li>\n            <button onClick={() => { todo.done = !todo.done; }}>\n              {todo.done ? "Reopen" : "Complete"}\n            </button>\n            <span>{todo.title}</span>\n            <button onClick={() => removeTodo(todo)}>Remove</button>\n          </li>\n        ))}\n      </ul>\n    </section>\n  );\n}'
+        'import { $computed, $store } from "vynn";\n\ntype Todo = { id: number; title: string; done: boolean };\n\nfunction TodoList() {\n  const todos = $store<Todo[]>(() => [\n    { id: 1, title: "Read the guide", done: false },\n    { id: 2, title: "Build something", done: false },\n  ]);\n  let nextId = 3;\n\n  const remaining = $computed(\n    () => todos.filter((todo) => !todo.done).length,\n  );\n\n  function addTodo() {\n    todos.push({ id: nextId++, title: "New task", done: false });\n  }\n\n  function removeTodo(todo: Todo) {\n    const index = todos.indexOf(todo);\n    if (index !== -1) todos.splice(index, 1);\n  }\n\n  return (\n    <section>\n      <p>{remaining.value} tasks remaining</p>\n      <button onClick={addTodo}>Add task</button>\n      <button onClick={() => todos.sort((a, b) => a.title.localeCompare(b.title))}>\n        Sort by title\n      </button>\n      <button onClick={() => todos.reverse()}>Reverse order</button>\n      <ul>\n        {todos.map((todo) => (\n          <li>\n            <button onClick={() => { todo.done = !todo.done; }}>\n              {todo.done ? "Reopen" : "Complete"}\n            </button>\n            <span>{todo.title}</span>\n            <button onClick={() => removeTodo(todo)}>Remove</button>\n          </li>\n        ))}\n      </ul>\n    </section>\n  );\n}'
       }
     />
     <p>
@@ -146,7 +148,7 @@ const ReactivityPage = () => (
     <CodeBlock
       lang="tsx"
       code={
-        'import { $computed, $state } from "vynn";\n\nfunction Price() {\n  const quantity = $state(2);\n  const unitPrice = $state(15);\n  const total = $computed(() => quantity.value * unitPrice.value);\n\n  return (\n    <section>\n      <p>Quantity: {quantity.value}</p>\n      <p>Unit price: {unitPrice.value}</p>\n      <p>Total: {total.value}</p>\n      <button onClick={() => quantity.value++}>Add one</button>\n    </section>\n  );\n}'
+        'import { $computed, $state } from "vynn";\n\nfunction Price() {\n  const quantity = $state(() => 2);\n  const unitPrice = $state(() => 15);\n  const total = $computed(() => quantity.value * unitPrice.value);\n\n  return (\n    <section>\n      <p>Quantity: {quantity.value}</p>\n      <p>Unit price: {unitPrice.value}</p>\n      <p>Total: {total.value}</p>\n      <button onClick={() => quantity.value++}>Add one</button>\n    </section>\n  );\n}'
       }
     />
     <p>
@@ -164,7 +166,7 @@ const ReactivityPage = () => (
     <CodeBlock
       lang="tsx"
       code={
-        'import { $effect, $state } from "vynn";\n\nfunction SearchBox() {\n  const query = $state("");\n\n  $effect(() => {\n    if (typeof document === "undefined") return;\n\n    document.title = query.value\n      ? "Search: " + query.value\n      : "Search";\n  });\n\n  return (\n    <input\n      value={query.value}\n      onInput={(event) => query.value = event.currentTarget.value}\n    />\n  );\n}'
+        'import { $effect, $state } from "vynn";\n\nfunction SearchBox() {\n  const query = $state(() => "");\n\n  $effect(() => {\n    if (typeof document === "undefined") return;\n\n    document.title = query.value\n      ? "Search: " + query.value\n      : "Search";\n  });\n\n  return (\n    <input\n      value={query.value}\n      onInput={(event) => query.value = event.currentTarget.value}\n    />\n  );\n}'
       }
     />
     <p>
@@ -188,7 +190,7 @@ const ReactivityPage = () => (
     <CodeBlock
       lang="tsx"
       code={
-        'import { $effect, $state, untrack } from "vynn";\n\nconst name = $state("Ada");\nconst logLevel = $state("info");\n\n$effect(() => {\n  console.log(logLevel.value, untrack(() => name.value));\n});'
+        'import { $effect, $state, untrack } from "vynn";\n\nconst name = $state(() => "Ada");\nconst logLevel = $state(() => "info");\n\n$effect(() => {\n  console.log(logLevel.value, untrack(() => name.value));\n});'
       }
     />
 

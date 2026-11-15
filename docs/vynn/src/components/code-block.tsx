@@ -20,7 +20,7 @@ const highlighter = await createHighlighterCore({
 
 export const CodeBlock = ({ code: rawCode, lang }: CodeBlockProps) => {
   const code = parse(rawCode);
-  const isCopied = $state(false);
+  const isCopied = $state(() => false);
 
   const parsedCode = highlighter.codeToHtml(code, {
     lang,

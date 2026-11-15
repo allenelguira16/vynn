@@ -3,8 +3,8 @@ const ApiReferencePage = () => (
     <p class="mb-3 text-sm font-semibold uppercase tracking-wider text-primary">Reference</p>
     <h1>API overview</h1>
     <p class="lead">
-      This page maps the public exports from Vynn Core. It includes the package root and each
-      supported subpath so you can find the right import before diving into its detailed reference.
+      This page maps the public APIs across Vynn Core, the router, and build tooling. Use it to find the
+      right package entry point before diving into a focused guide or reference.
     </p>
 
     <h2>Core package: vynn</h2>
@@ -28,10 +28,11 @@ const ApiReferencePage = () => (
           </tr>
           <tr>
             <td>
-              <code>$store()</code>
+              <code>$store()</code>, <code>Store&lt;T&gt;</code>
             </td>
             <td>
-              Deeply reactive object and collection proxy with property and structural tracking.
+              Deeply reactive object, array, <code>Map</code>, or <code>Set</code> proxy with property,
+              collection, and structural tracking.
             </td>
           </tr>
           <tr>
@@ -45,6 +46,12 @@ const ApiReferencePage = () => (
               <code>$effect()</code>
             </td>
             <td>Reactive side effects scheduled through the ordinary effect queue.</td>
+          </tr>
+          <tr>
+            <td>
+              <code>batch()</code>, <code>transaction()</code>
+            </td>
+            <td>Group reactive writes and flush queued updates together.</td>
           </tr>
           <tr>
             <td>
@@ -118,6 +125,12 @@ const ApiReferencePage = () => (
       </table>
     </div>
     <p>
+      <code>$state()</code> and <code>$store()</code> both take initializer functions. Use
+      <code>$state(() =&gt; initialValue)</code> for synchronous state and
+      <code>$store(() =&gt; initialObject)</code> for synchronous stores. Passing an async
+      initializer creates an async resource; see <a href="/docs/core-concepts/async-ui">Async UI</a>.
+    </p>
+    <p>
       Learn the standard application behavior in{" "}
       <a href="/docs/core-concepts/reactivity">Reactivity</a>,
       <a href="/docs/core-concepts/advanced-reactivity">Advanced reactivity</a>,
@@ -127,6 +140,48 @@ const ApiReferencePage = () => (
       <a href="/docs/reference/core-runtime">Advanced core APIs</a> reference covers effect phases,
       owners, and component helper types.
     </p>
+
+    <h2>Router package: vynn-router</h2>
+    <div class="not-prose my-5 overflow-x-auto">
+      <table class="table table-zebra">
+        <thead>
+          <tr><th>Export</th><th>Purpose</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>Router</code>, <code>createRouter()</code>, <code>Route</code></td>
+            <td>Render route trees and create independently managed router instances.</td>
+          </tr>
+          <tr>
+            <td><code>toFileRouter()</code></td>
+            <td>Build a route tree from the Vite plugin's generated file-route modules.</td>
+          </tr>
+          <tr>
+            <td><code>Link</code>, <code>isActiveRoute()</code></td>
+            <td>Render navigable anchors and check whether a path matches the active route.</td>
+          </tr>
+          <tr>
+            <td><code>$location</code>, <code>$params</code>, <code>$search</code></td>
+            <td>Read the reactive URL, path parameters, and query parameters.</td>
+          </tr>
+          <tr>
+            <td><code>navigate()</code>, <code>replace()</code>, <code>redirect()</code></td>
+            <td>Navigate, replace the current history entry, or redirect from a route guard.</td>
+          </tr>
+          <tr>
+            <td><code>createBrowserHistory()</code>, <code>createMemoryHistory()</code></td>
+            <td>Create browser-backed or in-memory router history.</td>
+          </tr>
+          <tr>
+            <td><code>BeforeLoadContext</code>, <code>Location</code>, <code>RouteParams</code>,
+              <code>RouterInstance</code>, <code>RouterOptions</code>, <code>RouterState</code>,
+              <code>RouterHistory</code>, <code>MemoryHistory</code>, <code>MemoryHistoryOptions</code>,
+              <code>RedirectOptions</code>, <code>RedirectStatus</code></td>
+            <td>Types for route definitions, guards, router instances, history, and redirects.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
 
     <h2>Public package subpaths</h2>
     <div class="not-prose my-5 overflow-x-auto">
@@ -257,6 +312,22 @@ const ApiReferencePage = () => (
       </li>
     </ul>
 
+    <h2>Vite plugin API: vite-plugin-vynn</h2>
+    <p>
+      The default <code>vynn()</code> plugin integrates the JSX transform and application handling.
+      Its <code>VynnPluginOptions</code> accepts <code>ssr</code>, <code>ssrMode</code>, and
+      <code>serverFunctions</code>. The latter can be <code>true</code> or a
+      <code>VynnServerFunctionsOptions</code> object with <code>endpoint</code>,
+      <code>enabled</code>, <code>maxRequestBytes</code>, <code>allowedOrigins</code>, and
+      <code>exposeErrors</code>. <code>ssrMode</code> accepts <code>"sync"</code>,
+      <code>"async"</code>, or <code>"stream"</code> and defaults to <code>"stream"</code>.
+    </p>
+    <p>
+      The package also exports <code>serverFunctions(options?)</code> for standalone server-function
+      integration. See the <a href="/docs/guides/server-functions">Server functions guide</a> for
+      configuration and security guidance.
+    </p>
+
     <h2>Build tooling</h2>
     <ul>
       <li>
@@ -266,6 +337,10 @@ const ApiReferencePage = () => (
       <li>
         <code>vynn-compiler</code>: standalone JSX transforms through
         <code>transformVynnOxc()</code> and <code>transformVynnOxcWithMap()</code>.
+      </li>
+      <li>
+        <code>vynn-compiler/server-functions</code>: exposes
+        <code>transformServerFunctions()</code> and its transform result and configuration types.
       </li>
     </ul>
     <p>

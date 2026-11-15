@@ -91,6 +91,33 @@ export function App(props: { url: string }) {
       only routes inside the blog folder.
     </p>
 
+    <h2>Run a guard from a route module</h2>
+    <p>
+      A page or layout module can export a named <code>beforeLoad</code> function alongside its
+      default component. The Vite plugin detects that export and connects it to the route, so you
+      do not need to define the same guard in a separate route-object list. The guard receives the
+      same context, location, params, search values, and abort signal as an object-defined route.
+    </p>
+    <CodeBlock
+      lang="tsx"
+      code={`import { redirect, type BeforeLoadContext } from "vynn-router";
+
+export async function beforeLoad({ params, signal }: BeforeLoadContext) {
+  const response = await fetch("/api/users/" + params.id, { signal });
+  if (response.status === 404) redirect("/users");
+}
+
+export default function UserPage() {
+  return <h1>User profile</h1>;
+}`}
+    />
+    <p>
+      Guards run when the matched route view is created. A parameter or query-string change on an
+      already-mounted route does not rerun the guard; use the reactive <code>$params</code> and
+      <code>$search</code> values for UI that must respond to those changes. See{" "}
+      <a href="/docs/routing/guards-and-redirects">Route guards and redirects</a>.
+    </p>
+
     <h2>Keep route files focused</h2>
     <p>
       Put reusable components, utilities, and other non-route code in ordinary files. Only

@@ -101,6 +101,30 @@ export function App(props: { url: string }) {
       A router created for an application owns its history subscription. Dispose it when the
       application owner is destroyed. Create a separate router instance for each server request.
     </p>
+
+    <h2>Provide custom history</h2>
+    <p>
+      By default, <code>createRouter()</code> uses browser history in the browser and an in-memory
+      history during server rendering. Pass a <code>RouterHistory</code> implementation through
+      <code>history</code> when you need to control navigation yourself. Vynn exports
+      <code>createMemoryHistory()</code> for tests, embedded routers, and custom server flows.
+    </p>
+    <CodeBlock
+      lang="tsx"
+      code={`import { createMemoryHistory, createRouter } from "vynn-router";
+
+const history = createMemoryHistory({
+  initialEntries: ["/", "/users/42"],
+});
+
+const router = createRouter({
+  routes,
+  history,
+});
+
+// Memory history also supports go(), back(), and forward().
+history.back();`}
+    />
   </article>
 );
 

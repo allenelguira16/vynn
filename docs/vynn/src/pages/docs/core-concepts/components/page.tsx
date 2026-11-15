@@ -92,7 +92,7 @@ const ComponentsPage = () => (
     <CodeBlock
       lang="tsx"
       code={
-        'import { $state } from "vynn";\n\nfunction SearchField() {\n  const query = $state("");\n  let input: HTMLInputElement | undefined;\n\n  return (\n    <label for="query" class="field">\n      <span>Search</span>\n      <input\n        id="query"\n        ref={(element) => { input = element; }}\n        value={query.value}\n        aria-label="Search records"\n        style={{ width: "100%", maxWidth: "32rem" }}\n        onInput={(event) => {\n          query.value = event.currentTarget.value;\n        }}\n        onKeyDownCapture={(event) => {\n          if (event.key === "Escape") query.value = "";\n        }}\n      />\n      <button type="button" onClick={() => input?.focus()}>Focus</button>\n    </label>\n  );\n}'
+        'import { $state } from "vynn";\n\nfunction SearchField() {\n  const query = $state(() => "");\n  let input: HTMLInputElement | undefined;\n\n  return (\n    <label for="query" class="field">\n      <span>Search</span>\n      <input\n        id="query"\n        ref={(element) => { input = element; }}\n        value={query.value}\n        aria-label="Search records"\n        style={{ width: "100%", maxWidth: "32rem" }}\n        onInput={(event) => {\n          query.value = event.currentTarget.value;\n        }}\n        onKeyDownCapture={(event) => {\n          if (event.key === "Escape") query.value = "";\n        }}\n      />\n      <button type="button" onClick={() => input?.focus()}>Focus</button>\n    </label>\n  );\n}'
       }
     />
     <p>
@@ -151,7 +151,7 @@ const ComponentsPage = () => (
     <CodeBlock
       lang="tsx"
       code={
-        'import { $state, onDestroy, onMount } from "vynn";\n\nfunction Stopwatch() {\n  const seconds = $state(0);\n  let timer: number | undefined;\n\n  onMount(() => {\n    timer = window.setInterval(() => {\n      seconds.value++;\n    }, 1000);\n  });\n\n  onDestroy(() => {\n    if (timer !== undefined) window.clearInterval(timer);\n  });\n\n  return <p>Elapsed: {seconds.value}s</p>;\n}'
+        'import { $state, onDestroy, onMount } from "vynn";\n\nfunction Stopwatch() {\n  const seconds = $state(() => 0);\n  let timer: number | undefined;\n\n  onMount(() => {\n    timer = window.setInterval(() => {\n      seconds.value++;\n    }, 1000);\n  });\n\n  onDestroy(() => {\n    if (timer !== undefined) window.clearInterval(timer);\n  });\n\n  return <p>Elapsed: {seconds.value}s</p>;\n}'
       }
     />
     <p>

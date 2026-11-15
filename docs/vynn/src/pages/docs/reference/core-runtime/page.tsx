@@ -10,6 +10,20 @@ const CoreRuntimePage = () => (
       <code>vynn</code> for library authors and integrations.
     </p>
 
+    <h2>Group updates with batch and transaction</h2>
+    <p>
+      <code>batch()</code> defers reactive queue flushing until the callback finishes, so a group
+      of writes is committed together. <code>transaction()</code> is an alias with identical
+      behavior. Both return the callback's result and flush queued updates even when the callback
+      exits by throwing.
+    </p>
+    <CodeBlock
+      lang="tsx"
+      code={
+        'import { $state, batch, transaction } from "vynn";\n\nconst first = $state(() => 0);\nconst second = $state(() => 0);\n\nbatch(() => {\n  first.value = 1;\n  second.value = 2;\n});\n\n// transaction() is an equivalent name for batch().\ntransaction(() => {\n  first.value += 1;\n  second.value += 1;\n});'
+      }
+    />
+
     <h2>Choose the right effect phase</h2>
     <p>
       <code>$effect()</code> is the normal application effect. It runs immediately the first time,
@@ -20,7 +34,7 @@ const CoreRuntimePage = () => (
     <CodeBlock
       lang="tsx"
       code={
-        'import { $renderEffect, $state } from "vynn";\n\nconst position = $state(0);\n\nconst stop = $renderEffect(() => {\n  // This synchronization runs immediately, then synchronously\n  // when a transaction that changes position commits.\n  updatePosition(position.value);\n});\n\n// Stop the effect when its integration is no longer active.\nstop();'
+        'import { $renderEffect, $state } from "vynn";\n\nconst position = $state(() => 0);\n\nconst stop = $renderEffect(() => {\n  // This synchronization runs immediately, then synchronously\n  // when a transaction that changes position commits.\n  updatePosition(position.value);\n});\n\n// Stop the effect when its integration is no longer active.\nstop();'
       }
     />
     <p>
@@ -36,6 +50,13 @@ const CoreRuntimePage = () => (
       An owner is the lifetime scope Vynn associates with a component and its reactive work. Owners
       form a tree: child components and effects created under an owner belong to that scope.
       Disposing an owner disposes its descendants and runs its registered cleanups.
+    </p>
+    <p>
+      Identity-bearing owners also receive hierarchical runtime IDs. Vynn uses these IDs to
+      associate owner-scoped async resource values across server rendering and browser hydration.
+      They are allocated from the owner tree, so treat them as hydration bookkeeping rather than
+      persistent application identifiers. A transparent owner created with
+      <code>{"{ identity: false }"}</code> does not consume an identity slot.
     </p>
     <div class="not-prose my-5 overflow-x-auto">
       <table class="table table-zebra">
@@ -56,11 +77,13 @@ const CoreRuntimePage = () => (
           </tr>
           <tr>
             <td>
-              <code>createOwner(parent?)</code>
+              <code>createOwner(parent?, options?)</code>
             </td>
             <td>
               Creates an owner. The current owner is used as its parent when the argument is
-              omitted; pass <code>null</code> to create a detached root.
+              omitted; pass <code>null</code> to create a detached root. The optional
+              <code>{"{ identity: false }"}</code> setting creates a transparent scope that does not
+              consume a hydration identity.
             </td>
           </tr>
           <tr>

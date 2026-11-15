@@ -61,9 +61,11 @@ const AsyncUiPage = () => (
 
     <h2>Create async state</h2>
     <p>
-      Pass an async function to <code>$state()</code> to create writable async-derived state. Vynn
-      starts the first request eagerly. After it resolves, you can read or manually assign the
-      result through <code>.value</code>.
+      Pass an async function to <code>$state()</code> to create writable async-derived state. When the
+      resource is created inside a component, Vynn starts the first request eagerly. A module-level
+      resource without an active owner is deferred until its first read so the consuming render can
+      provide its owner and hydration scope. After the first request resolves, you can read or
+      manually assign the result through <code>.value</code>.
     </p>
     <CodeBlock
       lang="tsx"
@@ -138,7 +140,7 @@ const AsyncUiPage = () => (
     <CodeBlock
       lang="tsx"
       code={
-        'import { $computed, $state } from "vynn";\n\nfunction UserName() {\n  const userId = $state("42");\n\n  const user = $computed(async () => {\n    const id = userId.value;\n    const response = await fetch("/api/users/" + id);\n    if (!response.ok) throw new Error("User not found.");\n    return (await response.json()) as { name: string };\n  });\n\n  return <p>{user.value.name}</p>;\n}'
+        'import { $computed, $state } from "vynn";\n\nfunction UserName() {\n  const userId = $state(() => "42");\n\n  const user = $computed(async () => {\n    const id = userId.value;\n    const response = await fetch("/api/users/" + id);\n    if (!response.ok) throw new Error("User not found.");\n    return (await response.json()) as { name: string };\n  });\n\n  return <p>{user.value.name}</p>;\n}'
       }
     />
 

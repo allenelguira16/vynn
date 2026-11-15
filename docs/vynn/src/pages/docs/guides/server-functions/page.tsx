@@ -58,7 +58,7 @@ const ServerFunctionsPage = () => (
     <CodeBlock
       lang="tsx"
       code={
-        'import { $state } from "vynn";\nimport { createGreeting } from "./actions";\n\nfunction GreetingForm() {\n  const greeting = $state("");\n  const errorMessage = $state("");\n\n  async function submit() {\n    errorMessage.value = "";\n\n    try {\n      greeting.value = await createGreeting("Vynn");\n    } catch (error) {\n      errorMessage.value = error instanceof Error ? error.message : "Request failed.";\n    }\n  }\n\n  return (\n    <section>\n      <button onClick={submit}>Create greeting</button>\n      <p>{greeting.value}</p>\n      {errorMessage.value && <p role="alert">{errorMessage.value}</p>}\n    </section>\n  );\n}'
+        'import { $state } from "vynn";\nimport { createGreeting } from "./actions";\n\nfunction GreetingForm() {\n  const greeting = $state(() => "");\n  const errorMessage = $state(() => "");\n\n  async function submit() {\n    errorMessage.value = "";\n\n    try {\n      greeting.value = await createGreeting("Vynn");\n    } catch (error) {\n      errorMessage.value = error instanceof Error ? error.message : "Request failed.";\n    }\n  }\n\n  return (\n    <section>\n      <button onClick={submit}>Create greeting</button>\n      <p>{greeting.value}</p>\n      {errorMessage.value && <p role="alert">{errorMessage.value}</p>}\n    </section>\n  );\n}'
       }
     />
 
