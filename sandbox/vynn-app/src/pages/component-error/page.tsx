@@ -1,4 +1,4 @@
-import { $computed, $state, Await, ErrorBoundary, isPending, JSX } from "vynn";
+import { $computed, $state, Await, Catch, isPending, JSX } from "vynn";
 
 import { Template } from "../../components/template";
 import { sleep } from "../../utils";
@@ -81,7 +81,7 @@ export default function ComponentError() {
     <Template title="Error Boundary">
       <div class="flex gap-4">
         <Template title="ComponentWillThrow" card>
-          <ErrorBoundary
+          <Catch
             fallback={(error, reset) => (
               <div>
                 <p>{String(error)}</p>
@@ -98,10 +98,10 @@ export default function ComponentError() {
             )}
           >
             <ComponentWillThrow />
-          </ErrorBoundary>
+          </Catch>
         </Template>
         <Template title="ComponentWillThrowAfterAsync" card>
-          <ErrorBoundary
+          <Catch
             fallback={(error, reset) => (
               <div>
                 <p>{String(error)}</p>
@@ -118,10 +118,10 @@ export default function ComponentError() {
             )}
           >
             <ComponentWillThrowAfterAsync />
-          </ErrorBoundary>
+          </Catch>
         </Template>
         <Template title="ComponentWillThrowAfterCount" card>
-          <ErrorBoundary
+          <Catch
             fallback={(error, reset) => (
               <div>
                 <p>{String(error)}</p>
@@ -138,7 +138,7 @@ export default function ComponentError() {
             )}
           >
             <ComponentWillThrowAfterCount />
-          </ErrorBoundary>
+          </Catch>
         </Template>
       </div>
     </Template>

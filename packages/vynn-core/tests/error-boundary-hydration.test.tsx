@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { JSX } from "../src/types/jsx";
 
 import { hydrateToDOM } from "../src/client/hydrate-to-dom";
-import { ErrorBoundary } from "../src/components/error-boundary";
+import { Catch } from "../src/components/catch";
 import { ERROR_BOUNDARY_DATA_SSR_KEY } from "../src/const";
 
 afterEach(() => {
@@ -12,7 +12,7 @@ afterEach(() => {
   delete (window as unknown as Record<string, unknown>)[ERROR_BOUNDARY_DATA_SSR_KEY];
 });
 
-describe("ErrorBoundary hydration", () => {
+describe("Catch hydration", () => {
   it("allows retrying an SSR fallback when its children succeed in the browser", () => {
     const host = document.createElement("div");
     host.innerHTML = [
@@ -47,7 +47,7 @@ describe("ErrorBoundary hydration", () => {
     const unmount = hydrateToDOM(
       () => (
         <main>
-          {ErrorBoundary({
+          {Catch({
             children: (() => ComponentWillThrow()) as unknown as JSX.Element,
             fallback: (error, reset) => (
               <div>

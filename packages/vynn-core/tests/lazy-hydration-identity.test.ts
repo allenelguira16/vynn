@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 
-import { ErrorBoundary } from "../src/components/error-boundary";
+import { Catch } from "../src/components/catch";
 import { ASYNC_DATA_SSR_KEY, ERROR_BOUNDARY_DATA_SSR_KEY } from "../src/const";
 import {
   enterAsyncBoundary,
@@ -229,7 +229,7 @@ describe("owner-based hydration identities", () => {
     disposeOwner(root);
   });
 
-  it("tracks owner and lazy ID reservations for descendants skipped by an ErrorBoundary", () => {
+  it("tracks owner and lazy ID reservations for descendants skipped by an Catch", () => {
     const serverRoot = createOwner(null);
     const serverBoundary = createOwner(serverRoot);
     const tracker = createHydrationIDTracker();
@@ -294,7 +294,7 @@ describe("owner-based hydration identities", () => {
     disposeOwner(clientRoot);
   });
 
-  it("restores owner ID reservations when hydrating an ErrorBoundary fallback", () => {
+  it("restores owner ID reservations when hydrating an Catch fallback", () => {
     const root = createOwner(null);
     const windowValues = window as unknown as Record<string, unknown>;
 
@@ -320,7 +320,7 @@ describe("owner-based hydration identities", () => {
         initializeLazyContext();
         initializeErrorBoundaryContext();
 
-        ErrorBoundary({
+        Catch({
           children: "This subtree is skipped during hydration" as never,
           fallback: () => "Fallback",
         });

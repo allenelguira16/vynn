@@ -12,7 +12,7 @@ export { getOwner, runWithOwner, createOwner, disposeOwner } from "./life-cycle/
 export { createContext } from "./context/provider-context";
 
 export { Await } from "./components/await";
-export { ErrorBoundary } from "./components/error-boundary";
+export { Catch } from "./components/catch";
 export { lazy } from "./components/lazy";
 export { Portal } from "./components/portal";
 

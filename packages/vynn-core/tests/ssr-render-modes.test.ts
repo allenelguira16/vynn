@@ -9,7 +9,7 @@ import {
   createServerEntry,
   createSsrHandlerCode,
 } from "../../vite-plugin/src/plugins/app/documents.ts";
-import { ErrorBoundary } from "../src/components/error-boundary";
+import { Catch } from "../src/components/catch";
 import { lazy } from "../src/components/lazy";
 import { registerSsrModule } from "../src/context/ssr-module-context";
 import { createOwner, disposeOwner, getOwner, runWithOwner } from "../src/life-cycle/owner";
@@ -109,7 +109,7 @@ describe("renderToServer modes", () => {
   it("catches synchronous lazy-child errors in sync SSR mode", () => {
     const rendered = renderToServer(
       () =>
-        ErrorBoundary({
+        Catch({
           children: (() => {
             throw new Error("synchronous child failed");
           }) as unknown as JSX.Element,
@@ -249,10 +249,10 @@ describe("renderToServer modes", () => {
     expect(rendered.body).not.toContain("stale resource failure");
   });
 
-  it("handles async render failures within an ErrorBoundary", async () => {
+  it("handles async render failures within an Catch", async () => {
     const rendered = await renderToServer(
       () =>
-        ErrorBoundary({
+        Catch({
           children: (() =>
             createSSRAsync(
               () => [createSSRText("Loading")],
@@ -270,10 +270,10 @@ describe("renderToServer modes", () => {
     expect(rendered.body).toContain("$EBD");
   });
 
-  it("routes guarded child render errors to ErrorBoundary after the guard resolves", async () => {
+  it("routes guarded child render errors to Catch after the guard resolves", async () => {
     const rendered = await renderToServer(
       () =>
-        ErrorBoundary({
+        Catch({
           children: (() =>
             createSSRDeferred(
               () => {
@@ -291,7 +291,7 @@ describe("renderToServer modes", () => {
     expect(rendered.body).toContain("$EBD");
   });
 
-  it("patches an enclosing ErrorBoundary when streamed async work rejects", async () => {
+  it("patches an enclosing Catch when streamed async work rejects", async () => {
     let reject!: (reason: Error) => void;
     const pending = new Promise<void>((_resolve, rejectPromise) => {
       reject = rejectPromise;
@@ -299,7 +299,7 @@ describe("renderToServer modes", () => {
 
     const rendered = renderToServer(
       () =>
-        ErrorBoundary({
+        Catch({
           children: (() =>
             createSSRAsync(
               () => [createSSRText("Loading")],
@@ -336,7 +336,7 @@ describe("renderToServer modes", () => {
     expect(patchHTML).toContain("Caught: resource failed");
   });
 
-  it("patches the nearest nested ErrorBoundary instead of its parent", async () => {
+  it("patches the nearest nested Catch instead of its parent", async () => {
     let reject!: (reason: Error) => void;
     const pending = new Promise<void>((_resolve, rejectPromise) => {
       reject = rejectPromise;
@@ -344,9 +344,9 @@ describe("renderToServer modes", () => {
 
     const rendered = renderToServer(
       () =>
-        ErrorBoundary({
+        Catch({
           children: (() =>
-            ErrorBoundary({
+            Catch({
               children: (() =>
                 createSSRAsync(
                   () => [createSSRText("Nested loading")],
@@ -385,7 +385,7 @@ describe("renderToServer modes", () => {
     expect(patchHTML).not.toContain("Outer: nested resource failed");
   });
 
-  it("errors the stream when async work rejects without an ErrorBoundary", async () => {
+  it("errors the stream when async work rejects without an Catch", async () => {
     let reject!: (reason: Error) => void;
     const pending = new Promise<void>((_resolve, rejectPromise) => {
       reject = rejectPromise;
@@ -412,7 +412,7 @@ describe("renderToServer modes", () => {
     await expect(reader.read()).rejects.toThrow("unhandled resource failure");
   });
 
-  it("keeps blocking deferred failures outside ErrorBoundary recovery", async () => {
+  it("keeps blocking deferred failures outside Catch recovery", async () => {
     let reject!: (reason: Response) => void;
     const pending = new Promise<never>((_resolve, rejectPromise) => {
       reject = rejectPromise;

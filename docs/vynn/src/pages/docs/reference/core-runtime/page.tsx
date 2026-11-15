@@ -208,7 +208,7 @@ const CoreRuntimePage = () => (
       </li>
       <li>
         <a href="/docs/core-concepts/async-ui">Async UI</a> explains <code>Await</code>,{" "}
-        <code>ErrorBoundary</code>, and pending async values.
+        <code>Catch</code>, and pending async values.
       </li>
     </ul>
   </article>

@@ -163,13 +163,13 @@ const ComponentsPage = () => (
 
     <h2>Handle rendering errors</h2>
     <p>
-      Wrap a subtree in <code>ErrorBoundary</code> when it needs a local failure UI. Its fallback
-      receives the error and a <code>reset</code> callback that retries rendering the children.
+      Wrap a subtree in <code>Catch</code> when it needs a local failure UI. Its fallback receives
+      the error and a <code>reset</code> callback that retries rendering the children.
     </p>
     <CodeBlock
       lang="tsx"
       code={
-        'import { ErrorBoundary } from "vynn";\n\nfunction App() {\n  return (\n    <ErrorBoundary\n      fallback={(error, reset) => (\n        <section role="alert">\n          <p>{error.message}</p>\n          <button onClick={reset}>Try again</button>\n        </section>\n      )}\n    >\n      <AccountPanel />\n    </ErrorBoundary>\n  );\n}'
+        'import { Catch } from "vynn";\n\nfunction App() {\n  return (\n    <Catch\n      fallback={(error, reset) => (\n        <section role="alert">\n          <p>{error.message}</p>\n          <button onClick={reset}>Try again</button>\n        </section>\n      )}\n    >\n      <AccountPanel />\n    </Catch>\n  );\n}'
       }
     />
     <p>

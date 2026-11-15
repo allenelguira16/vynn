@@ -81,7 +81,7 @@ const ApiReferencePage = () => (
           </tr>
           <tr>
             <td>
-              <code>Await</code>, <code>ErrorBoundary</code>
+              <code>Await</code>, <code>Catch</code>
             </td>
             <td>Handle initially pending content and rendering errors.</td>
           </tr>

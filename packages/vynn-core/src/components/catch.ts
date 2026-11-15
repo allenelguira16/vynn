@@ -14,7 +14,7 @@ import { $state } from "../reactivity_new/state";
 import { $cmpnt, $nodes } from "../render";
 import { createSSRErrorBoundary, resolveNode } from "../render/resolve-node";
 
-export type ErrorBoundarySSRState =
+export type CatchSSRState =
   | { status: "children" }
   | {
       status: "fallback";
@@ -22,7 +22,7 @@ export type ErrorBoundarySSRState =
       message: string;
     };
 
-export const ErrorBoundary = $cmpnt(function ErrorBoundary(props: {
+export const Catch = $cmpnt(function Catch(props: {
   fallback?: (error: Error, reset: () => void) => JSX.Element;
   children: JSX.Element;
 }) {
@@ -31,7 +31,7 @@ export const ErrorBoundary = $cmpnt(function ErrorBoundary(props: {
   const ssrData = getErrorBoundaryValue(errorBoundaryID);
 
   if (!currentOwner) {
-    throw new Error("ErrorBoundary requires an owner.");
+    throw new Error("Catch requires an owner.");
   }
 
   if (isServer()) {

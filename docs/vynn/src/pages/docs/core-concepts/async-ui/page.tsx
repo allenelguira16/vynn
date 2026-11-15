@@ -7,7 +7,7 @@ const AsyncUiPage = () => (
     <p class="lead">
       Fetching data and loading code should not require a separate state machine for every screen.
       Vynn's reactive primitives can represent async values directly, while <code>Await</code> and
-      <code>ErrorBoundary</code> give pending and failed content a clear place in the UI.
+      <code>Catch</code> give pending and failed content a clear place in the UI.
     </p>
 
     <h2>Choose the right async primitive</h2>
@@ -144,13 +144,13 @@ const AsyncUiPage = () => (
 
     <h2>Handle errors separately</h2>
     <p>
-      <code>Await</code> handles pending reads. <code>ErrorBoundary</code> handles errors thrown
-      while its children render. Use both when a section can load asynchronously and may also fail.
+      <code>Await</code> handles pending reads. <code>Catch</code> handles errors thrown while its
+      children render. Use both when a section can load asynchronously and may also fail.
     </p>
     <CodeBlock
       lang="tsx"
       code={
-        'import { Await, ErrorBoundary } from "vynn";\n\nfunction AccountPage() {\n  return (\n    <ErrorBoundary\n      fallback={(error, reset) => (\n        <section role="alert">\n          <p>{error.message}</p>\n          <button onClick={reset}>Try again</button>\n        </section>\n      )}\n    >\n      <Await fallback={<p>Loading account...</p>}>\n        <ProfileCard />\n      </Await>\n    </ErrorBoundary>\n  );\n}'
+        'import { Await, Catch } from "vynn";\n\nfunction AccountPage() {\n  return (\n    <Catch\n      fallback={(error, reset) => (\n        <section role="alert">\n          <p>{error.message}</p>\n          <button onClick={reset}>Try again</button>\n        </section>\n      )}\n    >\n      <Await fallback={<p>Loading account...</p>}>\n        <ProfileCard />\n      </Await>\n    </Catch>\n  );\n}'
       }
     />
     <p>

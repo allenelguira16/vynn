@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { JSX } from "../src/types/jsx";
 
 import { Await } from "../src/components/await";
-import { ErrorBoundary } from "../src/components/error-boundary";
+import { Catch } from "../src/components/catch";
 import { getLazyID, initializeLazyScope } from "../src/context/lazy-context";
 import { $state } from "../src/reactivity_new/state";
 import { $insert } from "../src/render/$insert";
@@ -34,14 +34,14 @@ function createAsyncCount(promise: Promise<void>, error: Error): JSX.Element {
   return paragraph as unknown as JSX.Element;
 }
 
-describe("SSR async ErrorBoundary", () => {
+describe("SSR async Catch", () => {
   it("catches an async $state rejection in streaming SSR without Await", async () => {
     const gate = deferred<void>();
     const error = new Error("ComponentWillThrowAfterAsync catched, please retry again");
 
     const rendered = renderToServer(
       () =>
-        ErrorBoundary({
+        Catch({
           children: (() => createAsyncCount(gate.promise, error)) as unknown as JSX.Element,
           fallback: (reason) => `Caught: ${reason.message}`,
         }),
@@ -65,13 +65,13 @@ describe("SSR async ErrorBoundary", () => {
     expect(html).not.toContain('template id="0"');
   });
 
-  it("streams the Await fallback and patches the enclosing ErrorBoundary on rejection", async () => {
+  it("streams the Await fallback and patches the enclosing Catch on rejection", async () => {
     const gate = deferred<void>();
     const error = new Error("async resource rejected inside Await");
 
     const rendered = renderToServer(
       () =>
-        ErrorBoundary({
+        Catch({
           children: (() =>
             Await({
               fallback: "Loading",
@@ -106,7 +106,7 @@ describe("SSR async ErrorBoundary", () => {
 
     const rendered = await renderToServer(
       () =>
-        ErrorBoundary({
+        Catch({
           children: (() =>
             createAsyncCount(
               Promise.resolve().then(() => {
@@ -123,7 +123,7 @@ describe("SSR async ErrorBoundary", () => {
     expect(rendered.body).toContain("<!--eb:0-->");
     expect(rendered.body).toContain("<!--/eb:0-->");
   });
-  it("serializes async ID reservations for an ErrorBoundary fallback", async () => {
+  it("serializes async ID reservations for an Catch fallback", async () => {
     const error = new Error("rejected resource before a sibling resource");
 
     const createValue = (value: string): JSX.Element => {
@@ -135,7 +135,7 @@ describe("SSR async ErrorBoundary", () => {
 
     const rendered = await renderToServer(
       () => [
-        ErrorBoundary({
+        Catch({
           children: (() =>
             createAsyncCount(
               Promise.resolve().then(() => {
@@ -177,7 +177,7 @@ describe("SSR async ErrorBoundary", () => {
 
     const rendered = await renderToServer(
       () => [
-        ErrorBoundary({
+        Catch({
           children: (() => {
             const lazyID = getLazyID();
             initializeLazyScope(lazyID);
@@ -211,7 +211,7 @@ describe("SSR async ErrorBoundary", () => {
     });
   });
 
-  it("keeps async hydration IDs in component traversal order around ErrorBoundary", async () => {
+  it("keeps async hydration IDs in component traversal order around Catch", async () => {
     const createValue = (value: string): JSX.Element => {
       const resource = $state(async () => value);
       const paragraph = $tmpl("p");
@@ -221,7 +221,7 @@ describe("SSR async ErrorBoundary", () => {
 
     const rendered = await renderToServer(
       () => [
-        ErrorBoundary({
+        Catch({
           children: (() => createValue("inside boundary")) as unknown as JSX.Element,
           fallback: (reason) => `Caught: ${reason.message}`,
         }),
