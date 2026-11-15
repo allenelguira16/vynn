@@ -7,7 +7,7 @@ export default defineConfig({
   plugins: [
     vynn({
       ssr: true,
-      ssrMode: "async",
+      ssrMode: "stream",
       serverFunctions: true,
     }),
     tailwindcss(),

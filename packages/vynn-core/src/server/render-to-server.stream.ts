@@ -24,6 +24,7 @@ import { renderHeadPatch, type SsrHeadManager } from "./head";
 import {
   joinHTMLElements,
   renderAsyncUtilities,
+  renderErrorBoundaryRange,
   renderNode,
   renderText,
 } from "./render-to-server.util";
@@ -143,20 +144,56 @@ export function resolveStream(
 
   async function renderAsyncChildren(node: SSR_ASYNC, boundaryId: number): Promise<void> {
     try {
-      await Promise.all(node.promises);
+      // Rejections become render errors only when the retry still reads the
+      // failed resource. The resource stores its rejection before this retry.
+      await Promise.allSettled(node.promises);
       enqueuePatch(renderPatch(boundaryId, await resolve(node.children())));
+    } catch (error) {
+      try {
+        const boundary =
+          error instanceof Error ? node.errorBoundary?.(error) : undefined;
+
+        if (!(boundary instanceof SSR_ERROR_BOUNDARY)) {
+          failStream(error);
+          return;
+        }
+
+        const fallbackHTML = await resolve(boundary.fallback());
+        enqueuePatch(renderErrorBoundaryPatch(boundary.id, fallbackHTML));
+      } catch (boundaryError) {
+        failStream(boundaryError);
+      }
     } finally {
       await finishTask();
     }
   }
 
   async function renderDeferredNode(node: SSR_DEFERRED): Promise<string> {
-    await Promise.all(node.promises);
+    // Preserve control-flow failures such as redirects for blocking work.
+    // Otherwise retry after settlement so stale rejected resources are ignored.
+    if (node.blocking) {
+      await Promise.all(node.promises);
+    } else {
+      await Promise.allSettled(node.promises);
+    }
+
     return await resolve(node.children());
   }
 
   async function renderErrorBoundary(node: SSR_ERROR_BOUNDARY): Promise<string> {
-    return await resolve(node.fallback());
+    if (node.error) {
+      return renderErrorBoundaryRange(node.id, await resolve(node.fallback()));
+    }
+
+    try {
+      return renderErrorBoundaryRange(node.id, await resolve(node.children()));
+    } catch (error) {
+      if (!(error instanceof Error) || node.errorBoundary?.(error) !== node) {
+        throw error;
+      }
+
+      return renderErrorBoundaryRange(node.id, await resolve(node.fallback()));
+    }
   }
 
   async function renderElement(node: SSR_ELEMENT): Promise<string> {
@@ -246,9 +283,9 @@ function renderPatch(id: number, html: string) {
   return `<template id="${id}">${html}</template><script>${APPLY_PATCH_SSR_KEY}(${id});document.currentScript.remove();</script>`;
 }
 
-// function renderErrorBoundaryPatch(id: number, html: string) {
-//   return `<template id="vynn-eb-${id}">${html}</template><script>${APPLY_ERROR_BOUNDARY_PATCH_SSR_KEY}(${id});document.currentScript.remove();</script>`;
-// }
+function renderErrorBoundaryPatch(id: number, html: string) {
+  return `<template id="vynn-eb-${id}">${html}</template><script>${APPLY_ERROR_BOUNDARY_PATCH_SSR_KEY}(${id});document.currentScript.remove();</script>`;
+}
 
 function renderPatchRuntime(): string {
   return `<script>

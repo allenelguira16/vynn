@@ -21,15 +21,25 @@ function ComponentWillThrow(): JSX.Element {
 
 function ComponentWillThrowAfterAsync(): JSX.Element {
   const count = $state(async () => {
-    // throw new Error("ComponentWillThrowAfterAsync catched, please retry again");
     await sleep(100);
+
+    if (typeof window === "undefined") {
+      throw new Error("ComponentWIllThrow catched, please retry again");
+    }
 
     return 0;
   });
 
+  const willThrow = () => {
+    throw new Error("ComponentWillThrowAfterCount catched, please retry again");
+  };
+
   return (
     <div>
-      <div>Count: {count.value}</div>
+      <div>
+        Count: {count.value}
+        {count.value > 5 && willThrow()}
+      </div>
       <button class="btn" onClick={() => count.value++} disabled={isPending(count)}>
         Add
       </button>

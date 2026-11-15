@@ -14,18 +14,36 @@ import {
 import {
   joinHTMLElements,
   renderAsyncUtilities,
+  renderErrorBoundaryRange,
   renderNode,
   renderText,
 } from "./render-to-server.util";
 
 export async function resolveAsync(App: () => JSX.Element, owner: Owner): Promise<string> {
   async function resolveAsyncBoundary(node: SSR_ASYNC | SSR_DEFERRED): Promise<string> {
-    await Promise.all(node.promises);
+    if (node instanceof SSR_DEFERRED && node.blocking) {
+      await Promise.all(node.promises);
+    } else {
+      await Promise.allSettled(node.promises);
+    }
+
     return await resolve(node.children());
   }
 
   async function resolveErrorBoundary(node: SSR_ERROR_BOUNDARY): Promise<string> {
-    return await resolve(node.fallback());
+    if (node.error) {
+      return renderErrorBoundaryRange(node.id, await resolve(node.fallback()));
+    }
+
+    try {
+      return renderErrorBoundaryRange(node.id, await resolve(node.children()));
+    } catch (error) {
+      if (!(error instanceof Error) || node.errorBoundary?.(error) !== node) {
+        throw error;
+      }
+
+      return renderErrorBoundaryRange(node.id, await resolve(node.fallback()));
+    }
   }
 
   async function resolveElement(node: SSR_ELEMENT): Promise<string> {

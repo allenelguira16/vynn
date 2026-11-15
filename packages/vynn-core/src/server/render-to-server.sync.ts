@@ -14,13 +14,26 @@ import {
 import {
   joinHTMLElements,
   renderAsyncUtilities,
+  renderErrorBoundaryRange,
   renderNode,
   renderText,
 } from "./render-to-server.util";
 
 export function resolveSync(App: () => JSX.Element, owner: Owner) {
   function resolveErrorBoundary(node: SSR_ERROR_BOUNDARY) {
-    return resolve(node.fallback());
+    if (node.error) {
+      return renderErrorBoundaryRange(node.id, resolve(node.fallback()));
+    }
+
+    try {
+      return renderErrorBoundaryRange(node.id, resolve(node.children()));
+    } catch (error) {
+      if (!(error instanceof Error) || node.errorBoundary?.(error) !== node) {
+        throw error;
+      }
+
+      return renderErrorBoundaryRange(node.id, resolve(node.fallback()));
+    }
   }
 
   function resolveElement(node: SSR_ELEMENT) {

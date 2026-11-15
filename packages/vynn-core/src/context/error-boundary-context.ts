@@ -1,4 +1,6 @@
 import { ERROR_BOUNDARY_DATA_SSR_KEY } from "../const";
+import type { AsyncIDReservations } from "./async-context";
+import type { LazyIDReservations } from "./lazy-context";
 import { getContext, getOwner, modifyContext, setContext } from "../life-cycle/owner";
 import { isServer } from "./is-server-context";
 
@@ -28,6 +30,8 @@ export type ErrorBoundarySSRState =
       status: "fallback";
       name: string;
       message: string;
+      asyncIDs?: AsyncIDReservations;
+      lazyIDs?: LazyIDReservations;
     };
 
 export function initializeErrorBoundaryContext() {

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 
-import { ASYNC_DATA_SSR_KEY } from "../src/const";
+import { ASYNC_DATA_SSR_KEY, ERROR_BOUNDARY_DATA_SSR_KEY } from "../src/const";
 import {
   enterAsyncBoundary,
   getAsyncID,
@@ -9,13 +9,22 @@ import {
   getAsyncValues,
   initializeAsyncContext,
   initializeLazyAsyncScope,
+  reserveAsyncIDReservations,
 } from "../src/context/async-context";
+import { ErrorBoundary } from "../src/components/error-boundary";
+import { initializeErrorBoundaryContext } from "../src/context/error-boundary-context";
+import {
+  createHydrationIDTracker,
+  enterHydrationIDTracker,
+  getHydrationIDReservations,
+} from "../src/context/hydration-id-context";
 import {
   getLazyID,
   initializeLazyContext,
   initializeLazyScope,
   isPromiseFromLazy,
   registerPromiseFromLazy,
+  reserveLazyIDReservations,
   regsterAsyncGetterFromLazy,
 } from "../src/context/lazy-context";
 import { createOwner, disposeOwner, runWithOwner } from "../src/life-cycle/owner";
@@ -173,6 +182,123 @@ describe("lazy hydration identities", () => {
     });
 
     disposeOwner(root);
+  });
+
+  it("tracks async and lazy IDs consumed by descendants skipped by an ErrorBoundary", () => {
+    const serverRoot = createOwner(null);
+    const serverBoundary = createOwner(serverRoot);
+    const tracker = createHydrationIDTracker();
+
+    runWithOwner(serverRoot, () => {
+      initializeAsyncContext();
+      initializeLazyContext();
+    });
+
+    runWithOwner(serverBoundary, () => {
+      enterHydrationIDTracker(tracker);
+
+      expect(getAsyncID()).toBe("root:0");
+      expect(getLazyID()).toBe("0");
+
+      const nestedLazy = createOwner(serverBoundary);
+      runWithOwner(nestedLazy, () => {
+        initializeLazyScope("skipped");
+        initializeLazyAsyncScope("skipped");
+
+        expect(getLazyID()).toBe("skipped.0");
+        expect(getAsyncID()).toBe("lazy:skipped:0");
+        expect(getAsyncID()).toBe("lazy:skipped:1");
+      });
+    });
+
+    const { asyncIDs, lazyIDs } = getHydrationIDReservations(tracker);
+
+    expect(asyncIDs).toEqual({
+      root: 1,
+      "lazy:skipped": 2,
+    });
+    expect(lazyIDs).toEqual({
+      "": 1,
+      skipped: 1,
+    });
+
+    const clientRoot = createOwner(null);
+    const clientBoundary = createOwner(clientRoot);
+
+    runWithOwner(clientRoot, () => {
+      initializeAsyncContext();
+      initializeLazyContext();
+    });
+    runWithOwner(clientBoundary, () => {
+      reserveAsyncIDReservations(asyncIDs);
+      reserveLazyIDReservations(lazyIDs);
+
+      // Both root allocators skip IDs created by the rejected child.
+      expect(getAsyncID()).toBe("root:1");
+      expect(getLazyID()).toBe("1");
+
+      const laterLazy = createOwner(clientBoundary);
+      runWithOwner(laterLazy, () => {
+        initializeLazyScope("skipped");
+        initializeLazyAsyncScope("skipped");
+
+        // Nested lazy scopes restore their own cursors when initialized.
+        expect(getLazyID()).toBe("skipped.1");
+        expect(getAsyncID()).toBe("lazy:skipped:2");
+      });
+    });
+
+    disposeOwner(serverRoot);
+    disposeOwner(clientRoot);
+  });
+
+  it("restores async ID reservations when hydrating an ErrorBoundary fallback", () => {
+    const root = createOwner(null);
+    const windowValues = window as unknown as Record<string, unknown>;
+
+    windowValues[ERROR_BOUNDARY_DATA_SSR_KEY] = [
+      {
+        status: "fallback",
+        name: "Error",
+        message: "server-side failure",
+        asyncIDs: {
+          root: 1,
+          "lazy:skipped": 2,
+        },
+        lazyIDs: {
+          "": 1,
+          skipped: 2,
+        },
+      },
+    ];
+
+    try {
+      runWithOwner(root, () => {
+        initializeAsyncContext();
+        initializeLazyContext();
+        initializeErrorBoundaryContext();
+
+        ErrorBoundary({
+          children: "This subtree is skipped during hydration" as never,
+          fallback: () => "Fallback",
+        });
+
+        expect(getAsyncID()).toBe("root:1");
+        expect(getLazyID()).toBe("1");
+
+        const skippedLazy = createOwner(root);
+        runWithOwner(skippedLazy, () => {
+          initializeLazyScope("skipped");
+          expect(getLazyID()).toBe("skipped.2");
+
+          initializeLazyAsyncScope("skipped");
+          expect(getAsyncID()).toBe("lazy:skipped:2");
+        });
+      });
+    } finally {
+      delete windowValues[ERROR_BOUNDARY_DATA_SSR_KEY];
+      disposeOwner(root);
+    }
   });
 
   it("restores serialized falsy async values instead of rerunning their getter", () => {
