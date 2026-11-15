@@ -1,9 +1,9 @@
 import type { JSX } from "../types/jsx";
 
 import { isServer } from "../context/is-server-context";
-import { $computed } from "../reactivity_new/computed";
-import { untrack } from "../reactivity_new/effect";
-import { $state, type State } from "../reactivity_new/state";
+import { $computed } from "../reactivity/computed";
+import { untrack } from "../reactivity/effect";
+import { $state, type State } from "../reactivity/state";
 import { $nodes } from "./$nodes";
 import { getCurrentDOMNamespace, withDOMNamespace } from "./namespace";
 

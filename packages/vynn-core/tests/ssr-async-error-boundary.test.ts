@@ -5,7 +5,7 @@ import type { JSX } from "../src/types/jsx";
 import { Await } from "../src/components/await";
 import { Catch } from "../src/components/catch";
 import { getLazyID, initializeLazyScope } from "../src/context/lazy-context";
-import { $state } from "../src/reactivity_new/state";
+import { $state } from "../src/reactivity/state";
 import { $insert } from "../src/render/$insert";
 import { $tmpl } from "../src/render/$tmpl";
 import { renderToServer } from "../src/server/render-to-server";

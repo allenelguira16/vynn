@@ -3,10 +3,10 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { renderToDOM } from "../src/client/render-to-dom";
 import { Await } from "../src/components/await";
-import { $computed } from "../src/reactivity_new/computed";
-import { isPending } from "../src/reactivity_new/pending";
-import { $state } from "../src/reactivity_new/state";
-import { $store } from "../src/reactivity_new/store";
+import { $computed } from "../src/reactivity/computed";
+import { isPending } from "../src/reactivity/pending";
+import { $state } from "../src/reactivity/state";
+import { $store } from "../src/reactivity/store";
 import { renderToServer } from "../src/server/render-to-server";
 
 function Row(props: { name: string; url: string }) {

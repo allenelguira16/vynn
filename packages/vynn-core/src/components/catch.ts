@@ -10,7 +10,7 @@ import {
 } from "../context/error-boundary-context";
 import { isServer } from "../context/is-server-context";
 import { createOwner, disposeOwner, getOwner, runWithOwner } from "../life-cycle/owner";
-import { $state } from "../reactivity_new/state";
+import { $state } from "../reactivity/state";
 import { $cmpnt, $nodes } from "../render";
 import { createSSRErrorBoundary, resolveNode } from "../render/resolve-node";
 

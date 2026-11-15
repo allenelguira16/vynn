@@ -4,7 +4,7 @@ import { getErrorBoundary } from "../context/error-boundary-context";
 import { isServer } from "../context/is-server-context";
 import { JSX } from "../jsx-runtime";
 import { getOwner, runWithOwner } from "../life-cycle/owner";
-import { NotReadyError } from "../reactivity_new/not-ready-error";
+import { NotReadyError } from "../reactivity/not-ready-error";
 import { isCreatingHeadElement, isHeadElement } from "./$head";
 import { getCurrentDOMNamespace, getElementNamespace, withDOMNamespace } from "./namespace";
 

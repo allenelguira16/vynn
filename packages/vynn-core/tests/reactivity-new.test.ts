@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import { createOwner, disposeOwner, runWithOwner } from "../src/life-cycle/owner";
-import { $computed } from "../src/reactivity_new/computed";
-import { $effect, $renderEffect, batch } from "../src/reactivity_new/effect";
-import { NotReadyError } from "../src/reactivity_new/not-ready-error";
-import { isPending } from "../src/reactivity_new/pending";
-import { $state } from "../src/reactivity_new/state";
-import { $store } from "../src/reactivity_new/store";
+import { $computed } from "../src/reactivity/computed";
+import { $effect, $renderEffect, batch } from "../src/reactivity/effect";
+import { NotReadyError } from "../src/reactivity/not-ready-error";
+import { isPending } from "../src/reactivity/pending";
+import { $state } from "../src/reactivity/state";
+import { $store } from "../src/reactivity/store";
 
 async function flushEffects(): Promise<void> {
   await new Promise<void>((resolve) => queueMicrotask(resolve));
