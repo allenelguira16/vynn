@@ -101,6 +101,46 @@ describe("SSR async Catch", () => {
     expect(patchHTML).toContain(`Caught: ${error.message}`);
   });
 
+  it("catches an async $state created inside Await children in streaming SSR", async () => {
+    const gate = deferred<void>();
+    const error = new Error("async state failed inside Await children");
+
+    const rendered = renderToServer(
+      () =>
+        Catch({
+          children: (() =>
+            Await({
+              fallback: "Loading",
+              children: (() => {
+                const count = $state<number>(async () => {
+                  await gate.promise;
+                  throw error;
+                });
+                const paragraph = $tmpl("p");
+                $insert(paragraph, () => count.value);
+                return paragraph as unknown as JSX.Element;
+              }) as unknown as JSX.Element,
+            })) as unknown as JSX.Element,
+          fallback: (reason) => `Caught: ${reason.message}`,
+        }),
+      "stream",
+    );
+
+    const reader = rendered.body.getReader();
+    const decoder = new TextDecoder();
+    const initial = await reader.read();
+
+    expect(initial.done).toBe(false);
+    expect(decoder.decode(initial.value)).toContain("Loading");
+
+    gate.reject(error);
+
+    const patchHTML = await readStreamFromReader(reader, decoder);
+    expect(patchHTML).toContain('template id="vynn-eb-0"');
+    expect(patchHTML).toContain("$AEBP(0)");
+    expect(patchHTML).toContain(`Caught: ${error.message}`);
+  });
+
   it("catches an async $state rejection in async SSR", async () => {
     const error = new Error("async render mode resource failure");
 

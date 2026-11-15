@@ -36,13 +36,15 @@ function ComponentWillThrowAfterAsync(): JSX.Element {
 
   return (
     <div>
-      <div>
-        Count: {count.value}
-        {count.value > 5 && willThrow()}
-      </div>
-      <button class="btn" onClick={() => count.value++} disabled={isPending(count)}>
-        Add
-      </button>
+      <Await fallback="Loading siya..">
+        <div>
+          Count: {count.value}
+          {count.value > 5 && willThrow()}
+        </div>
+        <button class="btn" onClick={() => count.value++} disabled={isPending(count)}>
+          Add
+        </button>
+      </Await>
     </div>
   );
 }

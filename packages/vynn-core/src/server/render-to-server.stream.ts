@@ -147,6 +147,11 @@ export function resolveStream(
       // Rejections become render errors only when the retry still reads the
       // failed resource. The resource stores its rejection before this retry.
       await Promise.allSettled(node.promises);
+
+      // A different async boundary may have already failed the stream and
+      // disposed the render owner while this boundary was waiting.
+      if (streamClosed) return;
+
       enqueuePatch(renderPatch(boundaryId, await resolve(node.children())));
     } catch (error) {
       try {
@@ -175,6 +180,11 @@ export function resolveStream(
     } else {
       await Promise.allSettled(node.promises);
     }
+
+    // Another pending boundary can fail the stream while this deferred
+    // node is waiting. Do not retry its children after the render owner has
+    // been released.
+    if (streamClosed) return "";
 
     return await resolve(node.children());
   }

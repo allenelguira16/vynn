@@ -4,6 +4,7 @@ import type { SSR_ERROR_BOUNDARY, SSR_NODE } from "../render/resolve-node";
 
 import {
   enterErrorBoundary,
+  getErrorBoundary,
   getErrorBoundaryID,
   getErrorBoundaryValue,
   getErrorBoundaryValues,
@@ -66,6 +67,12 @@ export const Catch = $cmpnt(function Catch(props: {
 
     if (values) values[errorBoundaryID] = { status: "children" };
 
+    // Async boundaries created while rendering these children must retain
+    // this Catch boundary so failures can be routed back to it after the
+    // initial component traversal has completed.
+    const parentErrorBoundary = getErrorBoundary();
+    enterErrorBoundary(handleError);
+
     // Resolve children during the component traversal so async resources
     // retain their normal hydration IDs. The owner-scoped tracker also sees
     // resources created later by deferred SSR retries without including
@@ -76,6 +83,8 @@ export const Catch = $cmpnt(function Catch(props: {
     } catch (error) {
       if (!(error instanceof Error)) throw error;
       handleError(error);
+    } finally {
+      enterErrorBoundary(parentErrorBoundary);
     }
 
     return boundary as unknown as JSX.Element;

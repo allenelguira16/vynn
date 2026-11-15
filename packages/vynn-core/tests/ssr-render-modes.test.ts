@@ -412,6 +412,108 @@ describe("renderToServer modes", () => {
     await expect(reader.read()).rejects.toThrow("unhandled resource failure");
   });
 
+  it("does not retry sibling async children after an unhandled stream failure", async () => {
+    let rejectFirst!: (reason: Error) => void;
+    let resolveSibling!: () => void;
+    const firstPending = new Promise<void>((_resolve, reject) => {
+      rejectFirst = reject;
+    });
+    const siblingPending = new Promise<void>((resolve) => {
+      resolveSibling = () => resolve();
+    });
+    const error = new Error("unhandled first boundary failure");
+    let siblingRetries = 0;
+
+    const rendered = renderToServer(
+      () =>
+        [
+          createSSRAsync(
+            () => [createSSRText("First loading")],
+            () => {
+              throw error;
+            },
+            [firstPending],
+          ),
+          createSSRAsync(
+            () => [createSSRText("Sibling loading")],
+            () => {
+              siblingRetries++;
+              return [createSSRText("Sibling retried")];
+            },
+            [siblingPending],
+          ),
+        ] as unknown as JSX.Element,
+      "stream",
+    );
+
+    const reader = rendered.body.getReader();
+    const decoder = new TextDecoder();
+    const initial = await reader.read();
+
+    expect(initial.done).toBe(false);
+    expect(decoder.decode(initial.value)).toContain("First loading");
+    expect(decoder.decode(initial.value)).toContain("Sibling loading");
+
+    rejectFirst(error);
+
+    await expect(reader.read()).rejects.toThrow(error.message);
+
+    // The sibling is deliberately settled after the stream has failed and
+    // its render owner has been released.
+    resolveSibling();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(siblingRetries).toBe(0);
+  });
+
+  it("does not retry deferred children after another boundary fails the stream", async () => {
+    let rejectFirst!: (reason: Error) => void;
+    let resolveDeferred!: () => void;
+    const firstPending = new Promise<void>((_resolve, reject) => {
+      rejectFirst = reject;
+    });
+    const deferredPending = new Promise<void>((resolve) => {
+      resolveDeferred = () => resolve();
+    });
+    const error = new Error("unhandled async boundary failure");
+    let deferredRetries = 0;
+
+    const rendered = renderToServer(
+      () =>
+        [
+          createSSRAsync(
+            () => [createSSRText("First loading")],
+            () => {
+              throw error;
+            },
+            [firstPending],
+          ),
+          createSSRDeferred(
+            () => {
+              deferredRetries++;
+              return [createSSRText("Deferred content")];
+            },
+            [deferredPending],
+          ),
+        ] as unknown as JSX.Element,
+      "stream",
+    );
+
+    const reader = rendered.body.getReader();
+    const pendingRead = reader.read();
+
+    rejectFirst(error);
+
+    await expect(pendingRead).rejects.toThrow(error.message);
+
+    // The initial render is still waiting on this deferred promise even
+    // though another boundary has already terminated the stream.
+    resolveDeferred();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(deferredRetries).toBe(0);
+  });
+
   it("keeps blocking deferred failures outside Catch recovery", async () => {
     let reject!: (reason: Response) => void;
     const pending = new Promise<never>((_resolve, rejectPromise) => {
