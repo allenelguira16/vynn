@@ -1,5 +1,5 @@
 import "./main.css";
-import { $state, Await, onDestroy, onMount } from "vynn";
+import { $state, onDestroy, onMount } from "vynn";
 import { createRouter, Router, toFileRouter } from "vynn-router";
 
 export default function App(props: { url: string }) {
@@ -28,9 +28,7 @@ export default function App(props: { url: string }) {
         <meta property="og:type" content="website" />
       </head>
       <body class="overflow-hidden">
-        <Await fallback={<div class="text-9xl">Page Is Loading</div>}>
-          <Router router={router} />
-        </Await>
+        <Router router={router} />
       </body>
     </html>
   );

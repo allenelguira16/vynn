@@ -15,20 +15,22 @@ import { memo } from "../utils/memo";
 /**
  * Displays a fallback while the children are initially loading.
  *
- * The fallback is shown only during the first pending state.
- * Once the children have been displayed successfully, subsequent async
- * operations keep the current children visible.
+ * By default, the fallback is shown only during the first pending state.
+ * Set `suspense` to show it again whenever the children start another async
+ * operation.
  *
- * @param props The fallback content and children to render.
+ * @param props The fallback content, children, and suspense behavior.
  * @returns The rendered content.
  */
 export const Await = $cmpnt(function Await(props: {
   fallback?: JSX.Element;
+  suspense?: boolean;
   children: JSX.Element;
 }): JSX.Element {
   const owner = getOwner()!;
 
   const fallback = memo(() => runWithOwner(owner, () => props.fallback));
+  const suspense = memo(() => runWithOwner(owner, () => props.suspense === true));
   const children = memo(() => runWithOwner(owner, () => props.children));
 
   if (isServer()) {
@@ -56,14 +58,20 @@ export const Await = $cmpnt(function Await(props: {
   return untrack(() => {
     let isResolved = false;
     const isPending = $state(() => false);
+    const pendingPromises = new Set<Promise<unknown>>();
 
     enterAsyncBoundary((promise) => {
-      if (!isResolved && (!isPromiseFromLazy(promise) || !isHydrationClaimActive())) {
-        isPending.value = true;
-      }
+      const shouldShowFallback = !isResolved || suspense();
+      const isHydratingLazyPromise = isPromiseFromLazy(promise) && isHydrationClaimActive();
+
+      if (!shouldShowFallback || isHydratingLazyPromise) return;
+
+      pendingPromises.add(promise);
+      isPending.value = true;
 
       const clearPending = () => {
-        isPending.value = false;
+        pendingPromises.delete(promise);
+        isPending.value = pendingPromises.size > 0;
       };
 
       void promise.then(clearPending, clearPending);

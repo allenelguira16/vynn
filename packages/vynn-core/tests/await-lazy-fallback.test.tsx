@@ -7,6 +7,7 @@ import { hydrateToDOM } from "../src/client/hydrate-to-dom";
 import { renderToDOM } from "../src/client/render-to-dom";
 import { Await } from "../src/components/await";
 import { lazy } from "../src/components/lazy";
+import { $state } from "../src/reactivity/state";
 
 afterEach(() => {
   document.body.innerHTML = "";
@@ -23,6 +24,38 @@ function deferred<T>() {
 
 async function flushUpdates() {
   await new Promise<void>((resolve) => setTimeout(resolve, 0));
+}
+
+function createRefreshScenario(suspense: boolean) {
+  const source = $state(1);
+  const requests = new Map<number, ReturnType<typeof deferred<string>>>();
+
+  function Page(): JSX.Element {
+    const data = $state(async () => {
+      const id = source.value;
+      const request = deferred<string>();
+
+      requests.set(id, request);
+
+      return request.promise;
+    });
+
+    return <p>{data.value}</p>;
+  }
+
+  const host = document.createElement("div");
+  document.body.append(host);
+
+  const unmount = renderToDOM(
+    () => (
+      <Await suspense={suspense} fallback={<p>Loading page</p>}>
+        <Page />
+      </Await>
+    ),
+    host,
+  );
+
+  return { host, requests, source, unmount };
 }
 
 describe("Await with lazy components", () => {
@@ -84,5 +117,103 @@ describe("Await with lazy components", () => {
     expect(host.querySelector("p")).toBe(serverPage);
 
     unmount();
+  });
+});
+
+describe("Await suspense mode", () => {
+  it("shows the fallback again while an async child refreshes", async () => {
+    const { host, requests, source, unmount } = createRefreshScenario(true);
+
+    try {
+      expect(host.textContent).toBe("Loading page");
+
+      requests.get(1)!.resolve("First result");
+      await flushUpdates();
+
+      expect(host.textContent).toBe("First result");
+
+      source.value = 2;
+      await flushUpdates();
+
+      expect(host.textContent).toBe("Loading page");
+
+      requests.get(2)!.resolve("Second result");
+      await flushUpdates();
+
+      expect(host.textContent).toBe("Second result");
+    } finally {
+      unmount();
+    }
+  });
+
+  it("keeps resolved children visible during refreshes by default", async () => {
+    const { host, requests, source, unmount } = createRefreshScenario(false);
+
+    try {
+      expect(host.textContent).toBe("Loading page");
+
+      requests.get(1)!.resolve("First result");
+      await flushUpdates();
+
+      expect(host.textContent).toBe("First result");
+
+      source.value = 2;
+      await flushUpdates();
+
+      expect(host.textContent).toBe("First result");
+
+      requests.get(2)!.resolve("Second result");
+      await flushUpdates();
+
+      expect(host.textContent).toBe("Second result");
+    } finally {
+      unmount();
+    }
+  });
+
+  it("keeps the fallback visible until every pending child operation settles", async () => {
+    const firstRequest = deferred<string>();
+    const secondRequest = deferred<string>();
+
+    function Page(): JSX.Element {
+      const first = $state(async () => firstRequest.promise);
+      const second = $state(async () => secondRequest.promise);
+
+      return (
+        <div>
+          <p>{first.value}</p>
+          <p>{second.value}</p>
+        </div>
+      );
+    }
+
+    const host = document.createElement("div");
+    document.body.append(host);
+
+    const unmount = renderToDOM(
+      () => (
+        <Await suspense fallback={<p>Loading page</p>}>
+          <Page />
+        </Await>
+      ),
+      host,
+    );
+
+    try {
+      expect(host.textContent).toBe("Loading page");
+
+      firstRequest.resolve("First result");
+      await flushUpdates();
+
+      expect(host.textContent).toBe("Loading page");
+
+      secondRequest.resolve("Second result");
+      await flushUpdates();
+
+      expect(host.textContent).toContain("First result");
+      expect(host.textContent).toContain("Second result");
+    } finally {
+      unmount();
+    }
   });
 });

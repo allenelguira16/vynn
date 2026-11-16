@@ -71,6 +71,7 @@ export default function PokeDexAwait() {
           </thead>
           <tbody>
             <Await
+              suspense
               fallback={
                 <>
                   {Array.from({ length: 20 })
