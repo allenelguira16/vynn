@@ -98,7 +98,7 @@ function recordOwnerIDReservation(
  * at declaration time but can acquire an identity on their first render read.
  */
 export function createOwnerID(parent = currentOwner): string | undefined {
-  const identityParent = parent?.identityOwner;
+  const identityParent = parent?.identityOwner ?? null;
   const identityParentID = getOwnerIdentityID(identityParent);
 
   if (!identityParent || !identityParentID) return undefined;
@@ -111,7 +111,7 @@ export function createOwnerID(parent = currentOwner): string | undefined {
 
 /** Peek at the next child ID without reserving it. */
 export function peekOwnerID(parent = currentOwner): string | undefined {
-  const identityParent = parent?.identityOwner;
+  const identityParent = parent?.identityOwner ?? null;
   const identityParentID = getOwnerIdentityID(identityParent);
 
   if (!identityParent || !identityParentID) return undefined;
@@ -197,7 +197,7 @@ export function reserveOwnerIDReservations(reservations?: Record<string, number>
   if (!reservations) return;
 
   const registry = getContext<OwnerIDReservations>(OWNER_ID_RESERVATIONS);
-  const activeIdentityOwner = currentOwner?.identityOwner;
+  const activeIdentityOwner = currentOwner?.identityOwner ?? null;
   const activeIdentityOwnerID = getOwnerIdentityID(activeIdentityOwner);
 
   for (const [id, next] of Object.entries(reservations)) {

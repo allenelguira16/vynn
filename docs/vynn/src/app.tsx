@@ -1,5 +1,5 @@
 import "./main.css";
-import { Await, onDestroy } from "vynn";
+import { onDestroy } from "vynn";
 import { createRouter, Router, toFileRouter } from "vynn-router";
 
 export const App = (props: { url: string }) => {
@@ -27,9 +27,7 @@ export const App = (props: { url: string }) => {
         <meta property="og:type" content="website" />
       </head>
       <body>
-        <Await fallback={<main class="p-8">Loading documentation...</main>}>
-          <Router router={router} />
-        </Await>
+        <Router router={router} />
       </body>
     </html>
   );
