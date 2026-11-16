@@ -488,13 +488,10 @@ describe("renderToServer modes", () => {
             },
             [firstPending],
           ),
-          createSSRDeferred(
-            () => {
-              deferredRetries++;
-              return [createSSRText("Deferred content")];
-            },
-            [deferredPending],
-          ),
+          createSSRDeferred(() => {
+            deferredRetries++;
+            return [createSSRText("Deferred content")];
+          }, [deferredPending]),
         ] as unknown as JSX.Element,
       "stream",
     );

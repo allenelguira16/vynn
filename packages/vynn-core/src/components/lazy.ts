@@ -48,30 +48,47 @@ export function lazy<M extends Record<string, unknown>, K extends keyof M = "def
 ): ComponentExport<M, K> {
   type Component = ComponentExport<M, K>;
 
-  async function loadComponent(): Promise<Component> {
-    const module = await loader();
-    const component = module[namedExport] as Component | undefined;
+  let resolvedComponent: Component | undefined;
+  let componentPromise: Promise<Component> | undefined;
 
-    if (typeof component !== "function") {
-      throw new Error(`[vynn]: lazy() export "${String(namedExport)}" is not a component.`);
+  async function loadComponent(): Promise<Component> {
+    if (resolvedComponent) return resolvedComponent;
+
+    if (!componentPromise) {
+      componentPromise = loader()
+        .then((module) => {
+          const component = module[namedExport] as Component | undefined;
+
+          if (typeof component !== "function") {
+            throw new Error(`[vynn]: lazy() export "${String(namedExport)}" is not a component.`);
+          }
+
+          resolvedComponent = component;
+          return component;
+        })
+        .catch((error: unknown) => {
+          componentPromise = undefined;
+          throw error;
+        });
     }
 
-    return component;
+    return componentPromise;
   }
 
-  return $cmpnt(function LazyComponent(props: Parameters<Component>[0]): JSX.Element {
+  const LazyComponent = $cmpnt(function LazyComponent(
+    props: Parameters<Component>[0],
+  ): JSX.Element {
     const lazyID = getLazyID();
 
     // Descendant lazy marker IDs use this scope. Async resources derive their
     // hydration IDs from this component's owner.
     initializeLazyScope(lazyID);
 
-    if (isServer()) registerSsrModule(moduleId);
-
-    regsterAsyncGetterFromLazy(loadComponent);
-    const component = $computed(loadComponent);
-
     if (isServer()) {
+      registerSsrModule(moduleId);
+      regsterAsyncGetterFromLazy(loadComponent);
+      const component = $computed(loadComponent);
+
       return $nodes(() => {
         return [
           createSSRComment(`${LAZY_START_SSR_MARKER}:${lazyID}`),
@@ -83,8 +100,19 @@ export function lazy<M extends Record<string, unknown>, K extends keyof M = "def
 
     const existingRange = getServerRenderedLazyRange(lazyID);
 
+    // Route transitions can preload a destination module before replacing the
+    // current view. Render that resolved component synchronously so the new
+    // outlet does not briefly mount as an empty lazy range.
+    if (resolvedComponent && !existingRange) {
+      return resolvedComponent(props);
+    }
+
+    regsterAsyncGetterFromLazy(loadComponent);
+
     // Install the scope before creating $nodes. Its initial render effect and
     // every later retry must capture this lazy instance's independent queues.
+    const component = $computed(loadComponent);
+
     return withServerRenderedLazy(lazyID, () =>
       $nodes(() => {
         const rendered = component.value(props);
@@ -92,5 +120,13 @@ export function lazy<M extends Record<string, unknown>, K extends keyof M = "def
         return rendered;
       }, existingRange),
     );
-  }) as Component;
+  });
+
+  // Routers can wait for the module before committing a route transition.
+  // Keep this out of the public component type; it is an internal capability.
+  Object.defineProperty(LazyComponent, "preload", {
+    value: loadComponent,
+  });
+
+  return LazyComponent as Component;
 }

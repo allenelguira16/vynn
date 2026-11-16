@@ -1,8 +1,9 @@
-import { $computed, $renderEffect, $state, onDestroy, runWithOwner, untrack } from "vynn";
+import { $computed, $renderEffect, $state, getOwner, onDestroy, runWithOwner, untrack } from "vynn";
 
 import type { Location, Route } from "./types";
 
 import { RoutePathProvider } from "./context";
+import { isServer } from "./environment";
 import { currentLocation } from "./location";
 import { getRouteParams, joinPaths, matchRoute, toSegments } from "./path";
 import { commitClientRedirect, isClientRedirect } from "./redirect";
@@ -168,6 +169,37 @@ export function findMatch<TContext = undefined>(
   return bestMatch;
 }
 
+type PreloadableRouteComponent = Route["component"] & {
+  preload?: () => Promise<unknown>;
+};
+
+/**
+ * Preloads every lazy component in the selected route branch.
+ *
+ * A folder route can be only an outlet while its page is several levels below
+ * it, so preloading only the immediate match would still allow the layout to
+ * lose its old children while the descendant page module loads.
+ */
+function preloadRouteBranch<TContext>(
+  match: MatchedRoute<TContext>,
+  location: Location,
+): Promise<void> | undefined {
+  const component = match.route.component as PreloadableRouteComponent;
+  const pending: Promise<unknown>[] = [];
+
+  if (typeof component.preload === "function") {
+    pending.push(component.preload());
+  }
+
+  const childMatch = findMatch(match.route.children ?? [], location, match.fullPath);
+  if (childMatch) {
+    const childPreload = preloadRouteBranch(childMatch, location);
+    if (childPreload) pending.push(childPreload);
+  }
+
+  return pending.length > 0 ? Promise.all(pending).then(() => undefined) : undefined;
+}
+
 /**
  * Runs the route guard once when its matched RouteView is created.
  *
@@ -321,7 +353,15 @@ export function RouteOutlet<TContext = undefined>(props: {
 }) {
   let previousMatch: MatchedRoute<TContext> | undefined;
   let hasRendered = false;
+  let navigationRevision = 0;
+  let disposed = false;
+  const owner = getOwner();
   const view = $state<ReturnType<typeof RouteView> | null>(null);
+
+  onDestroy(() => {
+    disposed = true;
+    navigationRevision++;
+  });
 
   $renderEffect(() => {
     // Track the complete URL at the routing boundary. The effect only updates
@@ -332,36 +372,66 @@ export function RouteOutlet<TContext = undefined>(props: {
       search: activeLocation.search,
     };
     const next = findMatch(props.routes, location, props.parentPath ?? "");
+    const revision = ++navigationRevision;
 
     if (
       hasRendered &&
       previousMatch?.route === next?.route &&
       previousMatch?.fullPath === next?.fullPath
     ) {
+      // A newer navigation back to the currently displayed route also
+      // invalidates any destination that is still being preloaded.
       return;
     }
 
-    const nextView = next
-      ? untrack(() => (
-          <RoutePathProvider value={next.fullPath}>
-            <RouteView
-              route={next.route}
-              fullPath={next.fullPath}
-              context={props.context}
-              notFound={props.notFound}
-            />
-          </RoutePathProvider>
-        ))
-      : props.notFound
-        ? untrack(() => {
-            const NotFound = props.notFound!;
-            return <NotFound />;
-          })
-        : null;
+    const commitView = () => {
+      if (disposed || navigationRevision !== revision) return;
 
-    hasRendered = true;
-    previousMatch = next;
-    view.value = nextView;
+      runWithOwner(owner, () => {
+        const latestLocation = currentLocation();
+        if (
+          latestLocation.pathname !== location.pathname ||
+          latestLocation.search !== location.search
+        ) {
+          return;
+        }
+
+        const nextView = next
+          ? untrack(() => (
+              <RoutePathProvider value={next.fullPath}>
+                <RouteView
+                  route={next.route}
+                  fullPath={next.fullPath}
+                  context={props.context}
+                  notFound={props.notFound}
+                />
+              </RoutePathProvider>
+            ))
+          : props.notFound
+            ? untrack(() => {
+                const NotFound = props.notFound!;
+                return <NotFound />;
+              })
+            : null;
+
+        hasRendered = true;
+        previousMatch = next;
+        view.value = nextView;
+      });
+    };
+
+    // Keep the current route visible while a lazy destination branch loads.
+    // Initial rendering still uses the normal lazy/Await behavior because
+    // there is no previous view to preserve.
+    const preload =
+      !isServer && hasRendered && next ? preloadRouteBranch(next, location) : undefined;
+
+    if (preload) {
+      void preload.then(commitView, commitView);
+      return;
+    }
+
+    commitView();
   });
 
   return <>{view.value}</>;
