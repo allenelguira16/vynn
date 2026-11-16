@@ -90,7 +90,7 @@ export const Catch = $cmpnt(function Catch(props: {
     return boundary as unknown as JSX.Element;
   }
 
-  const error = $state<Error | undefined>(() => undefined);
+  const error = $state<Error | undefined>();
 
   enterErrorBoundary((newError) => {
     error.value = newError;

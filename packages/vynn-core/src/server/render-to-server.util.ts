@@ -7,7 +7,11 @@ import {
   TEXT_SSR_SEPARATOR,
   RAW_HTML_SSR_ATTRIBUTE,
 } from "../const";
-import { getAsyncValues } from "../context/async-context";
+import {
+  ASYNC_OWNER_ID_RESERVATIONS_KEY,
+  getAsyncOwnerIDReservations,
+  getAsyncValues,
+} from "../context/async-context";
 import { getErrorBoundaryValues } from "../context/error-boundary-context";
 import { getRenderMode } from "../context/render-mode";
 import { assertSafeAttributeName } from "../render/attribute-name";
@@ -96,6 +100,7 @@ export function hasNoHTMLTags(str: string) {
 
 export function renderAsyncUtilities() {
   const asyncValues = getAsyncValues();
+  const ownerIDReservations = getAsyncOwnerIDReservations();
   const errorValues = getErrorBoundaryValues();
 
   // Empty hydration registries need no client bootstrap script. The client
@@ -103,19 +108,22 @@ export function renderAsyncUtilities() {
   // an otherwise empty inline script.
   if (
     (!asyncValues || Object.keys(asyncValues).length === 0) &&
+    ownerIDReservations.length === 0 &&
     (!errorValues || errorValues.length === 0)
   ) {
     return "";
   }
 
-  const encodedAsyncValues = asyncValues
-    ? Object.fromEntries(
-        Object.entries(asyncValues).map(([key, value]) => [
-          key,
-          serializeServerFunctionValue(value),
-        ]),
-      )
-    : asyncValues;
+  const encodedAsyncValues: Record<string, unknown> = Object.fromEntries(
+    Object.entries(asyncValues ?? {}).map(([key, value]) => [
+      key,
+      serializeServerFunctionValue(value),
+    ]),
+  );
+
+  if (ownerIDReservations.length > 0) {
+    encodedAsyncValues[ASYNC_OWNER_ID_RESERVATIONS_KEY] = ownerIDReservations;
+  }
 
   const values = {
     async: serializeForInlineScript(encodedAsyncValues),

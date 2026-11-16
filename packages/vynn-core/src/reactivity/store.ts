@@ -8,10 +8,11 @@ import {
   triggerArrayLength,
   untrack,
 } from "./effect";
+import { NotReadyError } from "./not-ready-error";
 import { isPending, registerPending } from "./pending";
 import { isRef, type VynnReadonlyRef, type VynnRef } from "./ref";
-import { createAsyncResource } from "./resource";
-import { isArrayIndex, isPlainObject } from "./utils";
+import { createAsyncResource, createMaybeAsyncResource } from "./resource";
+import { isArrayIndex, isAsyncFunction, isPlainObject } from "./utils";
 
 type StoreArrayValue<T> = T extends VynnReadonlyRef<unknown> ? T : StoreValue<T>;
 type StoreCollectionValue<T> = T extends VynnReadonlyRef<unknown> ? T : StoreValue<T>;
@@ -628,24 +629,7 @@ function reconcile(target: object, next: object): boolean {
   return changed;
 }
 
-export function $store<T extends object>(initializer: () => Promise<T>): Store<T>;
-export function $store<T extends object>(initializer: () => T): Store<T>;
-export function $store<T extends object>(value: T): Store<T>;
-export function $store<T extends object>(source: T | (() => T | Promise<T>)): Store<T> {
-  const initializer =
-    typeof source === "function" ? (source as () => T | Promise<T>) : () => source;
-
-  if (Object.prototype.toString.call(initializer) !== "[object AsyncFunction]") {
-    const value = initializer();
-
-    if (value === null || typeof value !== "object") {
-      throw new TypeError("[vynn]: $store() initializer must return an object.");
-    }
-
-    return createReactiveObject(value) as Store<T>;
-  }
-
-  const resource = createAsyncResource(initializer as () => Promise<T>);
+function createAsyncStore<T extends object>(resource: VynnRef<T>): Store<T> {
   const target = Object.create(null) as Record<PropertyKey, unknown>;
   const owner = getOwner();
 
@@ -676,4 +660,41 @@ export function $store<T extends object>(source: T | (() => T | Promise<T>)): St
   registerPending(store, () => isPending(resource));
 
   return store as Store<T>;
+}
+
+export function $store<T extends object>(initializer: () => Promise<T>): Store<T>;
+export function $store<T extends object>(initializer: () => T): Store<T>;
+export function $store<T extends object>(value?: T): Store<T>;
+export function $store<T extends object>(source?: T | (() => T | Promise<T>)): Store<T> {
+  if (typeof source !== "function") {
+    if (source === null || typeof source !== "object") {
+      throw new TypeError("[vynn]: $store() initializer must return an object.");
+    }
+
+    return createReactiveObject(source) as Store<T>;
+  }
+
+  const initializer = source as () => T | Promise<T>;
+
+  if (isAsyncFunction(initializer)) {
+    return createAsyncStore(createAsyncResource(initializer as () => Promise<T>));
+  }
+
+  const resource = createMaybeAsyncResource(initializer);
+
+  try {
+    const value = resource.value;
+
+    if (value === null || typeof value !== "object") {
+      throw new TypeError("[vynn]: $store() initializer must return an object.");
+    }
+
+    return createReactiveObject(value) as Store<T>;
+  } catch (error) {
+    if (error instanceof NotReadyError) {
+      return createAsyncStore(resource);
+    }
+
+    throw error;
+  }
 }

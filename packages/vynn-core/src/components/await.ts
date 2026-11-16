@@ -30,7 +30,6 @@ export const Await = $cmpnt(function Await(props: {
   const owner = getOwner()!;
 
   const fallback = memo(() => runWithOwner(owner, () => props.fallback));
-  const suspense = memo(() => runWithOwner(owner, () => props.suspense === true));
   const children = memo(() => runWithOwner(owner, () => props.children));
 
   if (isServer()) {
@@ -57,11 +56,11 @@ export const Await = $cmpnt(function Await(props: {
 
   return untrack(() => {
     let isResolved = false;
-    const isPending = $state(() => false);
+    const isPending = $state(false);
     const pendingPromises = new Set<Promise<unknown>>();
 
     enterAsyncBoundary((promise) => {
-      const shouldShowFallback = !isResolved || suspense();
+      const shouldShowFallback = !isResolved || props.suspense;
       const isHydratingLazyPromise = isPromiseFromLazy(promise) && isHydrationClaimActive();
 
       if (!shouldShowFallback || isHydratingLazyPromise) return;

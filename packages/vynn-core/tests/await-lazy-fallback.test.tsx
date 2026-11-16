@@ -6,7 +6,9 @@ import type { JSX } from "../src/types/jsx";
 import { hydrateToDOM } from "../src/client/hydrate-to-dom";
 import { renderToDOM } from "../src/client/render-to-dom";
 import { Await } from "../src/components/await";
+import { Catch } from "../src/components/catch";
 import { lazy } from "../src/components/lazy";
+import { getOwner } from "../src/life-cycle/owner";
 import { $state } from "../src/reactivity/state";
 
 afterEach(() => {
@@ -57,6 +59,60 @@ function createRefreshScenario(suspense: boolean) {
 
   return { host, requests, source, unmount };
 }
+
+describe("client-only boundary identity", () => {
+  it("keeps Await child owner IDs aligned with the server", () => {
+    let childOwnerID: string | undefined;
+
+    function Child(): JSX.Element {
+      childOwnerID = getOwner()?.id;
+      return <p>Ready</p>;
+    }
+
+    const host = document.createElement("div");
+    document.body.append(host);
+
+    const unmount = renderToDOM(
+      () => (
+        <Await fallback={<p>Loading</p>}>
+          <Child />
+        </Await>
+      ),
+      host,
+    );
+
+    expect(childOwnerID).toBe("000");
+    expect(host.textContent).toBe("Ready");
+
+    unmount();
+  });
+
+  it("keeps Catch child owner IDs aligned with the server", () => {
+    let childOwnerID: string | undefined;
+
+    function Child(): JSX.Element {
+      childOwnerID = getOwner()?.id;
+      return <p>Ready</p>;
+    }
+
+    const host = document.createElement("div");
+    document.body.append(host);
+
+    const unmount = renderToDOM(
+      () => (
+        <Catch fallback={(error) => <p>{error.message}</p>}>
+          <Child />
+        </Catch>
+      ),
+      host,
+    );
+
+    expect(childOwnerID).toBe("000");
+    expect(host.textContent).toBe("Ready");
+
+    unmount();
+  });
+});
 
 describe("Await with lazy components", () => {
   it("shows the fallback while a lazy component loads during client-side rendering", async () => {
