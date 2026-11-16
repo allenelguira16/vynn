@@ -572,7 +572,9 @@ export function serverFunctionsPlugin(
               next();
               return;
             }
-            await writeResponse(res, response);
+            await writeResponse(res, response, {
+              headers: server.config.preview.headers,
+            });
           })().catch((error: unknown) => {
             if (res.headersSent) {
               res.destroy(error instanceof Error ? error : undefined);

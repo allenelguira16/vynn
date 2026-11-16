@@ -33,7 +33,7 @@ export default defineConfig({
     },
   },
   plugins: [
-    vynn({ ssr: true }),
+    vynn({ ssr: true, ssrMode: "async" }),
     tailwindcss(),
     compression(),
     sitemap({ hostname: "http://localhost:3000/" }),

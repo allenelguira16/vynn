@@ -1,4 +1,4 @@
-import type { IncomingMessage, ServerResponse } from "node:http";
+import type { IncomingMessage, OutgoingHttpHeaders, ServerResponse } from "node:http";
 
 import { once } from "node:events";
 import { isAbsolute, relative, sep } from "node:path";
@@ -44,6 +44,11 @@ export function addBaseToRequestUrl(base: string, incomingUrl: string): string {
   return `${path || "/"}${parsed.search}`;
 }
 
+// Social preview crawlers often request documents with Accept: */* and do not
+// send the Fetch Metadata headers browsers use to identify navigations.
+const SOCIAL_PREVIEW_CRAWLER_USER_AGENT =
+  /facebookexternalhit|facebot|twitterbot|linkedinbot|slackbot|discordbot|telegrambot|whatsapp|pinterestbot/i;
+
 export function isHtmlNavigation(req: IncomingMessage): boolean {
   if (req.method !== "GET" && req.method !== "HEAD") return false;
 
@@ -55,13 +60,18 @@ export function isHtmlNavigation(req: IncomingMessage): boolean {
   }
 
   const accept = req.headers.accept;
+  const userAgent = req.headers["user-agent"] ?? "";
+  const isSocialPreviewCrawler =
+    SOCIAL_PREVIEW_CRAWLER_USER_AGENT.test(userAgent) && !!accept?.includes("*/*");
+
   return (
     destination === "document" ||
     destination === "iframe" ||
     destination === "frame" ||
     !accept ||
     accept.includes("text/html") ||
-    accept.includes("application/xhtml+xml")
+    accept.includes("application/xhtml+xml") ||
+    isSocialPreviewCrawler
   );
 }
 
@@ -269,6 +279,8 @@ async function writeCompressedResponse(
 export type WriteResponseOptions = {
   /** Request Accept-Encoding header. Omit to leave compression to the host server. */
   acceptEncoding?: string;
+  /** Headers configured on the owning Vite server. Response headers override these defaults. */
+  headers?: OutgoingHttpHeaders;
 };
 
 export async function writeResponse(
@@ -279,6 +291,11 @@ export async function writeResponse(
   const compression = getResponseCompression(response, options.acceptEncoding);
 
   res.statusCode = response.status;
+
+  for (const [key, value] of Object.entries(options.headers ?? {})) {
+    if (value !== undefined) res.setHeader(key, value);
+  }
+
   response.headers.forEach((value, key) => {
     // The Node server owns transfer-encoding and computes lengths for bodies.
     if (key.toLowerCase() !== "content-length" && key.toLowerCase() !== "transfer-encoding") {

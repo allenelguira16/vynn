@@ -56,6 +56,39 @@ describe("isHtmlNavigation", () => {
   it("keeps requests without an Accept header eligible for SSR", () => {
     expect(isHtmlNavigation(request("GET"))).toBe(true);
   });
+
+  it.each([
+    ["facebookexternalhit/1.1", "*/*"],
+    ["Facebot", "application/json, */*;q=0.8"],
+    ["Twitterbot/1.0", "*/*"],
+    ["LinkedInBot/1.0", "*/*"],
+    ["Slackbot-LinkExpanding 1.0", "*/*"],
+    ["Discordbot/2.0", "*/*"],
+    ["TelegramBot", "*/*"],
+    ["WhatsApp/2.0", "*/*"],
+    ["Pinterestbot/1.0", "*/*"],
+  ])("accepts social preview crawler %s with Accept %s", (userAgent, accept) => {
+    expect(
+      isHtmlNavigation(
+        request("GET", {
+          accept,
+          "user-agent": userAgent,
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it("does not treat social preview crawler subresource requests as document navigations", () => {
+    expect(
+      isHtmlNavigation(
+        request("GET", {
+          accept: "*/*",
+          "user-agent": "facebookexternalhit/1.1",
+          "sec-fetch-dest": "image",
+        }),
+      ),
+    ).toBe(false);
+  });
 });
 
 describe("HTTP URL helpers", () => {
@@ -79,6 +112,49 @@ describe("HTTP URL helpers", () => {
   it("adds the base path to incoming request URLs once", () => {
     expect(addBaseToRequestUrl("/base", "/users?active=true")).toBe("/base/users?active=true");
     expect(addBaseToRequestUrl("/base", "/base/users?active=true")).toBe("/base/users?active=true");
+  });
+});
+
+describe("Vite response headers", () => {
+  it("applies configured headers as defaults and lets response headers override them", async () => {
+    const server = createServer((_req, res) => {
+      void writeResponse(
+        res,
+        new Response("ok", {
+          headers: {
+            "x-shared-header": "from-response",
+          },
+        }),
+        {
+          headers: {
+            "x-vite-header": "from-vite",
+            "x-shared-header": "from-vite",
+          },
+        },
+      ).catch((error: unknown) => {
+        res.destroy(error instanceof Error ? error : new Error(String(error)));
+      });
+    });
+
+    server.listen(0, "127.0.0.1");
+    await new Promise<void>((resolveListen) => server.once("listening", resolveListen));
+
+    try {
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        throw new Error("Test server did not bind a TCP port");
+      }
+
+      const response = await fetch(`http://127.0.0.1:${address.port}/`);
+
+      expect(response.headers.get("x-vite-header")).toBe("from-vite");
+      expect(response.headers.get("x-shared-header")).toBe("from-response");
+      expect(await response.text()).toBe("ok");
+    } finally {
+      await new Promise<void>((resolveClose, rejectClose) => {
+        server.close((error) => (error ? rejectClose(error) : resolveClose()));
+      });
+    }
   });
 });
 

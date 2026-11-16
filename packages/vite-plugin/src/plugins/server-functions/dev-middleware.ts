@@ -125,7 +125,9 @@ export function registerServerFunctionDevMiddleware(
         return;
       }
 
-      await writeResponse(outgoing, response);
+      await writeResponse(outgoing, response, {
+        headers: server.config.server.headers,
+      });
     })().catch((error: unknown) => {
       if (outgoing.headersSent) {
         outgoing.destroy(error instanceof Error ? error : undefined);

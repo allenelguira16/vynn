@@ -365,6 +365,9 @@ export function vynnAppPlugin({ ssr, ssrMode, ssrCss, serverFunctions }: PluginO
                   headers: { "content-type": "text/html; charset=utf-8" },
                 },
               ),
+              {
+                headers: server.config.server.headers,
+              },
             ).catch(next);
             return;
           }
@@ -387,14 +390,18 @@ export function vynnAppPlugin({ ssr, ssrMode, ssrCss, serverFunctions }: PluginO
             const request = createWebRequest(req, requestUrl);
             const cssLinks = ssrCss ? await ssrCss.getCssLinks(server) : [];
             const response = await handler.handleRequest(request, cssLinks);
-            await writeResponse(res, response);
+            await writeResponse(res, response, {
+              headers: server.config.server.headers,
+            });
           })().catch((error: unknown) => {
             if (res.headersSent) {
               res.destroy(error instanceof Error ? error : undefined);
               return;
             }
             if (isWebResponse(error)) {
-              void writeResponse(res, error).catch(next);
+              void writeResponse(res, error, {
+                headers: server.config.server.headers,
+              }).catch(next);
               return;
             }
             const viteError = error instanceof Error ? error : new Error(String(error));
@@ -440,6 +447,7 @@ export function vynnAppPlugin({ ssr, ssrMode, ssrCss, serverFunctions }: PluginO
             const response = await handler.handleRequest(createWebRequest(req, requestUrl));
             await writeResponse(res, response, {
               acceptEncoding: req.headers["accept-encoding"],
+              headers: server.config.preview.headers,
             });
           })().catch((error: unknown) => {
             if (res.headersSent) {
@@ -449,6 +457,7 @@ export function vynnAppPlugin({ ssr, ssrMode, ssrCss, serverFunctions }: PluginO
             if (isWebResponse(error)) {
               void writeResponse(res, error, {
                 acceptEncoding: req.headers["accept-encoding"],
+                headers: server.config.preview.headers,
               }).catch(next);
               return;
             }
