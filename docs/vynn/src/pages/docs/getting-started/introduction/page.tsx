@@ -43,7 +43,7 @@ const IntroductionPage = () => (
       its <code>value</code> in JSX, and update it from an event handler.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={`
 import { $state } from "vynn";
 

@@ -13,3 +13,28 @@
 .multiline-mockup-code > pre {
   padding-left: calc(0.25rem * 5);
 }
+
+/* Light (default) */
+:root {
+  --sh-class: var(--color-blue-400);
+  --sh-identifier: var(--text-base);
+  --sh-sign: #8996a3;
+  --sh-string: #00a99a;
+  --sh-keyword: var(--color-blue-400);
+  --sh-comment: #a19595;
+  --sh-entity: var(--color-blue-400);
+  --sh-property: var(--color-yellow-300);
+}
+
+/* Dark — e.g. <html data-theme="dark"> */
+/* :root[data-theme="dark"] {
+  --sh-class: #7eb5ff;
+  --sh-identifier: #d4d4d4;
+  --sh-sign: #8b949e;
+  --sh-string: #88bbb6;
+  --sh-keyword: #ffada8;
+  --sh-comment: #8b8b8b;
+  --sh-jsxliterals: #d2a8ff;
+  --sh-entity: #b7adff;
+  --sh-property: #79c0ff;
+} */

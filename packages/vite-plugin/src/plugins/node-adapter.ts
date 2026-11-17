@@ -1,5 +1,7 @@
 import type { Plugin } from "vite";
 
+import { hasExternalViteDeployment } from "../host.ts";
+
 import { mkdir, writeFile } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
 
@@ -28,6 +30,7 @@ const NODE_TYPES = [
  */
 export function vynnNodeAdapterPlugin(): Plugin {
   let isBuild = false;
+  let hasExternalDeployment = false;
   let projectRoot = process.cwd();
 
   return {
@@ -35,11 +38,12 @@ export function vynnNodeAdapterPlugin(): Plugin {
 
     configResolved(config) {
       isBuild = config.command === "build";
+      hasExternalDeployment = hasExternalViteDeployment(config);
       projectRoot = config.root;
     },
 
     async writeBundle(outputOptions) {
-      if (!isBuild) return;
+      if (!isBuild || hasExternalDeployment) return;
 
       const environment = (
         this as unknown as {

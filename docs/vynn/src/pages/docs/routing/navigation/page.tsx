@@ -16,7 +16,7 @@ const NavigationPage = () => (
       another browsing context.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={`import { Link } from "vynn-router";
 
 export function Navigation() {
@@ -39,7 +39,7 @@ export function Navigation() {
       current one. Both accept a path, query string, and optional hash.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={`import { navigate, replace } from "vynn-router";
 
 function Actions() {
@@ -67,7 +67,7 @@ function Actions() {
       bindings that read these properties update after navigation.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={`import { $location, $search } from "vynn-router";
 
 export default function CurrentLocation() {

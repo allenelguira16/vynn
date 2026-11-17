@@ -17,7 +17,7 @@ const CompilerPage = () => (
       to use Vynn with Vite.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'import { defineConfig } from "vite";\nimport vynn from "vite-plugin-vynn";\n\nexport default defineConfig({\n  plugins: [vynn()],\n});'
       }
@@ -29,7 +29,7 @@ const CompilerPage = () => (
       when you need to inspect transformed output.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'import { transformVynnOxc, transformVynnOxcWithMap } from "vynn-compiler";\n\nconst source = "export function App() { return <h1>Hello</h1>; }";\n\nconst code = transformVynnOxc(source, "App.tsx");\nconst result = transformVynnOxcWithMap(source, "App.tsx");\n\nconsole.log(code);\nconsole.log(result.map);'
       }
@@ -49,7 +49,7 @@ const CompilerPage = () => (
     </p>
     <p>Start with a component and a second component that uses it:</p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'function Greeting(props: { name: string }) {\n  return <h1>Hello {props.name}</h1>;\n}\n\nfunction App() {\n  return <Greeting name="Ada" />;\n}'
       }
@@ -60,7 +60,7 @@ const CompilerPage = () => (
       what gets lowered into runtime calls.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'import {\n  $cmpnt as _$cmpnt,\n  $tmpl as _$tmpl,\n  $txt as _$txt,\n  $insert as _$insert,\n} from "vynn/render";\n\nconst Greeting = _$cmpnt(function Greeting(props: { name: string }) {\n  const el1 = _$tmpl("h1");\n  _$insert(el1, _$txt("Hello "));\n  _$insert(el1, () => props.name);\n  return el1;\n});\n\nconst App = _$cmpnt(function App() {\n  return Greeting({\n    get name() {\n      return "Ada";\n    },\n  });\n});'
       }
@@ -264,7 +264,7 @@ const CompilerPage = () => (
     <h2>TypeScript configuration</h2>
     <p>Leave JSX in the source for Vynn's compiler and use Vynn's JSX types:</p>
     <CodeBlock
-      lang="json5"
+      lang="json"
       code={
         '{\n  "compilerOptions": {\n    "target": "ESNext",\n    "module": "ESNext",\n    "moduleResolution": "bundler",\n    "jsx": "preserve",\n    "jsxImportSource": "vynn",\n    "strict": true,\n    "noEmit": true\n  }\n}'
       }

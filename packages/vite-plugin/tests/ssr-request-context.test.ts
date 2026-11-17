@@ -37,4 +37,25 @@ describe("SSR request context integration", () => {
     expect(handler).toContain("rendered.response?.status ?? 200");
     expect(handler).toContain("headers: responseHeaders");
   });
+
+  it("uses Vite manifest assets and collected development styles", () => {
+    const handler = createSsrHandlerCode({
+      clientEntryUrl: "/src/client.ts",
+      css: ["assets/app.css"],
+      base: "/",
+      dev: true,
+      serverFunctions: false,
+      ssrManifest: null,
+      devCssLinks: [{ url: "/src/main.css", id: "/src/main.css" }],
+    });
+
+    expect(handler).toContain('const CSS_ASSETS = ["assets/app.css"];');
+    expect(handler).toContain(
+      'const DEV_CSS_LINKS = [{"url":"/src/main.css","id":"/src/main.css"}];',
+    );
+    expect(handler).toContain("renderDevCssLinks(DEV_CSS_LINKS)");
+    expect(handler).not.toContain("?assets=client");
+    expect(handler).not.toContain("?assets=ssr");
+  });
+
 });

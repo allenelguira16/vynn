@@ -9,6 +9,7 @@ import {
   createServerEntry,
   createSsrHandlerCode,
 } from "../../vite-plugin/src/plugins/app/documents.ts";
+import { serverFunctionsPlugin } from "../../vite-plugin/src/plugins/server-functions/index.ts";
 import { Catch } from "../src/components/catch";
 import { lazy } from "../src/components/lazy";
 import { registerSsrModule } from "../src/context/ssr-module-context";
@@ -93,6 +94,71 @@ describe("renderToServer modes", () => {
     );
 
     expect(result).toBeNull();
+  });
+
+  it("requires SSR when request ownership is delegated to an external host", () => {
+    expect(() =>
+      vynnAppPlugin({
+        ssr: false,
+        ssrMode: "stream",
+        host: "external",
+      }),
+    ).toThrow('host: "external" requires ssr: true');
+  });
+
+  it("builds Vynn client assets before the SSR environment for external hosts", async () => {
+    const plugin = vynnAppPlugin({
+      ssr: true,
+      ssrMode: "stream",
+      host: "external",
+    });
+    const hook = plugin.buildApp as unknown as {
+      handler?: (builder: unknown) => Promise<void>;
+    };
+
+    if (!hook.handler) {
+      throw new Error("Expected Vynn to register a buildApp handler.");
+    }
+
+    const client = { name: "client", isBuilt: false };
+    const ssr = { name: "ssr", isBuilt: false };
+    const builds: string[] = [];
+
+    await hook.handler.call(
+      {} as never,
+      {
+        environments: { client, ssr },
+        async build(environment: { name: string; isBuilt: boolean }) {
+          builds.push(environment.name);
+          environment.isBuilt = true;
+        },
+      } as never,
+    );
+
+    expect(builds).toEqual(["client", "ssr"]);
+  });
+
+  it("leaves request dispatch to an external host", () => {
+    const plugin = vynnAppPlugin({
+      ssr: true,
+      ssrMode: "stream",
+      host: "external",
+    });
+
+    const configureServer = plugin.configureServer as unknown as (server: unknown) => unknown;
+    const configurePreviewServer = plugin.configurePreviewServer as unknown as (
+      server: unknown,
+    ) => unknown;
+
+    expect(configureServer.call(plugin, {})).toBeUndefined();
+    expect(configurePreviewServer.call(plugin, {})).toBeUndefined();
+  });
+
+  it("does not install standalone server-function middleware for an external host", () => {
+    const plugin = serverFunctionsPlugin({}, "external");
+    const configureServer = plugin.configureServer as unknown as (server: unknown) => unknown;
+
+    expect(configureServer.call(plugin, {})).toBeUndefined();
   });
 
   it("returns an explicit render result in sync mode", () => {

@@ -1,6 +1,6 @@
 import tailwindcss from "@tailwindcss/vite";
+import { nitro } from "nitro/vite";
 import { defineConfig } from "vite";
-import { compression } from "vite-plugin-compression2";
 import sitemap from "vite-plugin-sitemap";
 import vynn from "vite-plugin-vynn";
 
@@ -11,31 +11,17 @@ export default defineConfig({
   preview: {
     port: 3000,
   },
-  optimizeDeps: {
-    include: [
-      "@shikijs/themes/tokyo-night",
-      "@shikijs/langs/tsx",
-      "@shikijs/langs/bash",
-      "@shikijs/langs/json5",
-      "shiki/wasm",
-    ],
-    rolldownOptions: {
-      transform: {
-        target: "esnext",
-      },
-    },
-  },
-  build: {
-    target: "esnext",
-    assetsInlineLimit: 0,
-    rolldownOptions: {
-      external: ["vscode-oniguruma"],
-    },
-  },
   plugins: [
     vynn({ ssr: true, ssrMode: "async" }),
     tailwindcss(),
-    compression(),
+    nitro({
+      preset: "static",
+      compressPublicAssets: {
+        gzip: true,
+        brotli: true,
+        zstd: false,
+      },
+    }),
     sitemap({ hostname: "http://localhost:3000/" }),
   ],
   resolve: {

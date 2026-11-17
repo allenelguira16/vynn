@@ -7,8 +7,13 @@ import { isAbsolute, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import type { VynnServerFunctionsOptions } from "../server-functions/index.ts";
-import type { VynnSsrCssCollector, VynnSsrCssLink } from "../ssr-css.ts";
+import type { VynnSsrCssCollector } from "../ssr-css.ts";
 
+import {
+  handleVynnDevRequest,
+  hasExternalViteDeployment,
+  isRunnableViteEnvironment,
+} from "../../host.ts";
 import { DEFAULT_ENDPOINT } from "../server-functions/shared.ts";
 import {
   createAuthoredServerEntry,
@@ -59,15 +64,21 @@ type PluginOptions = {
 /**
  * App mode plugin
  *
- * - `ssr: true`: Vite owns development SSR, the client/server build, and SSR
- *   dispatch in `vite preview`. The built `virtual:vynn/ssr-handler` exports
- *   `handleRequest(Request)` and a Fetch-compatible default export.
+ * - `ssr: true`: Vynn configures the standard client and server environments
+ *   and emits a Fetch-compatible SSR service for deployment plugins to consume.
  * - `ssr: false`: Vite serves a client-rendered shell in dev and emits a static
  *   index.html from `vite build`.
  *
- * Neither mode requires a project-owned index.html or HTTP server file.
+ * Vite can serve runnable SSR environments itself. When a deployment plugin
+ * supplies a non-runnable SSR environment, Vynn automatically leaves request
+ * dispatch to that integration. Neither mode requires a project-owned index.html.
  */
-export function vynnAppPlugin({ ssr, ssrMode, ssrCss, serverFunctions }: PluginOptions): Plugin {
+export function vynnAppPlugin({
+  ssr,
+  ssrMode,
+  ssrCss,
+  serverFunctions,
+}: PluginOptions): Plugin {
   let resolvedConfig: ResolvedConfig | undefined;
   let entries = {} as ResolvedEntries;
   let clientOutDir = resolve(process.cwd(), "dist/client");
@@ -75,6 +86,8 @@ export function vynnAppPlugin({ ssr, ssrMode, ssrCss, serverFunctions }: PluginO
   let base = "/";
   let isBuild = false;
   let serverFunctionEndpoint = DEFAULT_ENDPOINT;
+  let hasExternalDeployment = false;
+  let devServer: ViteDevServer | undefined;
   let restarting = false;
   const root = () => resolvedConfig?.root ?? process.cwd();
 
@@ -204,6 +217,7 @@ export function vynnAppPlugin({ ssr, ssrMode, ssrCss, serverFunctions }: PluginO
 
     configResolved(config) {
       resolvedConfig = config;
+      hasExternalDeployment = hasExternalViteDeployment(config);
       base = config.base || "/";
       isBuild = config.command === "build";
       const rawServerFunctionEndpoint = serverFunctions?.endpoint ?? DEFAULT_ENDPOINT;
@@ -229,7 +243,13 @@ export function vynnAppPlugin({ ssr, ssrMode, ssrCss, serverFunctions }: PluginO
 
     resolveId(id) {
       if (id === CLIENT_ENTRY_ID) return RESOLVED_CLIENT_ENTRY_ID;
+      if (id.startsWith(`${CLIENT_ENTRY_ID}?`)) {
+        return `${RESOLVED_CLIENT_ENTRY_ID}${id.slice(CLIENT_ENTRY_ID.length)}`;
+      }
       if (id === SERVER_ENTRY_ID) return RESOLVED_SERVER_ENTRY_ID;
+      if (id.startsWith(`${SERVER_ENTRY_ID}?`)) {
+        return `${RESOLVED_SERVER_ENTRY_ID}${id.slice(SERVER_ENTRY_ID.length)}`;
+      }
       if (id === SSR_HANDLER_ID) return RESOLVED_SSR_HANDLER_ID;
       return null;
     },
@@ -273,6 +293,11 @@ export function vynnAppPlugin({ ssr, ssrMode, ssrCss, serverFunctions }: PluginO
           ? joinAssetBase(base, `/${assets.file}`)
           : getClientEntryDevUrl(entries, root(), base);
 
+        const devCssLinks =
+          !isBuild && ssrCss && devServer
+            ? await ssrCss.getCssLinks(devServer)
+            : undefined;
+
         return createSsrHandlerCode({
           clientEntryUrl,
           css: assets?.css ?? [],
@@ -280,6 +305,7 @@ export function vynnAppPlugin({ ssr, ssrMode, ssrCss, serverFunctions }: PluginO
           dev: !isBuild,
           serverFunctions: serverFunctions !== undefined && serverFunctions.enabled !== false,
           ssrManifest,
+          devCssLinks,
         });
       }
 
@@ -324,6 +350,8 @@ export function vynnAppPlugin({ ssr, ssrMode, ssrCss, serverFunctions }: PluginO
     },
 
     configureServer(server: ViteDevServer) {
+      devServer = server;
+
       if (ssr && !isBuild && ssrCss) {
         if (entries.clientFile) {
           // An authored client entry imports its own application and styles.
@@ -342,6 +370,10 @@ export function vynnAppPlugin({ ssr, ssrMode, ssrCss, serverFunctions }: PluginO
           }
         }
       }
+
+      // Deployment plugins that install a non-runnable SSR environment own
+      // request dispatch. Keep CSS graph registration above for their handler.
+      if (ssr && !isRunnableViteEnvironment(server.environments.ssr)) return;
 
       // Register the document middleware after Vite's own middlewares so real
       // assets, HMR, and module URLs are given first refusal.
@@ -373,23 +405,9 @@ export function vynnAppPlugin({ ssr, ssrMode, ssrCss, serverFunctions }: PluginO
           }
 
           void (async () => {
-            const ssrEnvironment = server.environments.ssr as unknown as {
-              runner?: { import: (id: string) => Promise<unknown> };
-            };
-            if (!ssrEnvironment?.runner) {
-              throw new Error(
-                "[Vynn App] The Vite SSR environment does not expose a Module Runner. App mode requires Vite 8's runnable SSR environment.",
-              );
-            }
-
-            const handler = (await ssrEnvironment.runner.import(SSR_HANDLER_ID)) as {
-              handleRequest: (request: Request, cssLinks?: VynnSsrCssLink[]) => Promise<Response>;
-            };
-
             const requestUrl = addBaseToRequestUrl(base, req.url ?? "/");
             const request = createWebRequest(req, requestUrl);
-            const cssLinks = ssrCss ? await ssrCss.getCssLinks(server) : [];
-            const response = await handler.handleRequest(request, cssLinks);
+            const response = await handleVynnDevRequest(server, request);
             await writeResponse(res, response, {
               headers: server.config.server.headers,
             });
@@ -413,7 +431,7 @@ export function vynnAppPlugin({ ssr, ssrMode, ssrCss, serverFunctions }: PluginO
     },
 
     configurePreviewServer(server: PreviewServer) {
-      if (!ssr) return;
+      if (!ssr || hasExternalDeployment) return;
 
       // Vite's preview static middleware gets the first chance to serve built
       // files. Missing paths are dispatched through the built Fetch handler.

@@ -15,7 +15,7 @@ const GuardsAndRedirectsPage = () => (
       and an <code>AbortSignal</code>. It can be synchronous or asynchronous.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={`import { redirect, type Route } from "vynn-router";
 
 type AppContext = {
@@ -42,7 +42,7 @@ const routes: Route<AppContext>[] = [
       shown in <a href="/docs/routing/basic-routing">Basic routing</a>.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={`import { createRouter } from "vynn-router";
 
 const router = createRouter({
@@ -60,7 +60,7 @@ const router = createRouter({
       server response.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={`import { redirect } from "vynn-router";
 
 beforeLoad: ({ context }) => {

@@ -68,7 +68,7 @@ const AsyncUiPage = () => (
       you can read or manually assign the result through <code>.value</code>.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'import { $state } from "vynn";\n\ntype User = { id: string; name: string };\n\nfunction UserCard() {\n  const user = $state(async () => {\n    const response = await fetch("/api/me");\n    if (!response.ok) throw new Error("Could not load your profile.");\n    return (await response.json()) as User;\n  });\n\n  return <h2>{user.value.name}</h2>;\n}'
       }
@@ -82,7 +82,7 @@ const AsyncUiPage = () => (
       resolves.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'import { $store } from "vynn";\n\ntype Profile = {\n  name: string;\n  preferences: { theme: string };\n};\n\nfunction ProfileCard() {\n  const profile = $store(async () => {\n    const response = await fetch("/api/me");\n    if (!response.ok) throw new Error("Could not load your profile.");\n    return (await response.json()) as Profile;\n  });\n\n  return (\n    <section>\n      <h2>{profile.name}</h2>\n      <p>Theme: {profile.preferences.theme}</p>\n    </section>\n  );\n}'
       }
@@ -94,7 +94,7 @@ const AsyncUiPage = () => (
       that may suspend in <code>Await</code> and provide a fallback for that initial pending state.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'import { Await } from "vynn";\n\nfunction ProfilePage() {\n  return (\n    <Await fallback={<p>Loading profile...</p>}>\n      <ProfileCard />\n    </Await>\n  );\n}'
       }
@@ -119,7 +119,7 @@ const AsyncUiPage = () => (
       request completes.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'import { Await, $state } from "vynn";\n\nfunction WeatherSummary() {\n  const weather = $state(async () => {\n    const response = await fetch("/api/weather");\n    if (!response.ok) throw new Error("Weather is unavailable.");\n    return (await response.json()) as { summary: string };\n  });\n\n  return (\n    <Await fallback={<p>Loading weather...</p>}>\n      <section>\n        <p>{weather.value.summary}</p>\n      </section>\n    </Await>\n  );\n}'
       }
@@ -138,7 +138,7 @@ const AsyncUiPage = () => (
       <a href="/docs/core-concepts/advanced-reactivity">Advanced reactivity</a>.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'import { $computed, $state } from "vynn";\n\nfunction UserName() {\n  const userId = $state("42");\n\n  const user = $computed(async () => {\n    const id = userId.value;\n    const response = await fetch("/api/users/" + id);\n    if (!response.ok) throw new Error("User not found.");\n    return (await response.json()) as { name: string };\n  });\n\n  return <p>{user.value.name}</p>;\n}'
       }
@@ -150,7 +150,7 @@ const AsyncUiPage = () => (
       children render. Use both when a section can load asynchronously and may also fail.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'import { Await, Catch } from "vynn";\n\nfunction AccountPage() {\n  return (\n    <Catch\n      fallback={(error, reset) => (\n        <section role="alert">\n          <p>{error.message}</p>\n          <button onClick={reset}>Try again</button>\n        </section>\n      )}\n    >\n      <Await fallback={<p>Loading account...</p>}>\n        <ProfileCard />\n      </Await>\n    </Catch>\n  );\n}'
       }
@@ -169,7 +169,7 @@ const AsyncUiPage = () => (
       tracking in custom build integrations; the Vite plugin normally manages this for you.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'import { lazy } from "vynn";\n\nconst SettingsPage = lazy(\n  () => import("./SettingsPage"),\n  "SettingsPage",\n);'
       }

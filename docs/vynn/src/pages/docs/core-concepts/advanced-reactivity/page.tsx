@@ -20,7 +20,7 @@ const AdvancedReactivityPage = () => (
       from whichever branch is active:
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'import { $computed, $state } from "vynn";\n\nconst includeTax = $state(false);\nconst subtotal = $state(100);\nconst taxRate = $state(0.12);\n\nconst total = $computed(() => {\n  if (!includeTax.value) return subtotal.value;\n  return subtotal.value * (1 + taxRate.value);\n});'
       }
@@ -40,7 +40,7 @@ const AdvancedReactivityPage = () => (
     </p>
     <p>Capture the reactive input before awaiting, then use the captured value for the request:</p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'import { $computed, $state } from "vynn";\n\nconst userId = $state("42");\n\nconst user = $computed(async () => {\n  // This read is tracked. Changing userId starts a new request.\n  const id = userId.value;\n\n  const response = await fetch("/api/users/" + id);\n  if (!response.ok) throw new Error("User not found.");\n\n  return (await response.json()) as { name: string };\n});'
       }
@@ -65,7 +65,7 @@ const AdvancedReactivityPage = () => (
       current run is pending; it does not provide a previous value.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'import { Await, $computed, $state } from "vynn";\n\nfunction ProfileSummary() {\n  const userId = $state("42");\n  const profile = $computed(async () => {\n    const id = userId.value;\n    const response = await fetch("/api/users/" + id);\n    if (!response.ok) throw new Error("Could not load profile.");\n    return (await response.json()) as { name: string };\n  });\n\n  return (\n    <Await fallback={<p>Loading profile...</p>}>\n      <p>{profile.value.name}</p>\n    </Await>\n  );\n}'
       }
@@ -87,7 +87,7 @@ const AdvancedReactivityPage = () => (
       iterates over the object can also react when keys are added or removed.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'import { $computed, $store } from "vynn";\n\nconst settings = $store({ theme: "light", density: "comfortable" });\n\n// A component that only reads settings.theme depends on that property.\nconst currentTheme = $computed(() => settings.theme);\n\n// Adding a key also updates consumers that enumerate the settings object.\nsettings.shortcuts = true;'
       }
@@ -98,7 +98,7 @@ const AdvancedReactivityPage = () => (
       can read and write through <code>this</code> just like it would on a plain object.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'import { $store } from "vynn";\n\nconst cart = $store({\n  quantity: 2,\n  unitPrice: 15,\n  get total() {\n    return this.quantity * this.unitPrice;\n  },\n  addOne() {\n    this.quantity += 1;\n  },\n});\n\nconsole.log(cart.total); // 30\ncart.addOne();\nconsole.log(cart.total); // 45'
       }
@@ -113,7 +113,7 @@ const AdvancedReactivityPage = () => (
       show how to use arrays and the collection methods directly.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'import { $computed, $store } from "vynn";\n\nconst todos = $store([\n  { id: 1, title: "Read the guide", done: false },\n]);\n\nconst remaining = $computed(() =>\n  todos.filter((todo) => !todo.done).length,\n);\n\n// Array mutations and nested object changes are reactive.\ntodos.push({ id: 2, title: "Build an app", done: false });\ntodos[0].done = true;\n\nconst stock = $store(new Map([["apples", 3]]));\nconst selected = $store(new Set(["apples"]));\n\nconst appleCount = $computed(() => stock.get("apples") ?? 0);\nconst selectedNames = $computed(() => Array.from(selected).join(", "));\n\nstock.set("apples", appleCount.value + 1);\nselected.add("oranges");\nselected.delete("apples");'
       }
@@ -170,7 +170,7 @@ const AdvancedReactivityPage = () => (
       existing entry's value is replaced.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'import { $computed, $store } from "vynn";\n\nconst users = $store(new Map([["ada", { name: "Ada" }]]));\nconst adaName = $computed(() => users.get("ada")?.name ?? "Missing");\nconst userIds = $computed(() => [...users.keys()]);\n\n// Updates the entry value, but not the set of keys.\nusers.set("ada", { name: "Grace" });\n\n// Adding a key also updates computations that iterate over keys.\nusers.set("lin", { name: "Lin" });'
       }
@@ -190,7 +190,7 @@ const AdvancedReactivityPage = () => (
       <code>.value</code>, just as you would outside a store.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'import { $computed, $state, $store } from "vynn";\n\nconst title = $state("Draft");\nconst visits = $state(0);\nconst titleLength = $computed(() => title.value.length);\n\n// Object properties expose the current values directly.\nconst settings = $store({ title, titleLength });\nconsole.log(settings.title); // "Draft"\nconsole.log(settings.titleLength); // 5\n\n// Writing to a property containing writable state updates that state.\nsettings.title = "Published";\nconsole.log(title.value); // "Published"\n\n// Arrays keep state values as state objects. Access .value explicitly.\nconst labels = $store([title]);\nlabels[0].value = "Archived";\nconsole.log(title.value); // "Archived"\n\n// Map values also keep their state objects.\nconst counters = $store(new Map([["visits", visits]]));\ncounters.get("visits")!.value += 1;\nconsole.log(visits.value); // 1'
       }
@@ -207,7 +207,7 @@ const AdvancedReactivityPage = () => (
       your data layer provides stable objects.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'import { $store } from "vynn";\n\ntype DashboardData = {\n  title: string;\n  stats: { visits: number };\n  items: { id: number; label: string }[];\n};\n\nconst dashboard = $store(async (): Promise<DashboardData> => {\n  const response = await fetch("/api/dashboard");\n  if (!response.ok) throw new Error("Dashboard unavailable.");\n  return (await response.json()) as DashboardData;\n});\n\n// The root store and nested array keep their identities across refreshes.\nconst items = dashboard.items;\n\n// An object entry can be replaced by the next server snapshot.\nconst firstItem = items[0];'
       }

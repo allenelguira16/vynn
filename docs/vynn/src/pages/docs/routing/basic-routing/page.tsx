@@ -11,7 +11,7 @@ const BasicRoutingPage = () => (
 
     <h2>Define a route list</h2>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={`import { Router, type Route } from "vynn-router";
 
 import { HomePage } from "./pages/home";
@@ -38,7 +38,7 @@ export function App(props: { url: string }) {
       must render <code>props.children</code> where the matched child should appear.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={`import type { PropsWithChildren } from "vynn";
 import { Router, type Route } from "vynn-router";
 
@@ -82,7 +82,7 @@ export function App(props: { url: string }) {
       imperative navigation or to inspect its reactive state.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={`import { onDestroy } from "vynn";
 import { createRouter, Router } from "vynn-router";
 
@@ -110,7 +110,7 @@ export function App(props: { url: string }) {
       <code>createMemoryHistory()</code> for tests, embedded routers, and custom server flows.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={`import { createMemoryHistory, createRouter } from "vynn-router";
 
 const history = createMemoryHistory({

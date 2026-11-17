@@ -17,7 +17,7 @@ const RenderingPage = () => (
       application in development and production.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'import { defineConfig } from "vite";\nimport vynn from "vite-plugin-vynn";\n\nexport default defineConfig({\n  plugins: [vynn()],\n});'
       }
@@ -34,7 +34,7 @@ const RenderingPage = () => (
       from a module in its import graph. Vynn does not guess stylesheet paths.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'import "./styles.css";\n\nexport function App() {\n  return (\n    <html lang="en">\n      <head>\n        <title>My Vynn app</title>\n        <meta name="description" content="A Vynn application." />\n      </head>\n      <body>\n        <main>\n          <h1>Rendered by Vynn</h1>\n        </main>\n      </body>\n    </html>\n  );\n}'
       }
@@ -52,7 +52,7 @@ const RenderingPage = () => (
       entry.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'import { defineConfig } from "vite";\nimport vynn from "vite-plugin-vynn";\n\nexport default defineConfig({\n  plugins: [\n    vynn({\n      ssr: true,\n      ssrMode: "stream",\n    }),\n  ],\n});'
       }
@@ -123,7 +123,7 @@ const RenderingPage = () => (
       boundary handles the initial pending state.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'import { Await } from "vynn";\n\nfunction DashboardPage() {\n  return (\n    <main>\n      <PageHeader />\n      <Await fallback={<DashboardSkeleton />}>\n        <DashboardData />\n      </Await>\n    </main>\n  );\n}'
       }
@@ -142,7 +142,7 @@ const RenderingPage = () => (
       <code>stream</code> returns the result immediately with a readable stream as its body.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'import { renderToServer } from "vynn/server";\n\nconst result = await renderToServer(\n  () => App({ url: request.url }),\n  "async",\n  request,\n);\n\nconst html = result.body;\nconst headMarkup = result.head.render();\nconst usedModules = result.modules;'
       }
@@ -160,9 +160,8 @@ const RenderingPage = () => (
       <code>Document</code>, an element, a document fragment, or a selector string. Both return an
       unmount function.
     </p>
-    <CodeBlock lang="html" code={'<div id="app"></div>'} />
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'import { renderToDOM } from "vynn/client";\nimport { App } from "./app";\n\n// Mount into an existing container that does not contain server-rendered app markup.\nconst unmount = renderToDOM(App, "#app");\n\n// When this app is no longer needed:\nunmount();'
       }
@@ -173,7 +172,7 @@ const RenderingPage = () => (
       the component owner and removes those nodes.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'import { hydrateToDOM } from "vynn/client";\nimport { App } from "./app";\n\nconst unmount = hydrateToDOM(App, document);\n\n// When this application is no longer needed:\nunmount();'
       }
@@ -192,7 +191,7 @@ const RenderingPage = () => (
       Express or another Node HTTP server.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'import compression from "compression";\nimport express from "express";\nimport sirv from "sirv";\n\nimport { listener } from "./dist/server/node.js";\n\nconst app = express();\n\n// Serve assets before sending application requests to Vynn.\napp.use(compression(), sirv("./dist/client", { extensions: [] }));\napp.use(listener);\n\napp.listen(3000);'
       }

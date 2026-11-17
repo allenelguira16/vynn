@@ -18,7 +18,7 @@ const CoreRuntimePage = () => (
       throwing.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'import { $state, batch, transaction } from "vynn";\n\nconst first = $state(0);\nconst second = $state(0);\n\nbatch(() => {\n  first.value = 1;\n  second.value = 2;\n});\n\n// transaction() is an equivalent name for batch().\ntransaction(() => {\n  first.value += 1;\n  second.value += 1;\n});'
       }
@@ -32,7 +32,7 @@ const CoreRuntimePage = () => (
       commits. That makes it useful for work that must be completed as part of a render update.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'import { $renderEffect, $state } from "vynn";\n\nconst position = $state(0);\n\nconst stop = $renderEffect(() => {\n  // This synchronization runs immediately, then synchronously\n  // when a transaction that changes position commits.\n  updatePosition(position.value);\n});\n\n// Stop the effect when its integration is no longer active.\nstop();'
       }
@@ -109,7 +109,7 @@ const CoreRuntimePage = () => (
       path. The example below creates an isolated lifetime that can be stopped as one unit:
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'import { $effect, createOwner, disposeOwner, runWithOwner } from "vynn";\n\nconst scope = createOwner(null);\n\nrunWithOwner(scope, () => {\n  $effect(() => {\n    const unsubscribe = subscribeToUpdates();\n    return unsubscribe;\n  });\n});\n\n// When the library instance is disposed, release its effects and children.\ndisposeOwner(scope);'
       }
@@ -203,7 +203,7 @@ const CoreRuntimePage = () => (
       component without changing its runtime behavior:
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'import type { FC, PropsWithChildren, PropsWithRef } from "vynn";\n\ntype PanelProps = PropsWithChildren<{ title: string }>;\n\nconst Panel: FC<PanelProps> = (props) => (\n  <section>\n    <h2>{props.title}</h2>\n    {props.children}\n  </section>\n);\n\ntype TextFieldProps = PropsWithRef<{ label: string }>;\n\nfunction TextField(props: TextFieldProps) {\n  return (\n    <label>\n      {props.label}\n      <input ref={props.ref} />\n    </label>\n  );\n}'
       }

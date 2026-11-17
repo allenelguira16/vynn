@@ -39,7 +39,6 @@ export type VynnPluginOptions = {
  */
 export default function vynn(options: VynnPluginOptions = {}) {
   const plugins: Plugin[] = [vynnFileRouterPlugin(), vynnOxcPlugin()];
-
   const ssrCss = options.ssr ? createVynnSsrCssPlugin() : undefined;
   const ssrPreload = options.ssr ? vynnSsrPreloadPlugin() : undefined;
   const serverFunctionsOptions =
@@ -81,3 +80,11 @@ export function serverFunctions(options: VynnServerFunctionsOptions = {}) {
   return serverFunctionsPlugin(options);
 }
 export type { VynnServerFunctionsOptions };
+export {
+  handleVynnDevRequest,
+  loadVynnSsrHandler,
+  VYNN_SSR_ENVIRONMENT,
+  VYNN_SSR_HANDLER_ID,
+} from "./host.ts";
+export { isRunnableViteEnvironment } from "./host.ts";
+export type { VynnSsrHandler, VynnSsrService } from "./host.ts";

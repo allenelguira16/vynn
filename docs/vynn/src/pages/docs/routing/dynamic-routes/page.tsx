@@ -25,7 +25,7 @@ const DynamicRoutesPage = () => (
       This defines a route such as <code>/users/42</code>. Read the parameter in the page:
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={`import { $params } from "vynn-router";
 
 export default function UserPage() {
@@ -39,7 +39,7 @@ export default function UserPage() {
       is the part after the colon.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={`import { $params, type Route } from "vynn-router";
 
 const routes: Route[] = [
@@ -71,7 +71,7 @@ const routes: Route[] = [
       catch-all.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={`import { $params } from "vynn-router";
 
 export default function DocsPage() {
@@ -85,7 +85,7 @@ export default function DocsPage() {
       <code>$search</code> object.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={`import { $search } from "vynn-router";
 
 export default function SearchPage() {

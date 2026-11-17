@@ -30,7 +30,7 @@ npm install -D vite vite-plugin-vynn typescript@^7
       Add <code>vynn()</code> to your Vite plugins. Application handling is enabled by default.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={`
 import { defineConfig } from "vite";
 import vynn from "vite-plugin-vynn";
@@ -44,7 +44,7 @@ export default defineConfig({
     <h2>3. Configure TypeScript</h2>
     <p>Keep JSX intact for Vynn's compiler and point TypeScript at Vynn's JSX types.</p>
     <CodeBlock
-      lang="json5"
+      lang="json"
       code={`
 {
   "compilerOptions": {

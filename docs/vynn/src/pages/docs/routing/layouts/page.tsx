@@ -16,7 +16,7 @@ const LayoutsPage = () => (
       chrome such as a header, navigation, and footer.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={`import type { PropsWithChildren } from "vynn";
 
 export default function RootLayout({ children }: PropsWithChildren) {
@@ -57,7 +57,7 @@ export default function RootLayout({ children }: PropsWithChildren) {
       cannot appear.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={`import type { PropsWithChildren } from "vynn";
 
 export default function DashboardLayout({ children }: PropsWithChildren) {

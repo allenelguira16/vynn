@@ -16,7 +16,7 @@ const ComponentsPage = () => (
       separate class or a special component base type.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'type GreetingProps = {\n  name: string;\n};\n\nexport function Greeting(props: GreetingProps) {\n  return <h1>Hello, {props.name}!</h1>;\n}\n\nexport function App() {\n  return <Greeting name="Ada" />;\n}'
       }
@@ -28,7 +28,7 @@ const ComponentsPage = () => (
       focused on one part of the interface, then compose those pieces into a page.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         "function PageHeader() {\n  return (\n    <header>\n      <h1>Dashboard</h1>\n      <p>Your latest activity</p>\n    </header>\n  );\n}\n\nfunction Dashboard() {\n  return (\n    <main>\n      <PageHeader />\n      <section>\n        <h2>Overview</h2>\n        <p>Welcome back.</p>\n      </section>\n    </main>\n  );\n}"
       }
@@ -40,7 +40,7 @@ const ComponentsPage = () => (
       helper from the package root so you can keep the children type aligned with its JSX types.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'import type { PropsWithChildren } from "vynn";\n\nfunction Panel(props: PropsWithChildren<{ title: string }>) {\n  return (\n    <section class="panel">\n      <h2>{props.title}</h2>\n      <div>{props.children}</div>\n    </section>\n  );\n}\n\nfunction App() {\n  return (\n    <Panel title="Account">\n      <p>Your account details appear here.</p>\n    </Panel>\n  );\n}'
       }
@@ -58,7 +58,7 @@ const ComponentsPage = () => (
       nothing.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         "function AccountStatus(props: { signedIn: boolean }) {\n  return (\n    <section>\n      {props.signedIn ? <Dashboard /> : <SignInPrompt />}\n      {props.signedIn && <p>You are signed in.</p>}\n    </section>\n  );\n}"
       }
@@ -70,7 +70,7 @@ const ComponentsPage = () => (
       expression so Vynn can preserve matching item subtrees as the list changes.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         "type Todo = { id: number; title: string };\n\nfunction TodoList(props: { todos: Todo[] }) {\n  return (\n    <ul>\n      {props.todos.map((todo) => (\n        <li>{todo.title}</li>\n      ))}\n    </ul>\n  );\n}"
       }
@@ -90,7 +90,7 @@ const ComponentsPage = () => (
       DOM element through a callback or hold that element directly.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'import { $state } from "vynn";\n\nfunction SearchField() {\n  const query = $state("");\n  let input: HTMLInputElement | undefined;\n\n  return (\n    <label for="query" class="field">\n      <span>Search</span>\n      <input\n        id="query"\n        ref={(element) => { input = element; }}\n        value={query.value}\n        aria-label="Search records"\n        style={{ width: "100%", maxWidth: "32rem" }}\n        onInput={(event) => {\n          query.value = event.currentTarget.value;\n        }}\n        onKeyDownCapture={(event) => {\n          if (event.key === "Escape") query.value = "";\n        }}\n      />\n      <button type="button" onClick={() => input?.focus()}>Focus</button>\n    </label>\n  );\n}'
       }
@@ -110,7 +110,7 @@ const ComponentsPage = () => (
       attribute.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'function Icon() {\n  return (\n    <svg viewBox="0 0 24 24" role="img" aria-label="Check">\n      <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="2" />\n    </svg>\n  );\n}'
       }
@@ -123,7 +123,7 @@ const ComponentsPage = () => (
       input before passing it to this prop; Vynn does not sanitize the string for you.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'function ArticleBody(props: { sanitizedHtml: string }) {\n  return <article class="article-body" html={props.sanitizedHtml} />;\n}'
       }
@@ -149,7 +149,7 @@ const ComponentsPage = () => (
       component is being created.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'import { $state, onDestroy, onMount } from "vynn";\n\nfunction Stopwatch() {\n  const seconds = $state(0);\n  let timer: number | undefined;\n\n  onMount(() => {\n    timer = window.setInterval(() => {\n      seconds.value++;\n    }, 1000);\n  });\n\n  onDestroy(() => {\n    if (timer !== undefined) window.clearInterval(timer);\n  });\n\n  return <p>Elapsed: {seconds.value}s</p>;\n}'
       }
@@ -167,7 +167,7 @@ const ComponentsPage = () => (
       the error and a <code>reset</code> callback that retries rendering the children.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'import { Catch } from "vynn";\n\nfunction App() {\n  return (\n    <Catch\n      fallback={(error, reset) => (\n        <section role="alert">\n          <p>{error.message}</p>\n          <button onClick={reset}>Try again</button>\n        </section>\n      )}\n    >\n      <AccountPanel />\n    </Catch>\n  );\n}'
       }
@@ -185,7 +185,7 @@ const ComponentsPage = () => (
       layout. Portals do not render their children during SSR.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'import { Portal } from "vynn";\n\nfunction DialogLayer(props: { mount: Element }) {\n  return (\n    <Portal mount={props.mount}>\n      <div role="dialog" aria-modal="true">\n        <p>Dialog content</p>\n      </div>\n    </Portal>\n  );\n}'
       }

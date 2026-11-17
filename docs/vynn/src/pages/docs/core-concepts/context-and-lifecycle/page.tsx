@@ -15,7 +15,7 @@ const ContextLifecyclePage = () => (
       The function returns a tuple, so give the two values clear names when you destructure it.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'import { createContext } from "vynn";\n\ntype Theme = {\n  mode: "light" | "dark";\n};\n\nexport const [ThemeProvider, useTheme] = createContext<Theme>();'
       }
@@ -27,13 +27,13 @@ const ContextLifecyclePage = () => (
       consumer function to read the nearest provider's value.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'import { ThemeProvider } from "./theme-context";\n\nfunction App() {\n  const theme = { mode: "dark" as const };\n\n  return (\n    <ThemeProvider value={theme}>\n      <Header />\n      <MainContent />\n    </ThemeProvider>\n  );\n}'
       }
     />
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'import { useTheme } from "./theme-context";\n\nfunction Header() {\n  const theme = useTheme();\n\n  return <header data-theme={theme.mode}>Dashboard</header>;\n}'
       }
@@ -50,7 +50,7 @@ const ContextLifecyclePage = () => (
       reactive state. Provide a store or a ref when descendants need to observe updates.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'import { $store, createContext } from "vynn";\n\ntype Preferences = { density: "compact" | "comfortable" };\nconst [PreferencesProvider, usePreferences] = createContext<Preferences>();\n\nfunction App() {\n  const preferences = $store({ density: "comfortable" as "compact" | "comfortable" });\n\n  return (\n    <PreferencesProvider value={preferences}>\n      <SettingsButton />\n    </PreferencesProvider>\n  );\n}\n\nfunction SettingsButton() {\n  const preferences = usePreferences();\n\n  return (\n    <button onClick={() => preferences.density = "compact"}>\n      Density: {preferences.density}\n    </button>\n  );\n}'
       }
@@ -76,7 +76,7 @@ const ContextLifecyclePage = () => (
       The callback can return a cleanup function.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'import { $state, onMount } from "vynn";\n\nfunction OnlineStatus() {\n  const online = $state(false);\n\n  onMount(() => {\n    const update = () => {\n      online.value = navigator.onLine;\n    };\n\n    update();\n    window.addEventListener("online", update);\n    window.addEventListener("offline", update);\n\n    return () => {\n      window.removeEventListener("online", update);\n      window.removeEventListener("offline", update);\n    };\n  });\n\n  return <p>{online.value ? "Online" : "Offline"}</p>;\n}'
       }
@@ -93,7 +93,7 @@ const ContextLifecyclePage = () => (
       rendering finishes.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'import { onDestroy } from "vynn";\n\nfunction SessionPanel() {\n  const unsubscribe = sessionEvents.subscribe((session) => {\n    console.log(session.status);\n  });\n\n  onDestroy(() => {\n    unsubscribe();\n  });\n\n  return <p>Session updates are active.</p>;\n}'
       }

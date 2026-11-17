@@ -15,7 +15,7 @@ const NotFoundPage = () => (
       Pass a component to <code>notFound</code>. The router renders it when no route matches.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={`import { onDestroy } from "vynn";
 import { createRouter, Router } from "vynn-router";
 
@@ -57,7 +57,7 @@ export function App(props: { url: string }) {
 
     <h2>Keep the fallback simple</h2>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={`export default function NotFoundPage() {
   return (
     <main>

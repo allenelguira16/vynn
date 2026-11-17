@@ -9,6 +9,8 @@ import {
   type TransformServerFunctionsResult,
 } from "vynn-compiler/server-functions";
 
+import { isRunnableViteEnvironment } from "../../host.ts";
+
 import { createWebRequest, writeResponse } from "../app/http.ts";
 import { SSR_HANDLER_ID } from "../app/shared.ts";
 import { registerServerFunctionDevMiddleware } from "./dev-middleware.ts";
@@ -98,10 +100,10 @@ function cleanModuleId(id: string): string {
  * serialize captured lexical variables; use function arguments for values the
  * server function needs.
  *
- * RPC is wired into Vite dev middleware, even when Vynn app mode and SSR are
- * disabled. For CSR builds, a separate server-functions bundle is generated
- * and Vite preview mounts its handler automatically. SSR app builds integrate
- * the handler into their application server instead.
+ * By default, RPC is wired into Vite dev/preview middleware when Vite owns
+ * the runnable SSR environment. Deployment integrations that own the SSR
+ * environment dispatch through the Fetch-compatible application handler.
+ * For CSR builds, a separate server-functions bundle is generated.
  * Function closures are not serialized.
  */
 export function serverFunctionsPlugin(
@@ -524,6 +526,10 @@ export function serverFunctionsPlugin(
     },
 
     configureServer(server: ViteDevServer) {
+      // A deployment plugin with a non-runnable SSR environment owns the
+      // request lifecycle for an integrated Vynn app.
+      if (hasIntegratedSsrApp && !isRunnableViteEnvironment(server.environments.ssr)) return;
+
       registerServerFunctionDevMiddleware(server, {
         endpoint: resolvedEndpoint,
         maxRequestBytes,

@@ -15,7 +15,7 @@ const FileBasedRoutingPage = () => (
       one-argument <code>toFileRouter()</code> call and discovers route files for you.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={`import { defineConfig } from "vite";
 import vynn from "vite-plugin-vynn";
 
@@ -28,7 +28,7 @@ export default defineConfig({
       do not need to write an <code>import.meta.glob()</code> call yourself.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={`import { Router, toFileRouter } from "vynn-router";
 
 const routes = toFileRouter("/src/app");
@@ -99,7 +99,7 @@ export function App(props: { url: string }) {
       context, location, params, search values, and abort signal as an object-defined route.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={`import { redirect, type BeforeLoadContext } from "vynn-router";
 
 export async function beforeLoad({ params, signal }: BeforeLoadContext) {

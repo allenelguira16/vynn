@@ -3,6 +3,7 @@ import type { RenderMode } from "vynn";
 import { readFile, readdir } from "node:fs/promises";
 import { relative, resolve } from "node:path";
 
+import type { VynnSsrCssLink } from "../ssr-css.ts";
 import type { ViteSsrManifest } from "../ssr-preload.ts";
 
 import { joinAssetBase } from "./http.ts";
@@ -137,12 +138,21 @@ export function createSsrHandlerCode(options: {
   dev: boolean;
   serverFunctions: boolean;
   ssrManifest: ViteSsrManifest | null;
+  devCssLinks?: VynnSsrCssLink[];
 }): string {
-  const { clientEntryUrl, css, base, dev, serverFunctions, ssrManifest } = options;
-
+  const {
+    clientEntryUrl,
+    css,
+    base,
+    dev,
+    serverFunctions,
+    ssrManifest,
+    devCssLinks = [],
+  } = options;
   return [
     `import { injectSsrPreloadLinks, renderSsrPreloadLinks } from "vynn/server";`,
     `import { render } from ${JSON.stringify(SERVER_ENTRY_ID)};`,
+    `const DEV_CSS_LINKS = ${JSON.stringify(devCssLinks)};`,
     ...(serverFunctions
       ? [`import { handleServerFunctionRequest } from "virtual:vynn/server-functions";`]
       : []),
@@ -161,10 +171,14 @@ export function createSsrHandlerCode(options: {
     `  const prefix = BASE === "/" ? "" : BASE.replace(/\\/$/, "");`,
     `  return prefix + "/" + value;`,
     `}`,
+    `function renderDevCssLinks(links) {`,
+    `  return links.map(({ url, id }) => '<link rel="stylesheet" data-vite-dev-id="' + escapeAttribute(id) + '" href="' + escapeAttribute(assetUrl(url + "?direct")) + '">' ).join("");`,
+    `}`,
     `function createHeadAssets(devCssLinks, preloadLinks, headHtml, patchRuntime) {`,
     `  const charset = headHtml.toLowerCase().includes("charset=") ? "" : wrapInternalRange('<meta charset="UTF-8">');`,
+    `  const collectedDevCss = renderDevCssLinks(DEV_CSS_LINKS);`,
     `  const css = wrapInternalRange(IS_DEV`,
-    `    ? devCssLinks.map(({ url, id }) => '<link rel="stylesheet" data-vite-dev-id="' + escapeAttribute(id) + '" href="' + escapeAttribute(assetUrl(url + "?direct")) + '">' ).join("")`,
+    `    ? collectedDevCss || renderDevCssLinks(devCssLinks)`,
     `    : CSS_ASSETS.map((file) => '<link rel="stylesheet" href="' + escapeAttribute(assetUrl(file)) + '">' ).join(""));`,
     `  const viteClient = wrapInternalRange(IS_DEV ? '<script type="module" src="' + escapeAttribute(assetUrl("/@vite/client")) + '"></script>' : "");`,
     `  return charset + headHtml + css + wrapInternalRange(preloadLinks) + viteClient + wrapInternalRange(patchRuntime);`,
@@ -288,7 +302,7 @@ export function createSsrHandlerCode(options: {
     `    cancel(reason) { return reader.cancel(reason); },`,
     `  });`,
     `}`,
-    `export async function handleRequest(request, devCssLinks = []) {`,
+    `export async function handleRequest(request, devCssLinks = DEV_CSS_LINKS) {`,
     ...(serverFunctions
       ? [
           `  const serverFunctionResponse = await handleServerFunctionRequest(request);`,

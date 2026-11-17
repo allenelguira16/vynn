@@ -56,7 +56,7 @@ const HomePage = () => (
           <span>Just a component</span>
         </div>
         <CodeBlock
-          lang="tsx"
+          lang="ts"
           code={`
 import { $state } from "vynn";
 

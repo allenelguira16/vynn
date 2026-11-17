@@ -14,7 +14,7 @@ const QuickStartPage = () => (
       In your <code>package.json</code>, add a few everyday scripts:
     </p>
     <CodeBlock
-      lang="json5"
+      lang="json"
       code={`
 {
   "scripts": {
@@ -32,7 +32,7 @@ const QuickStartPage = () => (
       discovers the application entry.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={`
 import { defineConfig } from "vite";
 import vynn from "vite-plugin-vynn";
@@ -49,7 +49,7 @@ export default defineConfig({
       document head and body.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={`
 import { $state } from "vynn";
 

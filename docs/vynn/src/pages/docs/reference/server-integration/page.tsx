@@ -56,7 +56,7 @@ const ServerIntegrationPage = () => (
       </table>
     </div>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'import { renderToServer } from "vynn/server";\n\nconst result = await renderToServer(\n  () => App(),\n  "async",\n  request,\n);\n\nconst html = result.body;\nconst headHtml = result.head.render();\nconst renderedModules = result.modules;'
       }
@@ -78,7 +78,7 @@ const ServerIntegrationPage = () => (
       first response chunk.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         "const unsubscribe = result.head.subscribe((nextHeadHtml) => {\n  writeHeadUpdate(nextHeadHtml);\n});\n\n// Stop listening when the stream or request has finished.\nunsubscribe();"
       }
@@ -97,7 +97,7 @@ const ServerIntegrationPage = () => (
       already linked.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'import { renderSsrPreloadLinks } from "vynn/server";\n\nconst alreadyLinked = new Set<string>();\nconst links = renderSsrPreloadLinks(result.modules, clientManifest, {\n  base: "/",\n  dev: false,\n  exclude: alreadyLinked,\n});'
       }
@@ -154,7 +154,7 @@ const ServerIntegrationPage = () => (
       the hydrated application content.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'import { injectSsrPreloadLinks } from "vynn/server";\n\nconst preloadPatch = injectSsrPreloadLinks(links);\nstream.enqueue(encoder.encode(preloadPatch));'
       }
@@ -236,7 +236,7 @@ const ServerIntegrationPage = () => (
       </table>
     </div>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'import { getRequestContext } from "vynn/server";\n\ntype Session = { userId: string };\n\nconst context = getRequestContext();\nconst session = context.locals.get<Session>("session");\n\ncontext.response.headers.set("cache-control", "no-store");\ncontext.cookies.set("visited", "yes", {\n  httpOnly: true,\n  secure: true,\n  sameSite: "Lax",\n  path: "/",\n});'
       }
@@ -263,7 +263,7 @@ const ServerIntegrationPage = () => (
       <code>Request</code> and <code>Response</code> objects.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'import { createListener } from "vynn/server/node";\n\nconst listener = createListener(async (request) => {\n  return handleWebRequest(request);\n}, {\n  origin: "https://app.example.com",\n  onError(error, request, response) {\n    logger.error({ error, url: request.url, status: response.statusCode });\n  },\n});\n\nnodeServer.on("request", listener);'
       }
@@ -281,7 +281,7 @@ const ServerIntegrationPage = () => (
       <code>writeResponse()</code> streams the Fetch response back to Node:
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'import { createServer } from "node:http";\nimport { toWebRequest, writeResponse } from "vynn/server/node";\n\nconst server = createServer(async (incoming, outgoing) => {\n  try {\n    const request = toWebRequest(incoming, { origin: "https://app.example.com" });\n    const response = await handleWebRequest(request);\n    await writeResponse(outgoing, response, incoming.method ?? "GET");\n  } catch (error) {\n    logger.error(error);\n    if (outgoing.headersSent) {\n      outgoing.destroy(error instanceof Error ? error : undefined);\n      return;\n    }\n    outgoing.statusCode = 500;\n    outgoing.end("Internal Server Error");\n  }\n});\n\nserver.listen(3000);'
       }

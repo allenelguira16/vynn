@@ -16,7 +16,7 @@ const ServerFunctionsPage = () => (
       used with a client-rendered application or alongside SSR.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'import { defineConfig } from "vite";\nimport vynn from "vite-plugin-vynn";\n\nexport default defineConfig({\n  plugins: [\n    vynn({\n      serverFunctions: true,\n    }),\n  ],\n});'
       }
@@ -28,7 +28,7 @@ const ServerFunctionsPage = () => (
       default request body limit is 1 MiB.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'vynn({\n  serverFunctions: {\n    endpoint: "/__vynn/rpc",\n    maxRequestBytes: 1024 * 1024,\n    allowedOrigins: ["https://admin.example.com"],\n    exposeErrors: false,\n  },\n})'
       }
@@ -44,7 +44,7 @@ const ServerFunctionsPage = () => (
       function, not the file. A file-level directive is not the Vynn server-function convention.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'export async function createGreeting(name: string) {\n  "use server";\n\n  const normalizedName = name.trim();\n  if (!normalizedName) {\n    throw new Error("A name is required.");\n  }\n\n  return "Hello, " + normalizedName + "!";\n}'
       }
@@ -56,7 +56,7 @@ const ServerFunctionsPage = () => (
       generated reference; the implementation executes in the server runtime.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'import { $state } from "vynn";\nimport { createGreeting } from "./actions";\n\nfunction GreetingForm() {\n  const greeting = $state("");\n  const errorMessage = $state("");\n\n  async function submit() {\n    errorMessage.value = "";\n\n    try {\n      greeting.value = await createGreeting("Vynn");\n    } catch (error) {\n      errorMessage.value = error instanceof Error ? error.message : "Request failed.";\n    }\n  }\n\n  return (\n    <section>\n      <button onClick={submit}>Create greeting</button>\n      <p>{greeting.value}</p>\n      {errorMessage.value && <p role="alert">{errorMessage.value}</p>}\n    </section>\n  );\n}'
       }
@@ -70,7 +70,7 @@ const ServerFunctionsPage = () => (
       implementation automatically.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'export async function updateProfile(userId: string, displayName: string) {\n  "use server";\n\n  if (!userId || !displayName.trim()) {\n    throw new Error("User ID and display name are required.");\n  }\n\n  // Also verify that the current caller may update this user.\n  return saveProfile(userId, displayName);\n}'
       }
@@ -83,7 +83,7 @@ const ServerFunctionsPage = () => (
       response metadata, cookie helpers, and request-local values.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'import { getRequestContext } from "vynn/server";\n\nexport async function readSession() {\n  "use server";\n\n  const context = getRequestContext();\n  const sessionId = context.cookies.get("session");\n\n  if (!sessionId) return null;\n\n  return loadSession(sessionId, { signal: context.signal });\n}'
       }
@@ -95,7 +95,7 @@ const ServerFunctionsPage = () => (
       the same request.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'import { getRequestContext } from "vynn/server";\n\nexport async function saveSession(sessionId: string) {\n  "use server";\n\n  const context = getRequestContext();\n  context.cookies.set("session", sessionId, {\n    httpOnly: true,\n    secure: true,\n    sameSite: "Lax",\n    path: "/",\n  });\n\n  context.response.headers.set("cache-control", "no-store");\n  return { saved: true };\n}'
       }
@@ -108,7 +108,7 @@ const ServerFunctionsPage = () => (
       structured details that are safe to expose.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'import { ServerFunctionError } from "vynn/server";\n\nexport async function getInvoice(invoiceId: string) {\n  "use server";\n\n  const invoice = await findInvoice(invoiceId);\n  if (!invoice) {\n    throw new ServerFunctionError("Invoice not found.", {\n      code: "INVOICE_NOT_FOUND",\n      status: 404,\n    });\n  }\n\n  return invoice;\n}'
       }

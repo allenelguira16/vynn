@@ -17,6 +17,16 @@ type ClientEnvironment = {
   };
 };
 
+const cssLinksByServer = new WeakMap<
+  ViteDevServer,
+  (server: ViteDevServer) => Promise<VynnSsrCssLink[]>
+>();
+
+/** Resolve CSS links for an external host handling a Vynn development request. */
+export function getVynnSsrCssLinks(server: ViteDevServer): Promise<VynnSsrCssLink[]> {
+  return cssLinksByServer.get(server)?.(server) ?? Promise.resolve([]);
+}
+
 export type VynnSsrCssLink = {
   url: string;
   id: string;
@@ -132,6 +142,7 @@ export function createVynnSsrCssPlugin(): VynnSsrCssCollector {
 
     configureServer(server: ViteDevServer) {
       devServer = server;
+      cssLinksByServer.set(server, getCachedCssLinks);
 
       server.middlewares.use((req, res, next) => {
         const pathname = new URL(req.url ?? "/", "http://vynn.local").pathname;

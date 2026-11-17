@@ -65,7 +65,7 @@ const ServerFunctionsReferencePage = () => (
       an endpoint override or a capture provider.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'import { createServerReference } from "vynn/server-functions/client";\n\n type LoadAccount = (accountId: string) => Promise<Account>;\n\nconst loadAccount = createServerReference<LoadAccount>(\n  "vynn_0123456789abcdefabcd",\n  { endpoint: "/__vynn/server-function" },\n);\n\nconst account = await loadAccount("acct_42");'
       }
@@ -92,7 +92,7 @@ const ServerFunctionsReferencePage = () => (
       code through <code>getRequestContext().signal</code>.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'import { invokeServerFunction } from "vynn/server-functions/client";\n\nconst controller = new AbortController();\nconst pending = invokeServerFunction(\n  loadAccount,\n  ["acct_42"],\n  { signal: controller.signal },\n);\n\n// Cancel when the UI no longer needs this request.\ncontroller.abort();\nawait pending;'
       }
@@ -111,7 +111,7 @@ const ServerFunctionsReferencePage = () => (
       for that endpoint.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'import { createServerFunctionHandler } from "vynn/server-functions/server";\n\nconst handleServerFunction = createServerFunctionHandler({\n  endpoint: "/__vynn/server-function",\n  maxRequestBytes: 1024 * 1024,\n  allowedOrigins: ["https://app.example.com"],\n  exposeErrors: false,\n  resolve: (id) => serverFunctions.get(id),\n});\n\nasync function handleRequest(request: Request) {\n  const rpcResponse = await handleServerFunction(request);\n  if (rpcResponse) return rpcResponse;\n\n  return handleApplicationRequest(request);\n}'
       }
@@ -200,7 +200,7 @@ const ServerFunctionsReferencePage = () => (
       compiler and Vite plugin normally manage generated implementations.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'import {\n  createServerReference,\n  getServerFunctionImplementation,\n} from "vynn/server-functions/server";\n\nconst getStatus = createServerReference(\n  async (service: string) => readServiceStatus(service),\n  "vynn_0123456789abcdefabcd",\n);\n\nconst implementation = getServerFunctionImplementation(\n  "vynn_0123456789abcdefabcd",\n);'
       }
@@ -231,7 +231,7 @@ const ServerFunctionsReferencePage = () => (
       integration needs to encode a value before sending it through another channel:
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'import {\n  deserializeServerFunctionValue,\n  serializeServerFunctionValue,\n} from "vynn/server-functions/client";\n\ntype Snapshot = {\n  createdAt: Date;\n  permissions: Set<string>;\n  revision: bigint;\n};\n\nconst snapshot: Snapshot = {\n  createdAt: new Date(),\n  permissions: new Set(["read", "write"]),\n  revision: 12n,\n};\n\nconst encoded = JSON.stringify(serializeServerFunctionValue(snapshot));\nif (encoded === undefined) throw new Error("Could not encode snapshot.");\n\nconst restored = deserializeServerFunctionValue(JSON.parse(encoded)) as Snapshot;'
       }
@@ -251,7 +251,7 @@ const ServerFunctionsReferencePage = () => (
       runtime and should remain stable across deployments.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'import { registerServerFunctionCodec } from "vynn/server-functions/client";\n\nclass Money {\n  constructor(readonly cents: number) {}\n}\n\nconst unregisterMoneyCodec = registerServerFunctionCodec<Money>({\n  tag: "money",\n  test: (value): value is Money => value instanceof Money,\n  serialize: (value) => value.cents,\n  deserialize: (value) => new Money(Number(value)),\n});\n\n// Call the same registration during server startup as well.\n// unregisterMoneyCodec() removes the registration when it is no longer needed.'
       }
@@ -271,7 +271,7 @@ const ServerFunctionsReferencePage = () => (
       letters, digits, and underscores.
     </p>
     <CodeBlock
-      lang="tsx"
+      lang="ts"
       code={
         'import { ServerFunctionError } from "vynn/server";\n\nthrow new ServerFunctionError("Account not found.", {\n  code: "ACCOUNT_NOT_FOUND",\n  status: 404,\n  details: { accountId },\n});'
       }

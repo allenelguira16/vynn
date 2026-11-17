@@ -112,7 +112,12 @@ export default function Layout({ children }: PropsWithChildren) {
       </div>
 
       <div class="drawer-side z-40">
-        <label for="docs-drawer" aria-label="Close documentation menu" class="drawer-overlay" />
+        <label
+          for="docs-drawer"
+          aria-label="Close documentation menu"
+          class="drawer-overlay"
+          aria-hidden
+        />
         <aside class="min-h-full w-72 border-r border-base-300 bg-base-100 px-4 py-5">
           <Link href="/" class="mb-8 flex items-center gap-3 px-3">
             <img src="/vynn-logo.webp" class="h-8 w-8" alt="Vynn logo" />
