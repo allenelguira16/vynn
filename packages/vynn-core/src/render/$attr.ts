@@ -305,7 +305,11 @@ export function setDOMAttributeValue<E extends Element>(
     return;
   }
 
-  if (isHtmlElement && typeof next === "boolean") {
+  if (
+    isHtmlElement &&
+    booleanAttributes.has(attributeName.toLowerCase()) &&
+    typeof next === "boolean"
+  ) {
     (element as HTMLElement).toggleAttribute(attributeName, next);
     return;
   }
@@ -342,20 +346,21 @@ export function $attr<E extends Element>(
       if (hydrating && name !== "html") {
         const isHtmlElement =
           element.namespaceURI === HTML_NAMESPACE && element instanceof HTMLElement;
+        const attributeName = getAttributeName(element.namespaceURI, name);
+        const isHtmlBooleanAttribute =
+          isHtmlElement && booleanAttributes.has(attributeName.toLowerCase());
         const expectedValue =
-          next == null || (isHtmlElement && typeof next === "boolean")
-            ? next == null || !next
-              ? null
-              : ""
-            : name === "style"
-              ? serializeStyleValue(next)
-              : String(next);
+          next == null
+            ? null
+            : isHtmlBooleanAttribute && typeof next === "boolean"
+              ? next
+                ? ""
+                : null
+              : name === "style"
+                ? serializeStyleValue(next)
+                : String(next);
 
-        diagnoseHydrationAttribute(
-          element,
-          getAttributeName(element.namespaceURI, name),
-          expectedValue,
-        );
+        diagnoseHydrationAttribute(element, attributeName, expectedValue);
       }
     }
 

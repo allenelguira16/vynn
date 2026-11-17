@@ -103,6 +103,50 @@ describe("hydration mismatch diagnostics", () => {
     disposeOwner(owner);
   });
 
+  it.each([
+    { value: true, serialized: "true" },
+    { value: false, serialized: "false" },
+  ])("preserves boolean ARIA values during hydration ($serialized)", ({ value, serialized }) => {
+    const root = document.createElement("div");
+    root.innerHTML = `<label aria-hidden="${serialized}"></label>`;
+    const serverLabel = root.firstElementChild as HTMLLabelElement;
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const owner = createTestOwner();
+
+    runWithOwner(owner, () => {
+      withHydration(() => {
+        const label = $tmpl("label");
+        $attr(label, "aria-hidden", value);
+      }, root);
+    });
+
+    expect(warn).not.toHaveBeenCalled();
+    expect(serverLabel.getAttribute("aria-hidden")).toBe(serialized);
+
+    disposeOwner(owner);
+  });
+
+  it("continues to hydrate native HTML boolean attributes as empty attributes", () => {
+    const root = document.createElement("div");
+    root.innerHTML = '<button disabled=""></button>';
+    const serverButton = root.firstElementChild as HTMLButtonElement;
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const owner = createTestOwner();
+
+    runWithOwner(owner, () => {
+      withHydration(() => {
+        const button = $tmpl("button");
+        $attr(button, "disabled", true);
+      }, root);
+    });
+
+    expect(warn).not.toHaveBeenCalled();
+    expect(serverButton.hasAttribute("disabled")).toBe(true);
+    expect(serverButton.getAttribute("disabled")).toBe("");
+
+    disposeOwner(owner);
+  });
+
   it("does not report attributes on a replacement element as additional mismatches", () => {
     const root = document.createElement("div");
     root.innerHTML = "<span>server</span>";
