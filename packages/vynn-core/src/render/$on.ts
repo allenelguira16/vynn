@@ -27,6 +27,7 @@ export function $on<E extends Element, K extends keyof HTMLElementEventMap>(
 ): void {
   if (isServer()) return;
 
+
   const owner = getOwner();
 
   if (!owner) {

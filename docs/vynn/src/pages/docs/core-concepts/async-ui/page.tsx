@@ -100,11 +100,21 @@ const AsyncUiPage = () => (
       }
     />
     <p>
-      The boundary remembers when its children have rendered successfully. Later async refreshes
-      keep the existing content visible instead of replacing the page with the fallback again. This
-      is useful for search results, filters, and detail pages that refresh while a user is already
-      looking at them.
+      The boundary remembers when its children have rendered successfully. By default, later async
+      refreshes keep the existing content visible instead of replacing the page with the fallback
+      again. This is useful for search results, filters, and detail pages that refresh while a user
+      is already looking at them.
     </p>
+    <p>
+      Set <code>suspense</code> when the boundary should show its fallback again for later pending
+      work:
+    </p>
+    <CodeBlock
+      lang="ts"
+      code={
+        'function SearchResults() {\n  return (\n    <Await fallback={<p>Updating results...</p>} suspense>\n      <Results />\n    </Await>\n  );\n}'
+      }
+    />
 
     <h2>What happens during a refresh</h2>
     <p>

@@ -33,9 +33,22 @@ export function getElementNamespace(tagName: string): string {
 }
 
 /** Returns the namespace inherited by an element's children. */
-export function getChildDOMNamespace(namespace: string | null, tagName: string): string {
+export function getChildDOMNamespace(
+  namespace: string | null,
+  parentTag: string,
+  childTag?: string,
+): string {
+  const normalizedParentTag = parentTag.toLowerCase();
+  const normalizedChildTag = childTag?.toLowerCase();
+
+  // An <svg> child enters the SVG namespace, including inside HTML content
+  // and the HTML content hosted by an SVG <foreignObject>.
+  if (normalizedChildTag === "svg") {
+    return SVG_NAMESPACE;
+  }
+
   // foreignObject is an SVG integration point: its children are HTML.
-  if (namespace === SVG_NAMESPACE && tagName === "foreignObject") {
+  if (namespace === SVG_NAMESPACE && normalizedParentTag === "foreignobject") {
     return HTML_NAMESPACE;
   }
 

@@ -62,19 +62,32 @@ const ServerFunctionsPage = () => (
       }
     />
 
-    <h2>Pass values as arguments, not captured variables</h2>
+    <h2>Capture values from the surrounding scope</h2>
     <p>
-      Vynn does not serialize lexical closures for server functions. A server function should
-      receive the values it needs through its arguments or read trusted request data through the
-      server request context. A local value from the browser module is not copied into the server
-      implementation automatically.
+      A function-level <code>"use server"</code> function can use values from the lexical scope in
+      which it is declared. The compiler detects those references and creates a capture provider.
+      Captured values are read and serialized when the browser invokes the function, then supplied
+      to the extracted server implementation.
     </p>
     <CodeBlock
       lang="ts"
       code={
-        'export async function updateProfile(userId: string, displayName: string) {\n  "use server";\n\n  if (!userId || !displayName.trim()) {\n    throw new Error("User ID and display name are required.");\n  }\n\n  // Also verify that the current caller may update this user.\n  return saveProfile(userId, displayName);\n}'
+        'function ProfileEditor(props: { tenantId: string }) {\n  const tenantId = props.tenantId;\n\n  async function updateProfile(displayName: string) {\n    "use server";\n\n    if (!displayName.trim()) {\n      throw new Error("A display name is required.");\n    }\n\n    return saveProfileForTenant(tenantId, displayName);\n  }\n\n  return (\n    <button onClick={() => updateProfile("Ada")}>\n      Save profile\n    </button>\n  );\n}'
       }
     />
+    <p>
+      Captures are invocation data, not a trusted source of identity or authorization. Validate
+      captured values on the server and authenticate the caller independently, for example through
+      <code>getRequestContext()</code> and a server-side session. Captured values must be supported
+      by Vynn's server-function serializer; see the
+      <a href="/docs/reference/server-functions">Server functions API</a> for supported value types
+      and custom codecs.
+    </p>
+    <p>
+      The captured binding itself cannot be reassigned inside the server function. Pass mutable
+      values as explicit arguments and return the updated result. Keep captures small and limited to
+      the data the function actually needs.
+    </p>
 
     <h2>Read request context on the server</h2>
     <p>

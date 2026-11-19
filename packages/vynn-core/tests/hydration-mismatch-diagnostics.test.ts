@@ -1,8 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 // @vitest-environment jsdom
-import type { JSX } from "../src/types/jsx";
-
 import {
   finishServerRenderedLazy,
   withHydration,
@@ -15,8 +13,7 @@ import {
   runWithOwner,
 } from "../src/life-cycle/owner";
 import { $attr } from "../src/render/$attr";
-import { $tmpl } from "../src/render/$tmpl";
-import { $txt } from "../src/render/$txt";
+import { $template } from "../src/render/$template";
 import { resolveElement } from "../src/render/resolve-node";
 
 function createTestOwner() {
@@ -41,7 +38,7 @@ describe("hydration mismatch diagnostics", () => {
 
     runWithOwner(owner, () => {
       withHydration(() => {
-        clientElement = $tmpl("p");
+        clientElement = $template("<p></p>")();
       }, root);
     });
 
@@ -58,15 +55,16 @@ describe("hydration mismatch diagnostics", () => {
 
   it("reports and repairs text content differences without replacing the node", () => {
     const root = document.createElement("div");
-    root.textContent = "server text";
-    const serverText = root.firstChild as Text;
+    root.innerHTML = "<p>server text</p>";
+    const serverText = root.querySelector("p")?.firstChild as Text;
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const owner = createTestOwner();
-    let clientText!: JSX.Element;
+    let clientText!: Text;
 
     runWithOwner(owner, () => {
       withHydration(() => {
-        clientText = $txt("client text");
+        const paragraph = $template("<p>client text</p>")();
+        clientText = paragraph.firstChild as Text;
       }, root);
     });
 
@@ -89,7 +87,7 @@ describe("hydration mismatch diagnostics", () => {
 
     runWithOwner(owner, () => {
       withHydration(() => {
-        const button = $tmpl("button");
+        const button = $template("<button></button>")();
         $attr(button, "title", "client");
       }, root);
     });
@@ -115,7 +113,7 @@ describe("hydration mismatch diagnostics", () => {
 
     runWithOwner(owner, () => {
       withHydration(() => {
-        const label = $tmpl("label");
+        const label = $template("<label></label>")();
         $attr(label, "aria-hidden", value);
       }, root);
     });
@@ -135,7 +133,7 @@ describe("hydration mismatch diagnostics", () => {
 
     runWithOwner(owner, () => {
       withHydration(() => {
-        const button = $tmpl("button");
+        const button = $template("<button></button>")();
         $attr(button, "disabled", true);
       }, root);
     });
@@ -155,7 +153,7 @@ describe("hydration mismatch diagnostics", () => {
 
     runWithOwner(owner, () => {
       withHydration(() => {
-        const paragraph = $tmpl("p");
+        const paragraph = $template("<p></p>")();
         $attr(paragraph, "title", "client");
       }, root);
     });
@@ -175,7 +173,7 @@ describe("hydration mismatch diagnostics", () => {
 
     runWithOwner(owner, () => {
       withHydration(() => {
-        clientElement = $tmpl("main");
+        clientElement = $template("<main></main>")();
       }, root);
     });
 
@@ -218,14 +216,14 @@ describe("hydration mismatch diagnostics", () => {
     const serverSpan = root.querySelector("span");
     const owner = createTestOwner();
     let clientSpan!: Element;
-    let clientText!: JSX.Element;
+    let clientText!: Text;
 
     runWithOwner(owner, () => {
       withHydration(() => {
         withServerRenderedLazy("100", () => {
           finishServerRenderedLazy("100");
-          clientSpan = $tmpl("span");
-          clientText = $txt("server");
+          clientSpan = $template("<span>server</span>")();
+          clientText = clientSpan.firstChild as Text;
         });
       }, root);
     });
@@ -251,7 +249,7 @@ describe("hydration mismatch diagnostics", () => {
 
       // This render is a sibling of the old lazy route, not part of its
       // hydration boundary.
-      $txt("new route content");
+      $template("<p>new route content</p>")();
     });
 
     expect(warn).not.toHaveBeenCalled();
@@ -261,14 +259,14 @@ describe("hydration mismatch diagnostics", () => {
 
   it("still diagnoses missing nodes inside an actual server-rendered lazy boundary", () => {
     const root = document.createElement("div");
-    root.innerHTML = "<!--l:100--><!--/l:100-->";
+    root.innerHTML = "<!--l:100--><span></span><!--/l:100-->";
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const owner = createTestOwner();
 
     runWithOwner(owner, () => {
       withHydration(() => {
         withServerRenderedLazy("100", () => {
-          $txt("expected from SSR");
+          $template("<span>expected from SSR</span>")();
         });
       }, root);
     });
@@ -292,8 +290,7 @@ describe("hydration mismatch diagnostics", () => {
       // The app has already hydrated. This lazy component is now being
       // mounted by client-side navigation and has no SSR range to claim.
       withServerRenderedLazy("100", () => {
-        $tmpl("section");
-        $txt("client navigation page");
+        $template("<section>client navigation page</section>")();
         finishServerRenderedLazy("100");
       });
     });
@@ -308,8 +305,7 @@ describe("hydration mismatch diagnostics", () => {
     const owner = createTestOwner();
 
     runWithOwner(owner, () => {
-      $tmpl("main");
-      $txt("client-only");
+      $template("<main>client-only</main>")();
     });
 
     expect(warn).not.toHaveBeenCalled();

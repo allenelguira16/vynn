@@ -468,12 +468,12 @@ function getServerRenderedNodes(root: Node) {
     }
 
     if (isElement(node)) {
-      // Metadata rendered through Vynn's head registry is claimed separately
-      // by $headTmpl and must not consume the application's element queue.
+      // Head metadata and inert fallback templates are managed outside the
+      // document's ordinary DOM walk and must not shift body hydration claims.
       if (
-        node.parentElement?.localName === "head" &&
-        node.hasAttribute("key") &&
-        (node.localName === "title" || node.localName === "meta" || node.localName === "link")
+        (node.parentElement?.localName === "head" &&
+          (node.localName === "title" || node.localName === "meta" || node.localName === "link")) ||
+        (node.localName === "template" && node.hasAttribute("data-vynn-head-fallback"))
       ) {
         return;
       }

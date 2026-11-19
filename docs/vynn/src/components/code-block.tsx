@@ -12,6 +12,7 @@ import { $state } from "vynn";
 const grammars = {
   json: jsonGrammar,
   ts: tsGrammar,
+  tsx: tsGrammar,
   bash: bashGrammar,
   html: htmlGrammar,
 };
@@ -31,7 +32,7 @@ function wrapHTML(content: string): string {
 }
 
 function highlight(code: string, lang: keyof typeof grammars): string {
-  if (lang !== "json" && lang !== "ts" && lang !== "bash") {
+  if (lang !== "json" && lang !== "ts" && lang !== "tsx" && lang !== "bash") {
     return wrapHTML(escapeHTML(code));
   }
 

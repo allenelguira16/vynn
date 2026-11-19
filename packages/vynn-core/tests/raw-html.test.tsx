@@ -8,25 +8,24 @@ import { renderToDOM } from "../src/client/render-to-dom";
 import { $state } from "../src/reactivity/$state";
 import { $attr } from "../src/render/$attr";
 import { $insert } from "../src/render/$insert";
-import { $tmpl } from "../src/render/$tmpl";
-import { $txt } from "../src/render/$txt";
+import { $template } from "../src/render/$template";
 import { renderToServer } from "../src/server/render-to-server";
 
 const parsedCode = '<pre><code class="language-ts">const value = 1 &amp; 2;</code></pre>';
 
 function RawHtmlApp(): JSX.Element {
-  const main = $tmpl("main");
+  const main = $template("<main></main>")();
 
   $insert(main, () => {
-    const content = $tmpl("div");
+    const content = $template("<div></div>")();
     $attr(content, "className", "not-prose multiline-mockup-code");
     $attr(content, "html", parsedCode);
     return content as unknown as JSX.Element;
   });
 
   $insert(main, () => {
-    const paragraph = $tmpl("p");
-    $insert(paragraph, $txt("After raw HTML"));
+    const paragraph = $template("<p></p>")();
+    $insert(paragraph, "After raw HTML");
     return paragraph as unknown as JSX.Element;
   });
 
@@ -72,7 +71,7 @@ describe("raw HTML content", () => {
     let element!: Element;
 
     const unmount = renderToDOM(() => {
-      element = $tmpl("div");
+      element = $template("<div></div>")();
       $attr(element, "html", () => html.value);
       return element as unknown as JSX.Element;
     }, host);
@@ -110,9 +109,9 @@ describe("raw HTML content", () => {
   it("rejects combining raw HTML with Vynn-managed children during SSR", () => {
     expect(() =>
       renderToServer(() => {
-        const element = $tmpl("div");
+        const element = $template("<div></div>")();
         $attr(element, "html", "<strong>Raw</strong>");
-        $insert(element, $txt("Managed child"));
+        $insert(element, "Managed child");
         return element as unknown as JSX.Element;
       }, "sync"),
     ).toThrow("An element cannot have both the `html` prop and children.");

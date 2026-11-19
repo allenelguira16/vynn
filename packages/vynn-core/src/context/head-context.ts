@@ -3,16 +3,32 @@ import { getContext, setContext } from "../life-cycle/owner";
 
 export type HeadTag = "title" | "meta" | "link";
 
-export type HeadEntry = {
-  element: object;
+export type HeadGroup = {
   order: number;
+  entries: HeadEntry[];
+  initializing: boolean;
+};
+
+export type HeadEntry = {
+  tag: HeadTag;
+  attributes: Record<string, string>;
+  children: string;
+  identity: string;
+  order: number;
+  collection?: string;
+  collectionRoot?: boolean;
+  group?: HeadGroup;
 };
 
 export type HeadContext = {
   entries: HeadEntry[];
+  groups: HeadGroup[];
+  activeElements: Map<string, HTMLElement>;
+  preserveInitialDocument: boolean;
   candidates: Map<HeadTag, HTMLElement[]>;
+  fallbackTemplate: HTMLTemplateElement | null;
+  initialNodes: Node[];
   nextOrder: number;
-  buildingHeadElements: number;
   listeners: Set<() => void>;
 };
 
@@ -20,16 +36,23 @@ const HEAD_CONTEXT = Symbol.for("vynn.head-context");
 
 function createHeadContext(): HeadContext {
   const candidates = new Map<HeadTag, HTMLElement[]>();
+  const fallbackTemplate =
+    typeof document === "undefined"
+      ? null
+      : (document.head.querySelector("template[data-vynn-head-fallback]") as HTMLTemplateElement | null);
 
   if (typeof document !== "undefined") {
     for (const tag of ["title", "meta", "link"] as const) {
       candidates.set(
         tag,
-        Array.from(document.head.querySelectorAll<HTMLElement>(tag)).filter((element) => {
-          if (isWithinInternalRange(element)) return false;
+        [
+          ...Array.from(document.head.children),
+          ...Array.from(fallbackTemplate?.content.children ?? []),
+        ].filter((element) => {
+          if (element.localName !== tag || isWithinInternalRange(element)) return false;
 
-          // Generated CSR shells contain unkeyed stylesheet links. They are
-          // framework assets, not candidates for app-owned head metadata.
+          // Vite-owned stylesheets belong to the document shell, not to
+          // application metadata declarations.
           if (
             tag === "link" &&
             element.getAttribute("rel")?.toLowerCase().split(/\s+/).includes("stylesheet") &&
@@ -39,16 +62,20 @@ function createHeadContext(): HeadContext {
           }
 
           return true;
-        }),
+        }) as HTMLElement[],
       );
     }
   }
 
   return {
     entries: [],
+    groups: [],
+    activeElements: new Map(),
+    preserveInitialDocument: false,
     candidates,
+    fallbackTemplate,
+    initialNodes: typeof document === "undefined" ? [] : [...document.head.childNodes],
     nextOrder: 0,
-    buildingHeadElements: 0,
     listeners: new Set(),
   };
 }
@@ -63,7 +90,7 @@ export function getHeadContext(): HeadContext {
   const context = getOptionalHeadContext();
 
   if (!context) {
-    throw new Error("[vynn]: getHeadContext must be initialized with initializeHeadContext");
+    throw new Error("[vynn]: Head rendering requires an initialized document context.");
   }
 
   return context;
@@ -71,7 +98,7 @@ export function getHeadContext(): HeadContext {
 
 /**
  * Initializes a fresh document-head registry for a client or server render.
- * Existing matching head nodes are collected as candidates for reuse.
+ * Existing document-head children are retained as candidates for reconciliation.
  */
 export function initializeHeadContext(): HeadContext {
   const context = createHeadContext();
@@ -79,18 +106,52 @@ export function initializeHeadContext(): HeadContext {
   return context;
 }
 
+/** Refreshes candidates after a client-only full-document root is installed. */
+export function refreshHeadCandidates(context: HeadContext): void {
+  const fallbackTemplate = document.head.querySelector(
+    "template[data-vynn-head-fallback]",
+  ) as HTMLTemplateElement | null;
+
+  const candidates = new Map<HeadTag, HTMLElement[]>();
+
+  for (const tag of ["title", "meta", "link"] as const) {
+    candidates.set(
+      tag,
+      [
+        ...Array.from(document.head.children),
+        ...Array.from(fallbackTemplate?.content.children ?? []),
+      ].filter((element) => {
+        if (element.localName !== tag || isWithinInternalRange(element)) return false;
+
+        if (
+          tag === "link" &&
+          element.getAttribute("rel")?.toLowerCase().split(/\s+/).includes("stylesheet") &&
+          !element.hasAttribute("key")
+        ) {
+          return false;
+        }
+
+        return true;
+      }) as HTMLElement[],
+    );
+  }
+
+  context.candidates = candidates;
+  context.fallbackTemplate = fallbackTemplate;
+}
+
 /** Notifies subscribers that the head registry has changed. */
 export function notifyHeadContext(context: HeadContext): void {
   for (const listener of context.listeners) listener();
 }
 
-/** Subscribes to head registry changes without depending on a rendering mode. */
+/** Subscribes to registry changes for SSR streaming head patches. */
 export function subscribeHeadContext(context: HeadContext, listener: () => void): () => void {
   context.listeners.add(listener);
   return () => context.listeners.delete(listener);
 }
 
-/** Creates the stable identity used to match and deduplicate metadata tags. */
+/** Returns the base identity used to match singleton metadata declarations. */
 export function getHeadIdentity(
   tag: HeadTag,
   getAttribute: (name: string) => string | null,
@@ -123,16 +184,101 @@ export function getHeadIdentity(
   return `head:${order}`;
 }
 
-/** Returns the last registered entry for each metadata identity. */
-export function getHeadWinners(
-  context: HeadContext,
-  getIdentity: (entry: HeadEntry) => string,
-): HeadEntry[] {
-  const winners = new Map<string, HeadEntry>();
+/**
+ * Open Graph declares these properties as ordered arrays. Structured image,
+ * video, and audio properties belong to their preceding root property.
+ */
+export function getHeadCollectionIdentity(
+  tag: HeadTag,
+  getAttribute: (name: string) => string | null,
+): { key: string; root: boolean } | undefined {
+  if (tag !== "meta") return undefined;
 
-  for (const entry of context.entries) {
-    winners.set(getIdentity(entry), entry);
+  const property = getAttribute("property")?.toLowerCase();
+  if (!property) return undefined;
+
+  const roots = ["og:image", "og:video", "og:audio", "og:locale:alternate"];
+
+  for (const root of roots) {
+    if (property === root || property.startsWith(`${root}:`)) {
+      return {
+        key: `meta:property:${root}`,
+        root: property === root || (root === "og:image" && property === "og:image:url"),
+      };
+    }
   }
 
-  return [...winners.values()].sort((a, b) => a.order - b.order);
+  return undefined;
+}
+
+/** Returns collections explicitly replaced by currently active nested <head> groups. */
+export function getReplacedHeadCollections(context: HeadContext): Set<string> {
+  const replaced = new Set<string>();
+
+  for (const group of context.groups) {
+    for (const entry of group.entries) {
+      if (entry.collectionRoot && entry.collection) replaced.add(entry.collection);
+    }
+  }
+
+  return replaced;
+}
+
+/**
+ * Resolves metadata declarations by ownership layer. Individual declarations
+ * replace singleton identities and append array values. A nested <head> group
+ * replaces inherited values for each identity or array collection it declares.
+ */
+export function getHeadWinners(context: HeadContext): HeadEntry[] {
+  const latestGroupByIdentity = new Map<string, HeadGroup>();
+  const latestGroupByCollection = new Map<string, HeadGroup>();
+
+  for (const group of [...context.groups].sort((left, right) => left.order - right.order)) {
+    for (const entry of group.entries) {
+      if (entry.collectionRoot && entry.collection) {
+        latestGroupByCollection.set(entry.collection, group);
+      } else if (!entry.collection) {
+        latestGroupByIdentity.set(entry.identity, group);
+      }
+    }
+  }
+
+  const winners: HeadEntry[] = [];
+  const singletonEntries = new Map<string, HeadEntry[]>();
+  const collectionEntries = new Map<string, HeadEntry[]>();
+
+  for (const entry of context.entries) {
+    if (entry.collection) {
+      const entries = collectionEntries.get(entry.collection) ?? [];
+      entries.push(entry);
+      collectionEntries.set(entry.collection, entries);
+    } else {
+      const entries = singletonEntries.get(entry.identity) ?? [];
+      entries.push(entry);
+      singletonEntries.set(entry.identity, entries);
+    }
+  }
+
+  for (const [identity, entries] of singletonEntries) {
+    const group = latestGroupByIdentity.get(identity);
+    const eligible = group
+      ? entries.filter(
+          (entry) => entry.group === group || (!entry.group && entry.order > group.order),
+        )
+      : entries;
+    const winner = eligible.at(-1);
+    if (winner) winners.push(winner);
+  }
+
+  for (const [collection, entries] of collectionEntries) {
+    const group = latestGroupByCollection.get(collection);
+    const eligible = group
+      ? entries.filter(
+          (entry) => entry.group === group || (!entry.group && entry.order > group.order),
+        )
+      : entries;
+    winners.push(...eligible);
+  }
+
+  return winners.sort((left, right) => left.order - right.order);
 }

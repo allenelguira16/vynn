@@ -47,6 +47,7 @@ export function $spread<E extends Element, P extends Record<string, any>>(
   element: E,
   props: () => P,
 ): void {
+
   if (isServer()) {
     const next = props() ?? ({} as P);
 

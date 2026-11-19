@@ -3,17 +3,16 @@ import type { JSX } from "../jsx-runtime";
 import { claimHydrationText, isHydrationClaimActive } from "../client/hydration";
 import { synchronizeHydrationText } from "../client/hydration-diagnostics";
 import { isServer } from "../context/is-server-context";
-import { isCreatingHeadElement } from "./$head";
+import { isCreatingHeadElement } from "./head-runtime";
 import { createSSRText } from "./resolve-node";
 
 /**
  * Creates a text node for static JSX text.
  *
- * The SSR branch returns Vynn's internal text node so the server renderer
- * can escape and serialize it. The DOM branch creates a real Text node,
- * rather than deferring the string-to-node conversion until tree resolution.
+ * Claiming happens immediately, when the fragment is evaluated, so static
+ * text cannot be overtaken by a later dynamic child that resolves eagerly.
  */
-export function $txt(value: string): JSX.Element {
+export function $text(value: string): JSX.Element {
   if (isServer()) {
     return createSSRText(value) as unknown as JSX.Element;
   }

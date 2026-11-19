@@ -4,31 +4,43 @@ import type { JSX } from "../src/types/jsx";
 
 import { APPLY_HEAD_PATCH_SSR_KEY } from "../src/const";
 import { getOwner } from "../src/life-cycle/owner";
-import { $attr } from "../src/render/$attr";
-import { $head, $headTmpl } from "../src/render/$head";
+import { $registerHead, $registerHeadGroup } from "../src/render/head-runtime";
+import { $child, $sibling, $template } from "../src/render/$template";
 import { $insert } from "../src/render/$insert";
-import { $txt } from "../src/render/$txt";
-import { createSSRAsync } from "../src/render/resolve-node";
+import { createSSRAsync, createSSRNode } from "../src/render/resolve-node";
 import { renderToServer } from "../src/server/render-to-server";
 
 describe("JSX head rendering", () => {
-  it("serializes metadata into the render result and excludes it from body HTML", async () => {
+  it("serializes a complete document with a marker-free reactive title", () => {
+    const rendered = renderToServer(() => {
+      const html = $template(
+        '<html lang="en"><head><meta charset="utf-8"><title></title></head><body><!--$v0--></body></html>',
+      )();
+      const head = $child(html);
+      const charset = $child(head);
+      const title = $sibling(charset);
+      const body = $sibling(head);
+
+      $insert(title, ["Vynn SSR Sandbox ", 0] as unknown as JSX.Element);
+      $insert(body, "Document body", "0");
+
+      return html as unknown as JSX.Element;
+    }, "sync");
+
+    expect(rendered.body).toBe(
+      '<html lang="en"><head><meta charset="utf-8"><title>Vynn SSR Sandbox 0</title></head><body>Document body<!--$v0--></body></html>',
+    );
+    expect(rendered.body).not.toContain("<!--$vs");
+    expect(rendered.head.render()).toBe("");
+  });
+
+  it("serializes metadata descriptions without creating body elements", async () => {
     const rendered = await renderToServer(() => {
-      const title = $headTmpl("title");
-      $insert(title, $txt("Profile | Vynn"));
-      $head(title);
+      $registerHead("title", { children: "Profile | Vynn" });
+      $registerHead("meta", { name: "description", content: "A Vynn profile." });
+      $registerHead("link", { rel: "canonical", href: "https://example.com/profile" });
 
-      const description = $headTmpl("meta");
-      $attr(description, "name", "description");
-      $attr(description, "content", "A Vynn profile.");
-      $head(description);
-
-      const canonical = $headTmpl("link");
-      $attr(canonical, "rel", "canonical");
-      $attr(canonical, "href", "https://example.com/profile");
-      $head(canonical);
-
-      return [title, description, canonical] as unknown as JSX.Element;
+      return null;
     }, "async");
 
     expect(rendered.body).toBe("");
@@ -41,23 +53,71 @@ describe("JSX head rendering", () => {
     );
   });
 
+  it("keeps a complete HTML document root while serializing metadata separately", () => {
+    const rendered = renderToServer(() => {
+      const html = createSSRNode("html");
+      const head = createSSRNode("head");
+      const body = createSSRNode("body");
+
+      $insert(html as unknown as Element, [head, body] as unknown as JSX.Element);
+      $registerHead("title", { children: "Vynn application" });
+      $registerHead("meta", { name: "description", content: "Full document rendering" });
+      $insert(body as unknown as Element, "Document body");
+
+      return html as unknown as JSX.Element;
+    }, "sync");
+
+    expect(rendered.body).toBe("<html><head></head><body>Document body</body></html>");
+    expect(rendered.head.render()).toContain('<title key="title">Vynn application</title>');
+    expect(rendered.head.render()).toContain('name="description"');
+  });
+
   it("uses the last active registration for duplicate metadata identities", async () => {
     const rendered = await renderToServer(() => {
-      const first = $headTmpl("meta");
-      $attr(first, "name", "description");
-      $attr(first, "content", "Layout description");
-      $head(first);
-
-      const second = $headTmpl("meta");
-      $attr(second, "name", "description");
-      $attr(second, "content", "Page description");
-      $head(second);
-
+      $registerHead("meta", { name: "description", content: "Layout description" });
+      $registerHead("meta", { name: "description", content: "Page description" });
       return null;
     }, "async");
 
-    expect(rendered.head.render()).toContain('content="Page description"');
+    expect(rendered.head.render()).toContain('name="description"');
     expect(rendered.head.render()).not.toContain("Layout description");
+  });
+
+  it("preserves repeated Open Graph image declarations", async () => {
+    const rendered = await renderToServer(() => {
+      $registerHead("meta", { property: "og:image", content: "/first.jpg" });
+      $registerHead("meta", { property: "og:image", content: "/second.jpg" });
+      return null;
+    }, "async");
+
+    const html = rendered.head.render();
+    expect(html.match(/property="og:image"/g)).toHaveLength(2);
+    expect(html).toContain('content="/first.jpg"');
+    expect(html).toContain('content="/second.jpg"');
+  });
+
+  it("replaces inherited singleton values and Open Graph collections as a group", async () => {
+    const rendered = await renderToServer(() => {
+      $registerHead("meta", { name: "description", content: "Layout description" });
+      $registerHead("meta", { property: "og:image", content: "/layout-first.jpg" });
+      $registerHead("meta", { property: "og:image", content: "/layout-second.jpg" });
+
+      $registerHeadGroup(() => [
+        $registerHead("meta", { name: "description", content: "Page description" }),
+        $registerHead("meta", { property: "og:image", content: "/page-first.jpg" }),
+        $registerHead("meta", { property: "og:image", content: "/page-second.jpg" }),
+      ]);
+
+      return "Page";
+    }, "async");
+
+    const html = rendered.head.render();
+    expect(html).toContain('content="Page description"');
+    expect(html).not.toContain("Layout description");
+    expect(html).not.toContain("/layout-first.jpg");
+    expect(html).not.toContain("/layout-second.jpg");
+    expect(html.match(/property="og:image"/g)).toHaveLength(2);
+    expect(html).toContain('data-vynn-head-replace="meta:property:og:image"');
   });
 
   it("emits late head metadata when an SSR async boundary resolves", async () => {
@@ -66,10 +126,7 @@ describe("JSX head rendering", () => {
         createSSRAsync(
           () => [],
           () => {
-            const title = $headTmpl("title");
-            $insert(title, $txt("Late stream title"));
-            $head(title);
-
+            $registerHead("title", { children: "Late stream title" });
             return [];
           },
           [Promise.resolve()],
@@ -98,6 +155,21 @@ describe("JSX head rendering", () => {
     expect(patchIndex).toBeGreaterThan(runtimeIndex);
     expect(patches.some((value) => value.includes('key="title"'))).toBe(true);
     expect(patches.some((value) => value.includes("Late stream title"))).toBe(true);
+  });
+
+  it("evaluates descriptor getters during server rendering", async () => {
+    const rendered = await renderToServer(() => {
+      const description = { value: "First description" };
+      $registerHead("meta", {
+        name: "description",
+        get content() {
+          return description.value;
+        },
+      });
+      return null;
+    }, "async");
+
+    expect(rendered.head.render()).toContain('name="description"');
   });
 
   it("creates and disposes one independent Owner for each render", () => {

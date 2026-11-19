@@ -1,0 +1,229 @@
+// @vitest-environment jsdom
+import { afterEach, describe, expect, it } from "vitest";
+
+import { withHydration } from "../src/client/hydration";
+import { initializeHeadContext } from "../src/context/head-context";
+import { createOwner, disposeOwner, runWithOwner } from "../src/life-cycle/owner";
+import { $attr } from "../src/render/$attr";
+import { $insert } from "../src/render/$insert";
+import { $child, $finishTemplate, $sibling, $template } from "../src/render/$template";
+import { SVG_NAMESPACE, withDOMNamespace } from "../src/render/namespace";
+import { $state } from "../src/reactivity/state";
+import { renderToServer } from "../src/server/render-to-server";
+import type { JSX } from "../src/types/jsx";
+
+function createTestOwner() {
+  const owner = createOwner();
+  runWithOwner(owner, initializeHeadContext);
+  return owner;
+}
+
+afterEach(() => {
+  document.body.innerHTML = "";
+});
+
+describe("$template", () => {
+  it("clones static markup and inserts dynamic content at its slot", () => {
+    const owner = createTestOwner();
+    const factory = $template(
+      "<section><!--$v0--><span>static sibling</span><!--$v1--></section>",
+    );
+
+    let root!: Element;
+
+    runWithOwner(owner, () => {
+      root = factory();
+      $attr(root, "title", "bound");
+      $insert(root, "dynamic child", "0");
+      $insert(root, "second dynamic child", "1");
+      $finishTemplate(root);
+    });
+
+    expect(root.getAttribute("title")).toBe("bound");
+    expect(root.innerHTML).toBe(
+      "dynamic child<!--$v0--><span>static sibling</span>second dynamic child<!--$v1-->",
+    );
+
+    disposeOwner(owner);
+  });
+
+  it("preserves explicit empty text nodes in static markup", () => {
+    const owner = createTestOwner();
+    const factory = $template('<div><!--$0--><span>after</span></div>');
+
+    let root!: Element;
+
+    runWithOwner(owner, () => {
+      root = factory();
+      $finishTemplate(root);
+    });
+
+    expect(root.childNodes[0].nodeType).toBe(Node.TEXT_NODE);
+    expect(root.childNodes[0].textContent).toBe("");
+    expect(root.childNodes[1]).toBe(root.querySelector("span"));
+
+    disposeOwner(owner);
+  });
+
+  it("keeps dynamic bindings attached to the right template instance", async () => {
+    const owner = createTestOwner();
+    const firstTitle = $state("first");
+    const secondTitle = $state("second");
+    const factory = $template("<button></button>");
+
+    let first!: Element;
+    let second!: Element;
+
+    runWithOwner(owner, () => {
+      first = factory();
+      second = factory();
+
+      $attr(first, "title", () => firstTitle.value);
+      $attr(second, "title", () => secondTitle.value);
+    });
+
+    expect(first.getAttribute("title")).toBe("first");
+    expect(second.getAttribute("title")).toBe("second");
+
+    firstTitle.value = "updated first";
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(first.getAttribute("title")).toBe("updated first");
+    expect(second.getAttribute("title")).toBe("second");
+
+    disposeOwner(owner);
+  });
+
+  it("clones SVG templates in the active namespace", () => {
+    const owner = createTestOwner();
+    const factory = $template('<path d="M0 0L10 10"></path>');
+
+    let path!: Element;
+
+    runWithOwner(owner, () => {
+      path = withDOMNamespace(SVG_NAMESPACE, () => factory());
+      $attr(path, "stroke-width", "2");
+    });
+
+    expect(path.localName).toBe("path");
+    expect(path.namespaceURI).toBe(SVG_NAMESPACE);
+    expect(path.getAttribute("stroke-width")).toBe("2");
+
+    disposeOwner(owner);
+  });
+
+  it("navigates cloned template nodes with native child and sibling helpers", () => {
+    const owner = createTestOwner();
+    const factory = $template("<main><section>nested</section><footer>after</footer></main>");
+
+    let root!: Element;
+    let section!: Element;
+    let footer!: Element;
+
+    runWithOwner(owner, () => {
+      root = factory();
+      section = $child(root);
+      footer = $sibling(section);
+    });
+
+    expect(section).toBe(root.firstElementChild);
+    expect(footer).toBe(root.lastElementChild);
+
+    disposeOwner(owner);
+  });
+
+  it("hydrates dynamic children before continuing from the returned slot marker", () => {
+    const owner = createTestOwner();
+    const host = document.createElement("div");
+    host.innerHTML =
+      '<main><span>before</span><b>dynamic</b><!--$v0--><span>after</span></main>';
+
+    const rootFactory = $template(
+      '<main><span>before</span><!--$v0--><span>after</span></main>',
+    );
+    const dynamicFactory = $template("<b>dynamic</b>");
+
+    let root!: Element;
+    let before!: Element;
+    let slot!: Comment;
+    let dynamic!: Element;
+    let after!: Element;
+
+    runWithOwner(owner, () => {
+      withHydration(() => {
+        root = rootFactory();
+        before = $child(root);
+        slot = $insert(root, dynamicFactory, "0") as Comment;
+        dynamic = slot.previousSibling as Element;
+        after = $sibling(slot);
+        $finishTemplate(root);
+      }, host);
+    });
+
+    expect(root).toBe(host.firstElementChild);
+    expect(before).toBe(root.firstElementChild);
+    expect(dynamic.localName).toBe("b");
+    expect(dynamic).toBe(slot.previousSibling);
+    expect(after).toBe(root.lastElementChild);
+    expect(root.childNodes[2]).toBe(slot);
+
+    disposeOwner(owner);
+  });
+
+  it("navigates nested template children and then continues at a sibling", () => {
+    const owner = createTestOwner();
+    const host = document.createElement("div");
+    host.innerHTML =
+      "<main><section><span>nested</span></section><footer>after</footer></main>";
+
+    const factory = $template(
+      "<main><section><span>nested</span></section><footer>after</footer></main>",
+    );
+
+    let root!: Element;
+    let section!: Element;
+    let nested!: Element;
+    let footer!: Element;
+
+    runWithOwner(owner, () => {
+      withHydration(() => {
+        root = factory();
+        section = $child(root);
+        nested = $child(section);
+        footer = $sibling(section);
+        $finishTemplate(root);
+      }, host);
+    });
+
+    expect(root).toBe(host.firstElementChild);
+    expect(section).toBe(root.firstElementChild);
+    expect(nested).toBe(section.firstElementChild);
+    expect(footer).toBe(root.lastElementChild);
+
+    disposeOwner(owner);
+  });
+
+  it("builds the SSR node tree from markup and inserts dynamic content at its slot", () => {
+    const factory = $template(
+      "<main><section>nested</section><!--$v0--><footer>after</footer></main>",
+    );
+
+    const result = renderToServer(() => {
+      const root = factory();
+      const section = $child(root);
+      const slot = $insert(root, "dynamic child", "0");
+      const footer = $sibling(slot);
+
+      // Both references are SSR_ELEMENT instances at runtime.
+      void section;
+      void footer;
+
+      return root as unknown as JSX.Element;
+    }, "sync");
+
+    expect(result.body).toBe(
+      "<main><section>nested</section>dynamic child<!--$v0--><footer>after</footer></main>",
+    );
+  });
+});

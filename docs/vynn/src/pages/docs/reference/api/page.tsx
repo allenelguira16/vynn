@@ -306,10 +306,11 @@ const ApiReferencePage = () => (
               <code>vynn/render</code>
             </td>
             <td>
-              <code>$attr</code>, <code>$cache</code>, <code>$cmpnt</code>, <code>$for</code>,
-              <code>$head</code>, <code>$headTmpl</code>, <code>$if</code>, <code>$insert</code>,
-              <code>$nodes</code>, <code>$on</code>, <code>$spread</code>, <code>$tmpl</code>,
-              <code>$txt</code>
+              <code>$attr</code>, <code>$cache</code>, <code>$child</code>, <code>$cmpnt</code>,
+              <code>$finishTemplate</code>, <code>$for</code>, <code>$if</code>, <code>$insert</code>,
+              <code>$nodes</code>, <code>$on</code>, <code>$registerHead</code>,
+              <code>$registerHeadGroup</code>, <code>$sibling</code>, <code>$spread</code>,
+              <code>$template</code>, <code>$text</code>
             </td>
             <td>Low-level JSX runtime helpers imported by generated compiler output.</td>
           </tr>

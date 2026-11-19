@@ -1,15 +1,28 @@
 import type { JSX } from "../jsx-runtime";
-import type { SSR_ELEMENT } from "./resolve-node";
 
 import { isHydrating } from "../client/hydration";
+import { $claimTemplateAnchor } from "./$template";
+import { withHeadElementCreation } from "./head-runtime";
 import { isServer } from "../context/is-server-context";
 import { $renderEffect } from "../reactivity/effect";
 import { hasRawHTMLContent } from "./$attr";
-import { isCreatingHeadElement, runWithHeadElementContext } from "./$head";
 import { getChildDOMNamespace, withDOMNamespace } from "./namespace";
-import { resolveNode, resolveSSRChild } from "./resolve-node";
+import {
+  createSSRText,
+  resolveNode,
+  resolveSSRChild,
+  SSR_ELEMENT,
+  SSR_TEXT,
+  type SSR_NODE,
+} from "./resolve-node";
 
-const initializedHeadChildren = new WeakSet<Element>();
+function getSSRTextContent(node: SSR_NODE): string {
+  if (node instanceof SSR_TEXT) return node.value;
+  if (node instanceof SSR_ELEMENT) {
+    return node.children.map(getSSRTextContent).join("");
+  }
+  return "";
+}
 
 /**
  * Inserts missing nodes around hydrated nodes without moving nodes that are
@@ -63,8 +76,19 @@ function insertInitialNodes<E extends Element>(
 export function $insert<E extends Element>(
   element: E,
   child: (() => JSX.Element) | JSX.Element,
-  before: Node | null = null,
-): void | (() => void) {
+  slotId: string,
+): Node;
+export function $insert<E extends Element>(
+  element: E,
+  child: (() => JSX.Element) | JSX.Element,
+  before?: Node | null,
+): void | (() => void);
+export function $insert<E extends Element>(
+  element: E,
+  child: (() => JSX.Element) | JSX.Element,
+  before: Node | string | null = null,
+): void | (() => void) | Node {
+
   if (isServer()) {
     const parent = element as unknown as SSR_ELEMENT;
 
@@ -76,48 +100,115 @@ export function $insert<E extends Element>(
 
     const childNamespace = getChildDOMNamespace(parent.namespaceURI, parent.type);
     const nodes = resolveSSRChild(() => withDOMNamespace(childNamespace, renderChild));
-    const reference = before as unknown as SSR_ELEMENT | null;
+
+    // A title is RCDATA: comment anchors are serialized as visible text there.
+    // Dynamic title content is therefore compiled as one complete text value.
+    if (parent.type === "title" && typeof before !== "string") {
+      const value = nodes.map(getSSRTextContent).join("");
+      if (value) parent.appendChild(createSSRText(value));
+      return;
+    }
+
+    const reference =
+      typeof before === "string"
+        ? ($claimTemplateAnchor(parent, before) as unknown as SSR_NODE)
+        : (before as unknown as SSR_NODE | null);
 
     for (const node of nodes) {
       parent.insertBefore(node, reference);
     }
 
-    return;
+    return typeof before === "string" ? (reference as unknown as Node) : undefined;
   }
 
   if (hasRawHTMLContent(element)) {
     throw new Error("[vynn]: An element cannot have both the `html` prop and children.");
   }
 
-  const headChildren = isCreatingHeadElement();
+  const slotStartAnchor =
+    typeof before === "string" && element.localName === "title"
+      ? ($claimTemplateAnchor(element, "start-" + before) as Node)
+      : null;
+  const slotAnchor =
+    typeof before === "string"
+      ? ($claimTemplateAnchor(element, before) as Node)
+      : before;
   let oldNodes: Node[] = [];
 
-  // Each JSX child is lowered to its own $insert call. Only the first call
-  // owns the server-rendered child nodes; later calls must manage only the
-  // nodes they insert, otherwise a reactive title child replaces its siblings.
-  if (headChildren && !initializedHeadChildren.has(element)) {
-    initializedHeadChildren.add(element);
-    oldNodes = Array.from(element.childNodes);
-  }
-
-  return $renderEffect(() => {
+  const dispose = $renderEffect(() => {
     // Capture this before resolving children, since resolution claims the SSR
     // nodes and can make the hydration queues appear empty.
-    const initialHydration = !headChildren && oldNodes.length === 0 && isHydrating();
+    const initialHydration = oldNodes.length === 0 && isHydrating();
     const childNamespace = getChildDOMNamespace(element.namespaceURI, element.localName);
     const renderChild = typeof child === "function" ? child : () => child;
-    const resolveChild = () =>
-      withDOMNamespace(childNamespace, () => resolveNode(renderChild, !headChildren));
-    const newNodes = headChildren ? runWithHeadElementContext(resolveChild) : resolveChild();
+    const resolveChildren = () =>
+      resolveNode(renderChild, element.localName !== "title");
+    const newNodes = withDOMNamespace(childNamespace, () =>
+      element.localName === "title"
+        ? withHeadElementCreation(resolveChildren)
+        : resolveChildren(),
+    );
+
+    if (element.localName === "title") {
+      // Keep the complete title as one text node. HTML parses <title> as
+      // RCDATA, so compiler comment markers would become visible characters.
+      const initialTitleNodes: Node[] = [];
+
+      if (initialHydration) {
+        if (
+          slotStartAnchor?.parentNode === element &&
+          slotAnchor?.parentNode === element
+        ) {
+          let current = slotStartAnchor.nextSibling;
+          while (current && current !== slotAnchor) {
+            initialTitleNodes.push(current);
+            current = current.nextSibling;
+          }
+        } else {
+          initialTitleNodes.push(...Array.from(element.childNodes));
+        }
+      }
+
+      const textValue = newNodes.map((node) => node.textContent ?? "").join("");
+      const existingText =
+        oldNodes.find((node): node is Text => node.nodeType === Node.TEXT_NODE) ??
+        initialTitleNodes.find((node): node is Text => node.nodeType === Node.TEXT_NODE);
+      const retained: Node[] = [];
+
+      if (textValue.length > 0) {
+        const text = existingText ?? document.createTextNode(textValue);
+        text.data = textValue;
+
+        if (text.parentNode !== element) {
+          element.insertBefore(
+            text,
+            slotAnchor?.parentNode === element ? slotAnchor : null,
+          );
+        }
+
+        retained.push(text);
+      }
+
+      const retainedSet = new Set(retained);
+      for (const node of [...oldNodes, ...initialTitleNodes]) {
+        if (!retainedSet.has(node) && node.parentNode === element) {
+          element.removeChild(node);
+        }
+      }
+
+      oldNodes = retained;
+      return;
+    }
 
     if (oldNodes.length === 0) {
       if (initialHydration) {
-        insertInitialNodes(element, newNodes, before);
+        insertInitialNodes(element, newNodes, slotAnchor);
       } else {
         // Preserve the original CSR insertion behavior. In CSR, nested
         // render effects may already have inserted nodes that need positioning.
+        const reference = slotAnchor?.parentNode === element ? slotAnchor : null;
         for (const node of newNodes) {
-          element.insertBefore(node, null);
+          element.insertBefore(node, reference);
         }
       }
     } else {
@@ -130,7 +221,7 @@ export function $insert<E extends Element>(
         }
       }
 
-      const reference = before?.parentNode === element ? before : null;
+      const reference = slotAnchor?.parentNode === element ? slotAnchor : null;
 
       // Add new nodes immediately before the caller's anchor, when provided.
       for (let i = length; i < newNodes.length; i++) {
@@ -147,4 +238,6 @@ export function $insert<E extends Element>(
 
     oldNodes = newNodes;
   });
+
+  return typeof before === "string" ? slotAnchor! : dispose;
 }

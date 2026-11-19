@@ -1,5 +1,4 @@
 import { CodeBlock } from "../../../../components/code-block";
-
 const CompilerPage = () => (
   <article>
     <p class="mb-3 text-sm font-semibold uppercase tracking-wider text-primary">Reference</p>
@@ -8,7 +7,6 @@ const CompilerPage = () => (
       Vynn's JSX compiler is a separate package powered by Oxc and esrap. The compiler is build-tool
       independent; the Vite plugin provides the integration most applications need.
     </p>
-
     <h2>Use the Vite plugin when possible</h2>
     <p>
       For a Vite application, install <code>vite-plugin-vynn</code> and add
@@ -22,7 +20,6 @@ const CompilerPage = () => (
         'import { defineConfig } from "vite";\nimport vynn from "vite-plugin-vynn";\n\nexport default defineConfig({\n  plugins: [vynn()],\n});'
       }
     />
-
     <h2>Transform source programmatically</h2>
     <p>
       Use <code>vynn-compiler</code> directly when integrating Vynn into another build system or
@@ -39,7 +36,6 @@ const CompilerPage = () => (
       <code>WithMap</code> variant returns an object containing <code>code</code> and a source
       <code>map</code> (or <code>null</code> when no transform is needed).
     </p>
-
     <h2>How JSX becomes JavaScript</h2>
     <p>
       JSX is syntax that the browser does not understand. Vynn's compiler parses the TSX module with
@@ -62,7 +58,7 @@ const CompilerPage = () => (
     <CodeBlock
       lang="ts"
       code={
-        'import {\n  $cmpnt as _$cmpnt,\n  $tmpl as _$tmpl,\n  $txt as _$txt,\n  $insert as _$insert,\n} from "vynn/render";\n\nconst Greeting = _$cmpnt(function Greeting(props: { name: string }) {\n  const el1 = _$tmpl("h1");\n  _$insert(el1, _$txt("Hello "));\n  _$insert(el1, () => props.name);\n  return el1;\n});\n\nconst App = _$cmpnt(function App() {\n  return Greeting({\n    get name() {\n      return "Ada";\n    },\n  });\n});'
+        'import {\n  $cmpnt as _$cmpnt,\n  $template as _$template,\n  $insert as _$insert,\n} from "vynn/render";\n\nconst _tmpl = _$template("<h1>Hello <!--$v0--></h1>");\n\nconst Greeting = _$cmpnt(function Greeting(props: { name: string }) {\n  const el1 = _tmpl();\n  _$insert(el1, () => props.name, "0");\n  return el1;\n});\n\nconst App = _$cmpnt(function App() {\n  return Greeting({\n    get name() {\n      return "Ada";\n    },\n  });\n});'
       }
     />
     <p>
@@ -86,8 +82,7 @@ const CompilerPage = () => (
       </li>
       <li>
         <strong>Native tags become DOM instructions.</strong> <code>&lt;h1&gt;</code> becomes
-        <code>$tmpl("h1")</code>; static text becomes <code>$txt("Hello ")</code>; and
-        <code>$insert()</code> inserts the text and the dynamic child into the element.
+        <code>$template()</code> creates a reusable static template; dynamic children occupy comment slots handled by <code>$insert()</code>. Dynamic <code>&lt;title&gt;</code> content is the exception: it is compiled as one text binding because the browser parses title contents as RCDATA.
       </li>
       <li>
         <strong>Dynamic expressions stay lazy.</strong> <code>props.name</code> becomes a getter
@@ -111,6 +106,88 @@ const CompilerPage = () => (
       <code>$cmpnt()</code>, and using it in JSX is compiled into an ordinary function call. The
       wrapper supplies Vynn's owner and lifecycle behavior; the generated render calls handle the
       DOM and reactive updates.
+    </p>
+    <h2>Own the document from app.tsx</h2>
+    <p>
+      An application root can return the complete HTML document instead of a body-only subtree.
+      Keep the <code>&lt;html&gt;</code>, <code>&lt;head&gt;</code>, and <code>&lt;body&gt;</code> in
+      your app component. Vynn compiles that complete tree into one reusable document template.
+      Metadata written inside the document's root <code>&lt;head&gt;</code> stays in place as
+      ordinary template markup; it is not extracted into individual head-registration calls.
+      Dynamic attributes and children are bound directly to nodes in the template.
+    </p>
+    <CodeBlock
+      lang="tsx"
+      code={`import type { JSX } from "vynn";
+
+export default function App(props: { children?: JSX.Element }) {
+  return (
+    <html lang="en-PH">
+      <head>
+        <meta charSet="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>My Vynn application</title>
+        <link rel="icon" href="/favicon.svg" />
+      </head>
+      <body>
+        <main>{props.children}</main>
+      </body>
+    </html>
+  );
+}`}
+    />
+    <p>
+      The compiler output follows the same shape: one document template, then navigation to the
+      existing nodes only where a binding is needed. No separate <code>&lt;html&gt;</code>,
+      <code>&lt;head&gt;</code>, or <code>&lt;body&gt;</code> templates are generated.
+    </p>
+    <CodeBlock
+      lang="ts"
+      code={`import {\n  $template as _$template,\n  $child as _$child,\n  $sibling as _$sibling,\n  $insert as _$insert,\n  $finishTemplate as _$finishTemplate,\n  $cmpnt as _$cmpnt,\n} from "vynn/render";\n\nconst _tmpl$ = _$template(
+  '<html lang="en-PH"><head><meta charset="UTF-8"><title>My Vynn application</title><link rel="icon" href="/favicon.svg"></head><body><main><!--$v0--></main></body></html>'
+);
+
+const App = _$cmpnt(function App(props) {
+  const _el$ = _tmpl$();
+  const _htmlHead$ = _$child(_el$);
+  const _htmlBody$ = _$sibling(_htmlHead$);
+  const _main$ = _$child(_htmlBody$);
+
+  _$insert(_main$, () => props.children, "0");
+  _$finishTemplate(_el$);
+  return _el$;
+});`}
+    />
+    <p>
+      This keeps document structure under application control. The Vite app adapter still places
+      generated client assets and stylesheets in the authored document head. Route components can
+      declare metadata directly, without a head-specific helper:
+    </p>
+    <CodeBlock
+      lang="tsx"
+      code={`export default function ProductPage() {
+  return (
+    <>
+      <head>
+        <meta name="description" content="A product description" />
+        <meta property="og:title" content="Product" />
+        <meta property="og:image" content="/product-large.jpg" />
+        <meta property="og:image" content="/product-square.jpg" />
+      </head>
+
+      <h1>Product</h1>
+    </>
+  );
+}`}
+    />
+    <p>
+      A metadata element outside the document's root <code>&lt;head&gt;</code> is automatically
+      placed there. Bare singleton metadata replaces the inherited value with the same identity,
+      while bare repeatable Open Graph values such as <code>og:image</code> append to the existing
+      collection. A nested <code>&lt;head&gt;</code> creates a replacement group: singleton metadata
+      replaces matching inherited values, and repeatable Open Graph properties replace the inherited
+      collection while keeping every entry declared by the group. When the route is disposed, the
+      previous declarations are restored.
     </p>
     <h2>Compiler options</h2>
     <div class="not-prose my-6 overflow-x-auto">
@@ -150,7 +227,6 @@ const CompilerPage = () => (
       The filename also defaults to <code>module.tsx</code> when omitted. Pass the real filename
       when possible so language inference and source-map metadata are meaningful.
     </p>
-
     <h2>Run the transform before other JSX transforms</h2>
     <p>
       The transform lowers Vynn JSX into runtime calls imported from <code>vynn/render</code>. Make
@@ -163,7 +239,6 @@ const CompilerPage = () => (
       When JSX is present, the compiler parses the module, lowers Vynn-specific JSX behavior, and
       prints the transformed module with source-map support.
     </p>
-
     <h2>What is in vynn/render?</h2>
     <p>
       The compiler lowers JSX into small calls from <code>vynn/render</code>. The entry point is
@@ -182,15 +257,26 @@ const CompilerPage = () => (
         <tbody>
           <tr>
             <td>
-              <code>$tmpl()</code>
+              <code>$template()</code>
             </td>
-            <td>Creates or claims an HTML or SVG element.</td>
+            <td>Creates a reusable HTML or SVG template factory from static markup.</td>
           </tr>
           <tr>
             <td>
-              <code>$txt()</code>
+              <code>$child()</code> and <code>$sibling()</code>
             </td>
-            <td>Creates or claims a text node.</td>
+            <td>
+              Navigate to authored child and sibling nodes in a template, including nodes that
+              hydration has claimed.
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <code>$finishTemplate()</code>
+            </td>
+            <td>
+              Completes the remaining static hydration claims after dynamic template bindings.
+            </td>
           </tr>
           <tr>
             <td>
@@ -224,6 +310,15 @@ const CompilerPage = () => (
           </tr>
           <tr>
             <td>
+              <code>$text()</code>
+            </td>
+            <td>
+              Creates a static fragment text node and claims its server-rendered counterpart in
+              source order during hydration.
+            </td>
+          </tr>
+          <tr>
+            <td>
               <code>$if()</code>
             </td>
             <td>Switches between conditional branches.</td>
@@ -248,19 +343,56 @@ const CompilerPage = () => (
           </tr>
           <tr>
             <td>
-              <code>$head()</code>, <code>$headTmpl()</code>
+              <code>$registerHead()</code>
             </td>
-            <td>Register and build managed document-head elements.</td>
+            <td>Registers metadata emitted from ordinary JSX elements.</td>
+          </tr>
+          <tr>
+            <td>
+              <code>$registerHeadGroup()</code>
+            </td>
+            <td>Creates the replacement scope emitted for a nested JSX <code>&lt;head&gt;</code>.</td>
           </tr>
         </tbody>
       </table>
     </div>
     <p>
-      Treat this list as a runtime map, not a recommendation to hand-author generated output. The
-      helpers coordinate DOM creation, ownership, reactive updates, and hydration markers; importing
-      only one of them outside compiler output does not replace the surrounding runtime behavior.
+      Fragment text is emitted through <code>$text()</code> rather than left as a raw string value.
+      It creates the text node and claims the matching server-rendered node immediately, preserving
+      source order when a fragment mixes static text and dynamic children. This prevents a later
+      dynamic child from consuming a text node that belongs to an earlier literal.
     </p>
-
+    <h2>HTML and SVG namespaces during hydration</h2>
+    <p>
+      Vynn tracks the current DOM namespace while creating child templates and claiming
+      server-rendered nodes. An <code>&lt;svg&gt;</code> element enters the SVG namespace, children
+      of <code>&lt;foreignObject&gt;</code> use the HTML namespace, and a nested
+      <code>&lt;svg&gt;</code> inside that HTML content enters the SVG namespace again. Hydration
+      checks both an element's tag and its namespace, so a valid SVG node is not mistaken for an
+      HTML element with the same tag name.
+    </p>
+    <CodeBlock
+      lang="tsx"
+      code={`function MixedGraphic() {
+  return (
+    <svg viewBox="0 0 120 80">
+      <foreignObject x="0" y="0" width="120" height="80">
+        <div class="graphic-frame">
+          <svg viewBox="0 0 20 20">
+            <path d="M2 10 L8 16 L18 4" />
+          </svg>
+        </div>
+      </foreignObject>
+    </svg>
+  );
+}`}
+    />
+    <p>
+      Treat the helper list as a runtime map, not a recommendation to hand-author generated output.
+      These helpers coordinate DOM creation, ownership, reactive updates, and hydration markers;
+      importing only one of them outside compiler output does not replace the surrounding runtime
+      behavior.
+    </p>
     <h2>TypeScript configuration</h2>
     <p>Leave JSX in the source for Vynn's compiler and use Vynn's JSX types:</p>
     <CodeBlock
@@ -269,7 +401,6 @@ const CompilerPage = () => (
         '{\n  "compilerOptions": {\n    "target": "ESNext",\n    "module": "ESNext",\n    "moduleResolution": "bundler",\n    "jsx": "preserve",\n    "jsxImportSource": "vynn",\n    "strict": true,\n    "noEmit": true\n  }\n}'
       }
     />
-
     <h2>Plugin options</h2>
     <p>
       The default <code>vynn()</code> plugin accepts these application options:
@@ -295,5 +426,4 @@ const CompilerPage = () => (
     </p>
   </article>
 );
-
 export default CompilerPage;

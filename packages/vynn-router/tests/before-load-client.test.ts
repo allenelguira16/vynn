@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { $state, type JSX } from "vynn";
 import { renderToDOM } from "vynn/client";
-import { $insert, $tmpl, $txt } from "vynn/render";
+import { $insert, $template } from "vynn/render";
 
 import { navigate, redirect, Router, type Route } from "../src";
 
@@ -21,8 +21,8 @@ afterEach(() => {
 });
 
 function textNode(tag: string, value: string): JSX.Element {
-  const element = $tmpl(tag);
-  $insert(element, $txt(value));
+  const element = $template(`<${tag}></${tag}>`)();
+  $insert(element, value);
   return element as unknown as JSX.Element;
 }
 

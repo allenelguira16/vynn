@@ -14,9 +14,8 @@ import { Catch } from "../src/components/catch";
 import { lazy } from "../src/components/lazy";
 import { registerSsrModule } from "../src/context/ssr-module-context";
 import { createOwner, disposeOwner, getOwner, runWithOwner } from "../src/life-cycle/owner";
-import { $head, $headTmpl } from "../src/render/$head";
+import { $registerHead } from "../src/render/head-runtime";
 import { $insert } from "../src/render/$insert";
-import { $txt } from "../src/render/$txt";
 import {
   createSSRAsync,
   createSSRComment,
@@ -208,9 +207,7 @@ describe("renderToServer modes", () => {
     const rendered = renderToServer(() => {
       registerSsrModule("src/pages/synchronous.tsx");
 
-      const title = $headTmpl("title");
-      $insert(title, $txt("Synchronous page"));
-      $head(title);
+      $registerHead("title", { children: "Synchronous page" });
 
       return "Body";
     }, "sync");
@@ -644,6 +641,7 @@ describe("renderToServer modes", () => {
     expect(handler).not.toContain("runWithSsrContext");
     expect(handler).toContain("await render(url.pathname + url.search)");
     expect(handler).toContain("rendered.head.render()");
+    expect(handler).toContain("reconcileHeadMarkup(existing, incoming)");
     expect(handler).toContain("rendered.modules");
     expect(handler).toContain("vynn:internal:start");
     expect(handler).toContain("vynn:internal:end");

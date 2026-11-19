@@ -5,7 +5,6 @@ import { isServer } from "../context/is-server-context";
 import { JSX } from "../jsx-runtime";
 import { getOwner, runWithOwner } from "../life-cycle/owner";
 import { NotReadyError } from "../reactivity/not-ready-error";
-import { isCreatingHeadElement, isHeadElement } from "./$head";
 import { getCurrentDOMNamespace, getElementNamespace, withDOMNamespace } from "./namespace";
 
 /**
@@ -16,12 +15,34 @@ import { getCurrentDOMNamespace, getElementNamespace, withDOMNamespace } from ".
  */
 export abstract class SSR_NODE {
   parent: SSR_ELEMENT | null = null;
+
+  get nextSibling(): SSR_NODE | null {
+    if (!this.parent) return null;
+
+    const index = this.parent.children.indexOf(this);
+    return index === -1 ? null : (this.parent.children[index + 1] ?? null);
+  }
+
+  get previousSibling(): SSR_NODE | null {
+    if (!this.parent) return null;
+
+    const index = this.parent.children.indexOf(this);
+    return index <= 0 ? null : (this.parent.children[index - 1] ?? null);
+  }
 }
 
 /** A server-side representation of an HTML or SVG element. */
 export class SSR_ELEMENT extends SSR_NODE {
   children: SSR_NODE[] = [];
   attributes: Record<string, string> = {};
+
+  get firstChild(): SSR_NODE | null {
+    return this.children[0] ?? null;
+  }
+
+  get lastChild(): SSR_NODE | null {
+    return this.children.at(-1) ?? null;
+  }
   innerHTML?: string;
   namespaceURI: string;
 
@@ -237,8 +258,6 @@ export function resolveNode(child: () => JSX.Element, claimText = true): Node[] 
 }
 
 export function resolveElement(element: JSX.Element, claimText = true): Node[] {
-  if (isHeadElement(element)) return [];
-
   if (element === null || element === undefined || element === false) {
     return [document.createTextNode("")];
   }
@@ -247,7 +266,7 @@ export function resolveElement(element: JSX.Element, claimText = true): Node[] {
     const value = String(element);
     const text = document.createTextNode(value);
 
-    if (claimText && !isCreatingHeadElement()) {
+    if (claimText) {
       const hydrating = isHydrationClaimActive();
       const claimed = claimHydrationText();
 
@@ -273,8 +292,6 @@ export function resolveElement(element: JSX.Element, claimText = true): Node[] {
 }
 
 export function resolveElementString(element: JSX.Element): SSR_NODE[] {
-  if (isHeadElement(element)) return [];
-
   if (element === null || element === undefined || element === false) {
     return [];
   }

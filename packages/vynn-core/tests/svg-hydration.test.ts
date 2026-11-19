@@ -19,7 +19,7 @@ import { $if } from "../src/render/$if";
 import { $insert } from "../src/render/$insert";
 import { $nodes } from "../src/render/$nodes";
 import { $on } from "../src/render/$on";
-import { $tmpl } from "../src/render/$tmpl";
+import { $template } from "../src/render/$template";
 import { createSSRAsync } from "../src/render/resolve-node";
 import { renderToServer } from "../src/server/render-to-server";
 
@@ -43,6 +43,81 @@ afterEach(() => {
 });
 
 describe("SVG namespace rendering", () => {
+  it("hydrates SVG roots nested inside HTML templates using the SVG namespace", () => {
+    const root = document.createElement("div");
+    root.innerHTML =
+      '<main><svg class="icon" viewBox="0 0 32 32"><path d="M0 0"></path></svg><p>after</p></main>';
+
+    const serverMain = root.querySelector("main");
+    const serverSvg = root.querySelector("svg");
+    const serverPath = root.querySelector("path");
+    const serverParagraph = root.querySelector("p");
+
+    const owner = createTestOwner();
+    let main!: Element;
+    let svg!: Element;
+    let path!: Element;
+    let paragraph!: Element;
+
+    runWithOwner(owner, () => {
+      withHydration(() => {
+        main = $template(
+          '<main><svg class="icon" viewBox="0 0 32 32"><path d="M0 0"></path></svg><p>after</p></main>',
+        )();
+        svg = main.querySelector("svg")!;
+        path = main.querySelector("path")!;
+        paragraph = main.querySelector("p")!;
+      }, root);
+    });
+
+    expect(main).toBe(serverMain);
+    expect(svg).toBe(serverSvg);
+    expect(path).toBe(serverPath);
+    expect(paragraph).toBe(serverParagraph);
+    expect(svg.namespaceURI).toBe(SVG_NAMESPACE);
+    expect(path.namespaceURI).toBe(SVG_NAMESPACE);
+
+    disposeOwner(owner);
+  });
+
+  it("keeps foreignObject descendants in HTML and allows nested SVG to re-enter SVG", () => {
+    const root = document.createElement("div");
+    root.innerHTML =
+      '<main><svg><foreignObject><div><svg><path d="M0 0"></path></svg></div></foreignObject></svg></main>';
+
+    const serverMain = root.querySelector("main");
+    const serverSvg = root.querySelector("main > svg");
+    const serverForeignObject = root.querySelector("foreignObject");
+    const serverDiv = root.querySelector("foreignObject div");
+    const serverNestedSvg = root.querySelector("foreignObject div svg");
+    const serverPath = root.querySelector("foreignObject div path");
+
+    const owner = createTestOwner();
+    let main!: Element;
+
+    runWithOwner(owner, () => {
+      withHydration(() => {
+        main = $template(
+          '<main><svg><foreignObject><div><svg><path d="M0 0"></path></svg></div></foreignObject></svg></main>',
+        )();
+      }, root);
+    });
+
+    expect(main).toBe(serverMain);
+    expect(main.firstElementChild).toBe(serverSvg);
+    expect(main.querySelector("foreignObject")).toBe(serverForeignObject);
+    expect(main.querySelector("foreignObject div")).toBe(serverDiv);
+    expect(main.querySelector("foreignObject div svg")).toBe(serverNestedSvg);
+    expect(main.querySelector("foreignObject div path")).toBe(serverPath);
+    expect(serverSvg?.namespaceURI).toBe(SVG_NAMESPACE);
+    expect(serverForeignObject?.namespaceURI).toBe(SVG_NAMESPACE);
+    expect(serverDiv?.namespaceURI).toBe(HTML_NAMESPACE);
+    expect(serverNestedSvg?.namespaceURI).toBe(SVG_NAMESPACE);
+    expect(serverPath?.namespaceURI).toBe(SVG_NAMESPACE);
+
+    disposeOwner(owner);
+  });
+
   it("claims nested SVG elements from the SSR hydration queue in order", () => {
     const root = document.createElement("div");
     root.innerHTML =
@@ -61,20 +136,20 @@ describe("SVG namespace rendering", () => {
 
     runWithOwner(owner, () => {
       withHydration(() => {
-        svg = $tmpl("svg");
+        svg = $template("<svg></svg>")();
 
         $insert(svg, () => {
-          group = $tmpl("g");
+          group = $template("<g></g>")();
 
           $insert(group, () => {
-            path = $tmpl("path");
+            path = $template("<path></path>")();
             return path as unknown as JSX.Element;
           });
 
           return group as unknown as JSX.Element;
         });
 
-        paragraph = $tmpl("p");
+        paragraph = $template("<p></p>")();
       }, root);
     });
 
@@ -100,21 +175,21 @@ describe("SVG namespace rendering", () => {
     let path!: Element;
 
     const SvgChild = () => {
-      path = $tmpl("path");
+      path = $template("<path></path>")();
       return path as unknown as JSX.Element;
     };
 
     runWithOwner(owner, () => {
-      svg = $tmpl("svg");
+      svg = $template("<svg></svg>")();
 
       $insert(svg, () => {
-        foreignObject = $tmpl("foreignObject");
+        foreignObject = $template("<foreignObject></foreignObject>")();
 
         $insert(foreignObject, () => {
-          htmlDiv = $tmpl("div");
+          htmlDiv = $template("<div></div>")();
 
           $insert(htmlDiv, () => {
-            nestedSvg = $tmpl("svg");
+            nestedSvg = $template("<svg></svg>")();
             $insert(nestedSvg, () => SvgChild());
             return nestedSvg as unknown as JSX.Element;
           });
@@ -146,12 +221,12 @@ describe("SVG namespace rendering", () => {
     let svg!: Element;
 
     runWithOwner(owner, () => {
-      svg = $tmpl("svg");
+      svg = $template("<svg></svg>")();
 
       $insert(svg, () =>
         $nodes(() =>
           items.value.map((item) => {
-            const circle = $tmpl("circle");
+            const circle = $template("<circle></circle>")();
             $attr(circle, "data-id", item);
             return circle as unknown as JSX.Element;
           }),
@@ -184,12 +259,12 @@ describe("SVG namespace rendering", () => {
     let svg!: Element;
 
     runWithOwner(owner, () => {
-      svg = $tmpl("svg");
+      svg = $template("<svg></svg>")();
       $insert(svg, () =>
         $if(
           () => visible.value,
           () => {
-            const circle = $tmpl("circle");
+            const circle = $template("<circle></circle>")();
             return circle as unknown as JSX.Element;
           },
         ),
@@ -215,12 +290,12 @@ describe("SVG namespace rendering", () => {
     let svg!: Element;
 
     runWithOwner(owner, () => {
-      svg = $tmpl("svg");
+      svg = $template("<svg></svg>")();
       $insert(svg, () =>
         $for(
           () => items.value,
           (item) => {
-            const circle = $tmpl("circle");
+            const circle = $template("<circle></circle>")();
             $attr(circle, "data-id", item);
             return circle as unknown as JSX.Element;
           },
@@ -273,7 +348,7 @@ describe("SVG namespace rendering", () => {
     const serverPath = root.querySelector("path");
 
     const unmount = hydrateToDOM(() => {
-      const path = $tmpl("path");
+      const path = $template("<path></path>")();
       return path as unknown as JSX.Element;
     }, root);
 
@@ -285,7 +360,7 @@ describe("SVG namespace rendering", () => {
 
   it("preserves the SVG namespace in deferred SSR children", async () => {
     const rendered = renderToServer(() => {
-      const svg = $tmpl("svg");
+      const svg = $template("<svg></svg>")();
 
       $insert(
         svg,
@@ -293,7 +368,7 @@ describe("SVG namespace rendering", () => {
           createSSRAsync(
             () => [],
             () => {
-              const path = $tmpl("path");
+              const path = $template("<path></path>")();
               $attr(path, "strokeWidth", 3);
               return [path as unknown as SSR_NODE];
             },
@@ -311,21 +386,21 @@ describe("SVG namespace rendering", () => {
 
   it("serializes SVG attribute names and foreignObject descendants correctly", async () => {
     const rendered = renderToServer(() => {
-      const svg = $tmpl("svg");
+      const svg = $template("<svg></svg>")();
       $attr(svg, "viewBox", "0 0 24 24");
 
       $insert(svg, () => {
-        const path = $tmpl("path");
+        const path = $template("<path></path>")();
         $attr(path, "strokeWidth", 2);
         $attr(path, "fillRule", "evenodd");
         return path as unknown as JSX.Element;
       });
 
       $insert(svg, () => {
-        const foreignObject = $tmpl("foreignObject");
+        const foreignObject = $template("<foreignObject></foreignObject>")();
 
         $insert(foreignObject, () => {
-          const div = $tmpl("div");
+          const div = $template("<div></div>")();
           $attr(div, "className", "inside");
           return div as unknown as JSX.Element;
         });

@@ -109,8 +109,11 @@ import {
 
 type RuntimeHelperName =
   | "$nodes"
-  | "$txt"
-  | "$tmpl"
+  | "$text"
+  | "$template"
+  | "$child"
+  | "$sibling"
+  | "$finishTemplate"
   | "$cmpnt"
   | "$insert"
   | "$attr"
@@ -119,8 +122,8 @@ type RuntimeHelperName =
   | "$for"
   | "$if"
   | "$cache"
-  | "$head"
-  | "$headTmpl";
+  | "$registerHead"
+  | "$registerHeadGroup";
 
 export type VynnCompilerOptions = {
   /** Override parser language. Usually inferred from the file extension. */
@@ -137,6 +140,23 @@ type ComponentPropAccessStep = {
 
 type IdentifierAllocator = {
   nextElement(): NodeOfType<"Identifier">;
+};
+
+type TemplateNodeShape =
+  | {
+      kind: "element";
+      tag: string;
+      attributes: Array<[string, string]>;
+      children: TemplateNodeShape[];
+    }
+  | { kind: "text"; value: string }
+  | { kind: "anchor"; id: string };
+
+type TemplateBinding = {
+  kind: "attribute" | "spread" | "child" | "title";
+  path: number[];
+  node: Node;
+  slot?: string;
 };
 
 const runtimeImportSource = "vynn/render";
@@ -231,6 +251,8 @@ class TransformState {
   private readonly program: NodeOfType<"Program">;
   private readonly filename: string;
   private readonly runtimeHelpers = new Map<RuntimeHelperName, NodeOfType<"Identifier">>();
+  private readonly templateStatements: Node[] = [];
+  private readonly templateFactories = new Map<string, NodeOfType<"Identifier">>();
   private readonly generatedForExpressions = new WeakSet<object>();
   private readonly generatedIfExpressions = new WeakSet<object>();
   private readonly generatedForIndexReferences = new WeakSet<object>();
@@ -243,65 +265,64 @@ class TransformState {
   private activeForIndexNames: string[] = [];
   private readonly usedNames = new Set<string>();
   private readonly svgDescendants = new WeakSet<object>();
+  private readonly documentHeadNodes = new WeakSet<object>();
+  private readonly documentHeadContentNodes = new WeakSet<object>();
 
   constructor(program: NodeOfType<"Program">, filename: string) {
     this.program = program;
     this.filename = filename;
     this.collectUsedNames(program);
     this.collectSvgDescendants(program, false);
+    this.collectDocumentHeadNodes(program);
   }
 
   private collectSvgDescendants(node: Node, insideSvg: boolean): void {
-    let nestedInSvg = insideSvg;
+    let childrenInsideSvg = insideSvg;
 
     if (isJSXElement(node)) {
       const tagName = isJSXIdentifier(node.openingElement.name)
         ? node.openingElement.name.name.toLowerCase()
         : "";
-      nestedInSvg = insideSvg || tagName === "svg";
+      const isSvgElement = insideSvg || tagName === "svg";
 
-      if (nestedInSvg) this.svgDescendants.add(node);
+      if (isSvgElement) this.svgDescendants.add(node);
+
+      // foreignObject itself is SVG, but its descendants use the HTML namespace.
+      childrenInsideSvg = isSvgElement && tagName !== "foreignobject";
     }
 
-    forEachChild(node, (child) => this.collectSvgDescendants(child, nestedInSvg));
+    forEachChild(node, (child) => this.collectSvgDescendants(child, childrenInsideSvg));
   }
 
-  private getStaticHeadIdentity(node: NodeOfType<"JSXElement">, tagName: string): string | null {
-    if (tagName === "title") return "title";
+  private collectDocumentHeadNodes(
+    node: Node,
+    parentTag: string | null = null,
+    insideDocumentHead = false,
+  ): void {
+    if (isJSXElement(node)) {
+      const tagName = getJSXIdentifierName(node.openingElement.name).toLowerCase();
+      const isDocumentHead = tagName === "head" && parentTag === "html";
+      const insideHead = insideDocumentHead || isDocumentHead;
 
-    const attributes = node.openingElement.attributes.filter(isJSXAttribute);
-    const getAttributeName = (attribute: NodeOfType<"JSXAttribute">): string =>
-      getJSXAttributeName(attribute.name).toLowerCase();
-    const hasAttribute = (name: string): boolean =>
-      attributes.some((attribute) => getAttributeName(attribute) === name);
-    const getStaticValue = (name: string): string | null => {
-      const attribute = attributes.find((candidate) => getAttributeName(candidate) === name);
+      if (isDocumentHead) this.documentHeadNodes.add(node);
+      if (insideHead) this.documentHeadContentNodes.add(node);
 
-      return attribute && isLiteralString(attribute.value) ? attribute.value.value : null;
-    };
-
-    if (tagName === "meta") {
-      if (hasAttribute("charset")) return "meta:charset";
-
-      const name = getStaticValue("name");
-      if (name) return `meta:name:${name.toLowerCase()}`;
-
-      const property = getStaticValue("property");
-      if (property) return `meta:property:${property.toLowerCase()}`;
-
-      const httpEquiv = getStaticValue("http-equiv");
-      if (httpEquiv) return `meta:http-equiv:${httpEquiv.toLowerCase()}`;
+      forEachChild(node, (child) =>
+        this.collectDocumentHeadNodes(child, tagName, insideHead),
+      );
+      return;
     }
 
-    if (tagName === "link") {
-      const rel = getStaticValue("rel")?.toLowerCase();
-      const href = getStaticValue("href") ?? "";
+    forEachChild(node, (child) =>
+      this.collectDocumentHeadNodes(child, parentTag, insideDocumentHead),
+    );
+  }
 
-      if (rel === "canonical") return "link:canonical";
-      if (rel && href) return `link:${rel}:${href}`;
-    }
-
-    return null;
+  private isHeadGroupElement(node: NodeOfType<"JSXElement">): boolean {
+    return (
+      getJSXIdentifierName(node.openingElement.name).toLowerCase() === "head" &&
+      !this.documentHeadNodes.has(node)
+    );
   }
 
   private isHoistableHeadElement(node: NodeOfType<"JSXElement">, tagName: string): boolean {
@@ -309,8 +330,10 @@ class TransformState {
       return false;
     }
 
-    if (this.svgDescendants.has(node)) return false;
+    if (this.svgDescendants.has(node) || this.documentHeadContentNodes.has(node)) return false;
 
+    // Metadata inside an authored document <head> stays in that document
+    // template. Metadata outside it is still placed in the active document head.
     // React keeps microdata metadata in its local DOM position.
     return !node.openingElement.attributes.some(
       (attribute: Node) =>
@@ -422,14 +445,17 @@ class TransformState {
     // Resolve named JSX-producing map callbacks before lowering mutates the AST.
     this.prepareNamedMapCallbacks();
 
-    setNodeProperty(
-      this.program,
-      "body",
-      this.program.body.flatMap((statement) => {
-        const transformed = this.transformTopLevelStatement(statement);
-        return Array.isArray(transformed) ? transformed : [transformed];
-      }),
-    );
+    const transformedBody = this.program.body.flatMap((statement) => {
+      const transformed = this.transformTopLevelStatement(statement);
+      return Array.isArray(transformed) ? transformed : [transformed];
+    });
+
+    // Initialize module-scoped template factories before user code can invoke
+    // components during module evaluation.
+    setNodeProperty(this.program, "body", [
+      ...this.templateStatements,
+      ...transformedBody,
+    ]);
     this.injectRuntimeImports();
   }
 
@@ -2381,10 +2407,6 @@ class TransformState {
     return this.isRuntimeHelperCall(expression, "$nodes");
   }
 
-  private isTextExpression(expression: Node): boolean {
-    return this.isRuntimeHelperCall(expression, "$txt");
-  }
-
   private containsJSXInReturns(node: Node | null | undefined): boolean {
     if (!node || isFunctionLike(node)) return false;
     if (isReturnStatement(node)) return this.containsJSX(node.argument);
@@ -2534,8 +2556,13 @@ class TransformState {
 
       const tagName = getJSXIdentifierName(expression.openingElement.name);
       const hoistedHead = this.isHoistableHeadElement(expression, tagName);
-      const element = this.createElementStatements(expression, statements, allocator);
 
+      if (!hoistedHead) {
+        const template = this.createTemplateExpression(expression, allocator, statements);
+        if (template) return template;
+      }
+
+      const element = this.createElementStatements(expression, statements, allocator);
       return hoistedHead ? arrayExpression([]) : element;
     }
     if (isJSXFragment(expression)) {
@@ -2601,13 +2628,19 @@ class TransformState {
     }
     if (isJSXText(child)) {
       const text = normalizeJSXText(child.value);
-      return text ? this.createTextExpression(text) : null;
+      return text
+        ? callExpression(this.getRuntimeHelper("$text"), [stringLiteral(text)])
+        : null;
     }
     if (isJSXExpressionContainer(child)) {
       const expression = child.expression;
       if (isJSXEmptyExpression(expression)) return null;
       if (isExpression(expression)) {
-        if (isStringLiteral(expression)) return this.createTextExpression(expression.value);
+        if (isStringLiteral(expression)) {
+          return callExpression(this.getRuntimeHelper("$text"), [
+            stringLiteral(expression.value),
+          ]);
+        }
         const transformed = this.transformEmbeddedExpression(expression, allocator);
         if (
           dynamicExpressions &&
@@ -2674,13 +2707,19 @@ class TransformState {
     }
     if (isJSXText(child)) {
       const text = normalizeJSXText(child.value);
-      return text ? this.createTextExpression(text) : null;
+      return text
+        ? callExpression(this.getRuntimeHelper("$text"), [stringLiteral(text)])
+        : null;
     }
     if (isJSXExpressionContainer(child)) {
       const expression = child.expression;
       if (isJSXEmptyExpression(expression)) return null;
       if (isExpression(expression)) {
-        if (isStringLiteral(expression)) return this.createTextExpression(expression.value);
+        if (isStringLiteral(expression)) {
+          return callExpression(this.getRuntimeHelper("$text"), [
+            stringLiteral(expression.value),
+          ]);
+        }
         const transformed = this.transformEmbeddedExpression(expression, allocator);
         if (
           dynamicExpressions &&
@@ -2698,19 +2737,1075 @@ class TransformState {
     return null;
   }
 
-  private createElement(
+  /**
+   * Creates a shared static template factory and emits semantic child/sibling
+   * navigation for each dynamic binding. The factory receives no render or bind
+   * callback; it only creates the template's static node tree.
+   *
+   * Component returns can emit setup statements beside the return. Expression
+   * contexts use a small IIFE to keep the generated references instance-local.
+   */
+  private createTemplateExpression(
+    node: NodeOfType<"JSXElement">,
+    allocator: IdentifierAllocator,
+    outerStatements?: Node[],
+  ): ExpressionNode | null {
+    const serialized = this.serializeTemplate(node);
+    if (!serialized) return null;
+
+    const { markup, bindings } = serialized;
+    const existingTemplate = this.templateFactories.get(markup);
+    const templateName = existingTemplate ?? this.generateUidIdentifier("tmpl");
+
+    if (!existingTemplate) {
+      this.templateStatements.push(
+        variableDeclaration("const", [
+          variableDeclarator(
+            templateName,
+            callExpression(this.getRuntimeHelper("$template"), [stringLiteral(markup)]),
+          ),
+        ]),
+      );
+      this.templateFactories.set(markup, templateName);
+    }
+
+    if (bindings.length === 0) {
+      return inheritSourceLocation(callExpression(cloneNode(templateName), []), node);
+    }
+
+    const statements = outerStatements ?? [];
+    const root = this.generateUidIdentifier("root");
+
+    statements.push(
+      variableDeclaration("const", [
+        variableDeclarator(root, callExpression(cloneNode(templateName), [])),
+      ]),
+    );
+
+    const references = new Map<string, NodeOfType<"Identifier">>();
+    references.set("[]", root);
+
+    const getReference = (path: number[]): NodeOfType<"Identifier"> => {
+      const key = JSON.stringify(path);
+      const existing = references.get(key);
+      if (existing) return existing;
+
+      const parentPath = path.slice(0, -1);
+      const parent = getReference(parentPath);
+      const index = path[path.length - 1];
+      const previous = index > 0 ? getReference([...parentPath, index - 1]) : undefined;
+      const reference = allocator.nextElement();
+      const navigation = previous
+        ? callExpression(this.getRuntimeHelper("$sibling"), [cloneNode(previous)])
+        : callExpression(this.getRuntimeHelper("$child"), [cloneNode(parent)]);
+
+      statements.push(
+        variableDeclaration("const", [variableDeclarator(reference, navigation)]),
+      );
+      references.set(key, reference);
+
+      return reference;
+    };
+
+    for (const binding of bindings) {
+      if (binding.kind === "title") {
+        if (!isJSXElement(binding.node)) continue;
+
+        const target = getReference(binding.path);
+        const content = this.createTitleContentExpression(binding.node, allocator);
+        statements.push(expressionStatement(this.createInsert(target, content)));
+        continue;
+      }
+
+      if (binding.kind === "child") {
+        let child: ExpressionNode;
+
+        if (isJSXElement(binding.node)) {
+          child = this.createComponentCall(binding.node, allocator);
+        } else if (
+          isJSXExpressionContainer(binding.node) &&
+          isExpression(binding.node.expression)
+        ) {
+          child = this.transformEmbeddedExpression(binding.node.expression, allocator);
+        } else {
+          continue;
+        }
+
+        const parent = getReference(binding.path.slice(0, -1));
+        const slot = allocator.nextElement();
+
+        if (!binding.slot) {
+          throw new Error("[vynn compiler]: A dynamic child binding is missing its slot id.");
+        }
+
+        statements.push(
+          variableDeclaration("const", [
+            variableDeclarator(
+              slot,
+              this.createInsert(parent, child, binding.slot),
+            ),
+          ]),
+        );
+        references.set(JSON.stringify(binding.path), slot);
+        continue;
+      }
+
+      const target = getReference(binding.path);
+
+      if (binding.kind === "spread") {
+        if (!isJSXSpreadAttribute(binding.node)) continue;
+
+        statements.push(
+          expressionStatement(
+            this.createSpreadAttribute(
+              target,
+              this.transformEmbeddedExpression(binding.node.argument, allocator),
+            ),
+          ),
+        );
+        continue;
+      }
+
+      if (!isJSXAttribute(binding.node)) continue;
+
+      const name = getJSXAttributeName(binding.node.name);
+      const value = binding.node.value;
+
+      if (name === "ref") {
+        if (
+          isJSXExpressionContainer(value) &&
+          !isJSXEmptyExpression(value.expression) &&
+          isExpression(value.expression)
+        ) {
+          statements.push(
+            ...this.createRef(
+              target,
+              this.transformEmbeddedExpression(value.expression, allocator),
+            ),
+          );
+        }
+        continue;
+      }
+
+      const event = this.getEventAttribute(name);
+
+      if (event) {
+        if (isJSXExpressionContainer(value) && isExpression(value.expression)) {
+          statements.push(
+            expressionStatement(
+              this.createEvent(
+                target,
+                event.name,
+                this.transformEmbeddedExpression(value.expression, allocator),
+                event.capture,
+              ),
+            ),
+          );
+        }
+        continue;
+      }
+
+      if (isJSXExpressionContainer(value) && isExpression(value.expression)) {
+        statements.push(
+          expressionStatement(
+            this.createAttribute(
+              target,
+              name,
+              this.transformEmbeddedExpression(value.expression, allocator),
+            ),
+          ),
+        );
+      }
+    }
+
+    statements.push(
+      expressionStatement(
+        callExpression(this.getRuntimeHelper("$finishTemplate"), [cloneNode(root)]),
+      ),
+    );
+
+    if (outerStatements) {
+      return inheritSourceLocation(cloneNode(root), node);
+    }
+
+    statements.push(returnStatement(cloneNode(root)));
+
+    return inheritSourceLocation(
+      callExpression(arrowFunctionExpression([], blockStatement(statements)), []),
+      node,
+    );
+  }
+
+  /**
+   * Compiles the complete contents of a dynamic <title> as one text binding.
+   * HTML parses title contents as RCDATA, so comment anchors would become
+   * visible text instead of DOM comments.
+   */
+  private createTitleContentExpression(
     node: NodeOfType<"JSXElement">,
     allocator: IdentifierAllocator,
   ): ExpressionNode {
-    const statements: Node[] = [];
+    const children: ExpressionNode[] = [];
+
+    const appendChild = (child: Node): void => {
+      if (isJSXText(child)) {
+        const text = normalizeJSXText(child.value);
+        if (text) children.push(stringLiteral(text));
+        return;
+      }
+
+      if (isJSXFragment(child)) {
+        for (const nested of child.children) appendChild(nested);
+        return;
+      }
+
+      if (isJSXExpressionContainer(child)) {
+        const expression = child.expression;
+        if (isJSXEmptyExpression(expression) || !isExpression(expression)) return;
+
+        if (
+          isType(expression, "Literal") &&
+          (typeof expression.value === "string" || typeof expression.value === "number")
+        ) {
+          children.push(stringLiteral(String(expression.value)));
+          return;
+        }
+
+        children.push(this.transformEmbeddedExpression(expression, allocator));
+        return;
+      }
+
+      if (isJSXElement(child)) {
+        children.push(
+          isComponentElement(child)
+            ? this.createComponentCall(child, allocator)
+            : this.createElement(child, allocator),
+        );
+      }
+    };
+
+    for (const child of node.children) appendChild(child);
+
+    return arrayExpression(children);
+  }
+
+  /**
+   * Converts supported host JSX into a static HTML template string. Dynamic
+   * children use compact Vynn HTML comment anchors, except <title> content,
+   * which is compiled as one text binding because title uses HTML RCDATA mode.
+   * Binding paths are used only while generating $child() and $sibling() navigation.
+   */
+  private serializeTemplate(
+    node: NodeOfType<"JSXElement">,
+  ):
+    | {
+        markup: string;
+        bindings: TemplateBinding[];
+      }
+    | undefined {
+    const booleanAttributes = new Set([
+      "allowfullscreen",
+      "async",
+      "autofocus",
+      "autoplay",
+      "checked",
+      "controls",
+      "default",
+      "defer",
+      "disabled",
+      "formnovalidate",
+      "hidden",
+      "inert",
+      "ismap",
+      "itemscope",
+      "loop",
+      "multiple",
+      "muted",
+      "nomodule",
+      "novalidate",
+      "open",
+      "playsinline",
+      "readonly",
+      "required",
+      "reversed",
+      "selected",
+    ]);
+
+    const attributeAliases: Record<string, string> = {
+      autoCapitalize: "autocapitalize",
+      className: "class",
+      colSpan: "colspan",
+      contentEditable: "contenteditable",
+      enterKeyHint: "enterkeyhint",
+      htmlFor: "for",
+      inputMode: "inputmode",
+      rowSpan: "rowspan",
+      tabIndex: "tabindex",
+      xlinkActuate: "xlink:actuate",
+      xlinkArcrole: "xlink:arcrole",
+      xlinkHref: "xlink:href",
+      xlinkRole: "xlink:role",
+      xlinkShow: "xlink:show",
+      xlinkTitle: "xlink:title",
+      xlinkType: "xlink:type",
+      xmlBase: "xml:base",
+      xmlLang: "xml:lang",
+      xmlSpace: "xml:space",
+      xmlnsXlink: "xmlns:xlink",
+    };
+
+    const preservedSVGAttributes = new Set([
+      "attributeName",
+      "attributeType",
+      "baseFrequency",
+      "baseProfile",
+      "calcMode",
+      "contentScriptType",
+      "contentStyleType",
+      "diffuseConstant",
+      "externalResourcesRequired",
+      "filterRes",
+      "filterUnits",
+      "gradientTransform",
+      "gradientUnits",
+      "kernelMatrix",
+      "kernelUnitLength",
+      "keyPoints",
+      "keySplines",
+      "keyTimes",
+      "lengthAdjust",
+      "limitingConeAngle",
+      "markerHeight",
+      "markerUnits",
+      "markerWidth",
+      "numOctaves",
+      "pathLength",
+      "patternContentUnits",
+      "patternTransform",
+      "patternUnits",
+      "preserveAspectRatio",
+      "primitiveUnits",
+      "refX",
+      "refY",
+      "specularConstant",
+      "specularExponent",
+      "stdDeviation",
+      "surfaceScale",
+      "targetX",
+      "targetY",
+      "textLength",
+      "viewBox",
+      "viewTarget",
+      "xChannelSelector",
+      "yChannelSelector",
+    ]);
+
+    const voidElements = new Set([
+      "area",
+      "base",
+      "br",
+      "col",
+      "embed",
+      "hr",
+      "img",
+      "input",
+      "link",
+      "meta",
+      "param",
+      "source",
+      "track",
+      "wbr",
+    ]);
+
+    const unsupportedContextElements = new Set([
+      "col",
+      "colgroup",
+      "iframe",
+      "noembed",
+      "noframes",
+      "noscript",
+      "option",
+      "optgroup",
+      "plaintext",
+      "pre",
+      "listing",
+      "html",
+      "head",
+      "body",
+      "script",
+      "select",
+      "style",
+      "template",
+      "textarea",
+      "title",
+      "xmp",
+    ]);
+
+    const isDocumentRoot =
+      getJSXIdentifierName(node.openingElement.name).toLowerCase() === "html";
+    const tableSections = new Set(["thead", "tbody", "tfoot"]);
+    const isValidTableContext = (tag: string, parentTag: string | null): boolean => {
+      if (tag === "table") {
+        return (
+          parentTag !== "table" &&
+          !tableSections.has(parentTag ?? "") &&
+          parentTag !== "tr"
+        );
+      }
+      if (tableSections.has(tag)) return parentTag === "table";
+      if (tag === "tr") return tableSections.has(parentTag ?? "");
+      if (tag === "td" || tag === "th") return parentTag === "tr";
+      if (parentTag === "table") return false;
+      if (tableSections.has(parentTag ?? "")) return false;
+      if (parentTag === "tr") return false;
+      return true;
+    };
+    const bindings: TemplateBinding[] = [];
+    let anchorIndex = 0;
+
+    type SerializedNodes = {
+      markup: string;
+      nodes: TemplateNodeShape[];
+    };
+
+    const appendNode = (
+      nodes: TemplateNodeShape[],
+      nodeToAppend: TemplateNodeShape,
+    ): void => {
+      const previous = nodes[nodes.length - 1];
+
+      if (
+        previous?.kind === "text" &&
+        nodeToAppend.kind === "text" &&
+        previous.value !== "" &&
+        nodeToAppend.value !== ""
+      ) {
+        previous.value += nodeToAppend.value;
+        return;
+      }
+
+      nodes.push(nodeToAppend);
+    };
+
+    const hasDynamicTitleChild = (child: Node): boolean => {
+      if (isJSXText(child)) return false;
+
+      if (isJSXFragment(child)) {
+        return child.children.some(hasDynamicTitleChild);
+      }
+
+      if (isJSXExpressionContainer(child)) {
+        const expression = child.expression;
+        if (isJSXEmptyExpression(expression)) return false;
+
+        return !(
+          isType(expression, "Literal") &&
+          (typeof expression.value === "string" || typeof expression.value === "number")
+        );
+      }
+
+      return isJSXElement(child);
+    };
+
+    const serialize = (
+      current: Node,
+      path: number[],
+      siblings?: TemplateNodeShape[],
+      parentTag: string | null = null,
+    ): SerializedNodes | undefined => {
+      if (isJSXText(current)) {
+        const value = normalizeJSXText(current.value);
+        if (!value) return { markup: "", nodes: [] };
+        if (
+          parentTag === "table" ||
+          parentTag === "thead" ||
+          parentTag === "tbody" ||
+          parentTag === "tfoot" ||
+          parentTag === "tr"
+        ) {
+          return undefined;
+        }
+
+        const descriptor: TemplateNodeShape = { kind: "text", value };
+        if (siblings) appendNode(siblings, descriptor);
+
+        return {
+          markup: this.escapeStaticText(value),
+          nodes: siblings ? [] : [descriptor],
+        };
+      }
+
+      if (isJSXFragment(current)) {
+        const nodes = siblings ?? [];
+        let markup = "";
+
+        for (const child of current.children) {
+          const index = nodes.length;
+          const childPath = siblings
+            ? [...path.slice(0, -1), index]
+            : [...path, index];
+          const childResult = serialize(child, childPath, nodes, parentTag);
+          if (!childResult) return undefined;
+
+          markup += childResult.markup;
+        }
+
+        return { markup, nodes: siblings ? [] : nodes };
+      }
+
+      if (isJSXExpressionContainer(current)) {
+        const expression = current.expression;
+        if (isJSXEmptyExpression(expression)) return { markup: "", nodes: [] };
+        if (parentTag === "table" || parentTag === "tr") return undefined;
+
+        if (
+          isType(expression, "Literal") &&
+          (typeof expression.value === "string" || typeof expression.value === "number")
+        ) {
+          const value = String(expression.value);
+          const descriptor: TemplateNodeShape = { kind: "text", value };
+          if (siblings) appendNode(siblings, descriptor);
+
+          return {
+            markup: value === "" ? "<!--$0-->" : this.escapeStaticText(value),
+            nodes: siblings ? [] : [descriptor],
+          };
+        }
+
+        const id = String(anchorIndex++);
+        const isTitleSlot = parentTag === "title";
+        const startDescriptor: TemplateNodeShape = {
+          kind: "anchor",
+          id: "start-" + id,
+        };
+        const descriptor: TemplateNodeShape = { kind: "anchor", id };
+        const bindingPath =
+          isTitleSlot && path.length > 0
+            ? [...path.slice(0, -1), path[path.length - 1] + 1]
+            : path;
+
+        bindings.push({ kind: "child", path: bindingPath, node: current, slot: id });
+        if (siblings) {
+          if (isTitleSlot) appendNode(siblings, startDescriptor);
+          appendNode(siblings, descriptor);
+        }
+
+        return {
+          markup:
+            (isTitleSlot ? "<!--$vs" + id + "-->" : "") +
+            "<!--$v" +
+            id +
+            "-->",
+          nodes: siblings ? [] : isTitleSlot ? [startDescriptor, descriptor] : [descriptor],
+        };
+      }
+
+      if (!isJSXElement(current)) return undefined;
+
+      if (isComponentElement(current)) {
+        if (parentTag === "table") return undefined;
+
+        const id = String(anchorIndex++);
+        const isTitleSlot = parentTag === "title";
+        const startDescriptor: TemplateNodeShape = {
+          kind: "anchor",
+          id: "start-" + id,
+        };
+        const descriptor: TemplateNodeShape = { kind: "anchor", id };
+        const bindingPath =
+          isTitleSlot && path.length > 0
+            ? [...path.slice(0, -1), path[path.length - 1] + 1]
+            : path;
+
+        bindings.push({ kind: "child", path: bindingPath, node: current, slot: id });
+        if (siblings) {
+          if (isTitleSlot) appendNode(siblings, startDescriptor);
+          appendNode(siblings, descriptor);
+        }
+
+        return {
+          markup:
+            (isTitleSlot ? "<!--$vs" + id + "-->" : "") +
+            "<!--$v" +
+            id +
+            "-->",
+          nodes: siblings ? [] : isTitleSlot ? [startDescriptor, descriptor] : [descriptor],
+        };
+      }
+
+      const tagName = getJSXIdentifierName(current.openingElement.name);
+      const lowerTagName = tagName.toLowerCase();
+
+      const isDocumentContextElement =
+        isDocumentRoot &&
+        ((lowerTagName === "html" && current === node) ||
+          ((lowerTagName === "head" || lowerTagName === "body") && parentTag === "html") ||
+          (lowerTagName === "title" && parentTag === "head"));
+
+      if (
+        !/^[a-z][A-Za-z0-9._-]*$/.test(tagName) ||
+        (unsupportedContextElements.has(lowerTagName) && !isDocumentContextElement) ||
+        !isValidTableContext(lowerTagName, parentTag) ||
+        this.isHoistableHeadElement(current, tagName)
+      ) {
+        return undefined;
+      }
+
+      const markupAttributes: string[] = [];
+      const staticAttributes: Array<[string, string]> = [];
+
+      for (const attribute of current.openingElement.attributes) {
+        if (isJSXSpreadAttribute(attribute)) {
+          bindings.push({ kind: "spread", path: [...path], node: attribute });
+          continue;
+        }
+
+        if (!isJSXAttribute(attribute)) return undefined;
+
+        const sourceName = getJSXAttributeName(attribute.name);
+        const lowerName = sourceName.toLowerCase();
+
+        if (
+          lowerName === "html" ||
+          lowerName.startsWith("data-vynn-bind-") ||
+          !/^[A-Za-z_:][A-Za-z0-9:._-]*$/.test(sourceName)
+        ) {
+          return undefined;
+        }
+
+        const eventAttribute = this.getEventAttribute(sourceName);
+
+        if (
+          /[A-Z]/.test(sourceName) &&
+          !(sourceName in attributeAliases) &&
+          !preservedSVGAttributes.has(sourceName) &&
+          !this.svgDescendants.has(current) &&
+          !eventAttribute
+        ) {
+          return undefined;
+        }
+
+        if (sourceName === "ref") {
+          if (
+            isJSXExpressionContainer(attribute.value) &&
+            !isJSXEmptyExpression(attribute.value.expression) &&
+            isExpression(attribute.value.expression)
+          ) {
+            bindings.push({ kind: "attribute", path: [...path], node: attribute });
+          }
+          continue;
+        }
+
+        if (eventAttribute) {
+          if (
+            isJSXExpressionContainer(attribute.value) &&
+            isExpression(attribute.value.expression)
+          ) {
+            bindings.push({ kind: "attribute", path: [...path], node: attribute });
+          }
+          continue;
+        }
+
+        const attributeName =
+          attributeAliases[sourceName] ??
+          (this.svgDescendants.has(current) && !preservedSVGAttributes.has(sourceName)
+            ? sourceName.replace(/[A-Z]/g, (character) => "-" + character.toLowerCase())
+            : this.svgDescendants.has(current)
+              ? sourceName
+              : sourceName.toLowerCase());
+        let rawValue: string | number | boolean | null | undefined;
+
+        if (attribute.value === null) {
+          rawValue = true;
+        } else if (isLiteralString(attribute.value)) {
+          rawValue = attribute.value.value;
+        } else if (isJSXExpressionContainer(attribute.value)) {
+          const expression = attribute.value.expression;
+          if (isJSXEmptyExpression(expression)) continue;
+
+          if (
+            isType(expression, "Literal") &&
+            (expression.value === null ||
+              typeof expression.value === "string" ||
+              typeof expression.value === "number" ||
+              typeof expression.value === "boolean")
+          ) {
+            rawValue = expression.value as string | number | boolean | null;
+          } else {
+            bindings.push({ kind: "attribute", path: [...path], node: attribute });
+            continue;
+          }
+        } else {
+          continue;
+        }
+
+        if (booleanAttributes.has(lowerName)) {
+          if (!rawValue) continue;
+          rawValue = "";
+        }
+
+        if (rawValue != null) {
+          const value = String(rawValue);
+          staticAttributes.push([attributeName, value]);
+          markupAttributes.push(
+            attributeName + '="' + this.escapeStaticAttribute(value) + '"',
+          );
+        }
+      }
+
+      const children: TemplateNodeShape[] = [];
+      let childMarkup = "";
+      const hasDynamicTitleContent =
+        lowerTagName === "title" && current.children.some(hasDynamicTitleChild);
+
+      if (hasDynamicTitleContent) {
+        bindings.push({ kind: "title", path: [...path], node: current });
+      } else {
+        for (let childIndex = 0; childIndex < current.children.length; ) {
+          const child = current.children[childIndex];
+
+          // HTML fragment parsing inserts <tbody> around direct <tr> children.
+          // Emit that wrapper in both the markup and descriptor so SSR and hydration
+          // navigate the same node paths.
+          if (
+            lowerTagName === "table" &&
+            isJSXElement(child) &&
+            getJSXIdentifierName(child.openingElement.name).toLowerCase() === "tr"
+          ) {
+            const tbodyChildren: TemplateNodeShape[] = [];
+            const tbodyPath = [...path, children.length];
+            let tbodyMarkup = "";
+
+            while (childIndex < current.children.length) {
+              const row = current.children[childIndex];
+
+              if (isJSXText(row) && !normalizeJSXText(row.value)) {
+                childIndex++;
+                continue;
+              }
+
+              if (
+                !isJSXElement(row) ||
+                getJSXIdentifierName(row.openingElement.name).toLowerCase() !== "tr"
+              ) {
+                break;
+              }
+
+              const rowResult = serialize(
+                row,
+                [...tbodyPath, tbodyChildren.length],
+                tbodyChildren,
+                "tbody",
+              );
+              if (!rowResult) return undefined;
+
+              tbodyMarkup += rowResult.markup;
+              childIndex++;
+            }
+
+            children.push({
+              kind: "element",
+              tag: "tbody",
+              attributes: [],
+              children: tbodyChildren,
+            });
+            childMarkup += "<tbody>" + tbodyMarkup + "</tbody>";
+            continue;
+          }
+
+          const childResult = serialize(
+            child,
+            [...path, children.length],
+            children,
+            lowerTagName,
+          );
+          if (!childResult) return undefined;
+
+          childMarkup += childResult.markup;
+          childIndex++;
+        }
+      }
+
+      const opening =
+        "<" + tagName + (markupAttributes.length ? " " + markupAttributes.join(" ") : "") + ">";
+      const element: TemplateNodeShape = {
+        kind: "element",
+        tag: tagName,
+        attributes: staticAttributes,
+        children: voidElements.has(lowerTagName) ? [] : children,
+      };
+
+      if (voidElements.has(lowerTagName) && children.length > 0) return undefined;
+
+      if (siblings) appendNode(siblings, element);
+
+      const markup = voidElements.has(lowerTagName)
+        ? opening
+        : opening + childMarkup + "</" + tagName + ">";
+
+      return { markup, nodes: siblings ? [] : [element] };
+    };
+
+    const result = serialize(node, [], undefined, null);
+
+    if (!result || result.nodes.length !== 1 || result.nodes[0].kind !== "element") {
+      return undefined;
+    }
+
+    if (isDocumentRoot) {
+      const children = result.nodes[0].children.filter(
+        (child): child is Extract<TemplateNodeShape, { kind: "element" }> =>
+          child.kind === "element",
+      );
+      const heads = children.filter((child) => child.tag.toLowerCase() === "head");
+      const bodies = children.filter((child) => child.tag.toLowerCase() === "body");
+
+      if (heads.length !== 1 || bodies.length !== 1) {
+        throw new Error(
+          "[Vynn compiler] A complete <html> document must contain exactly one direct <head> and one direct <body>.",
+        );
+      }
+    }
+
+    return {
+      markup: result.markup,
+      bindings,
+    };
+  }
+
+  private escapeStaticText(value: string): string {
+    return value
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  }
+
+  private escapeStaticAttribute(value: string): string {
+    return this.escapeStaticText(value).replace(/"/g, "&quot;");
+  }
+
+  /**
+   * Creates the instance-local setup for a hoisted template using native
+   * sibling walks. Unsupported parsing contexts use regular JSX lowering.
+   */
+  private createElement(
+    node: NodeOfType<"JSXElement">,
+    allocator: IdentifierAllocator,
+    outerStatements?: Node[],
+  ): ExpressionNode {
+    if (this.isHeadGroupElement(node)) {
+      return inheritSourceLocation(this.createHeadGroupExpression(node, allocator), node);
+    }
+
+    // When the caller already owns a statement list, emit template setup into
+    // that scope instead of creating an expression-level IIFE.
+    const templateStatements = outerStatements ?? [];
+    const template = this.createTemplateExpression(node, allocator, templateStatements);
+
+    if (template) {
+      if (outerStatements) return template;
+      if (templateStatements.length === 0) return template;
+
+      templateStatements.push(returnStatement(template));
+      return inheritSourceLocation(
+        callExpression(arrowFunctionExpression([], blockStatement(templateStatements)), []),
+        node,
+      );
+    }
+
+    const statements = outerStatements ?? [];
     const tagName = getJSXIdentifierName(node.openingElement.name);
     const hoistedHead = this.isHoistableHeadElement(node, tagName);
     const elementId = this.createElementStatements(node, statements, allocator);
+
+    if (outerStatements) return hoistedHead ? arrayExpression([]) : elementId;
+
     statements.push(returnStatement(hoistedHead ? arrayExpression([]) : elementId));
     return inheritSourceLocation(
       callExpression(arrowFunctionExpression([], blockStatement(statements)), []),
       node,
     );
+  }
+
+  private createHeadGroupExpression(
+    node: NodeOfType<"JSXElement">,
+    allocator: IdentifierAllocator,
+  ): ExpressionNode {
+    const entries: ExpressionNode[] = [];
+
+    const collect = (child: Node): void => {
+      if (isJSXText(child) || isJSXEmptyExpression(child)) return;
+
+      if (isJSXFragment(child)) {
+        for (const nested of child.children) collect(nested);
+        return;
+      }
+
+      if (isJSXExpressionContainer(child)) {
+        const expression = child.expression;
+        if (!isJSXEmptyExpression(expression) && isExpression(expression)) {
+          entries.push(this.transformEmbeddedExpression(expression, allocator));
+        }
+        return;
+      }
+
+      if (!isJSXElement(child)) return;
+
+      if (isComponentElement(child)) {
+        entries.push(this.createComponentCall(child, allocator));
+        return;
+      }
+
+      const tagName = getJSXIdentifierName(child.openingElement.name);
+      if (this.isHoistableHeadElement(child, tagName)) {
+        entries.push(
+          callExpression(this.getRuntimeHelper("$registerHead"), [
+            stringLiteral(tagName),
+            arrowFunctionExpression([], this.createHeadProps(child, allocator)),
+          ]),
+        );
+        return;
+      }
+
+      throw new Error(
+        `[Vynn] A nested <head> group only accepts <title>, <meta>, <link>, fragments, and components. Received <${tagName}>.`,
+      );
+    };
+
+    for (const child of node.children) collect(child);
+
+    return callExpression(this.getRuntimeHelper("$registerHeadGroup"), [
+      arrowFunctionExpression([], arrayExpression(entries)),
+    ]);
+  }
+
+  private createHeadProps(
+    node: NodeOfType<"JSXElement">,
+    allocator: IdentifierAllocator,
+  ): Node {
+    const properties: Node[] = [];
+
+    for (const attribute of node.openingElement.attributes) {
+      if (isJSXSpreadAttribute(attribute)) {
+        properties.push(
+          spreadElement(this.transformEmbeddedExpression(attribute.argument, allocator)),
+        );
+        continue;
+      }
+
+      if (!isJSXAttribute(attribute)) continue;
+
+      const name = getJSXAttributeName(attribute.name);
+      if (name === "ref") continue;
+
+      if (isLiteralString(attribute.value)) {
+        properties.push(
+          objectMethod(
+            "get",
+            propertyKey(name),
+            [],
+            blockStatement([returnStatement(stringLiteral(attribute.value.value))]),
+          ),
+        );
+        continue;
+      }
+
+      if (isJSXExpressionContainer(attribute.value)) {
+        const expression = attribute.value.expression;
+        if (!isJSXEmptyExpression(expression) && isExpression(expression)) {
+          properties.push(
+            objectMethod(
+              "get",
+              propertyKey(name),
+              [],
+              this.createComponentGetterBody(expression, allocator, node),
+            ),
+          );
+        }
+        continue;
+      }
+
+      if (attribute.value === null) {
+        properties.push(
+          objectMethod(
+            "get",
+            propertyKey(name),
+            [],
+            blockStatement([returnStatement(booleanLiteral(true))]),
+          ),
+        );
+      }
+    }
+
+    const children: Node[] = [];
+    const collectText = (child: Node): void => {
+      if (isJSXText(child)) {
+        const text = normalizeJSXText(child.value);
+        if (text) children.push(stringLiteral(text));
+        return;
+      }
+
+      if (isJSXExpressionContainer(child)) {
+        const expression = child.expression;
+        if (!isJSXEmptyExpression(expression) && isExpression(expression)) {
+          children.push(this.transformEmbeddedExpression(expression, allocator));
+        }
+        return;
+      }
+
+      if (isJSXFragment(child)) {
+        for (const nested of child.children) collectText(nested);
+        return;
+      }
+
+      if (isJSXElement(child)) {
+        if (isComponentElement(child)) {
+          children.push(this.createComponentCall(child, allocator));
+        } else {
+          // Head content is text. Preserve the text of nested formatting tags
+          // without constructing body DOM for markup that cannot live in <head>.
+          for (const nested of child.children) collectText(nested);
+        }
+      }
+    };
+
+    for (const child of node.children) collectText(child);
+
+    if (children.length > 0) {
+      const value = children.length === 1 ? children[0] : arrayExpression(children);
+      properties.push(
+        objectMethod(
+          "get",
+          identifier("children"),
+          [],
+          blockStatement([returnStatement(value)]),
+        ),
+      );
+    }
+
+    return objectExpression(properties);
+  }
+
+  private createElementTemplateMarkup(tagName: string): string {
+    const voidTags = new Set([
+      "area",
+      "base",
+      "br",
+      "col",
+      "embed",
+      "hr",
+      "img",
+      "input",
+      "link",
+      "meta",
+      "param",
+      "source",
+      "track",
+      "wbr",
+    ]);
+    return voidTags.has(tagName.toLowerCase())
+      ? `<${tagName}>`
+      : `<${tagName}></${tagName}>`;
   }
 
   private createElementStatements(
@@ -2721,28 +3816,46 @@ class TransformState {
     const tagName = getJSXIdentifierName(node.openingElement.name);
     const hoistToHead = this.isHoistableHeadElement(node, tagName);
     const elementId = allocator.nextElement();
-    const headIdentity = hoistToHead ? this.getStaticHeadIdentity(node, tagName) : null;
-    statements.push(
-      variableDeclaration("const", [
-        variableDeclarator(
-          elementId,
-          callExpression(
-            this.getRuntimeHelper(hoistToHead ? "$headTmpl" : "$tmpl"),
-            hoistToHead
-              ? [stringLiteral(tagName), ...(headIdentity ? [stringLiteral(headIdentity)] : [])]
-              : [stringLiteral(tagName)],
-          ),
-        ),
-      ]),
-    );
-    this.transformAttributes(node.openingElement, elementId, statements, allocator);
-    this.transformElementChildren(node.children, elementId, statements, allocator);
 
     if (hoistToHead) {
       statements.push(
-        expressionStatement(callExpression(this.getRuntimeHelper("$head"), [elementId])),
+        variableDeclaration("const", [
+          variableDeclarator(
+            elementId,
+            callExpression(this.getRuntimeHelper("$registerHead"), [
+              stringLiteral(tagName),
+              arrowFunctionExpression([], this.createHeadProps(node, allocator)),
+            ]),
+          ),
+        ]),
       );
+      return elementId;
     }
+
+    const markup = this.createElementTemplateMarkup(tagName);
+    const existingTemplate = this.templateFactories.get(markup);
+    const templateName = existingTemplate ?? this.generateUidIdentifier("tmpl");
+
+    if (!existingTemplate) {
+      this.templateStatements.push(
+        variableDeclaration("const", [
+          variableDeclarator(
+            templateName,
+            callExpression(this.getRuntimeHelper("$template"), [stringLiteral(markup)]),
+          ),
+        ]),
+      );
+      this.templateFactories.set(markup, templateName);
+    }
+
+    statements.push(
+      variableDeclaration("const", [
+        variableDeclarator(elementId, callExpression(cloneNode(templateName), [])),
+      ]),
+    );
+
+    this.transformAttributes(node.openingElement, elementId, statements, allocator);
+    this.transformElementChildren(node.children, elementId, statements, allocator);
 
     return elementId;
   }
@@ -2758,7 +3871,7 @@ class TransformState {
         const text = normalizeJSXText(child.value);
         if (text)
           statements.push(
-            expressionStatement(this.createInsert(elementId, this.createTextExpression(text))),
+            expressionStatement(this.createInsert(elementId, stringLiteral(text))),
           );
         continue;
       }
@@ -2766,7 +3879,7 @@ class TransformState {
         const expression = child.expression;
         if (isJSXEmptyExpression(expression) || !isExpression(expression)) continue;
         const childExpression = isStringLiteral(expression)
-          ? this.createTextExpression(expression.value)
+          ? stringLiteral(expression.value)
           : this.transformEmbeddedExpression(expression, allocator);
         statements.push(expressionStatement(this.createInsert(elementId, childExpression)));
         continue;
@@ -2831,7 +3944,6 @@ class TransformState {
         this.isForExpression(expression) ||
         this.isIfExpression(expression) ||
         this.isNodesExpression(expression) ||
-        this.isTextExpression(expression) ||
         this.containsJSX(source)
       ) {
         // JSX, lists, conditionals and existing dynamic ranges already
@@ -2842,7 +3954,7 @@ class TransformState {
       if (isType(source, "Literal")) {
         if (typeof source.value === "string" || typeof source.value === "number") {
           // Static primitives should be text nodes, not reactive ranges.
-          return this.createTextExpression(String(source.value));
+          return stringLiteral(String(source.value));
         }
 
         if (typeof source.value === "boolean") {
@@ -2877,10 +3989,6 @@ class TransformState {
 
     this.generatedIfExpressions.add(result);
     return result;
-  }
-
-  private createTextExpression(value: string): ExpressionNode {
-    return callExpression(this.getRuntimeHelper("$txt"), [stringLiteral(value)]);
   }
 
   private transformEmbeddedExpression(
@@ -3199,16 +4307,62 @@ class TransformState {
     block: NodeOfType<"BlockStatement">,
     allocator: IdentifierAllocator,
   ): NodeOfType<"BlockStatement"> {
-    setNodeProperty(
-      block,
-      "body",
-      block.body.map((statement: Node) => this.transformStatement(statement, allocator)),
-    );
+    const statements: Node[] = [];
+
+    for (const statement of block.body) {
+      if (isReturnStatement(statement)) {
+        const lowered = this.transformJSXReturnStatement(statement, allocator);
+        if (lowered) {
+          // A return is already inside a statement list, so its setup can live
+          // beside it instead of introducing another lexical block.
+          statements.push(...lowered);
+          continue;
+        }
+      }
+
+      statements.push(this.transformStatement(statement, allocator));
+    }
+
+    setNodeProperty(block, "body", statements);
     return block;
+  }
+
+  /**
+   * Lower a JSX return into its required setup statements and final return.
+   * The caller decides whether those statements can be inserted directly or
+   * need a block to occupy a single-statement position.
+   */
+  private transformJSXReturnStatement(
+    statement: NodeOfType<"ReturnStatement">,
+    allocator: IdentifierAllocator,
+  ): Node[] | null {
+    const argument = statement.argument;
+    if (!argument || (!isJSXElement(argument) && !isJSXFragment(argument))) {
+      return null;
+    }
+
+    const setup: Node[] = [];
+    const returned = this.transformStatementContextExpression(
+      argument,
+      allocator,
+      setup,
+      isJSXFragment(argument),
+    );
+    setup.push(inheritSourceLocation(returnStatement(returned), statement));
+    return setup;
   }
 
   private transformStatement(statement: Node, allocator: IdentifierAllocator): Node {
     if (isReturnStatement(statement)) {
+      const lowered = this.transformJSXReturnStatement(statement, allocator);
+      if (lowered) {
+        // Keep a normal return as a normal return. Only introduce a block when
+        // setup statements must occupy a single-statement position.
+        return lowered.length === 1
+          ? lowered[0]
+          : inheritSourceLocation(blockStatement(lowered), statement);
+      }
+
       if (statement.argument && isExpression(statement.argument)) {
         setNodeProperty(
           statement,
@@ -3490,43 +4644,80 @@ class TransformState {
   ): Node | null {
     const children: ExpressionNode[] = [];
     const statements: Node[] = [];
-    for (const child of node.children) {
+
+    const hasLaterHostElement: boolean[] = new Array(node.children.length).fill(false);
+    let hasHostElement = false;
+    for (let index = node.children.length - 1; index >= 0; index--) {
+      hasLaterHostElement[index] = hasHostElement;
+      const sibling = node.children[index];
+      if (isJSXElement(sibling) && !isComponentElement(sibling)) hasHostElement = true;
+    }
+
+    // Setup for a later host child is emitted into this getter. Materialize
+    // earlier sibling values first so their evaluation order stays unchanged.
+    const captureChild = (expression: ExpressionNode): ExpressionNode => {
+      const child = this.generateUidIdentifier("child");
+      statements.push(
+        variableDeclaration("const", [variableDeclarator(child, expression)]),
+      );
+      return child;
+    };
+
+    for (let index = 0; index < node.children.length; index++) {
+      const child = node.children[index];
       if (isJSXText(child)) {
         const text = normalizeJSXText(child.value);
-        if (text) children.push(this.createTextExpression(text));
-        continue;
-      }
-      if (isJSXExpressionContainer(child)) {
-        const expression = child.expression;
-        if (isJSXEmptyExpression(expression)) continue;
-        if (isExpression(expression)) {
-          if (isStringLiteral(expression)) {
-            children.push(this.createTextExpression(expression.value));
-            continue;
-          }
-          const transformed = this.transformEmbeddedExpression(expression, allocator);
-          children.push(
-            this.isForExpression(transformed) ||
-              this.isIfExpression(transformed) ||
-              this.isNodesExpression(transformed)
-              ? transformed
-              : this.createDynamicExpression(transformed),
-          );
+        if (text) {
+          const expression = stringLiteral(text);
+          children.push(hasLaterHostElement[index] ? captureChild(expression) : expression);
         }
         continue;
       }
+
+      if (isJSXExpressionContainer(child)) {
+        const expression = child.expression;
+        if (isJSXEmptyExpression(expression) || !isExpression(expression)) continue;
+
+        const transformed = isStringLiteral(expression)
+          ? stringLiteral(expression.value)
+          : this.transformEmbeddedExpression(expression, allocator);
+        const value =
+          isStringLiteral(expression) ||
+          this.isForExpression(transformed) ||
+          this.isIfExpression(transformed) ||
+          this.isNodesExpression(transformed)
+            ? transformed
+            : this.createDynamicExpression(transformed);
+        children.push(hasLaterHostElement[index] ? captureChild(value) : value);
+        continue;
+      }
+
       if (isJSXElement(child)) {
+        if (isComponentElement(child)) {
+          const component = this.createComponentCall(child, allocator);
+          children.push(hasLaterHostElement[index] ? captureChild(component) : component);
+          continue;
+        }
+
+        const statementCount = statements.length;
+        const element = this.createElement(child, allocator, statements);
+
+        // A static host template has no setup statements, so evaluate its
+        // factory call now when a later host element could otherwise overtake it.
         children.push(
-          isComponentElement(child)
-            ? this.createComponentCall(child, allocator)
-            : this.createElement(child, allocator),
+          hasLaterHostElement[index] && statements.length === statementCount
+            ? captureChild(element)
+            : element,
         );
         continue;
       }
+
       if (isJSXFragment(child)) {
-        children.push(this.createFragmentInStatements(child, allocator, statements, true));
+        const fragment = this.createFragmentInStatements(child, allocator, statements, true);
+        children.push(hasLaterHostElement[index] ? captureChild(fragment) : fragment);
       }
     }
+
     if (children.length === 0) return null;
     const result = children.length === 1 ? children[0] : arrayExpression(children);
     statements.push(returnStatement(result));
@@ -3685,15 +4876,21 @@ class TransformState {
     };
   }
 
-  private createInsert(elementId: Node, expression: Node): Node {
+  private createInsert(elementId: Node, expression: Node, slotId?: string): Node {
     let child: Node;
-    if (
+
+    if (slotId !== undefined) {
+      // Template slots must claim their static prefix before evaluating the
+      // dynamic child. Keep helper calls such as $if() and $for() lazy; eagerly
+      // evaluating them here can consume hydration nodes that belong to the
+      // static content immediately preceding this slot.
+      child = arrowFunctionExpression([], expression);
+    } else if (
       isLiteralString(expression) ||
       isNumericLiteral(expression) ||
       this.isForExpression(expression) ||
       this.isIfExpression(expression) ||
-      this.isNodesExpression(expression) ||
-      this.isTextExpression(expression)
+      this.isNodesExpression(expression)
     ) {
       child = expression;
     } else if (
@@ -3705,6 +4902,9 @@ class TransformState {
     } else {
       child = arrowFunctionExpression([], expression);
     }
-    return callExpression(this.getRuntimeHelper("$insert"), [elementId, child]);
+
+    const args = [elementId, child];
+    if (slotId !== undefined) args.push(stringLiteral(slotId));
+    return callExpression(this.getRuntimeHelper("$insert"), args);
   }
 }

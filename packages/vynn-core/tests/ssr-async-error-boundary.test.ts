@@ -7,7 +7,7 @@ import { Catch } from "../src/components/catch";
 import { getLazyID, initializeLazyScope } from "../src/context/lazy-context";
 import { $state } from "../src/reactivity/state";
 import { $insert } from "../src/render/$insert";
-import { $tmpl } from "../src/render/$tmpl";
+import { $template } from "../src/render/$template";
 import { renderToServer } from "../src/server/render-to-server";
 
 function deferred<T>() {
@@ -28,7 +28,7 @@ function createAsyncCount(promise: Promise<void>, error: Error): JSX.Element {
     throw error;
   });
 
-  const paragraph = $tmpl("p");
+  const paragraph = $template("<p></p>")();
   $insert(paragraph, () => count.value);
 
   return paragraph as unknown as JSX.Element;
@@ -116,7 +116,7 @@ describe("SSR async Catch", () => {
                   await gate.promise;
                   throw error;
                 });
-                const paragraph = $tmpl("p");
+                const paragraph = $template("<p></p>")();
                 $insert(paragraph, () => count.value);
                 return paragraph as unknown as JSX.Element;
               }) as unknown as JSX.Element,
@@ -168,7 +168,7 @@ describe("SSR async Catch", () => {
 
     const createValue = (value: string): JSX.Element => {
       const resource = $state(async () => value);
-      const paragraph = $tmpl("p");
+      const paragraph = $template("<p></p>")();
       $insert(paragraph, () => resource.value);
       return paragraph as unknown as JSX.Element;
     };
@@ -254,7 +254,7 @@ describe("SSR async Catch", () => {
   it("keeps async hydration IDs in component traversal order around Catch", async () => {
     const createValue = (value: string): JSX.Element => {
       const resource = $state(async () => value);
-      const paragraph = $tmpl("p");
+      const paragraph = $template("<p></p>")();
       $insert(paragraph, () => resource.value);
       return paragraph as unknown as JSX.Element;
     };

@@ -328,6 +328,7 @@ export function $attr<E extends Element>(
   name: string,
   value: AttributeValue | (() => AttributeValue),
 ): void {
+
   if (isServer()) {
     const next = typeof value === "function" ? value() : value;
     setDOMAttributeValue(element, name, next);
