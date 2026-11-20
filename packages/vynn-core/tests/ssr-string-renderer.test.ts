@@ -9,7 +9,14 @@ import { createContext } from "../src/context/provider-context";
 import { $computed } from "../src/reactivity/computed";
 import { $ssrComponent, $ssrHead, $ssrHeadGroup, renderToServerString } from "../src/server/ssr";
 import { renderToServer as renderPublicServer } from "../src/server";
-import { $ssrAttribute, $ssrChildren, $ssrJoin, $ssrText } from "../src/server/ssr-html";
+import {
+  $ssrAttribute,
+  $ssrChildren,
+  $ssrJoin,
+  $ssrJoinChildren,
+  $ssrLogical,
+  $ssrText,
+} from "../src/server/ssr-html";
 
 function deferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
@@ -87,6 +94,58 @@ describe("string-based SSR renderer", () => {
     expect(rendered.body).toBe("<main>Body</main>");
     expect(rendered.head.render()).toContain("<title key=\"title\">A page</title>");
     expect(rendered.head.render()).toContain("name=\"description\"");
+  });
+
+  it("omits conditional head metadata from body output without creating an empty text claim", () => {
+    const rendered = renderToServerString(() => {
+      const title = $ssrLogical(
+        true,
+        "&&",
+        () =>
+          $ssrHead("title", {
+            get children() {
+              return "Quick start | Vynn";
+            },
+          }),
+        false,
+        false,
+      );
+
+      const headGroup = $ssrLogical(
+        true,
+        "&&",
+        () =>
+          $ssrHeadGroup(() => {
+            $ssrHead("meta", {
+              get name() {
+                return "description";
+              },
+              get content() {
+                return "Quick start documentation";
+              },
+            });
+            return [];
+          }),
+        false,
+        false,
+      );
+
+      // A genuine empty text operand must keep its hydration marker.
+      expect($ssrLogical("", "&&", () => "unreachable", false, false)).toBe("<!--$0-->");
+
+      return $ssrJoinChildren([
+        "<li>",
+        title,
+        headGroup,
+        "<a>Quick start</a>",
+        "</li>",
+      ]);
+    }, "sync");
+
+    expect(rendered.body).toBe("<li><a>Quick start</a></li>");
+    expect(rendered.body).not.toContain("<!--$0-->");
+    expect(rendered.head.render()).toContain('<title key="title">Quick start | Vynn</title>');
+    expect(rendered.head.render()).toContain('name="description"');
   });
 
   it("keeps metadata registered by components inside a nested head group", () => {

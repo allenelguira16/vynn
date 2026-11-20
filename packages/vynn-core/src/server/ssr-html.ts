@@ -345,13 +345,13 @@ export function isSsrVoidElement(tag: string): boolean {
 export function $ssrHead(
   tag: "title" | "meta" | "link",
   props: Record<string, unknown>,
-): string {
+): null {
   $registerHead(tag, props);
-  return "";
+  return null;
 }
 
 /** Register a nested head metadata group without emitting body markup. */
-export function $ssrHeadGroup(render: () => unknown): string {
+export function $ssrHeadGroup(render: () => unknown): null {
   $registerHeadGroup(render);
-  return "";
+  return null;
 }
