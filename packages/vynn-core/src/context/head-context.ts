@@ -3,6 +3,22 @@ import { getContext, setContext } from "../life-cycle/owner";
 
 export type HeadTag = "title" | "meta" | "link";
 
+export type HeadActivationScope = {
+  active: boolean;
+  parent?: HeadActivationScope;
+};
+
+export function isHeadActivationScopeActive(scope?: HeadActivationScope): boolean {
+  let current = scope;
+
+  while (current) {
+    if (!current.active) return false;
+    current = current.parent;
+  }
+
+  return true;
+}
+
 export type HeadGroup = {
   order: number;
   entries: HeadEntry[];
@@ -18,6 +34,7 @@ export type HeadEntry = {
   collection?: string;
   collectionRoot?: boolean;
   group?: HeadGroup;
+  scope?: HeadActivationScope;
 };
 
 export type HeadContext = {
@@ -217,7 +234,13 @@ export function getReplacedHeadCollections(context: HeadContext): Set<string> {
 
   for (const group of context.groups) {
     for (const entry of group.entries) {
-      if (entry.collectionRoot && entry.collection) replaced.add(entry.collection);
+      if (
+        isHeadActivationScopeActive(entry.scope) &&
+        entry.collectionRoot &&
+        entry.collection
+      ) {
+        replaced.add(entry.collection);
+      }
     }
   }
 
@@ -232,9 +255,15 @@ export function getReplacedHeadCollections(context: HeadContext): Set<string> {
 export function getHeadWinners(context: HeadContext): HeadEntry[] {
   const latestGroupByIdentity = new Map<string, HeadGroup>();
   const latestGroupByCollection = new Map<string, HeadGroup>();
+  const activeEntries = context.entries.filter((entry) =>
+    isHeadActivationScopeActive(entry.scope),
+  );
+  const activeEntrySet = new Set(activeEntries);
 
   for (const group of [...context.groups].sort((left, right) => left.order - right.order)) {
     for (const entry of group.entries) {
+      if (!activeEntrySet.has(entry)) continue;
+
       if (entry.collectionRoot && entry.collection) {
         latestGroupByCollection.set(entry.collection, group);
       } else if (!entry.collection) {
@@ -247,7 +276,7 @@ export function getHeadWinners(context: HeadContext): HeadEntry[] {
   const singletonEntries = new Map<string, HeadEntry[]>();
   const collectionEntries = new Map<string, HeadEntry[]>();
 
-  for (const entry of context.entries) {
+  for (const entry of activeEntries) {
     if (entry.collection) {
       const entries = collectionEntries.get(entry.collection) ?? [];
       entries.push(entry);

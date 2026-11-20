@@ -1,4 +1,5 @@
 import {
+  type HeadActivationScope,
   type HeadContext,
   type HeadEntry,
   type HeadGroup,
@@ -6,6 +7,7 @@ import {
   getHeadCollectionIdentity,
   getHeadContext,
   getHeadIdentity,
+  getOptionalHeadContext,
   getHeadWinners,
   getReplacedHeadCollections,
   notifyHeadContext,
@@ -24,6 +26,37 @@ import { assertSafeAttributeName } from "./attribute-name";
 
 const HEAD_GROUP_CONTEXT = Symbol.for("vynn.head-group-context");
 const HEAD_ELEMENT_CREATION_CONTEXT = Symbol.for("vynn.head-element-creation");
+const HEAD_BRANCH_SCOPE_CONTEXT = Symbol.for("vynn.head-branch-scope");
+
+/**
+ * Creates a metadata activation scope for a conditional render branch.
+ * Scopes inherit from their parent so a parked ancestor also deactivates
+ * metadata registered by nested branches.
+ */
+export function createHeadBranchScope(active = true): HeadActivationScope {
+  const scope: HeadActivationScope = {
+    active,
+    parent: getContext<HeadActivationScope>(HEAD_BRANCH_SCOPE_CONTEXT),
+  };
+  setContext(HEAD_BRANCH_SCOPE_CONTEXT, scope);
+  return scope;
+}
+
+/** Updates a branch's metadata visibility without disposing its parked owner. */
+export function setHeadBranchScopeActive(
+  scope: HeadActivationScope,
+  active: boolean,
+): void {
+  if (scope.active === active) return;
+
+  scope.active = active;
+
+  const context = getOptionalHeadContext();
+  if (!context) return;
+
+  notifyHeadContext(context);
+  if (!isServer()) syncClientHead(context);
+}
 
 /**
  * Returns whether the current render is producing text for document metadata.
@@ -398,6 +431,7 @@ export function $registerHead<T extends HeadTag>(
 ): HeadEntry {
   const context = getHeadContext();
   const group = getContext<HeadGroup>(HEAD_GROUP_CONTEXT);
+  const scope = getContext<HeadActivationScope>(HEAD_BRANCH_SCOPE_CONTEXT);
   const entry: HeadEntry = {
     tag,
     attributes: {},
@@ -405,6 +439,7 @@ export function $registerHead<T extends HeadTag>(
     identity: tag === "title" ? "title" : `head:${context.nextOrder}`,
     order: context.nextOrder++,
     ...(group ? { group } : {}),
+    ...(scope ? { scope } : {}),
   };
 
   $renderEffect(() => {

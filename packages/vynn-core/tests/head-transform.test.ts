@@ -146,4 +146,23 @@ describe("JSX document metadata lowering", () => {
     expect(code).toContain("<svg><title>Chart title</title></svg>");
     expect(code).not.toContain("$tmpl");
   });
+
+  it("hoists a conditional title into the head registration branch", () => {
+    const code = transformVynnOxc(
+      `function Page(props) {
+        return (
+          <li>
+            {props.active && <title>{props.label} | Vynn</title>}
+            <a>{props.label}</a>
+          </li>
+        );
+      }`,
+      "conditional-title.tsx",
+    );
+
+    expect(code).toContain('_$registerHead("title", () =>');
+    expect(code).not.toContain("<title");
+    expect(code).toContain("props.active");
+  });
+
 });

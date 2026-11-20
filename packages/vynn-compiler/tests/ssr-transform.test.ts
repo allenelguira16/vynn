@@ -405,4 +405,24 @@ describe("Vynn SSR string compiler", () => {
     expectValidModule(code);
   });
 
+
+  it("hoists a conditional title into the SSR head registry", () => {
+    const code = transformVynnSsr(
+      `function Page(props: { active: boolean; label: string }) {
+        return (
+          <li>
+            {props.active && <title>{props.label} | Vynn</title>}
+            <a>{props.label}</a>
+          </li>
+        );
+      }`,
+      "conditional-title.tsx",
+    );
+
+    expect(code).toContain("_vynnSsrLogical");
+    expect(code).toContain('_vynnSsrHead("title"');
+    expect(code).not.toContain('"<title');
+    expectValidModule(code);
+  });
+
 });

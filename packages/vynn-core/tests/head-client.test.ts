@@ -5,6 +5,8 @@ import { withHydration } from "../src/client/hydration";
 import { initializeHeadContext } from "../src/context/head-context";
 import { $state } from "../src/reactivity/state";
 import { createOwner, disposeOwner, runWithOwner } from "../src/life-cycle/owner";
+import { $if } from "../src/render/$if";
+import { addUnmountListener } from "../src/render/$cmpnt.util";
 import { $registerHead, $registerHeadGroup } from "../src/render/head-runtime";
 import { $template } from "../src/render/$template";
 
@@ -362,6 +364,160 @@ describe("client head rendering", () => {
     expect(document.head.querySelector("title")?.textContent).toBe("Initial");
     currentTitle.value = "Updated";
     expect(document.head.querySelector("title")?.textContent).toBe("Updated");
+
+    disposeOwner(root);
+  });
+
+  it("deactivates metadata when its conditional branch is parked and restores the previous title", () => {
+    const root = createOwner();
+    const active = $state(true);
+
+    runWithOwner(root, () => {
+      initializeHeadContext();
+      $registerHead("title", { children: "Layout | Vynn" });
+
+      const nodes = $if(
+        () => active.value,
+        () => {
+          $registerHead("title", { children: "Dashboard | Vynn" });
+          return "Dashboard";
+        },
+      );
+
+      for (const node of nodes as unknown as Node[]) {
+        document.body.appendChild(node);
+      }
+    });
+
+    expect(document.head.querySelectorAll("title")).toHaveLength(1);
+    expect(document.title).toBe("Dashboard | Vynn");
+
+    active.value = false;
+    expect(document.head.querySelectorAll("title")).toHaveLength(1);
+    expect(document.title).toBe("Layout | Vynn");
+
+    active.value = true;
+    expect(document.head.querySelectorAll("title")).toHaveLength(1);
+    expect(document.title).toBe("Dashboard | Vynn");
+
+    disposeOwner(root);
+  });
+
+  it("keeps nested conditional metadata inactive while an ancestor branch is parked", () => {
+    const root = createOwner();
+    const parentActive = $state(true);
+    const childActive = $state(true);
+
+    runWithOwner(root, () => {
+      initializeHeadContext();
+      $registerHead("title", { children: "Layout | Vynn" });
+
+      const nodes = $if(
+        () => parentActive.value,
+        () => {
+          $registerHead("title", { children: "Parent | Vynn" });
+
+          return $if(
+            () => childActive.value,
+            () => {
+              $registerHead("title", { children: "Child | Vynn" });
+              return "Child";
+            },
+            () => "No child",
+          );
+        },
+      );
+
+      for (const node of nodes as unknown as Node[]) {
+        document.body.appendChild(node);
+      }
+    });
+
+    expect(document.title).toBe("Child | Vynn");
+
+    parentActive.value = false;
+    expect(document.title).toBe("Layout | Vynn");
+
+    childActive.value = false;
+    expect(document.title).toBe("Layout | Vynn");
+
+    parentActive.value = true;
+    expect(document.title).toBe("Parent | Vynn");
+
+    childActive.value = true;
+    expect(document.title).toBe("Child | Vynn");
+    expect(document.head.querySelectorAll("title")).toHaveLength(1);
+
+    disposeOwner(root);
+  });
+
+  it("disposes conditional metadata when its entire render range is removed", async () => {
+    const root = createOwner();
+    const stopObserving = addUnmountListener();
+    const active = $state(true);
+    let rangeNodes: Node[] = [];
+
+    runWithOwner(root, () => {
+      initializeHeadContext();
+      $registerHead("title", { children: "Layout | Vynn" });
+
+      const nodes = $if(
+        () => active.value,
+        () => {
+          $registerHead("title", { children: "Dashboard | Vynn" });
+          return "Dashboard";
+        },
+      );
+
+      rangeNodes = nodes as unknown as Node[];
+      for (const node of rangeNodes) {
+        document.body.appendChild(node);
+      }
+    });
+
+    expect(document.title).toBe("Dashboard | Vynn");
+
+    for (const node of rangeNodes) {
+      node.parentNode?.removeChild(node);
+    }
+
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    expect(document.title).toBe("Layout | Vynn");
+
+    stopObserving();
+    disposeOwner(root);
+  });
+
+  it("activates metadata when a conditional branch is entered for the first time", () => {
+    const root = createOwner();
+    const active = $state(false);
+
+    runWithOwner(root, () => {
+      initializeHeadContext();
+      $registerHead("title", { children: "Layout | Vynn" });
+
+      const nodes = $if(
+        () => active.value,
+        () => {
+          $registerHead("title", { children: "Dashboard | Vynn" });
+          return "Dashboard";
+        },
+      );
+
+      for (const node of nodes as unknown as Node[]) {
+        document.body.appendChild(node);
+      }
+    });
+
+    expect(document.title).toBe("Layout | Vynn");
+
+    active.value = true;
+    expect(document.title).toBe("Dashboard | Vynn");
+
+    active.value = false;
+    expect(document.title).toBe("Layout | Vynn");
+    expect(document.head.querySelectorAll("title")).toHaveLength(1);
 
     disposeOwner(root);
   });

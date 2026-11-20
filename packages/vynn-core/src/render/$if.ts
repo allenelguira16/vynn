@@ -2,10 +2,14 @@ import type { JSX } from "../jsx-runtime";
 
 import { isHydrating } from "../client/hydration";
 import { isServer } from "../context/is-server-context";
-import { $renderEffect } from "../reactivity/effect";
-import { untrack } from "../reactivity/effect";
 import { NotReadyError } from "../reactivity/not-ready-error";
-import { markParked, unmarkParked } from "./$cmpnt.util";
+import { $renderEffect, untrack } from "../reactivity/effect";
+import { createOwner, getOwner, runWithOwner } from "../life-cycle/owner";
+import {
+  createHeadBranchScope,
+  setHeadBranchScopeActive,
+} from "./head-runtime";
+import { markParked, rootNodes, unmarkParked } from "./$cmpnt.util";
 import { getCurrentDOMNamespace, withDOMNamespace } from "./namespace";
 import { resolveNode, resolveSSRChild } from "./resolve-node";
 
@@ -15,6 +19,7 @@ type IfBranch = {
   fragment: DocumentFragment;
   nodes: Node[];
   shortCircuitText?: Text;
+  headScope: ReturnType<typeof createHeadBranchScope>;
 };
 
 export function $if(
@@ -42,199 +47,225 @@ export function $if(
   }
 
   const marker = document.createTextNode("");
-  const branches = new Map<boolean, IfBranch>();
+  const parentOwner = getOwner();
+  const owner = parentOwner ? createOwner(parentOwner, { identity: false }) : null;
 
-  function isShortCircuitText(value: unknown): value is string | number {
-    return typeof value === "string" || typeof value === "number";
-  }
+  // The range marker owns the condition effect and its cached branch owners.
+  // Vynn's unmount observer disposes them when this entire range is removed;
+  // parked ancestors mark this marker so its owner survives temporary moves.
+  if (owner) rootNodes.set(marker, owner);
 
-  function renderShortCircuitValue(value: string | number): string {
-    return String(value);
-  }
+  return runWithOwner(owner ?? parentOwner, () => {
+    const branches = new Map<boolean, IfBranch>();
 
-  function createBranch(
-    key: boolean,
-    value: unknown,
-    claimInitialText = false,
-    parkInFragment = true,
-  ): IfBranch {
-    const start = document.createTextNode("");
-    const end = document.createTextNode("");
-
-    // With no alternate callback, the false branch represents the original
-    // left operand of an && expression. Only strings/numbers create text.
-    // Claim an SSR text node only during the initial render; later branch
-    // switches create new nodes rather than consuming unrelated hydration text.
-    const shortCircuitText =
-      !key && !alternate && isShortCircuitText(value)
-        ? claimInitialText
-          ? (renderInNamespace(() => resolveNode(() => renderShortCircuitValue(value)))[0] as Text)
-          : document.createTextNode(renderShortCircuitValue(value))
-        : undefined;
-
-    const content = key
-      ? renderInNamespace(() => resolveNode(consequent))
-      : alternate
-        ? renderInNamespace(() => resolveNode(alternate))
-        : shortCircuitText
-          ? [shortCircuitText]
-          : [];
-
-    const nodes = [start, ...content, end];
-    const fragment = document.createDocumentFragment();
-
-    // During hydration, the initial branch can contain SSR nodes that must
-    // stay in their original DOM positions. A fresh CSR branch still starts
-    // in a fragment, preserving the normal branch lifecycle.
-    if (parkInFragment) {
-      fragment.append(...nodes);
+    function isShortCircuitText(value: unknown): value is string | number {
+      return typeof value === "string" || typeof value === "number";
     }
 
-    const branch: IfBranch = {
-      start,
-      end,
-      fragment,
-      nodes,
-      shortCircuitText,
-    };
+    function renderShortCircuitValue(value: string | number): string {
+      return String(value);
+    }
 
-    branches.set(key, branch);
+    function createBranch(
+      key: boolean,
+      value: unknown,
+      claimInitialText = false,
+      parkInFragment = true,
+      initiallyActive = true,
+    ): IfBranch {
+      // A transparent owner gives branch-local effects and metadata a lifecycle
+      // without consuming a component hydration identity. Parked branches keep
+      // this owner alive so their state can be restored later.
+      const parent = getOwner();
+      const owner = parent ? createOwner(parent, { identity: false }) : null;
 
-    return branch;
-  }
+      return runWithOwner(owner ?? parent, () => {
+        const headScope = createHeadBranchScope(initiallyActive);
+        const start = document.createTextNode("");
+        const end = document.createTextNode("");
 
-  function updateShortCircuitValue(branch: IfBranch, value: unknown): void {
-    const shouldRenderText = isShortCircuitText(value);
-    const currentText = branch.shortCircuitText;
+        // With no alternate callback, the false branch represents the original
+        // left operand of an && expression. Only strings/numbers create text.
+        // Claim an SSR text node only during the initial render; later branch
+        // switches create new nodes rather than consuming unrelated hydration text.
+        const shortCircuitText =
+          !key && !alternate && isShortCircuitText(value)
+            ? claimInitialText
+              ? (renderInNamespace(() => resolveNode(() => renderShortCircuitValue(value)))[0] as Text)
+              : document.createTextNode(renderShortCircuitValue(value))
+            : undefined;
 
-    if (shouldRenderText) {
-      const text = renderShortCircuitValue(value);
+        const content = key
+          ? renderInNamespace(() => resolveNode(consequent))
+          : alternate
+            ? renderInNamespace(() => resolveNode(alternate))
+            : shortCircuitText
+              ? [shortCircuitText]
+              : [];
+
+        const nodes = [start, ...content, end];
+        const fragment = document.createDocumentFragment();
+
+        // During hydration, the initial branch can contain SSR nodes that must
+        // stay in their original DOM positions. A fresh CSR branch still starts
+        // in a fragment, preserving the normal branch lifecycle.
+        if (parkInFragment) {
+          fragment.append(...nodes);
+        }
+
+        const branch: IfBranch = {
+          start,
+          end,
+          fragment,
+          nodes,
+          shortCircuitText,
+          headScope,
+        };
+
+        branches.set(key, branch);
+
+        return branch;
+      });
+    }
+
+    function updateShortCircuitValue(branch: IfBranch, value: unknown): void {
+      const shouldRenderText = isShortCircuitText(value);
+      const currentText = branch.shortCircuitText;
+
+      if (shouldRenderText) {
+        const text = renderShortCircuitValue(value);
+
+        if (currentText) {
+          currentText.data = text;
+        } else {
+          const nextText = document.createTextNode(text);
+          const endIndex = branch.nodes.indexOf(branch.end);
+
+          branch.end.parentNode?.insertBefore(nextText, branch.end);
+
+          if (endIndex !== -1) {
+            branch.nodes.splice(endIndex, 0, nextText);
+          }
+
+          branch.shortCircuitText = nextText;
+        }
+
+        return;
+      }
 
       if (currentText) {
-        currentText.data = text;
-      } else {
-        const nextText = document.createTextNode(text);
-        const endIndex = branch.nodes.indexOf(branch.end);
+        currentText.parentNode?.removeChild(currentText);
 
-        branch.end.parentNode?.insertBefore(nextText, branch.end);
-
-        if (endIndex !== -1) {
-          branch.nodes.splice(endIndex, 0, nextText);
+        const textIndex = branch.nodes.indexOf(currentText);
+        if (textIndex !== -1) {
+          branch.nodes.splice(textIndex, 1);
         }
 
-        branch.shortCircuitText = nextText;
+        branch.shortCircuitText = undefined;
+      }
+    }
+
+    function park(branch: IfBranch): void {
+      setHeadBranchScopeActive(branch.headScope, false);
+
+      const parent = branch.start.parentNode;
+
+      // The branch is already parked or hasn't been inserted yet.
+      if (!parent || parent === branch.fragment) {
+        return;
       }
 
-      return;
-    }
+      // Walk the live range, not branch.nodes.
+      // Nested $nodes may have inserted siblings after that array was created.
+      let node: Node | null = branch.start;
 
-    if (currentText) {
-      currentText.parentNode?.removeChild(currentText);
+      while (node) {
+        const next: Node | null = node.nextSibling;
 
-      const textIndex = branch.nodes.indexOf(currentText);
-      if (textIndex !== -1) {
-        branch.nodes.splice(textIndex, 1);
-      }
+        markParked(node);
 
-      branch.shortCircuitText = undefined;
-    }
-  }
+        branch.fragment.appendChild(node);
 
-  function park(branch: IfBranch): void {
-    const parent = branch.start.parentNode;
-
-    // The branch is already parked or hasn't been inserted yet.
-    if (!parent || parent === branch.fragment) {
-      return;
-    }
-
-    // Walk the live range, not branch.nodes.
-    // Nested $nodes may have inserted siblings after that array was created.
-    let node: Node | null = branch.start;
-
-    while (node) {
-      const next: Node | null = node.nextSibling;
-
-      markParked(node);
-
-      branch.fragment.appendChild(node);
-
-      if (node === branch.end) {
-        break;
-      }
-
-      node = next;
-    }
-  }
-
-  function activate(branch: IfBranch): void {
-    const parent = marker.parentNode;
-
-    if (!parent) {
-      // The containing JSX hasn't inserted the marker yet.
-      queueMicrotask(() => {
-        if (activeBranch === branch) {
-          activate(branch);
+        if (node === branch.end) {
+          break;
         }
-      });
 
-      return;
+        node = next;
+      }
     }
 
-    for (const node of [...branch.fragment.childNodes]) {
-      unmarkParked(node);
+    function activate(branch: IfBranch): void {
+      setHeadBranchScopeActive(branch.headScope, true);
+
+      const parent = marker.parentNode;
+
+      if (!parent) {
+        // The containing JSX hasn't inserted the marker yet.
+        queueMicrotask(() => {
+          if (activeBranch === branch) {
+            activate(branch);
+          }
+        });
+
+        return;
+      }
+
+      for (const node of [...branch.fragment.childNodes]) {
+        unmarkParked(node);
+      }
+
+      parent.insertBefore(branch.fragment, marker);
     }
 
-    parent.insertBefore(branch.fragment, marker);
-  }
+    let initialValue: unknown;
 
-  let initialValue: unknown;
+    try {
+      initialValue = untrack(condition);
+    } catch (error) {
+      // Async conditions can suspend on their first read. Start with the false
+      // branch and let the render effect retry when the resource settles.
+      if (!(error instanceof NotReadyError)) {
+        throw error;
+      }
 
-  try {
-    initialValue = untrack(condition);
-  } catch (error) {
-    // Async conditions can suspend on their first read. Start with the false
-    // branch and let the render effect retry when the resource settles.
-    if (!(error instanceof NotReadyError)) {
-      throw error;
+      initialValue = false;
     }
 
-    initialValue = false;
-  }
+    const initialKey = !!initialValue;
 
-  const initialKey = !!initialValue;
+    let activeKey = initialKey;
+    // Don't detach claimed SSR nodes, but keep the original fragment behavior in CSR.
+    let activeBranch = createBranch(initialKey, initialValue, true, !isHydrating());
 
-  let activeKey = initialKey;
-  // Don't detach claimed SSR nodes, but keep the original fragment behavior in CSR.
-  let activeBranch = createBranch(initialKey, initialValue, true, !isHydrating());
+    $renderEffect(() => {
+      const nextValue = condition();
+      const nextKey = !!nextValue;
 
-  $renderEffect(() => {
-    const nextValue = condition();
-    const nextKey = !!nextValue;
+      if (nextKey === activeKey) {
+        if (!nextKey && !alternate) {
+          updateShortCircuitValue(activeBranch, nextValue);
+        }
 
-    if (nextKey === activeKey) {
+        return;
+      }
+
+      // Resolve/create before modifying the active branch.
+      // A thrown NotReadyError leaves the current branch untouched.
+      const nextBranch =
+        branches.get(nextKey) ?? createBranch(nextKey, nextValue, false, true, false);
+
       if (!nextKey && !alternate) {
-        updateShortCircuitValue(activeBranch, nextValue);
+        updateShortCircuitValue(nextBranch, nextValue);
       }
 
-      return;
-    }
+      park(activeBranch);
 
-    // Resolve/create before modifying the active branch.
-    // A thrown NotReadyError leaves the current branch untouched.
-    const nextBranch = branches.get(nextKey) ?? createBranch(nextKey, nextValue);
+      activeKey = nextKey;
+      activeBranch = nextBranch;
 
-    if (!nextKey && !alternate) {
-      updateShortCircuitValue(nextBranch, nextValue);
-    }
+      activate(nextBranch);
+    });
 
-    park(activeBranch);
-
-    activeKey = nextKey;
-    activeBranch = nextBranch;
-
-    activate(nextBranch);
+    return [...activeBranch.nodes, marker];
   });
-
-  return [...activeBranch.nodes, marker];
 }
