@@ -982,9 +982,10 @@ class SsrTransform {
 
       const value = getChild(attribute, "value");
       if (key === "html") {
-        if (!value) {
-          rawHtml = '""';
-        } else if (isLiteralString(value)) {
+        // Presence of the html prop makes this host's descendants opaque to
+        // hydration, even when the expression currently resolves to null.
+        rawHtml = '""';
+        if (isLiteralString(value)) {
           rawHtml = this.callHelper("$ssrRaw", quote(value.value));
         } else if (isJSXExpressionContainer(value)) {
           const expression = getChild(value, "expression");
@@ -1011,9 +1012,13 @@ class SsrTransform {
       }
     }
 
+    const isVoidElement = voidElements.has(tagLower);
+    if (!isVoidElement && rawHtml !== null) {
+      openingParts.push(quote(' data-vynn-raw-html=""'));
+    }
     openingParts.push(quote(">"));
     const openingMarkup = `(${openingParts.join(" + ")})`;
-    if (voidElements.has(tagLower)) return openingMarkup;
+    if (isVoidElement) return openingMarkup;
 
     const children = getNodeArray(node, "children");
     if (rawHtml !== null && children.length > 0) {

@@ -260,6 +260,38 @@ describe("Vynn SSR string compiler", () => {
     expectValidModule(code);
   });
 
+  it("marks raw HTML hosts so hydration skips injected descendants", () => {
+    const code = transformVynnSsr(
+      `function Page(props: { parsedCode: string }) {
+        return (
+          <main>
+            <code html={props.parsedCode}></code>
+            <p>After raw HTML</p>
+          </main>
+        );
+      }`,
+      "raw-html.tsx",
+    );
+
+    expect(code).toContain("data-vynn-raw-html");
+    expect(code).toContain("_vynnSsrRaw(() => props.parsedCode)");
+    expect(code).toContain("After raw HTML");
+    expectValidModule(code);
+  });
+
+  it("treats a null raw HTML value as an empty raw HTML region", () => {
+    const code = transformVynnSsr(
+      `function Page() {
+        return <code html={null}></code>;
+      }`,
+      "raw-html-null.tsx",
+    );
+
+    expect(code).toContain("data-vynn-raw-html");
+    expect(code).toContain("_vynnSsrRaw(() => null)");
+    expectValidModule(code);
+  });
+
   it("preserves raw-text contents in script and style elements", () => {
     const code = transformVynnSsr(
       `function Page(props: { script: string }) {
