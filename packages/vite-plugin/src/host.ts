@@ -33,11 +33,18 @@ export function hasExternalViteDeployment(config: ResolvedConfig): boolean {
     }
   ).environments;
 
+  // Vite resolves a default dev.createEnvironment factory for every
+  // non-client environment, including its built-in "ssr" environment.
+  // Therefore, the presence of that factory on "ssr" alone does not mean
+  // another integration owns the server. External hosts such as Nitro are
+  // detected through buildApp above; additional server environments still
+  // indicate that a runtime provider participates in the build.
   return Object.entries(environments ?? {}).some(
     ([name, environment]) =>
       name !== "client" &&
+      name !== "ssr" &&
       (typeof environment.dev?.createEnvironment === "function" ||
-        (name !== "ssr" && environment.consumer === "server")),
+        environment.consumer === "server"),
   );
 }
 

@@ -12,7 +12,12 @@ function makeConfig(overrides: Record<string, unknown> = {}): ResolvedConfig {
     plugins: [],
     environments: {
       client: {},
-      ssr: { consumer: "server" },
+      // Vite 8 resolves a default environment factory for the built-in SSR
+      // environment even when the project has not installed a runtime provider.
+      ssr: {
+        consumer: "server",
+        dev: { createEnvironment: () => ({}) },
+      },
     },
     ...overrides,
   } as unknown as ResolvedConfig;
@@ -25,7 +30,7 @@ describe("Vynn Vite deployment detection", () => {
     expect(isRunnableViteEnvironment({ runner: {} })).toBe(true);
   });
 
-  it("does not treat Vite's standard client and SSR environments as an external deployment", () => {
+  it("does not treat Vite's built-in client and SSR environments as an external deployment", () => {
     expect(hasExternalViteDeployment(makeConfig())).toBe(false);
   });
 
@@ -50,7 +55,10 @@ describe("Vynn Vite deployment detection", () => {
         makeConfig({
           environments: {
             client: {},
-            ssr: { consumer: "server" },
+            ssr: {
+              consumer: "server",
+              dev: { createEnvironment: () => ({}) },
+            },
             worker: { consumer: "server" },
           },
         }),
@@ -58,13 +66,33 @@ describe("Vynn Vite deployment detection", () => {
     ).toBe(true);
   });
 
-  it("detects a custom runtime factory on the standard SSR environment", () => {
+  it("does not mistake Vite's default SSR environment factory for an external runtime", () => {
     expect(
       hasExternalViteDeployment(
         makeConfig({
           environments: {
             client: {},
             ssr: {
+              consumer: "server",
+              dev: { createEnvironment: () => ({}) },
+            },
+          },
+        }),
+      ),
+    ).toBe(false);
+  });
+
+  it("detects a custom runtime factory on an additional server environment", () => {
+    expect(
+      hasExternalViteDeployment(
+        makeConfig({
+          environments: {
+            client: {},
+            ssr: {
+              consumer: "server",
+              dev: { createEnvironment: () => ({}) },
+            },
+            worker: {
               consumer: "server",
               dev: { createEnvironment: () => ({}) },
             },
