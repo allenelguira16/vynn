@@ -16,3 +16,8 @@ export const APPLY_ERROR_BOUNDARY_PATCH_SSR_KEY = "$AEBP";
 export const APPLY_HEAD_PATCH_SSR_KEY = "$AHP";
 export const ASYNC_DATA_SSR_KEY = "$AD";
 export const ERROR_BOUNDARY_DATA_SSR_KEY = "$EBD";
+
+export const AWAIT_FALLBACK_SSR_MARKER = "a:f";
+export const AWAIT_RESOLVED_SSR_MARKER = "a:r";
+export const DYNAMIC_SLOT_START_SSR_MARKER = "s";
+export const DYNAMIC_SLOT_END_SSR_MARKER = "/s";

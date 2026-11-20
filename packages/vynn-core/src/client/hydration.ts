@@ -1,4 +1,6 @@
 import {
+  AWAIT_FALLBACK_SSR_MARKER,
+  AWAIT_RESOLVED_SSR_MARKER,
   EMPTY_TEXT_SSR_MARKER,
   INTERNAL_RANGE_END_MARKER,
   INTERNAL_RANGE_START_MARKER,
@@ -596,10 +598,15 @@ function getServerRenderedNodes(root: Node) {
 
     if (isCommentNode(node)) {
       const value = node.data;
-      const awaitState = /^vynn-await:(resolved|fallback)$/.exec(value);
+      const awaitState =
+        value === AWAIT_RESOLVED_SSR_MARKER
+          ? "resolved"
+          : value === AWAIT_FALLBACK_SSR_MARKER
+            ? "fallback"
+            : undefined;
 
       if (awaitState) {
-        addAwaitState(awaitState[1] as HydrationAwaitState);
+        addAwaitState(awaitState);
         node.parentNode?.removeChild(node);
         return;
       }

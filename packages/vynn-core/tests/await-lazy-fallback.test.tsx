@@ -154,7 +154,7 @@ describe("Await with lazy components", () => {
 
     const host = document.createElement("div");
     host.innerHTML =
-      '<!--l:0--><!--vynn-await:resolved--><div><h4>Test</h4><!--l:0.3--><p>First server result</p><!--/l:0.3--><!--vynn-await:resolved--><!--l:0.2--><p>Second server result</p><!--/l:0.2--><h5>Test</h5></div><!--/l:0-->';
+      '<!--l:0--><!--a:r--><div><h4>Test</h4><!--l:0.3--><p>First server result</p><!--/l:0.3--><!--a:r--><!--l:0.2--><p>Second server result</p><!--/l:0.2--><h5>Test</h5></div><!--/l:0-->';
     document.body.append(host);
 
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -222,7 +222,7 @@ describe("Await with lazy components", () => {
     const LazyPage = lazy(() => module.promise, "Page");
 
     const host = document.createElement("div");
-    host.innerHTML = "<!--vynn-await:fallback-->Loading page";
+    host.innerHTML = "<!--a:f-->Loading page";
     document.body.append(host);
 
     const unmount = hydrateToDOM(

@@ -35,21 +35,21 @@ describe("SSR string HTML helpers", () => {
     expect(
       $ssrJoinChildren([
         "Before ",
-        "<!--vynn-ssr-slot-start:1:0--><!--vynn-ssr-slot-end:1:0-->",
+        "<!--s:1:0--><!--/s:1:0-->",
         "<!--$v0-->",
         " after",
       ]),
     ).toBe(
-      "Before <!--/--><!--vynn-ssr-slot-start:1:0--><!--vynn-ssr-slot-end:1:0--><!--$v0--> after",
+      "Before <!--/--><!--s:1:0--><!--/s:1:0--><!--$v0--> after",
     );
     expect(
       $ssrJoinChildren([
         "Before ",
-        "<!--vynn-ssr-slot-start:1:0--><!--vynn-ssr-slot-end:1:0-->",
+        "<!--s:1:0--><!--/s:1:0-->",
         " after",
       ]),
     ).toBe(
-      "Before <!--/--><!--vynn-ssr-slot-start:1:0--><!--vynn-ssr-slot-end:1:0--><!--/--> after",
+      "Before <!--/--><!--s:1:0--><!--/s:1:0--><!--/--> after",
     );
   });
 

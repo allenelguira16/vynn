@@ -177,7 +177,10 @@ describe("string-based SSR renderer", () => {
     const first = await reader.read();
     expect(first.done).toBe(false);
     expect(decoder.decode(first.value)).toContain("<i>Loading</i>");
-    expect(decoder.decode(first.value)).toContain("<!--vynn-await:fallback-->");
+    const initialHtml = decoder.decode(first.value);
+    expect(initialHtml).toContain("<!--a:f-->");
+    expect(initialHtml).toContain("<!--f:");
+    expect(initialHtml).toContain("<!--/f:");
 
     const remaining: string[] = [];
     while (true) {
@@ -188,7 +191,7 @@ describe("string-based SSR renderer", () => {
 
     const patch = remaining.join("");
     expect(patch).toContain('data-vynn-ssr-patch="');
-    expect(patch).toContain("<!--vynn-await:resolved-->");
+    expect(patch).toContain("<!--a:r-->");
     expect(patch).toContain("<p>streamed</p>");
   });
 
@@ -233,7 +236,7 @@ describe("string-based SSR renderer", () => {
     expect(rendered.body).toContain("<p>Lazy profile</p>");
     expect(rendered.body).toContain("<!--l:");
     expect(rendered.body).toContain("<!--/l:");
-    expect(rendered.body).not.toContain("vynn-ssr-start");
+    expect(rendered.body).not.toContain("<!--f:");
     expect(rendered.modules.has("profile-module")).toBe(true);
     expect(loaderRuns).toBe(1);
   });
@@ -262,7 +265,7 @@ describe("string-based SSR renderer", () => {
 
     expect(rendered.body).toContain("<strong>Caught: awaited profile unavailable</strong>");
     expect(rendered.body).not.toContain("Loading profile");
-    expect(rendered.body).not.toContain("vynn-ssr-slot-start");
+    expect(rendered.body).not.toContain("<!--s:");
   });
   it("streams a Catch fallback patch when Await content rejects", async () => {
     const Page = $ssrComponent(function Page() {
@@ -290,7 +293,10 @@ describe("string-based SSR renderer", () => {
 
     const initial = await reader.read();
     expect(initial.done).toBe(false);
-    expect(decoder.decode(initial.value)).toContain("Loading profile");
+    const initialHtml = decoder.decode(initial.value);
+    expect(initialHtml).toContain("Loading profile");
+    expect(initialHtml).toContain("<!--eb:");
+    expect(initialHtml).toContain("<!--/eb:");
 
     const patches: string[] = [];
     while (true) {
@@ -302,7 +308,7 @@ describe("string-based SSR renderer", () => {
     const output = patches.join("");
     expect(output).toContain('data-vynn-ssr-error-patch="');
     expect(output).toContain("Caught: stream profile unavailable");
-    expect(output).not.toContain("vynn-ssr-slot-start");
+    expect(output).not.toContain("<!--s:");
   });
 
   it("waits for a parent Await patch before streaming nested Await patches", async () => {
@@ -497,6 +503,6 @@ describe("string-based SSR renderer", () => {
     expect(rendered.body).toContain("<strong>Caught: profile unavailable</strong>");
     expect(rendered.body).toContain('"status":"fallback"');
     expect(rendered.body).toContain('"message":"profile unavailable"');
-    expect(rendered.body).not.toContain("vynn-ssr-slot-start");
+    expect(rendered.body).not.toContain("<!--s:");
   });
 });

@@ -1,3 +1,13 @@
+import {
+  AWAIT_FALLBACK_SSR_MARKER,
+  AWAIT_RESOLVED_SSR_MARKER,
+  DYNAMIC_SLOT_END_SSR_MARKER,
+  DYNAMIC_SLOT_START_SSR_MARKER,
+  ERROR_BOUNDARY_END_SSR_MARKER,
+  ERROR_BOUNDARY_START_SSR_MARKER,
+  FALLBACK_END_SSR_MARKER,
+  FALLBACK_START_SSR_MARKER,
+} from "../const";
 import { enterAsyncBoundary } from "./async-context";
 import {
   enterErrorBoundary,
@@ -334,7 +344,7 @@ export function renderSsrAwait(
     boundary.active = false;
     const content = rendered ?? boundary.content;
     return boundary.kind === "await"
-      ? "<!--vynn-await:resolved-->" + content
+      ? `<!--${AWAIT_RESOLVED_SSR_MARKER}-->` + content
       : content;
   }
 
@@ -356,7 +366,7 @@ export function renderSsrAwait(
 
   const fallbackContent =
     boundary.kind === "await"
-      ? "<!--vynn-await:fallback-->" + fallbackHtml
+      ? `<!--${AWAIT_FALLBACK_SSR_MARKER}-->` + fallbackHtml
       : fallbackHtml;
 
   if (state.mode === "sync") {
@@ -366,7 +376,7 @@ export function renderSsrAwait(
 
   boundary.active = true;
   boundary.version++;
-  return `<!--vynn-ssr-start:${boundary.id}-->${fallbackContent}<!--vynn-ssr-end:${boundary.id}-->`;
+  return `<!--${FALLBACK_START_SSR_MARKER}:${boundary.id}-->${fallbackContent}<!--${FALLBACK_END_SSR_MARKER}:${boundary.id}-->`;
 }
 
 function cancelSsrBoundaryTree(boundary: SsrStringBoundary): void {
@@ -440,8 +450,8 @@ export function renderSsrDynamicChild(render: () => unknown): string {
     };
     boundary.slots.push(slot);
 
-    return "<!--vynn-ssr-slot-start:" + boundary.id + ":" + slot.id +
-      "--><!--vynn-ssr-slot-end:" + boundary.id + ":" + slot.id + "-->";
+    return "<!--" + DYNAMIC_SLOT_START_SSR_MARKER + ":" + boundary.id + ":" + slot.id +
+      "--><!--" + DYNAMIC_SLOT_END_SSR_MARKER + ":" + boundary.id + ":" + slot.id + "-->";
   }
 }
 
@@ -532,7 +542,7 @@ export function renderSsrCatch(
     html = renderSsrErrorFallback(record);
   }
 
-  return `<!--vynn-ssr-error-start:${record.id}-->${html}<!--vynn-ssr-error-end:${record.id}-->`;
+  return `<!--${ERROR_BOUNDARY_START_SSR_MARKER}:${record.id}-->${html}<!--${ERROR_BOUNDARY_END_SSR_MARKER}:${record.id}-->`;
 }
 
 export function getSsrErrorBoundary(

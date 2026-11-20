@@ -1,3 +1,12 @@
+import {
+  AWAIT_RESOLVED_SSR_MARKER,
+  DYNAMIC_SLOT_END_SSR_MARKER,
+  DYNAMIC_SLOT_START_SSR_MARKER,
+  ERROR_BOUNDARY_END_SSR_MARKER,
+  ERROR_BOUNDARY_START_SSR_MARKER,
+  FALLBACK_END_SSR_MARKER,
+  FALLBACK_START_SSR_MARKER,
+} from "../const";
 import type { Owner } from "../life-cycle/owner";
 
 import {
@@ -22,16 +31,16 @@ import { renderHeadPatch, type SsrHeadManager } from "./head";
 
 const encoder = new TextEncoder();
 
-const asyncStart = (id: number) => `<!--vynn-ssr-start:${id}-->`;
-const asyncEnd = (id: number) => `<!--vynn-ssr-end:${id}-->`;
-const errorStart = (id: number) => `<!--vynn-ssr-error-start:${id}-->`;
-const errorEnd = (id: number) => `<!--vynn-ssr-error-end:${id}-->`;
+const asyncStart = (id: number) => `<!--${FALLBACK_START_SSR_MARKER}:${id}-->`;
+const asyncEnd = (id: number) => `<!--${FALLBACK_END_SSR_MARKER}:${id}-->`;
+const errorStart = (id: number) => `<!--${ERROR_BOUNDARY_START_SSR_MARKER}:${id}-->`;
+const errorEnd = (id: number) => `<!--${ERROR_BOUNDARY_END_SSR_MARKER}:${id}-->`;
 
 function markResolvedBoundaryContent(
   boundary: SsrStringBoundary,
   html: string,
 ): string {
-  return boundary.kind === "await" ? "<!--vynn-await:resolved-->" + html : html;
+  return boundary.kind === "await" ? `<!--${AWAIT_RESOLVED_SSR_MARKER}-->` + html : html;
 }
 
 function renderInitial(
@@ -200,8 +209,8 @@ async function resolveBoundary(
     for (let index = 0; index < boundary.slots.length; index++) {
       const slot = boundary.slots[index];
       if (!slot) continue;
-      const start = "<!--vynn-ssr-slot-start:" + boundary.id + ":" + slot.id + "-->";
-      const end = "<!--vynn-ssr-slot-end:" + boundary.id + ":" + slot.id + "-->";
+      const start = "<!--" + DYNAMIC_SLOT_START_SSR_MARKER + ":" + boundary.id + ":" + slot.id + "-->";
+      const end = "<!--" + DYNAMIC_SLOT_END_SSR_MARKER + ":" + boundary.id + ":" + slot.id + "-->";
 
       // A preceding Catch patch can remove pending slots from its failed child range.
       if (slot.kind === "attribute") {
@@ -587,10 +596,10 @@ function renderPatchRuntime(): string {
     return true;
   }
   window.__vynnApplySsrPatch=function(id){
-    apply('template[data-vynn-ssr-patch="'+id+'"]',"vynn-ssr-start:"+id,"vynn-ssr-end:"+id,true);
+    apply('template[data-vynn-ssr-patch="'+id+'"]',"${FALLBACK_START_SSR_MARKER}:"+id,"${FALLBACK_END_SSR_MARKER}:"+id,true);
   };
   window.__vynnApplySsrErrorPatch=function(id){
-    apply('template[data-vynn-ssr-error-patch="'+id+'"]',"vynn-ssr-error-start:"+id,"vynn-ssr-error-end:"+id,true);
+    apply('template[data-vynn-ssr-error-patch="'+id+'"]',"${ERROR_BOUNDARY_START_SSR_MARKER}:"+id,"${ERROR_BOUNDARY_END_SSR_MARKER}:"+id,true);
   };
 })();
 document.currentScript.remove();

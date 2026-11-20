@@ -165,7 +165,7 @@ function hasNoHtmlTags(value: string): boolean {
   // browser. Treat only those temporary markers as transparent. Persistent
   // hydration anchors such as <!--$v0--> must remain separators themselves.
   const withoutPendingSlotMarkers = value.replace(
-    /<!--vynn-ssr-slot-(?:start|end):\d+:\d+-->/g,
+    /<!--(?:s|\/s):\d+:\d+-->/g,
     "",
   );
   return !/<[^>]+>/.test(withoutPendingSlotMarkers);
