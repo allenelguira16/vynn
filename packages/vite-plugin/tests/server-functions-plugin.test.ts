@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_SERVER_FUNCTION_ENDPOINT } from "../../vynn-core/src/server-functions/constants.ts";
 import { serverFunctions } from "../src/index.ts";
 import { registerServerFunctionDevMiddleware } from "../src/plugins/server-functions/dev-middleware.ts";
+import { createServerFunctionManifestCode } from "../src/plugins/server-functions/index.ts";
 import { makeClientRuntime, makeServerRuntime } from "../src/plugins/server-functions/runtime.ts";
 import { DEFAULT_ENDPOINT } from "../src/plugins/server-functions/shared.ts";
 
@@ -88,21 +89,33 @@ describe("standalone server-function Vite integration", () => {
     expect(handlerOptions).toMatchObject({ resolveWithCaptures: true });
   });
 
-  it("delegates server dispatch to the framework runtime and resolves emitted chunks", () => {
+  it("generates a deduplicated static-import manifest for server-function modules", () => {
+    const code = createServerFunctionManifestCode([
+      "/app/src/actions/users.ts",
+      "/app/src/actions/posts.ts",
+      "/app/src/actions/users.ts",
+    ]);
+
+    expect(code).toContain('import "/app/src/actions/users.ts";');
+    expect(code).toContain('import "/app/src/actions/posts.ts";');
+    expect(code.match(/import /g)).toHaveLength(2);
+    expect(code).toContain("export {};");
+  });
+
+  it("uses runtime-registered implementations instead of emitted function chunks", () => {
     const code = makeServerRuntime("/rpc", {
       maxRequestBytes: 1024,
       allowedOrigins: ["https://trusted.test"],
       exposeErrors: false,
       development: false,
-      manifestSentinel: "__manifest__",
     });
 
     expect(code).toContain('from "vynn/server-functions/server"');
     expect(code).toContain("createServerFunctionHandler");
     expect(code).toContain("createServerReference(implementation, id, getCaptures)");
-    expect(code).toContain("resolve: development ? undefined : resolveImplementation");
     expect(code).toContain("resolveWithCaptures: true");
-    expect(code).toContain("new URL(path, import.meta.url)");
-    expect(code).not.toContain("function isAllowedOrigin");
+    expect(code).not.toContain("resolveImplementation");
+    expect(code).not.toContain("new URL(path, import.meta.url)");
+    expect(code).not.toContain("Invalid Vynn server-function entry chunk");
   });
 });

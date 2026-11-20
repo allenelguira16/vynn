@@ -1,7 +1,5 @@
 import type { Plugin } from "vite";
 
-export type Node = any;
-
 export type ServerFunctionReference = {
   id: string;
   moduleId: string;
@@ -32,9 +30,9 @@ export const SERVER_FUNCTIONS_API_ID = "virtual:vynn/server-functions";
 export const RESOLVED_CLIENT_RUNTIME_ID = `\0${CLIENT_RUNTIME_ID}`;
 export const RESOLVED_SERVER_RUNTIME_ID = `\0${SERVER_RUNTIME_ID}`;
 export const RESOLVED_SERVER_FUNCTIONS_API_ID = `\0${SERVER_FUNCTIONS_API_ID}`;
-export const SERVER_FUNCTION_IMPL_PREFIX = "virtual:vynn/server-functions/implementation/";
-export const RESOLVED_SERVER_FUNCTION_IMPL_PREFIX = `\0${SERVER_FUNCTION_IMPL_PREFIX}`;
-export const SERVER_FUNCTION_MANIFEST_SENTINEL = "__VYNN_SERVER_FUNCTION_MANIFEST__";
+export const SERVER_FUNCTIONS_MANIFEST_ID = "virtual:vynn/server-functions/manifest";
+export const RESOLVED_SERVER_FUNCTIONS_MANIFEST_ID = `\0${SERVER_FUNCTIONS_MANIFEST_ID}`;
+export const SERVER_FUNCTIONS_MANIFEST_FILE = ".vite/vynn-server-functions.json";
 
 /**
  * Must match DEFAULT_SERVER_FUNCTION_ENDPOINT in vynn-core.

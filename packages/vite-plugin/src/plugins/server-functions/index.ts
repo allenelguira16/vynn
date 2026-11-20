@@ -1,8 +1,7 @@
-import { existsSync } from "node:fs";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { existsSync, readFileSync } from "node:fs";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { parseSync, visitorKeys } from "oxc-parser";
 import { type PreviewServer, type ResolvedConfig, type ViteDevServer, build } from "vite";
 import {
   transformServerFunctions,
@@ -18,14 +17,13 @@ import { makeClientRuntime, makeServerRuntime } from "./runtime.ts";
 import {
   CLIENT_RUNTIME_ID,
   DEFAULT_ENDPOINT,
-  type Node,
   RESOLVED_CLIENT_RUNTIME_ID,
   RESOLVED_SERVER_FUNCTIONS_API_ID,
-  RESOLVED_SERVER_FUNCTION_IMPL_PREFIX,
+  RESOLVED_SERVER_FUNCTIONS_MANIFEST_ID,
   RESOLVED_SERVER_RUNTIME_ID,
   SERVER_FUNCTIONS_API_ID,
-  SERVER_FUNCTION_IMPL_PREFIX,
-  SERVER_FUNCTION_MANIFEST_SENTINEL,
+  SERVER_FUNCTIONS_MANIFEST_FILE,
+  SERVER_FUNCTIONS_MANIFEST_ID,
   SERVER_RUNTIME_ID,
   type ServerFunctionReference,
   type VynnServerFunctionsOptions,
@@ -35,6 +33,43 @@ import {
 } from "./shared.ts";
 
 const SCRIPT_EXTENSION_RE = /\.(?:[cm]?[jt]sx?)$/i;
+
+export function createServerFunctionManifestCode(moduleIds: readonly string[]): string {
+  const imports = [...new Set(moduleIds)]
+    .map((moduleId) => moduleId.replace(/\\/g, "/"))
+    .map((moduleId) => "import " + JSON.stringify(moduleId) + ";");
+
+  return [...imports, "export {};", ""].join("\n");
+}
+
+function readPersistedServerFunctionModules(manifestPath: string, root: string): string[] {
+  if (!existsSync(manifestPath)) return [];
+
+  try {
+    const parsed = JSON.parse(readFileSync(manifestPath, "utf8")) as {
+      version?: number;
+      modules?: unknown;
+    };
+    if (
+      !Array.isArray(parsed.modules) ||
+      parsed.modules.some((moduleId) => typeof moduleId !== "string")
+    ) {
+      throw new TypeError("The manifest must contain a string array named modules.");
+    }
+
+    return [...new Set(parsed.modules as string[])].map((moduleId) =>
+      resolve(root, moduleId).replace(/\\/g, "/"),
+    );
+  } catch (error) {
+    throw new Error(
+      "[Vynn use server] Could not read the server-function manifest at " +
+        manifestPath +
+        ": " +
+        (error instanceof Error ? error.message : String(error)),
+      { cause: error },
+    );
+  }
+}
 
 function includesSsrHandlerEntry(input: unknown): boolean {
   if (typeof input === "string") {
@@ -137,6 +172,7 @@ export function serverFunctionsPlugin(
   let resolvedConfig: ResolvedConfig | undefined;
   let isSsrBuild = false;
   let hasIntegratedSsrApp = false;
+  let clientOutDir = resolve(projectRoot, "dist", "client");
   let serverFunctionsOutDir = resolve(projectRoot, "dist", "server");
   const ssrEntryIds = new Set<string>();
   const registerSsrEntries = (input: unknown): void => {
@@ -156,30 +192,33 @@ export function serverFunctionsPlugin(
         registerSsrEntries(entry);
     }
   };
-  const refsByModule = new Map<string, ServerFunctionReference[]>();
+  const refsByTarget = {
+    client: new Map<string, ServerFunctionReference[]>(),
+    server: new Map<string, ServerFunctionReference[]>(),
+  };
   const refsById = new Map<string, ServerFunctionReference>();
-  const implementationChunkRefs = new Map<string, string>();
-  // Vite's standalone `build --ssr` path may not expose an Environment
-  // consumer named "server", unlike Vynn App's explicit SSR environment.
-  // Remember the server transform so the emitted implementation manifest is
-  // still injected into the standalone server-functions handler bundle.
-  let hasServerBuildTransform = false;
 
-  const replaceModuleRefs = (moduleId: string, references: ServerFunctionReference[]): void => {
-    const previous = refsByModule.get(moduleId) ?? [];
-    for (const reference of previous) refsById.delete(reference.id);
+  const replaceModuleRefs = (
+    target: "client" | "server",
+    moduleId: string,
+    references: ServerFunctionReference[],
+  ): void => {
+    const targetModules = refsByTarget[target];
+    if (references.length === 0) targetModules.delete(moduleId);
+    else targetModules.set(moduleId, references);
 
-    if (references.length === 0) {
-      refsByModule.delete(moduleId);
-      return;
+    refsById.clear();
+    for (const modules of Object.values(refsByTarget)) {
+      for (const moduleReferences of modules.values()) {
+        for (const reference of moduleReferences) refsById.set(reference.id, reference);
+      }
     }
-    refsByModule.set(moduleId, references);
-    for (const reference of references) refsById.set(reference.id, reference);
   };
 
   const plugin: VynnServerFunctionsPlugin = {
     name: "vynn-server-functions",
     enforce: "pre",
+    sharedDuringBuild: true,
 
     config: {
       // Run after Vynn's app config so the SSR handler entry is visible here.
@@ -223,18 +262,31 @@ export function serverFunctionsPlugin(
       }
       resolvedEndpoint = applyBaseToEndpoint(config.base || "/", endpoint);
 
-      // Keep the backend outside the public client output, following the
-      // conventional <outDir>/client + <outDir>/server layout.
-      const clientOutDir = resolve(config.root, config.build.outDir || "dist");
-      serverFunctionsOutDir = resolve(dirname(clientOutDir), "server");
+      const environments = (
+        config as ResolvedConfig & {
+          environments?: Record<string, { build?: { outDir?: string } }>;
+        }
+      ).environments;
+      const configuredOutDir = config.build.outDir || "dist";
+      const defaultClientOutDir =
+        basename(configuredOutDir) === "client"
+          ? configuredOutDir
+          : resolve(dirname(configuredOutDir), "client");
+      clientOutDir = resolve(
+        config.root,
+        environments?.client?.build?.outDir ?? defaultClientOutDir,
+      );
+      serverFunctionsOutDir = resolve(
+        config.root,
+        environments?.ssr?.build?.outDir ?? resolve(dirname(clientOutDir), "server"),
+      );
     },
 
     resolveId(id) {
       if (id === CLIENT_RUNTIME_ID) return RESOLVED_CLIENT_RUNTIME_ID;
       if (id === SERVER_RUNTIME_ID) return RESOLVED_SERVER_RUNTIME_ID;
       if (id === SERVER_FUNCTIONS_API_ID) return RESOLVED_SERVER_FUNCTIONS_API_ID;
-      if (id.startsWith(SERVER_FUNCTION_IMPL_PREFIX))
-        return `${RESOLVED_SERVER_FUNCTION_IMPL_PREFIX}${id.slice(SERVER_FUNCTION_IMPL_PREFIX.length)}`;
+      if (id === SERVER_FUNCTIONS_MANIFEST_ID) return RESOLVED_SERVER_FUNCTIONS_MANIFEST_ID;
       return null;
     },
 
@@ -246,20 +298,23 @@ export function serverFunctionsPlugin(
           allowedOrigins,
           exposeErrors: options.exposeErrors ?? isDevelopment,
           development: isDevelopment,
-          manifestSentinel: SERVER_FUNCTION_MANIFEST_SENTINEL,
         });
-      if (id === RESOLVED_SERVER_FUNCTIONS_API_ID)
-        return `export { handleServerFunctionRequest } from ${JSON.stringify(SERVER_RUNTIME_ID)};`;
-      if (id.startsWith(RESOLVED_SERVER_FUNCTION_IMPL_PREFIX)) {
-        const functionId = id.slice(RESOLVED_SERVER_FUNCTION_IMPL_PREFIX.length);
-        const reference = refsById.get(functionId);
-        if (!reference)
-          this.error(`[Vynn use server] Missing implementation metadata for ${functionId}.`);
-        const moduleId = reference.moduleId.replace(/\\/g, "/");
+      if (id === RESOLVED_SERVER_FUNCTIONS_API_ID) {
         return [
-          `import { ${reference.exportName} as implementation } from ${JSON.stringify(moduleId)};`,
-          "export default implementation;",
+          "import " + JSON.stringify(SERVER_FUNCTIONS_MANIFEST_ID) + ";",
+          "export { handleServerFunctionRequest } from " + JSON.stringify(SERVER_RUNTIME_ID) + ";",
         ].join("\n");
+      }
+      if (id === RESOLVED_SERVER_FUNCTIONS_MANIFEST_ID) {
+        if (!isBuild) return "export {};";
+        const modules = new Set<string>(refsByTarget.client.keys());
+        for (const moduleId of readPersistedServerFunctionModules(
+          resolve(clientOutDir, SERVER_FUNCTIONS_MANIFEST_FILE),
+          projectRoot,
+        )) {
+          modules.add(moduleId);
+        }
+        return createServerFunctionManifestCode([...modules]);
       }
       return null;
     },
@@ -272,8 +327,18 @@ export function serverFunctionsPlugin(
       if (!SCRIPT_EXTENSION_RE.test(cleanId)) return null;
 
       const moduleId = resolve(projectRoot, cleanId);
-      // Clear the old HMR manifest even if the edited file removed its directive.
-      replaceModuleRefs(moduleId, []);
+      const environmentConsumer = (
+        this as unknown as { environment?: { config?: { consumer?: string } } }
+      ).environment?.config?.consumer;
+      const isServer =
+        environmentConsumer === "server" ||
+        isSsrBuild ||
+        (transformOptions as { ssr?: boolean } | undefined)?.ssr === true;
+      const target = isServer ? "server" : "client";
+
+      // Keep each environment's discoveries independent. An SSR transform
+      // must not erase the client manifest for functions used only in events.
+      replaceModuleRefs(target, moduleId, []);
 
       // Custom SSR builds expose the RPC handler from the same emitted entry
       // as render(). Inject it here so application source needn't import the
@@ -314,16 +379,6 @@ export function serverFunctionsPlugin(
         return injectedHandlerExport ? { code: source, map: null } : null;
       }
 
-      const environmentConsumer = (
-        this as unknown as { environment?: { config?: { consumer?: string } } }
-      ).environment?.config?.consumer;
-      const isServer =
-        environmentConsumer === "server" ||
-        isSsrBuild ||
-        (transformOptions as { ssr?: boolean } | undefined)?.ssr === true;
-
-      if (isBuild && isServer) hasServerBuildTransform = true;
-
       let transformed: TransformServerFunctionsResult | null;
       try {
         transformed = transformServerFunctions(source, cleanId, {
@@ -341,20 +396,7 @@ export function serverFunctionsPlugin(
       }
 
       const references = transformed.functions;
-      replaceModuleRefs(moduleId, references);
-
-      if (isServer && isBuild) {
-        for (const reference of references) {
-          if (!implementationChunkRefs.has(reference.id)) {
-            const fileReference = this.emitFile({
-              type: "chunk",
-              id: `${SERVER_FUNCTION_IMPL_PREFIX}${reference.id}`,
-              name: `vynn-server-function-${reference.id}`,
-            });
-            implementationChunkRefs.set(reference.id, fileReference);
-          }
-        }
-      }
+      replaceModuleRefs(target, moduleId, references);
 
       return {
         code: transformed.code,
@@ -373,27 +415,21 @@ export function serverFunctionsPlugin(
         !isBuild ||
         isSsrBuild ||
         !resolvedConfig ||
-        refsByModule.size === 0
+        refsByTarget.client.size === 0
       ) {
         return;
       }
 
       const tempDirectory = await mkdtemp(resolve(projectRoot, ".vynn-server-functions-"));
       const entryPath = resolve(tempDirectory, "entry.ts");
-      const imports = [...refsByModule.keys()].map((moduleId) => {
-        const relativeModuleId = relative(tempDirectory, moduleId).replace(/\\/g, "/");
-        const specifier = relativeModuleId.startsWith(".")
-          ? relativeModuleId
-          : `./${relativeModuleId}`;
-        return `import ${JSON.stringify(specifier)};`;
-      });
 
       try {
         await writeFile(
           entryPath,
           [
-            ...imports,
-            `export { handleServerFunctionRequest } from ${JSON.stringify(SERVER_FUNCTIONS_API_ID)};`,
+            "export { handleServerFunctionRequest } from " +
+              JSON.stringify(SERVER_FUNCTIONS_API_ID) +
+              ";",
             "",
           ].join("\n"),
           "utf8",
@@ -423,106 +459,40 @@ export function serverFunctionsPlugin(
           JSON.stringify({ type: "module" }, null, 2) + "\n",
           "utf8",
         );
+        await rm(resolve(clientOutDir, SERVER_FUNCTIONS_MANIFEST_FILE), { force: true });
       } finally {
         await rm(tempDirectory, { recursive: true, force: true });
       }
     },
 
-    generateBundle(_outputOptions, bundle) {
-      const consumer = (this as unknown as { environment?: { config?: { consumer?: string } } })
-        .environment?.config?.consumer;
-      if (!isBuild || (consumer !== "server" && !hasServerBuildTransform)) return;
-      for (const output of Object.values(bundle)) {
-        if (output.type !== "chunk" || !output.code.includes(SERVER_FUNCTION_MANIFEST_SENTINEL))
-          continue;
-        const manifest: Record<string, string> = {};
-        for (const [functionId, fileReference] of implementationChunkRefs) {
-          let path = relative(dirname(output.fileName), this.getFileName(fileReference)).replace(
-            /\\/g,
-            "/",
-          );
-          if (!path.startsWith(".")) path = `./${path}`;
-          manifest[functionId] = path;
+    async writeBundle(outputOptions) {
+      if (!isBuild) return;
+
+      const consumer = this.environment?.config.consumer;
+      if (consumer === "server") {
+        if (hasIntegratedSsrApp) {
+          // Nitro copies the client output into its public directory after all
+          // Vite environments finish. The manifest is build-only metadata:
+          // the SSR bundle has already consumed it at this point.
+          await rm(resolve(clientOutDir, SERVER_FUNCTIONS_MANIFEST_FILE), { force: true });
         }
-        // Parse the finalized chunk instead of assuming how the minifier
-        // spells string literals (quote style, escaping, or template syntax).
-        const parsed = parseSync(output.fileName, output.code, {
-          lang: "js",
-          sourceType: "module",
-          astType: "js",
-          preserveParens: false,
-          showSemanticErrors: false,
-        } as never);
-
-        let manifestLiteral: Node | undefined;
-        const findManifestLiteral = (node: Node): void => {
-          if (manifestLiteral || !node || typeof node !== "object") return;
-
-          if (
-            (node.type === "Literal" || node.type === "StringLiteral") &&
-            typeof node.value === "string" &&
-            node.value.includes(SERVER_FUNCTION_MANIFEST_SENTINEL)
-          ) {
-            manifestLiteral = {
-              start: node.start,
-              end: node.end,
-              value: node.value,
-            };
-            return;
-          }
-
-          // Some minifiers may represent a plain string as a no-expression
-          // template literal. Treat it the same way as a quoted string.
-          if (
-            node.type === "TemplateLiteral" &&
-            node.expressions?.length === 0 &&
-            Array.isArray(node.quasis)
-          ) {
-            const value = node.quasis
-              .map((quasi: Node) => quasi.value?.cooked ?? quasi.value?.raw ?? "")
-              .join("");
-            if (value.includes(SERVER_FUNCTION_MANIFEST_SENTINEL)) {
-              manifestLiteral = {
-                start: node.start,
-                end: node.end,
-                value,
-              };
-              return;
-            }
-          }
-
-          const keys = (visitorKeys as Record<string, string[]>)[node.type] ?? [];
-          for (const key of keys) {
-            const child = node[key];
-            if (Array.isArray(child)) {
-              for (const item of child) {
-                if (item && typeof item === "object" && typeof item.type === "string") {
-                  findManifestLiteral(item);
-                  if (manifestLiteral) return;
-                }
-              }
-            } else if (child && typeof child === "object" && typeof child.type === "string") {
-              findManifestLiteral(child);
-              if (manifestLiteral) return;
-            }
-          }
-        };
-
-        findManifestLiteral(parsed.program);
-        if (!manifestLiteral)
-          this.error(
-            "[Vynn use server] Could not locate the production function manifest literal.",
-          );
-
-        const replacementValue = manifestLiteral.value.replace(
-          SERVER_FUNCTION_MANIFEST_SENTINEL,
-          JSON.stringify(manifest),
-        );
-        output.code =
-          output.code.slice(0, manifestLiteral.start) +
-          JSON.stringify(replacementValue) +
-          output.code.slice(manifestLiteral.end);
+        return;
       }
+
+      const isClientBuild = consumer === "client" || (consumer == null && !isSsrBuild);
+      if (!isClientBuild) return;
+
+      const modules = [...refsByTarget.client.keys()]
+        .map((moduleId) => relative(projectRoot, moduleId).replace(/\\/g, "/"))
+        .sort();
+      const outDir = outputOptions.dir ? resolve(outputOptions.dir) : clientOutDir;
+      const manifestPath = resolve(outDir, SERVER_FUNCTIONS_MANIFEST_FILE);
+      await mkdir(dirname(manifestPath), { recursive: true });
+      await writeFile(
+        manifestPath,
+        JSON.stringify({ version: 1, modules }, null, 2) + "\n",
+        "utf8",
+      );
     },
 
     configureServer(server: ViteDevServer) {
