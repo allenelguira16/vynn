@@ -17,6 +17,7 @@ import {
   $ssrLogical,
   $ssrText,
 } from "../src/server/ssr-html";
+import { APPLY_HEAD_PATCH_SSR_KEY } from "../src/const";
 
 function deferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
@@ -252,6 +253,52 @@ describe("string-based SSR renderer", () => {
     expect(patch).toContain('data-vynn-ssr-patch="');
     expect(patch).toContain("<!--a:r-->");
     expect(patch).toContain("<p>streamed</p>");
+  });
+
+  it("streams head updates with the browser patch handler installed first", async () => {
+    const gate = deferred<void>();
+
+    const Page = $ssrComponent(function Page() {
+      const value = $computed(async () => {
+        await gate.promise;
+        return "Late stream title";
+      });
+
+      return Await({
+        get fallback() {
+          return "<i>Loading</i>";
+        },
+        get children() {
+          const title = value.value;
+          $ssrHead("title", { children: title });
+          return "<p>Ready</p>";
+        },
+      });
+    });
+
+    const rendered = renderToServerString(() => Page(), "stream");
+    const reader = rendered.body.getReader();
+    const decoder = new TextDecoder();
+
+    const first = await reader.read();
+    expect(first.done).toBe(false);
+    const initialHtml = decoder.decode(first.value);
+    expect(initialHtml).toContain(`window.${APPLY_HEAD_PATCH_SSR_KEY}=window.${APPLY_HEAD_PATCH_SSR_KEY}||function`);
+    expect(initialHtml).toContain("<i>Loading</i>");
+
+    gate.resolve();
+
+    const patches: string[] = [];
+    while (true) {
+      const result = await reader.read();
+      if (result.done) break;
+      patches.push(decoder.decode(result.value));
+    }
+
+    const streamedHtml = patches.join("");
+    expect(streamedHtml).toContain(`window.${APPLY_HEAD_PATCH_SSR_KEY}(`);
+    expect(streamedHtml).toContain("Late stream title");
+    expect(streamedHtml).toContain("<p>Ready</p>");
   });
 
   it("resolves pending attributes without rerunning their component", async () => {

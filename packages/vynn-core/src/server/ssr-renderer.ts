@@ -27,7 +27,7 @@ import type {
 import { NotReadyError } from "../reactivity/not-ready-error";
 import { runWithOwner } from "../life-cycle/owner";
 import { renderSsrStringUtilities } from "./ssr-string-utilities";
-import { renderHeadPatch, type SsrHeadManager } from "./head";
+import { renderHeadPatch, renderHeadPatchRuntime, type SsrHeadManager } from "./head";
 
 const encoder = new TextEncoder();
 
@@ -600,7 +600,8 @@ function renderPatchRuntime(): string {
   };
   window.__vynnApplySsrErrorPatch=function(id){
     apply('template[data-vynn-ssr-error-patch="'+id+'"]',"${ERROR_BOUNDARY_START_SSR_MARKER}:"+id,"${ERROR_BOUNDARY_END_SSR_MARKER}:"+id,true);
-  };
+  };  ${renderHeadPatchRuntime()}
+
 })();
 document.currentScript.remove();
 </script>`;

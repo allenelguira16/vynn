@@ -1,7 +1,6 @@
 import type { JSX } from "../types/jsx";
 
 import {
-  APPLY_HEAD_PATCH_SSR_KEY,
   APPLY_PATCH_SSR_KEY,
   FALLBACK_END_SSR_MARKER,
   FALLBACK_START_SSR_MARKER,
@@ -20,7 +19,7 @@ import {
   SSR_TEXT,
   resolveNode,
 } from "../render/resolve-node";
-import { renderHeadPatch, type SsrHeadManager } from "./head";
+import { renderHeadPatch, renderHeadPatchRuntime, type SsrHeadManager } from "./head";
 import {
   joinHTMLElements,
   renderAsyncUtilities,
@@ -297,5 +296,5 @@ function renderErrorBoundaryPatch(id: number, html: string) {
 }
 
 function renderPatchRuntime(): string {
-  return `<script>var q=[];function f(){for(var p=1;p;){p=0;for(var i=q.length-1;i>=0;i--)if(q[i]()){q.splice(i,1);p=1}}}function u(p){q.push(p);f()}function r(s,e){var w=document.createTreeWalker(document,NodeFilter.SHOW_COMMENT),a=null,b=null;while(w.nextNode()){var n=w.currentNode;if(n.data===s)a=n;if(n.data===e)b=n}return[a,b]}function patch(t,s,e,d){u(function(){var x=document.querySelector('template[id="'+t+'"]');if(!x)return false;var a=r(s,e),b=a[0],c=a[1];if(!b||!c||!c.parentNode)return false;var p=c.parentNode,n=b.nextSibling;while(n&&n!==c){var z=n.nextSibling;n.remove();n=z}p.insertBefore(x.content,c);x.remove();if(d){b.remove();c.remove()}return true})}window.${APPLY_PATCH_SSR_KEY}=function(i){patch(i,"${FALLBACK_START_SSR_MARKER}:"+i,"${FALLBACK_END_SSR_MARKER}:"+i,1)};window.${APPLY_ERROR_BOUNDARY_PATCH_SSR_KEY}=function(i){patch("vynn-eb-"+i,"${ERROR_BOUNDARY_START_SSR_MARKER}:"+i,"${ERROR_BOUNDARY_END_SSR_MARKER}:"+i,0)};window.${APPLY_HEAD_PATCH_SSR_KEY}=window.${APPLY_HEAD_PATCH_SSR_KEY}||function(h){var t=document.createElement("template");t.innerHTML=h;function k(n){var t=n.tagName.toLowerCase();if(t==="title")return"title";if(t==="meta"){if(n.hasAttribute("charset"))return"meta:charset";var v=n.getAttribute("name");if(v)return"meta:name:"+v.toLowerCase();v=n.getAttribute("property");if(v)return"meta:property:"+v.toLowerCase();v=n.getAttribute("http-equiv");if(v)return"meta:http-equiv:"+v.toLowerCase()}if(t==="link"){var r=(n.getAttribute("rel")||"").toLowerCase(),h=n.getAttribute("href")||"";return r==="canonical"?"link:canonical":"link:"+r+":"+h}return null}function preserve(e){if(!e.hasAttribute("key")){var f=document.head.querySelector('template[data-vynn-head-fallback]');if(!f){f=document.createElement("template");f.setAttribute("data-vynn-head-fallback","");document.head.append(f)}f.content.append(e)}else{e.remove()}}t.content.querySelectorAll("[data-vynn-head-replace]").forEach(function(n){var c=n.getAttribute("data-vynn-head-replace");document.head.querySelectorAll("meta[property]").forEach(function(e){var p="meta:property:"+(e.getAttribute("property")||"").toLowerCase();if(p===c||p.indexOf(c+":")===0)preserve(e)})});t.content.querySelectorAll("[key]").forEach(function(n){var v=n.getAttribute("key");document.head.querySelectorAll(n.tagName.toLowerCase()).forEach(function(e){if(e.getAttribute("key")===v||(!n.hasAttribute("data-vynn-head-replace")&&k(e)===v))preserve(e)})});t.content.querySelectorAll("[data-vynn-head-replace]").forEach(function(n){n.removeAttribute("data-vynn-head-replace")});document.head.querySelectorAll("[key]").forEach(function(n){n.remove()});document.head.append(t.content)};document.currentScript.remove();</script>`;
+  return `<script>var q=[];function f(){for(var p=1;p;){p=0;for(var i=q.length-1;i>=0;i--)if(q[i]()){q.splice(i,1);p=1}}}function u(p){q.push(p);f()}function r(s,e){var w=document.createTreeWalker(document,NodeFilter.SHOW_COMMENT),a=null,b=null;while(w.nextNode()){var n=w.currentNode;if(n.data===s)a=n;if(n.data===e)b=n}return[a,b]}function patch(t,s,e,d){u(function(){var x=document.querySelector('template[id="'+t+'"]');if(!x)return false;var a=r(s,e),b=a[0],c=a[1];if(!b||!c||!c.parentNode)return false;var p=c.parentNode,n=b.nextSibling;while(n&&n!==c){var z=n.nextSibling;n.remove();n=z}p.insertBefore(x.content,c);x.remove();if(d){b.remove();c.remove()}return true})}window.${APPLY_PATCH_SSR_KEY}=function(i){patch(i,"${FALLBACK_START_SSR_MARKER}:"+i,"${FALLBACK_END_SSR_MARKER}:"+i,1)};window.${APPLY_ERROR_BOUNDARY_PATCH_SSR_KEY}=function(i){patch("vynn-eb-"+i,"${ERROR_BOUNDARY_START_SSR_MARKER}:"+i,"${ERROR_BOUNDARY_END_SSR_MARKER}:"+i,0)};${renderHeadPatchRuntime()};document.currentScript.remove();</script>`;
 }
