@@ -10,6 +10,11 @@ import {
   getErrorBoundaryValues,
 } from "../context/error-boundary-context";
 import { isServer } from "../context/is-server-context";
+import {
+  getSsrErrorBoundaryID,
+  isSsrStringRendering,
+  renderSsrCatch,
+} from "../context/ssr-string-context";
 import { createOwner, disposeOwner, getOwner, runWithOwner } from "../life-cycle/owner";
 import { $state } from "../reactivity/state";
 import { $cmpnt, $nodes } from "../render";
@@ -28,11 +33,22 @@ export const Catch = $cmpnt(function Catch(props: {
   children: JSX.Element;
 }) {
   const currentOwner = getOwner();
-  const errorBoundaryID = getErrorBoundaryID();
+  const errorBoundaryID =
+    isSsrStringRendering() && currentOwner
+      ? getSsrErrorBoundaryID(currentOwner, getErrorBoundaryID)
+      : getErrorBoundaryID();
   const ssrData = getErrorBoundaryValue(errorBoundaryID);
 
   if (!currentOwner) {
     throw new Error("Catch requires an owner.");
+  }
+
+  if (isSsrStringRendering()) {
+    return renderSsrCatch(
+      errorBoundaryID,
+      () => props.children,
+      props.fallback,
+    ) as JSX.Element;
   }
 
   if (isServer()) {

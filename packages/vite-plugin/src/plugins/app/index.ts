@@ -413,6 +413,11 @@ export function vynnAppPlugin({
             });
           })().catch((error: unknown) => {
             if (res.headersSent) {
+              const detail =
+                error instanceof Error ? (error.stack ?? error.message) : String(error);
+              server.config.logger.error(
+                "[Vynn App] SSR response stream failed after headers were sent:\n" + detail,
+              );
               res.destroy(error instanceof Error ? error : undefined);
               return;
             }
@@ -469,6 +474,12 @@ export function vynnAppPlugin({
             });
           })().catch((error: unknown) => {
             if (res.headersSent) {
+              const detail =
+                error instanceof Error ? (error.stack ?? error.message) : String(error);
+              server.config.logger.error(
+                "[Vynn App] Preview SSR response stream failed after headers were sent:\n" +
+                  detail,
+              );
               res.destroy(error instanceof Error ? error : undefined);
               return;
             }

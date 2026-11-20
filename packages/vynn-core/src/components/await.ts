@@ -1,8 +1,12 @@
 import type { JSX } from "../types/jsx";
 
-import { isHydrationClaimActive } from "../client/hydration";
+import {
+  claimHydrationAwaitState,
+  isHydrationClaimActive,
+} from "../client/hydration";
 import { enterAsyncBoundary } from "../context/async-context";
 import { isServer } from "../context/is-server-context";
+import { isSsrStringRendering, renderSsrAwait } from "../context/ssr-string-context";
 import { isPromiseFromLazy } from "../context/lazy-context";
 import { getOwner, runWithOwner } from "../life-cycle/owner";
 import { untrack } from "../reactivity/effect";
@@ -32,6 +36,10 @@ export const Await = $cmpnt(function Await(props: {
   const fallback = memo(() => runWithOwner(owner, () => props.fallback));
   const children = memo(() => runWithOwner(owner, () => props.children));
 
+  if (isSsrStringRendering()) {
+    return renderSsrAwait(children, fallback) as JSX.Element;
+  }
+
   if (isServer()) {
     const pending: Promise<any>[] = [];
 
@@ -54,16 +62,30 @@ export const Await = $cmpnt(function Await(props: {
     }
   }
 
+  const hydrationState = claimHydrationAwaitState();
+
   return untrack(() => {
     let isResolved = false;
     const isPending = $state(false);
     const pendingPromises = new Set<Promise<unknown>>();
 
     enterAsyncBoundary((promise) => {
+      const isHydrating = isHydrationClaimActive();
       const shouldShowFallback = !isResolved || props.suspense;
-      const isHydratingLazyPromise = isPromiseFromLazy(promise) && isHydrationClaimActive();
+      const isHydratingResolvedAwait = hydrationState === "resolved" && isHydrating;
+      const isHydratingFallbackAwait = hydrationState === "fallback" && isHydrating;
+      const isHydratingLazyPromise = isPromiseFromLazy(promise) && isHydrating;
 
-      if (!shouldShowFallback || isHydratingLazyPromise) return;
+      // In streamed SSR the server may already have replaced this Await's
+      // fallback before the client entry starts. Hydrate the branch the server
+      // actually emitted instead of showing a client-only fallback.
+      if (
+        !shouldShowFallback ||
+        isHydratingResolvedAwait ||
+        (isHydratingLazyPromise && !isHydratingFallbackAwait)
+      ) {
+        return;
+      }
 
       pendingPromises.add(promise);
       isPending.value = true;

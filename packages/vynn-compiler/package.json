@@ -21,6 +21,10 @@
     "./server-functions": {
       "types": "./src/server-functions/index.ts",
       "import": "./src/server-functions/index.ts"
+    },
+    "./ssr": {
+      "types": "./src/ssr/index.ts",
+      "import": "./src/ssr/index.ts"
     }
   },
   "scripts": {

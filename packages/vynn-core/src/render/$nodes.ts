@@ -1,8 +1,13 @@
-import type { ServerRenderedLazyRange } from "../client/hydration";
+import {
+  beginHydrationClaim,
+  rollbackHydrationClaim,
+  type ServerRenderedLazyRange,
+} from "../client/hydration";
 import type { JSX } from "../jsx-runtime";
 
 import { isServer } from "../context/is-server-context";
 import { $renderEffect } from "../reactivity/effect";
+import { NotReadyError } from "../reactivity/not-ready-error";
 import { getCurrentDOMNamespace, withDOMNamespace } from "./namespace";
 import { resolveNode, resolveSSRChild } from "./resolve-node";
 
@@ -31,8 +36,22 @@ export function $nodes(
   let revision = 0;
 
   $renderEffect(() => {
-    // Resolve first. If NotReadyError occurs, preserve the current DOM.
-    const nextNodes = resolveNode(renderChild);
+    // A suspended attempt must not consume any of the server's hydration
+    // queues. Retry from the same element, text, and Await-state positions
+    // when the pending resource settles.
+    const hydrationClaim = beginHydrationClaim();
+    let nextNodes: Node[];
+
+    try {
+      nextNodes = resolveNode(renderChild);
+    } catch (error) {
+      if (error instanceof NotReadyError) {
+        rollbackHydrationClaim(hydrationClaim);
+      }
+
+      throw error;
+    }
+
     const previousNodes = nodes;
 
     nodes = nextNodes;

@@ -1,6 +1,7 @@
 import type { Plugin, Rolldown } from "vite";
 
 import { transformVynnOxcWithMap, type VynnCompilerOptions } from "vynn-compiler";
+import { transformVynnSsrWithMap } from "vynn-compiler/ssr";
 
 export type VynnOxcPluginOptions = VynnCompilerOptions & {
   /** Set false to disable the transform for matching files. */
@@ -20,9 +21,14 @@ export function vynnOxcPlugin(options: VynnOxcPluginOptions = {}): Plugin {
 
       const cleanId = id.split("?", 1)[0];
       if (!/\.(?:[cm]?[jt]sx?)$/i.test(cleanId)) return null;
-      if (!source.includes("<")) return null;
 
-      const result = transformVynnOxcWithMap(source, cleanId, compilerOptions);
+      const environment = this.environment?.name;
+      if (environment !== "ssr" && !source.includes("<")) return null;
+
+      const result =
+        environment === "ssr"
+          ? transformVynnSsrWithMap(source, cleanId, compilerOptions)
+          : transformVynnOxcWithMap(source, cleanId, compilerOptions);
       return {
         code: result.code,
         map: result.map as Rolldown.SourceMapInput | null,

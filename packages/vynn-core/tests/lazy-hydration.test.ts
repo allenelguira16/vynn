@@ -1,11 +1,16 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
 
+import { $nodes } from "../src/render/$nodes";
+import { $state } from "../src/reactivity/state";
+
 import {
   beginHydrationClaim,
+  claimHydrationAwaitState,
   claimHydrationElement,
   claimHydrationText,
   getServerRenderedLazyRange,
+  resolveServerRenderedLazyID,
   rollbackHydrationClaim,
   withHydration,
   withServerRenderedLazy,
@@ -116,6 +121,108 @@ describe("lazy hydration cursor isolation", () => {
     });
 
     disposeOwner(rootOwner);
+  });
+
+  it("matches lazy children by server DOM order when generated IDs differ", () => {
+    const root = document.createElement("div");
+    root.innerHTML =
+      '<!--l:0--><section><!--l:0.3--><p id="first">first</p><!--/l:0.3--><!--l:0.2--><p id="second">second</p><!--/l:0.2--></section><!--/l:0-->';
+
+    withHydration(() => {}, root);
+
+    const rootOwner = createOwner(null);
+
+    runWithOwner(rootOwner, () => {
+      withServerRenderedLazy("0", () => {
+        const firstOwner = createOwner();
+        const secondOwner = createOwner();
+
+        // The client generates 0.2 then 0.3, while the actual SSR DOM
+        // contains those ranges in the opposite order.
+        const firstID = runWithOwner(firstOwner, () =>
+          resolveServerRenderedLazyID("0.2"),
+        );
+        const secondID = runWithOwner(secondOwner, () =>
+          resolveServerRenderedLazyID("0.3"),
+        );
+
+        expect(firstID).toBe("0.3");
+        expect(secondID).toBe("0.2");
+        expect(getServerRenderedLazyRange(firstID)?.nodes[0]).toBe(root.querySelector("#first"));
+        expect(getServerRenderedLazyRange(secondID)?.nodes[0]).toBe(root.querySelector("#second"));
+
+        disposeOwner(firstOwner);
+        disposeOwner(secondOwner);
+      });
+    });
+
+    disposeOwner(rootOwner);
+  });
+
+  it("does not consume SSR lazy IDs outside an active hydration pass", () => {
+    const owner = createOwner(null);
+
+    runWithOwner(owner, () => {
+      expect(resolveServerRenderedLazyID("0.2")).toBe("0.2");
+    });
+
+    disposeOwner(owner);
+  });
+
+  it("rolls back text claims when a lazy range suspends partway through hydration", async () => {
+    let resolve!: () => void;
+    const pending = new Promise<void>((done) => {
+      resolve = done;
+    });
+
+    const root = document.createElement("div");
+    root.innerHTML =
+      "<!--l:0--><!--vynn-await:resolved-->first<!--/-->server result<!--/l:0-->";
+
+    withHydration(() => {}, root);
+    const serverRange = getServerRenderedLazyRange("0");
+
+    const owner = createOwner(null);
+    let renderedNodes: Node[] = [];
+    const claimedAwaitStates: Array<string | undefined> = [];
+
+    runWithOwner(owner, () => {
+      withServerRenderedLazy("0", () => {
+        const value = $state(async () => {
+          await pending;
+          return "server result";
+        });
+
+        renderedNodes = $nodes(
+          () => {
+            claimedAwaitStates.push(claimHydrationAwaitState());
+            return ["first", () => value.value] as never;
+          },
+          serverRange,
+        ) as unknown as Node[];
+      });
+    });
+
+    try {
+      // The initial pass claims "first" and then suspends on the second text.
+      // The SSR range must remain intact while the effect waits.
+      expect(root.textContent).toBe("firstserver result");
+      expect(claimedAwaitStates).toEqual(["resolved"]);
+      expect(serverRange?.nodes[0]).toBeInstanceOf(Text);
+      expect(serverRange?.nodes[1]).toBeInstanceOf(Text);
+
+      resolve();
+      await new Promise<void>((done) => setTimeout(done, 0));
+
+      expect(root.textContent).toBe("firstserver result");
+      expect(claimedAwaitStates).toEqual(["resolved", "resolved"]);
+      expect(root.childNodes[1]).toBe(serverRange?.nodes[0]);
+      expect(root.childNodes[2]).toBe(serverRange?.nodes[1]);
+      expect(renderedNodes).toContain(serverRange?.nodes[0]);
+      expect(renderedNodes).toContain(serverRange?.nodes[1]);
+    } finally {
+      disposeOwner(owner);
+    }
   });
 
   it("rolls back node claims when a render attempt suspends", () => {

@@ -2,6 +2,7 @@ import type { JSX } from "../jsx-runtime";
 
 import { runAfterHydration } from "../client/hydration";
 import { isServer } from "../context/is-server-context";
+import { createSsrComponentOwner, isSsrStringRendering } from "../context/ssr-string-context";
 import { createOwner, runWithOwner } from "../life-cycle/owner";
 import { untrack } from "../reactivity/effect";
 import {
@@ -32,7 +33,7 @@ export function $cmpnt<P>(Component: (props: P) => JSX.Element): (props?: P) => 
 
 export function $cmpnt<P>(Component: ((props?: P) => JSX.Element) | (() => JSX.Element)) {
   return (props?: P): JSX.Element => {
-    const owner = createOwner();
+    const owner = isSsrStringRendering() ? createSsrComponentOwner(Component) : createOwner();
     // owner.Component = Component;
     let marker: Node | undefined;
 
@@ -46,7 +47,7 @@ export function $cmpnt<P>(Component: ((props?: P) => JSX.Element) | (() => JSX.E
       try {
         const resolved = untrack(() => Component(props));
 
-        if (isServer()) return [resolved].flat();
+        if (isServer()) return isSsrStringRendering() ? resolved : [resolved].flat();
 
         return [resolved, marker].flat();
       } finally {

@@ -11,7 +11,7 @@ describe("SSR request context integration", () => {
     const entry = createServerEntry("/src/App.tsx", "stream");
 
     expect(entry).toContain("export function render(url, request)");
-    expect(entry).toContain('renderToServer(() => App({ url }), "stream", request)');
+    expect(entry).toContain('renderToServerString(() => App({ url }), "stream", request)');
   });
 
   it("passes the request to authored server entries", () => {

@@ -5,25 +5,19 @@ import { initializeErrorBoundaryContext } from "../context/error-boundary-contex
 import { initializeHeadContext } from "../context/head-context";
 import { initializeLazyContext } from "../context/lazy-context";
 import { type RenderMode, setRenderMode } from "../context/render-mode";
+import type { SsrRenderResult } from "./ssr-types";
 import { getSsrModuleContext, initializeSsrModuleContext } from "../context/ssr-module-context";
 import { createOwner, disposeOwner, runWithOwner } from "../life-cycle/owner";
-import { createSsrHeadManager, type SsrHeadManager } from "./head";
+import { createSsrHeadManager } from "./head";
 import { resolveAsync } from "./render-to-server.async";
 import { resolveStream } from "./render-to-server.stream";
 import { resolveSync } from "./render-to-server.sync";
 import {
   createServerFunctionContext,
   runWithServerFunctionContext,
-  type RequestContext,
 } from "./server-function-context";
 
-export interface SsrRenderResult<TBody> {
-  readonly body: TBody;
-  readonly head: SsrHeadManager;
-  readonly modules: ReadonlySet<string>;
-  /** Request metadata written by server functions during this SSR render. */
-  readonly response?: RequestContext["response"];
-}
+export type { SsrRenderResult } from "./ssr-types";
 
 export function renderToServer(
   App: () => JSX.Element,

@@ -3,21 +3,48 @@ import type { JSX } from "../types/jsx";
 import {
   finishServerRenderedLazy,
   getServerRenderedLazyRange,
+  resolveServerRenderedLazyID,
   withServerRenderedLazy,
 } from "../client/hydration";
 import { LAZY_END_SSR_MARKER, LAZY_START_SSR_MARKER } from "../const";
 import { isServer } from "../context/is-server-context";
+import { getOwner } from "../life-cycle/owner";
+import { isSsrStringRendering, renderSsrAwait } from "../context/ssr-string-context";
 import {
   getLazyID,
   initializeLazyScope,
   regsterAsyncGetterFromLazy,
 } from "../context/lazy-context";
 import { registerSsrModule } from "../context/ssr-module-context";
-import { $computed } from "../reactivity/computed";
+import { $computed, type Computed } from "../reactivity/computed";
 import { $cmpnt, $nodes } from "../render";
 import { createSSRComment } from "../render/resolve-node";
 
 type AnyComponent = (props: never) => JSX.Element;
+
+const lazyIDs = new WeakMap<object, string>();
+const lazyResources = new WeakMap<object, Computed<unknown>>();
+
+function getSsrLazyResource<T>(owner: object, getter: () => Promise<T>): Computed<T> {
+  let resource = lazyResources.get(owner) as Computed<T> | undefined;
+  if (!resource) {
+    resource = $computed(getter);
+    lazyResources.set(owner, resource as Computed<unknown>);
+  }
+  return resource;
+}
+
+function getCurrentLazyID(): string {
+  const owner = getOwner();
+  if (!isSsrStringRendering() || !owner) return getLazyID();
+
+  let id = lazyIDs.get(owner);
+  if (!id) {
+    id = getLazyID();
+    lazyIDs.set(owner, id);
+  }
+  return id;
+}
 
 type ComponentExport<
   M extends Record<string, unknown>,
@@ -78,7 +105,10 @@ export function lazy<M extends Record<string, unknown>, K extends keyof M = "def
   const LazyComponent = $cmpnt(function LazyComponent(
     props: Parameters<Component>[0],
   ): JSX.Element {
-    const lazyID = getLazyID();
+    const generatedLazyID = getCurrentLazyID();
+    const lazyID = isServer()
+      ? generatedLazyID
+      : resolveServerRenderedLazyID(generatedLazyID);
 
     // Descendant lazy marker IDs use this scope. Async resources derive their
     // hydration IDs from this component's owner.
@@ -87,7 +117,22 @@ export function lazy<M extends Record<string, unknown>, K extends keyof M = "def
     if (isServer()) {
       registerSsrModule(moduleId);
       regsterAsyncGetterFromLazy(loadComponent);
-      const component = $computed(loadComponent);
+      const owner = getOwner();
+      const component = isSsrStringRendering() && owner
+        ? getSsrLazyResource(owner, loadComponent)
+        : $computed(loadComponent);
+
+      if (isSsrStringRendering()) {
+        const rendered = renderSsrAwait(
+          () => component.value(props),
+          () => "",
+          {
+            kind: "lazy",
+            bubblePromise: resolvedComponent ? undefined : componentPromise,
+          },
+        );
+        return `<!--${LAZY_START_SSR_MARKER}:${lazyID}-->${rendered}<!--${LAZY_END_SSR_MARKER}:${lazyID}-->` as unknown as JSX.Element;
+      }
 
       return $nodes(() => {
         return [

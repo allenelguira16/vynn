@@ -20,10 +20,15 @@ import {
 
 let serverRenderedElements: Element[] = [];
 let serverRenderedTexts: Text[] = [];
+let serverRenderedAwaitStates: HydrationAwaitState[] = [];
 let serverRenderedLazy = new Map<string, LazyHydrationNodes>();
+let serverRenderedRootLazyIDs: string[] = [];
 
 let hydrationElementIndex = 0;
 let hydrationTextIndex = 0;
+let hydrationAwaitIndex = 0;
+let rootLazyHydrationIndex = 0;
+const serverLazyIDsByOwner = new WeakMap<Owner, string>();
 let rootHydrationDepth = 0;
 
 const LAZY_HYDRATION = Symbol("vynn.lazy-hydration");
@@ -37,20 +42,31 @@ type AfterHydrationTask = {
   waitForLazy: boolean;
 };
 
+type HydrationAwaitState = "resolved" | "fallback";
+
 export type HydrationClaimSnapshot = {
   scope: LazyHydrationNodes | undefined;
   elementIndex: number;
   textIndex: number;
+  awaitIndex: number;
 };
 
 const afterHydrationTasks = new Set<AfterHydrationTask>();
 let hydrationCheckScheduled = false;
 
 export function withHydration(callback: () => void, root: Node) {
-  [serverRenderedElements, serverRenderedTexts, serverRenderedLazy] = getServerRenderedNodes(root);
+  [
+    serverRenderedElements,
+    serverRenderedTexts,
+    serverRenderedAwaitStates,
+    serverRenderedLazy,
+    serverRenderedRootLazyIDs,
+  ] = getServerRenderedNodes(root);
 
   hydrationElementIndex = 0;
   hydrationTextIndex = 0;
+  hydrationAwaitIndex = 0;
+  rootLazyHydrationIndex = 0;
 
   pendingLazyHydration = new Set(serverRenderedLazy.keys());
 
@@ -67,7 +83,8 @@ export function withHydration(callback: () => void, root: Node) {
 function hasUnclaimedHydrationNodes(): boolean {
   return (
     hydrationElementIndex < serverRenderedElements.length ||
-    hydrationTextIndex < serverRenderedTexts.length
+    hydrationTextIndex < serverRenderedTexts.length ||
+    hydrationAwaitIndex < serverRenderedAwaitStates.length
   );
 }
 
@@ -155,7 +172,9 @@ function finishIfClaimed(scope: LazyHydrationNodes): void {
     scope.id !== undefined &&
     scope.finished &&
     scope.elementIndex >= scope.elements.length &&
-    scope.textIndex >= scope.texts.length
+    scope.textIndex >= scope.texts.length &&
+    scope.awaitIndex >= scope.awaitStates.length &&
+    scope.nextChildLazyIndex >= scope.childLazyIDs.length
   ) {
     scope.hydrating = false;
     pendingLazyHydration.delete(scope.id);
@@ -208,11 +227,83 @@ export function claimHydrationText() {
   }
 }
 
+/**
+ * Claims the branch rendered by the server for the next authored Await.
+ * A resolved marker means streamed SSR already replaced its fallback, even
+ * when the corresponding client-side lazy import is still pending.
+ */
+export function claimHydrationAwaitState(): HydrationAwaitState | undefined {
+  if (!isHydrationClaimActive()) return undefined;
+
+  const scope = getContext<LazyHydrationNodes>(LAZY_HYDRATION);
+
+  if (scope) {
+    const state = scope.awaitStates[scope.awaitIndex++];
+    finishIfClaimed(scope);
+    return state;
+  }
+
+  const state = serverRenderedAwaitStates[hydrationAwaitIndex++];
+  scheduleAfterHydrationCheck();
+  return state;
+}
+
 export type ServerRenderedLazyRange = {
   start: Text;
   end: Text;
   nodes: Node[];
 };
+
+/**
+ * Resolve a client lazy instance to its matching SSR range.
+ *
+ * The server and client can initialize sibling lazy modules in a different
+ * order during a cold dev load. Their numeric IDs are therefore not sufficient
+ * as the only lookup key. Each parent scope records its direct child ranges in
+ * DOM order, and component owners claim those ranges once as their lazy
+ * instances are created.
+ */
+export function resolveServerRenderedLazyID(lazyID: string | number): string {
+  const owner = getOwner();
+  const existingID = owner ? serverLazyIDsByOwner.get(owner) : undefined;
+
+  if (existingID !== undefined) {
+    return existingID;
+  }
+
+  // Client-side navigation and ordinary CSR renders have no server ranges to
+  // consume. Keep their generated IDs untouched.
+  if (!isHydrationClaimActive()) {
+    return String(lazyID);
+  }
+
+  const parentScope = getContext<LazyHydrationNodes>(LAZY_HYDRATION);
+  let serverID: string | undefined;
+
+  if (parentScope) {
+    serverID = parentScope.childLazyIDs[parentScope.nextChildLazyIndex];
+
+    if (serverID !== undefined) {
+      parentScope.nextChildLazyIndex++;
+    }
+  } else {
+    serverID = serverRenderedRootLazyIDs[rootLazyHydrationIndex];
+
+    if (serverID !== undefined) {
+      rootLazyHydrationIndex++;
+    }
+  }
+
+  const resolvedID = serverID ?? String(lazyID);
+
+  // Cache the fallback too. A component with no SSR range must not consume a
+  // later sibling's range if it is evaluated again before hydration finishes.
+  if (owner) {
+    serverLazyIDsByOwner.set(owner, resolvedID);
+  }
+
+  return resolvedID;
+}
 
 /**
  * Installs the matching server-rendered node queues on the lazy component
@@ -250,6 +341,7 @@ export function beginHydrationClaim(): HydrationClaimSnapshot {
     scope,
     elementIndex: scope?.elementIndex ?? hydrationElementIndex,
     textIndex: scope?.textIndex ?? hydrationTextIndex,
+    awaitIndex: scope?.awaitIndex ?? hydrationAwaitIndex,
   };
 }
 
@@ -262,11 +354,13 @@ export function rollbackHydrationClaim(snapshot: HydrationClaimSnapshot): void {
   if (snapshot.scope) {
     snapshot.scope.elementIndex = snapshot.elementIndex;
     snapshot.scope.textIndex = snapshot.textIndex;
+    snapshot.scope.awaitIndex = snapshot.awaitIndex;
     return;
   }
 
   hydrationElementIndex = snapshot.elementIndex;
   hydrationTextIndex = snapshot.textIndex;
+  hydrationAwaitIndex = snapshot.awaitIndex;
 }
 
 /**
@@ -332,8 +426,12 @@ type LazyHydrationNodes = {
   id?: string;
   elements: Element[];
   texts: Text[];
+  awaitStates: HydrationAwaitState[];
+  childLazyIDs: string[];
+  nextChildLazyIndex: number;
   elementIndex: number;
   textIndex: number;
+  awaitIndex: number;
   hydrating: boolean;
   finished: boolean;
   start?: Text;
@@ -345,8 +443,12 @@ function createLazyHydrationNodes(id?: string, hydrating = true): LazyHydrationN
     id,
     elements: [],
     texts: [],
+    awaitStates: [],
+    childLazyIDs: [],
+    nextChildLazyIndex: 0,
     elementIndex: 0,
     textIndex: 0,
+    awaitIndex: 0,
     hydrating,
     finished: false,
   };
@@ -386,7 +488,9 @@ function findInternalRangeEnd(start: Comment): Comment | undefined {
 
 function getServerRenderedNodes(root: Node) {
   const doms: Node[] = [];
+  const serverAwaitStates: HydrationAwaitState[] = [];
   const lazy = new Map<string, LazyHydrationNodes>();
+  const rootLazyIDs: string[] = [];
   const boundaryStack: string[] = [];
   const internalRangeNodes = new WeakSet<Node>();
 
@@ -416,6 +520,17 @@ function getServerRenderedNodes(root: Node) {
     } else if (isTextNode(node)) {
       nodes.texts.push(node);
     }
+  }
+
+  function addAwaitState(state: HydrationAwaitState) {
+    const id = boundaryStack.at(-1);
+
+    if (id === undefined) {
+      serverAwaitStates.push(state);
+      return;
+    }
+
+    getOrCreateLazyNodes(id).awaitStates.push(state);
   }
 
   function flattenNode(node: Node) {
@@ -481,11 +596,26 @@ function getServerRenderedNodes(root: Node) {
 
     if (isCommentNode(node)) {
       const value = node.data;
+      const awaitState = /^vynn-await:(resolved|fallback)$/.exec(value);
+
+      if (awaitState) {
+        addAwaitState(awaitState[1] as HydrationAwaitState);
+        node.parentNode?.removeChild(node);
+        return;
+      }
+
       const start = LAZY_START_REGEX.exec(value);
 
       if (start) {
         const id = start[1];
+        const parentID = boundaryStack.at(-1);
         const anchor = document.createTextNode("");
+
+        if (parentID === undefined) {
+          rootLazyIDs.push(id);
+        } else {
+          getOrCreateLazyNodes(parentID).childLazyIDs.push(id);
+        }
 
         node.parentNode?.replaceChild(anchor, node);
 
@@ -542,5 +672,11 @@ function getServerRenderedNodes(root: Node) {
     flattenNode(child);
   }
 
-  return [doms.filter(isElement), doms.filter(isTextNode), lazy] as const;
+  return [
+    doms.filter(isElement),
+    doms.filter(isTextNode),
+    serverAwaitStates,
+    lazy,
+    rootLazyIDs,
+  ] as const;
 }

@@ -1,4 +1,5 @@
-export { renderToServer, type SsrRenderResult } from "./render-to-server";
+export { renderToServerString, renderToServerString as renderToServer } from "./render-to-server.string";
+export type { SsrRenderResult } from "./ssr-types";
 export type { SsrHeadManager } from "./head";
 
 export {

@@ -33,6 +33,9 @@
     "./server-functions/server": {
       "types": "./src/server-functions/server.ts",
       "import": "./src/server-functions/server.ts"
+    },
+    "./server/ssr": {
+      "import": "./src/server/ssr.ts"
     }
   },
   "scripts": {

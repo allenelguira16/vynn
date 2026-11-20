@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { JSX } from "../src/types/jsx";
 
@@ -13,6 +13,7 @@ import { $state } from "../src/reactivity/state";
 
 afterEach(() => {
   document.body.innerHTML = "";
+  vi.restoreAllMocks();
 });
 
 function deferred<T>() {
@@ -141,6 +142,110 @@ describe("Await with lazy components", () => {
     expect(host.textContent).toBe("Loaded page");
 
     unmount();
+  });
+
+  it("hydrates resolved Await branches inside a lazy route after streaming replaced their fallbacks", async () => {
+    const routeModule = deferred<{ Page: () => JSX.Element }>();
+    const firstModule = deferred<{ Page: () => JSX.Element }>();
+    const secondModule = deferred<{ Page: () => JSX.Element }>();
+    const Route = lazy(() => routeModule.promise, "Page");
+    const FirstLazy = lazy(() => firstModule.promise, "Page");
+    const SecondLazy = lazy(() => secondModule.promise, "Page");
+
+    const host = document.createElement("div");
+    host.innerHTML =
+      '<!--l:0--><!--vynn-await:resolved--><div><h4>Test</h4><!--l:0.3--><p>First server result</p><!--/l:0.3--><!--vynn-await:resolved--><!--l:0.2--><p>Second server result</p><!--/l:0.2--><h5>Test</h5></div><!--/l:0-->';
+    document.body.append(host);
+
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const firstServerNode = host.querySelector("h4");
+    const secondServerNode = host.querySelector("h5");
+    const firstLazyNode = host.querySelector("p");
+    const secondLazyNode = host.querySelectorAll("p")[1];
+
+    const unmount = hydrateToDOM(() => <Route />, host);
+
+    try {
+      expect(host.textContent).toContain("First server result");
+      expect(host.textContent).toContain("Second server result");
+      expect(host.textContent).not.toContain("Tester");
+      expect(host.textContent).not.toContain("Tester2");
+      expect(warn).not.toHaveBeenCalled();
+
+      routeModule.resolve({
+        Page: () => (
+          <div>
+            <Await fallback="Tester">
+              <h4>Test</h4>
+              <FirstLazy />
+            </Await>
+            <Await fallback="Tester2">
+              <SecondLazy />
+            </Await>
+            <h5>Test</h5>
+          </div>
+        ),
+      });
+      await flushUpdates();
+
+      expect(host.querySelector("h4")).toBe(firstServerNode);
+      expect(host.querySelector("h5")).toBe(secondServerNode);
+      expect(host.querySelectorAll("p")[0]).toBe(firstLazyNode);
+      expect(host.querySelectorAll("p")[1]).toBe(secondLazyNode);
+      expect(host.textContent).not.toContain("Tester");
+      expect(host.textContent).not.toContain("Tester2");
+      expect(warn).not.toHaveBeenCalled();
+
+      firstModule.resolve({
+        Page: () => <p>First server result</p>,
+      });
+      secondModule.resolve({
+        Page: () => <p>Second server result</p>,
+      });
+      await flushUpdates();
+
+      expect(host.querySelector("h4")).toBe(firstServerNode);
+      expect(host.querySelector("h5")).toBe(secondServerNode);
+      expect(host.querySelectorAll("p")[0]).toBe(firstLazyNode);
+      expect(host.querySelectorAll("p")[1]).toBe(secondLazyNode);
+      expect(host.textContent).toContain("First server result");
+      expect(host.textContent).toContain("Second server result");
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+      unmount();
+    }
+  });
+
+  it("keeps an SSR fallback when the server marked the Await as pending", async () => {
+    const module = deferred<{ Page: () => JSX.Element }>();
+    const LazyPage = lazy(() => module.promise, "Page");
+
+    const host = document.createElement("div");
+    host.innerHTML = "<!--vynn-await:fallback-->Loading page";
+    document.body.append(host);
+
+    const unmount = hydrateToDOM(
+      () => (
+        <Await fallback="Loading page">
+          <LazyPage />
+        </Await>
+      ),
+      host,
+    );
+
+    try {
+      expect(host.textContent).toBe("Loading page");
+
+      module.resolve({
+        Page: () => <p>Loaded page</p>,
+      });
+      await flushUpdates();
+
+      expect(host.textContent).toBe("Loaded page");
+    } finally {
+      unmount();
+    }
   });
 
   it("keeps the server-rendered lazy content visible while its module hydrates", async () => {

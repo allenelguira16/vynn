@@ -50,11 +50,11 @@ export function createServerEntry(appSpecifier: string, ssrMode: RenderMode = "s
 
   return [
     `import * as appModule from ${JSON.stringify(appSpecifier)};`,
-    `import { renderToServer } from "vynn/server";`,
+    `import { renderToServerString } from "vynn/server/ssr";`,
     `const App = ${selected("appModule")};`,
     `if (typeof App !== "function") throw new Error("[Vynn App] The app module must export a component as default or App.");`,
     `export function render(url, request) {`,
-    `  return renderToServer(() => App({ url }), ${JSON.stringify(ssrMode)}, request);`,
+    `  return renderToServerString(() => App({ url }), ${JSON.stringify(ssrMode)}, request);`,
     `}`,
     "",
   ].join("\n");
@@ -150,7 +150,7 @@ export function createSsrHandlerCode(options: {
     devCssLinks = [],
   } = options;
   return [
-    `import { injectSsrPreloadLinks, renderSsrPreloadLinks } from "vynn/server";`,
+    `import { injectSsrPreloadLinks, renderSsrPreloadLinks } from "vynn/server/ssr";`,
     `import { render } from ${JSON.stringify(SERVER_ENTRY_ID)};`,
     `const DEV_CSS_LINKS = ${JSON.stringify(devCssLinks)};`,
     ...(serverFunctions
