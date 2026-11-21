@@ -1,4 +1,4 @@
-import { isServer } from "../context/is-server-context";
+
 import { onMount } from "../life-cycle/on-mount";
 import { $cmpnt, $insert } from "../render";
 import { JSX } from "../types/jsx";
@@ -16,7 +16,7 @@ import { PropsWithChildren } from "../types/props";
 export const Portal = $cmpnt(function Portal<E extends Element>(
   props: PropsWithChildren<{ mount: E }>,
 ): JSX.Element {
-  if (isServer()) {
+  if (import.meta.env.SSR) {
     return null;
   }
 

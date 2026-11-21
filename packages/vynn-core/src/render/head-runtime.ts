@@ -10,7 +10,7 @@ import {
   getReplacedHeadCollections,
   notifyHeadContext,
 } from "../context/head-context";
-import { isServer } from "../context/is-server-context";
+
 import {
   createOwner,
   disposeOwner,
@@ -362,7 +362,7 @@ function syncClientHead(context: HeadContext): void {
 
 /** Reconciles active declarations after replacing the document root. */
 export function synchronizeHeadContext(context: HeadContext): void {
-  if (!isServer()) syncClientHead(context);
+  if (!import.meta.env.SSR) syncClientHead(context);
 }
 
 function removeHeadEntry(context: HeadContext, entry: HeadEntry): void {
@@ -376,7 +376,7 @@ function removeHeadEntry(context: HeadContext, entry: HeadEntry): void {
 
   const element = headElements.get(entry);
   if (
-    !isServer() &&
+    !import.meta.env.SSR &&
     element?.parentNode === document.head &&
     context.activeElements.get(entry.identity) !== element
   ) {
@@ -384,7 +384,7 @@ function removeHeadEntry(context: HeadContext, entry: HeadEntry): void {
   }
 
   notifyHeadContext(context);
-  if (!isServer()) syncClientHead(context);
+  if (!import.meta.env.SSR) syncClientHead(context);
 }
 
 /**
@@ -423,13 +423,13 @@ export function $registerHead<T extends HeadTag>(
 
     if (!group?.initializing) {
       notifyHeadContext(context);
-      if (!isServer()) syncClientHead(context);
+      if (!import.meta.env.SSR) syncClientHead(context);
     }
   });
 
   // SSR registrations must survive render-owner disposal until the document
   // adapter has serialized the final head snapshot.
-  if (!isServer()) {
+  if (!import.meta.env.SSR) {
     getOwner()?.cleanups.push(() => removeHeadEntry(context, entry));
   }
 
@@ -466,12 +466,12 @@ export function $registerHeadGroup(render: () => unknown): [] {
 
   group.initializing = false;
   notifyHeadContext(context);
-  if (!isServer()) syncClientHead(context);
+  if (!import.meta.env.SSR) syncClientHead(context);
 
   // The dedicated owner carries group context into nested components and
   // reactive branches, then disposes their declarations as one lifecycle unit.
   // SSR entries intentionally remain in the snapshot after owner disposal.
-  if (!isServer()) {
+  if (!import.meta.env.SSR) {
     groupOwner.cleanups.push(() => {
       const index = context.groups.indexOf(group);
       if (index !== -1) context.groups.splice(index, 1);

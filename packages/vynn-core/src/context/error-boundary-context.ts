@@ -1,6 +1,5 @@
 import { ERROR_BOUNDARY_DATA_SSR_KEY } from "../const";
 import { getContext, getOwner, modifyContext, setContext } from "../life-cycle/owner";
-import { isServer } from "./is-server-context";
 
 export type ErrorBoundary = (error: Error) => void;
 
@@ -52,7 +51,7 @@ export function getErrorBoundaryID(): number {
 }
 
 export function getErrorBoundaryValue(errorBoundaryID: number): ErrorBoundarySSRState | undefined {
-  if (!isServer()) {
+  if (!import.meta.env.SSR) {
     (window as any)[ERROR_BOUNDARY_DATA_SSR_KEY] ??= [];
     try {
       return (window as any)[ERROR_BOUNDARY_DATA_SSR_KEY][errorBoundaryID];

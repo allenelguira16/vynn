@@ -9,7 +9,7 @@ import {
   getErrorBoundaryValue,
   getErrorBoundaryValues,
 } from "../context/error-boundary-context";
-import { isServer } from "../context/is-server-context";
+
 import { createOwner, disposeOwner, getOwner, runWithOwner } from "../life-cycle/owner";
 import { $state } from "../reactivity/state";
 import { $cmpnt, $nodes } from "../render";
@@ -35,7 +35,7 @@ export const Catch = $cmpnt(function Catch(props: {
     throw new Error("Catch requires an owner.");
   }
 
-  if (isServer()) {
+  if (import.meta.env.SSR) {
     const values = getErrorBoundaryValues();
     // oxlint-disable-next-line prefer-const
     let boundary: SSR_ERROR_BOUNDARY;

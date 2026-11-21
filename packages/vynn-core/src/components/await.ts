@@ -2,7 +2,6 @@ import type { JSX } from "../types/jsx";
 
 import { isHydrationClaimActive } from "../client/hydration";
 import { enterAsyncBoundary } from "../context/async-context";
-import { isServer } from "../context/is-server-context";
 import { isPromiseFromLazy } from "../context/lazy-context";
 import { getOwner, runWithOwner } from "../life-cycle/owner";
 import { untrack } from "../reactivity/effect";
@@ -32,7 +31,7 @@ export const Await = $cmpnt(function Await(props: {
   const fallback = memo(() => runWithOwner(owner, () => props.fallback));
   const children = memo(() => runWithOwner(owner, () => props.children));
 
-  if (isServer()) {
+  if (import.meta.env.SSR) {
     const pending: Promise<any>[] = [];
 
     enterAsyncBoundary((promise) => {

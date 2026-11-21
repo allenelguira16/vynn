@@ -3,7 +3,7 @@ import type { JSX } from "../jsx-runtime";
 import { isHydrating } from "../client/hydration";
 import { $claimTemplateAnchor } from "./$template";
 import { withHeadElementCreation } from "./head-runtime";
-import { isServer } from "../context/is-server-context";
+
 import { $renderEffect } from "../reactivity/effect";
 import { hasRawHTMLContent } from "./$attr";
 import { getChildDOMNamespace, withDOMNamespace } from "./namespace";
@@ -89,7 +89,7 @@ export function $insert<E extends Element>(
   before: Node | string | null = null,
 ): void | (() => void) | Node {
 
-  if (isServer()) {
+  if (import.meta.env.SSR) {
     const parent = element as unknown as SSR_ELEMENT;
 
     if (parent.innerHTML !== undefined) {

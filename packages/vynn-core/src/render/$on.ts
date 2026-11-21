@@ -1,4 +1,4 @@
-import { isServer } from "../context/is-server-context";
+
 import { getOwner, runWithOwner } from "../life-cycle/owner";
 
 type VynnEvent<E extends Element, K extends keyof HTMLElementEventMap> = HTMLElementEventMap[K] & {
@@ -25,7 +25,7 @@ export function $on<E extends Element, K extends keyof HTMLElementEventMap>(
   handler: (event: VynnEvent<E, K>) => void,
   capture = false,
 ): void {
-  if (isServer()) return;
+  if (import.meta.env.SSR) return;
 
 
   const owner = getOwner();

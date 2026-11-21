@@ -1,7 +1,6 @@
 import { ASYNC_DATA_SSR_KEY } from "../const";
 import { getContext, setContext } from "../life-cycle/owner";
 import { deserializeServerFunctionValue } from "../server-functions/serialization";
-import { isServer } from "./is-server-context";
 
 export type AsyncBoundary<T = unknown> = (promise: Promise<T>) => void;
 
@@ -52,7 +51,7 @@ export function getAsyncValues(): Record<string, unknown> | undefined {
  * same IDs as they did on the server.
  */
 export function registerAsyncOwnerIDReservation(ownerID: string): void {
-  if (!isServer()) return;
+  if (!import.meta.env.SSR) return;
 
   let reservations = getContext<Set<string>>(ASYNC_OWNER_ID_RESERVATIONS);
 
@@ -71,7 +70,7 @@ export function getAsyncOwnerIDReservations(): string[] {
 
 /** Check whether the server reserved an owner ID without serializing a value for it. */
 export function hasAsyncHydrationOwnerIDReservation(ownerID: string): boolean {
-  if (isServer() || typeof window === "undefined") return false;
+  if (import.meta.env.SSR || typeof window === "undefined") return false;
 
   const values = (window as unknown as Record<string, unknown>)[ASYNC_DATA_SSR_KEY];
 
@@ -88,7 +87,7 @@ export function hasAsyncHydrationOwnerIDReservation(ownerID: string): boolean {
  * is necessary before running the initializer for real.
  */
 export function hasAsyncHydrationValue(ownerID: string): boolean {
-  if (isServer() || typeof window === "undefined") return false;
+  if (import.meta.env.SSR || typeof window === "undefined") return false;
 
   const values = (window as unknown as Record<string, unknown>)[ASYNC_DATA_SSR_KEY];
 
@@ -104,7 +103,7 @@ export function hasAsyncHydrationValue(ownerID: string): boolean {
  * missing entry. The key is the async resource owner's stable hydration ID.
  */
 export function getAsyncValue<T = unknown>(ownerID: string): AsyncHydrationValue<T> {
-  if (isServer()) {
+  if (import.meta.env.SSR) {
     return { found: false, value: undefined };
   }
 

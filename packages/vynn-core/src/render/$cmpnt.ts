@@ -1,7 +1,7 @@
 import type { JSX } from "../jsx-runtime";
 
 import { runAfterHydration } from "../client/hydration";
-import { isServer } from "../context/is-server-context";
+
 import { createOwner, runWithOwner } from "../life-cycle/owner";
 import { untrack } from "../reactivity/effect";
 import {
@@ -36,7 +36,7 @@ export function $cmpnt<P>(Component: ((props?: P) => JSX.Element) | (() => JSX.E
     // owner.Component = Component;
     let marker: Node | undefined;
 
-    if (!isServer()) {
+    if (!import.meta.env.SSR) {
       marker = document.createTextNode("");
       rootNodes.set(marker, owner);
     }
@@ -46,7 +46,7 @@ export function $cmpnt<P>(Component: ((props?: P) => JSX.Element) | (() => JSX.E
       try {
         const resolved = untrack(() => Component(props));
 
-        if (isServer()) return [resolved].flat();
+        if (import.meta.env.SSR) return [resolved].flat();
 
         return [resolved, marker].flat();
       } finally {

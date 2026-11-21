@@ -1,4 +1,4 @@
-import { isServer } from "../context/is-server-context";
+
 import { getOwner, runWithOwner } from "../life-cycle/owner";
 import { $renderEffect } from "../reactivity/effect";
 import { $attr, setDOMAttributeValue, type AttributeValue } from "./$attr";
@@ -48,7 +48,7 @@ export function $spread<E extends Element, P extends Record<string, any>>(
   props: () => P,
 ): void {
 
-  if (isServer()) {
+  if (import.meta.env.SSR) {
     const next = props() ?? ({} as P);
 
     for (const [name, value] of Object.entries(next)) {

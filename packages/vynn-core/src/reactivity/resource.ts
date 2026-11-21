@@ -6,7 +6,7 @@ import {
   hasAsyncHydrationValue,
   registerAsyncOwnerIDReservation,
 } from "../context/async-context";
-import { isServer } from "../context/is-server-context";
+
 import { isAsyncGetterFromLazy, registerPromiseFromLazy } from "../context/lazy-context";
 import {
   createOwner,
@@ -385,7 +385,7 @@ function createResourceInternal<T>(
         // Lazy components already defer their own server-rendered range.
         // Registering their module promise with an outer Await would emit its
         // fallback before the lazy subtree can finish rendering (and discover redirects).
-        if (!isServer() || !lazyGetter) {
+        if (!import.meta.env.SSR || !lazyGetter) {
           boundary?.(current.promise);
         }
 
@@ -411,7 +411,7 @@ function createResourceInternal<T>(
     // During SSR, reading isPending() must participate in the same async
     // boundary as reading resource.value. Otherwise the server can serialize
     // a permanently pending UI state without waiting for the first result.
-    if (isServer()) {
+    if (import.meta.env.SSR) {
       void resource.value;
     }
 

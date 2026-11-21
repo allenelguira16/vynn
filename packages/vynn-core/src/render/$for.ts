@@ -1,6 +1,6 @@
 import type { JSX } from "../types/jsx";
 
-import { isServer } from "../context/is-server-context";
+
 import { $computed } from "../reactivity/computed";
 import { untrack } from "../reactivity/effect";
 import { $state, type State } from "../reactivity/state";
@@ -33,7 +33,7 @@ export function $for<T>(
       return renderEach(item, index);
     });
 
-  if (isServer()) {
+  if (import.meta.env.SSR) {
     return $nodes(() =>
       items().map((item, i) =>
         renderEach(

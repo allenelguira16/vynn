@@ -8,7 +8,7 @@ import {
   isHydrationElementCompatible,
   synchronizeHydrationText,
 } from "../client/hydration-diagnostics";
-import { isServer } from "../context/is-server-context";
+
 import {
   getChildDOMNamespace,
   getElementNamespace,
@@ -850,7 +850,7 @@ function claimTemplateThrough(
 }
 
 function getTemplateData(markup: string, namespace: string): TemplateData {
-  const key = (isServer() ? "server:" : "client:") + namespace + ":" + markup;
+  const key = (import.meta.env.SSR ? "server:" : "client:") + namespace + ":" + markup;
   const cached = templateDataCache.get(key);
   if (cached) return cached;
 
@@ -862,7 +862,7 @@ function getTemplateData(markup: string, namespace: string): TemplateData {
   const simplePair = /^<([A-Za-z][A-Za-z0-9:._-]*)>\s*<\/\1\s*>$/.exec(markup);
   const simpleTag = simplePair?.[1] ?? (simpleVoid && voidElements.has(simpleVoid[1].toLowerCase()) ? simpleVoid[1] : undefined);
 
-  if (isServer()) {
+  if (import.meta.env.SSR) {
     const descriptor: TemplateElementDescriptor = simpleTag
       ? { kind: "element", tag: simpleTag, attributes: [], children: [] }
       : parseServerTemplate(markup);
@@ -955,7 +955,7 @@ export function $template<T extends Element = Element>(markup: string): () => T 
     } = getTemplateData(markup, namespace);
     const instance = createTemplateInstance(blueprint);
 
-    if (isServer()) {
+    if (import.meta.env.SSR) {
       return createSSRTemplateNode(descriptor, instance, namespace) as unknown as T;
     }
 

@@ -1,5 +1,5 @@
 import { getAsyncBoundary } from "../context/async-context";
-import { isServer } from "../context/is-server-context";
+
 import { isAsyncGetterFromLazy } from "../context/lazy-context";
 import { createReactiveEffect, track, trigger } from "./effect";
 import { NotReadyError } from "./not-ready-error";
@@ -95,7 +95,7 @@ export function $computed<T>(getter: () => T | Promise<T>): Computed<T> {
     // A synchronous computed can still be waiting on an async dependency.
     // During SSR, force its first value read so the active Await boundary
     // captures that dependency and retries after it settles.
-    if (isServer() && pendingError) {
+    if (import.meta.env.SSR && pendingError) {
       void computed.value;
     }
 

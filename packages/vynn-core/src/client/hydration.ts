@@ -7,7 +7,7 @@ import {
   RAW_HTML_SSR_ATTRIBUTE,
   TEXT_SSR_SEPARATOR,
 } from "../const";
-import { isServer } from "../context/is-server-context";
+
 import { removeInternalRangeMarkers } from "../dom/internal-range";
 import {
   type Owner,
@@ -97,7 +97,7 @@ export function isHydrating(waitForLazy = true): boolean {
 }
 
 export function runAfterHydration<T>(callback: () => T, waitForLazy = true): void {
-  if (isServer()) return;
+  if (import.meta.env.SSR) return;
 
   const owner = getOwner();
 

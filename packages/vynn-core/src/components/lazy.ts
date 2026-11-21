@@ -6,7 +6,7 @@ import {
   withServerRenderedLazy,
 } from "../client/hydration";
 import { LAZY_END_SSR_MARKER, LAZY_START_SSR_MARKER } from "../const";
-import { isServer } from "../context/is-server-context";
+
 import {
   getLazyID,
   initializeLazyScope,
@@ -84,7 +84,7 @@ export function lazy<M extends Record<string, unknown>, K extends keyof M = "def
     // hydration IDs from this component's owner.
     initializeLazyScope(lazyID);
 
-    if (isServer()) {
+    if (import.meta.env.SSR) {
       registerSsrModule(moduleId);
       regsterAsyncGetterFromLazy(loadComponent);
       const component = $computed(loadComponent);

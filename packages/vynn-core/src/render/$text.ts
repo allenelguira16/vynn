@@ -2,7 +2,7 @@ import type { JSX } from "../jsx-runtime";
 
 import { claimHydrationText, isHydrationClaimActive } from "../client/hydration";
 import { synchronizeHydrationText } from "../client/hydration-diagnostics";
-import { isServer } from "../context/is-server-context";
+
 import { isCreatingHeadElement } from "./head-runtime";
 import { createSSRText } from "./resolve-node";
 
@@ -13,7 +13,7 @@ import { createSSRText } from "./resolve-node";
  * text cannot be overtaken by a later dynamic child that resolves eagerly.
  */
 export function $text(value: string): JSX.Element {
-  if (isServer()) {
+  if (import.meta.env.SSR) {
     return createSSRText(value) as unknown as JSX.Element;
   }
 

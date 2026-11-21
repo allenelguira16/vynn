@@ -1,7 +1,7 @@
 import { claimHydrationText, isHydrationClaimActive } from "../client/hydration";
 import { synchronizeHydrationText } from "../client/hydration-diagnostics";
 import { getErrorBoundary } from "../context/error-boundary-context";
-import { isServer } from "../context/is-server-context";
+
 import { JSX } from "../jsx-runtime";
 import { getOwner, runWithOwner } from "../life-cycle/owner";
 import { NotReadyError } from "../reactivity/not-ready-error";
@@ -250,7 +250,7 @@ export function resolveSSRChild(child: () => JSX.Element): SSR_NODE[] {
  * The Node[] return type is retained for compatibility with existing callers.
  */
 export function resolveNode(child: () => JSX.Element, claimText = true): Node[] {
-  if (isServer()) {
+  if (import.meta.env.SSR) {
     return resolveElementString(child()) as unknown as Node[];
   }
 

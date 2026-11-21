@@ -2,7 +2,7 @@ import type { SSR_ELEMENT } from "./resolve-node";
 
 import { isHydrationClaimActive } from "../client/hydration";
 import { diagnoseHydrationAttribute } from "../client/hydration-diagnostics";
-import { isServer } from "../context/is-server-context";
+
 import { $renderEffect } from "../reactivity/effect";
 import { assertSafeAttributeName } from "./attribute-name";
 import { HTML_NAMESPACE, SVG_NAMESPACE } from "./namespace";
@@ -220,7 +220,7 @@ export function setDOMAttributeValue<E extends Element>(
 ): void {
   assertSafeAttributeName(name);
 
-  if (isServer()) {
+  if (import.meta.env.SSR) {
     const node = element as unknown as SSR_ELEMENT;
 
     if (name === "html") {
@@ -329,7 +329,7 @@ export function $attr<E extends Element>(
   value: AttributeValue | (() => AttributeValue),
 ): void {
 
-  if (isServer()) {
+  if (import.meta.env.SSR) {
     const next = typeof value === "function" ? value() : value;
     setDOMAttributeValue(element, name, next);
     return;

@@ -1,7 +1,7 @@
 import type { ServerRenderedLazyRange } from "../client/hydration";
 import type { JSX } from "../jsx-runtime";
 
-import { isServer } from "../context/is-server-context";
+
 import { $renderEffect } from "../reactivity/effect";
 import { getCurrentDOMNamespace, withDOMNamespace } from "./namespace";
 import { resolveNode, resolveSSRChild } from "./resolve-node";
@@ -17,7 +17,7 @@ export function $nodes(
   const namespace = getCurrentDOMNamespace();
   const renderChild = () => withDOMNamespace(namespace, child);
 
-  if (isServer()) {
+  if (import.meta.env.SSR) {
     return resolveSSRChild(renderChild) as unknown as JSX.Element;
   }
 

@@ -1,7 +1,7 @@
 import type { JSX } from "../jsx-runtime";
 
 import { isHydrating } from "../client/hydration";
-import { isServer } from "../context/is-server-context";
+
 import { $renderEffect } from "../reactivity/effect";
 import { untrack } from "../reactivity/effect";
 import { NotReadyError } from "../reactivity/not-ready-error";
@@ -25,7 +25,7 @@ export function $if(
   const namespace = getCurrentDOMNamespace();
   const renderInNamespace = <T>(callback: () => T): T => withDOMNamespace(namespace, callback);
 
-  if (isServer()) {
+  if (import.meta.env.SSR) {
     return resolveSSRChild(() =>
       renderInNamespace(() => {
         const value = condition();
