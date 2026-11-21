@@ -118,6 +118,71 @@ function hasBlockedBoundaryAncestor(boundary: SsrStringBoundary): boolean {
   return boundary.cancelled;
 }
 
+/**
+ * Initial lazy modules are part of the document shell, not deferred UI.
+ *
+ * Resolve lazy boundaries that are not beneath an authored Await before the
+ * first stream chunk so components can register document metadata before the
+ * HTTP adapter snapshots the head. Lazy boundaries inside Await remain
+ * streamable with their authored fallback.
+ */
+function isInitialLazyBoundary(boundary: SsrStringBoundary): boolean {
+  if (!boundary.active || boundary.kind !== "lazy") return false;
+
+  let parent = boundary.parent;
+  while (parent) {
+    if (parent.kind === "await") return false;
+    if (parent.kind === "root") return true;
+    parent = parent.parent;
+  }
+
+  return false;
+}
+
+async function resolveInitialLazyBoundaries(
+  initialHtml: string,
+  state: SsrStringRenderState,
+  shouldStop: () => boolean,
+): Promise<string> {
+  let html = initialHtml;
+
+  while (!shouldStop()) {
+    const initialLazyBoundaries = state.boundaries.filter(isInitialLazyBoundary);
+    if (initialLazyBoundaries.length === 0) break;
+
+    const results = await Promise.all(
+      initialLazyBoundaries.map(async (boundary) => ({
+        boundary,
+        result: await resolveBoundary(boundary, shouldStop),
+      })),
+    );
+
+    if (shouldStop()) break;
+
+    for (const { boundary, result } of results) {
+      if (!result) continue;
+
+      if (result.errorBoundaryId !== undefined) {
+        html = replaceSsrMarkerRange(
+          html,
+          errorStart(result.errorBoundaryId),
+          errorEnd(result.errorBoundaryId),
+          result.html,
+        );
+      } else {
+        html = replaceSsrMarkerRange(
+          html,
+          asyncStart(boundary.id),
+          asyncEnd(boundary.id),
+          markResolvedBoundaryContent(boundary, result.html),
+        );
+      }
+    }
+  }
+
+  return html;
+}
+
 function isOwnerWithin(owner: Owner, ancestor: Owner): boolean {
   let current: Owner | null = owner;
   while (current) {
@@ -454,8 +519,18 @@ export function resolveSsrStringStream(
   async function run(): Promise<void> {
     try {
       const initial = renderInitial(App, owner, state);
+      const shell = await resolveInitialLazyBoundaries(
+        initial,
+        state,
+        () => cancelled || closed,
+      );
+      if (cancelled || closed) return;
+
+      // Route/layout modules may declare <title>, <meta>, and <link> entries.
+      // Snapshot the head only after those synchronous component declarations
+      // have run, but before the first document chunk is released.
       previousHead = head.render();
-      enqueue(renderPatchRuntime() + initial);
+      enqueue(renderPatchRuntime() + shell);
 
       const processed = new Map<SsrStringBoundary, number>();
       const pending = new Map<

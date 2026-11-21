@@ -347,6 +347,101 @@ describe("string-based SSR renderer", () => {
     expect(loaderRuns).toBe(1);
   });
 
+  it("hoists metadata from initial lazy components before the first stream chunk", async () => {
+    const module = deferred<{ default: () => JSX.Element }>();
+    const content = deferred<void>();
+
+    const Page = $ssrComponent(function Page() {
+      $ssrHead("title", { children: "Quick start | Vynn" });
+
+      const value = $computed(async () => {
+        await content.promise;
+        return "resolved page data";
+      });
+
+      return Await({
+        get fallback() {
+          return "<i>Loading page data</i>";
+        },
+        get children() {
+          return "<p>" + $ssrText(() => value.value) + "</p>";
+        },
+      });
+    });
+
+    const LazyPage = lazy(() => module.promise, undefined, "quick-start-page");
+    const App = $ssrComponent(() => LazyPage(undefined as never));
+    const rendered = renderToServerString(() => App(), "stream");
+    const reader = rendered.body.getReader();
+    const decoder = new TextDecoder();
+
+    const firstRead = reader.read();
+    module.resolve({ default: Page });
+
+    const first = await firstRead;
+    expect(first.done).toBe(false);
+
+    const initialHtml = decoder.decode(first.value);
+    expect(rendered.head.render()).toContain(
+      '<title key="title">Quick start | Vynn</title>',
+    );
+    expect(initialHtml).toContain("Loading page data");
+    expect(initialHtml).not.toContain("resolved page data");
+
+    content.resolve(undefined);
+
+    const patches: string[] = [];
+    while (true) {
+      const result = await reader.read();
+      if (result.done) break;
+      patches.push(decoder.decode(result.value));
+    }
+
+    expect(patches.join("")).toContain("<p>resolved page data</p>");
+    expect(patches.join("")).not.toContain(`window.${APPLY_HEAD_PATCH_SSR_KEY}(`);
+  });
+
+  it("keeps lazy components under an authored Await out of the initial head snapshot", async () => {
+    const module = deferred<{ default: () => JSX.Element }>();
+
+    const Page = $ssrComponent(function Page() {
+      $ssrHead("title", { children: "Deferred route title" });
+      return "<p>Deferred route content</p>";
+    });
+    const LazyPage = lazy(() => module.promise, undefined, "deferred-route-page");
+    const App = $ssrComponent(() =>
+      Await({
+        get fallback() {
+          return "<i>Loading route</i>";
+        },
+        get children() {
+          return LazyPage(undefined as never);
+        },
+      }),
+    );
+
+    const rendered = renderToServerString(() => App(), "stream");
+    const reader = rendered.body.getReader();
+    const decoder = new TextDecoder();
+
+    const first = await reader.read();
+    expect(first.done).toBe(false);
+    expect(decoder.decode(first.value)).toContain("Loading route");
+    expect(rendered.head.render()).not.toContain("Deferred route title");
+
+    module.resolve({ default: Page });
+
+    const patches: string[] = [];
+    while (true) {
+      const result = await reader.read();
+      if (result.done) break;
+      patches.push(decoder.decode(result.value));
+    }
+
+    expect(patches.join("")).toContain("<p>Deferred route content</p>");
+    expect(patches.join("")).toContain("Deferred route title");
+  });
+
   it("routes an Await slot rejection to a Catch surrounding the boundary", async () => {
     const Page = $ssrComponent(function Page() {
       const value = $computed(async () => {
