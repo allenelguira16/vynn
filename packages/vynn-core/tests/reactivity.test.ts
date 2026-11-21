@@ -137,7 +137,17 @@ describe("$computed", () => {
         // owner. The synchronous computed must not consume an owner slot.
         expect(owner.children.map((child) => child.id)).toEqual(["00"]);
 
-        await Promise.resolve();
+        let resourceLoad: Promise<unknown> | undefined;
+
+        try {
+          asynchronous.value;
+        } catch (error) {
+          expect(error).toBeInstanceOf(NotReadyError);
+          resourceLoad = (error as NotReadyError).promise;
+        }
+
+        expect(resourceLoad).toBeDefined();
+        await resourceLoad;
 
         runWithOwner(owner, () => {
           expect(asynchronous!.value).toBe(42);
