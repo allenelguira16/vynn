@@ -2,25 +2,14 @@
 
 This workspace compares the minimum production client payload produced by Vynn, Solid 2, Svelte 5, and React 19.
 
-The first pass intentionally measures only two scenarios:
+The cross-framework comparison uses two scenarios:
 
 - **Minimal**: mount a component that renders the same small static markup.
 - **Counter**: render the same markup plus reactive state, a derived value, and an increment button.
 
 These are standalone client-rendered Vite apps. They do not use routers, SSR adapters, CSS frameworks, icon libraries, or shared app utilities. Each framework uses its idiomatic public API.
 
-## Versions
-
-The benchmark pins Vite 8.3.6 across all four apps and uses the framework versions already present in the repository's sandbox lockfile:
-
-- Vynn: workspace source from the checked-out revision.
-- Solid 2: `solid-js` and `@solidjs/web` 2.0.0-rc.18 (matching the existing Solid sandbox).
-- Svelte: 5.59.1.
-- React: 19.3.1.
-
-The Solid version is deliberately aligned with the existing sandbox so both measurements use the same release. Update the pin when benchmarking a newer Solid release, and retain the version in the report.
-
-## Run
+## Run the cross-framework comparison
 
 From the repository root:
 
@@ -40,18 +29,29 @@ The script builds each framework in production mode with Vite 8.3.6, the Oxc min
 
 Results are written to `benchmarks/results/latest.json`. The results directory is generated locally and is not committed.
 
+## Trace Vynn's reactive costs
+
+The Vynn-only trace builds the same client entry under five progressively richer scenarios:
+
+```sh
+pnpm bench:vynn
+```
+
+- **Minimal**: static template and mount path.
+- **State**: one `$state(0)` value rendered as dynamic text.
+- **Computed**: state plus a synchronous `$computed` value.
+- **Event**: state, dynamic text, and an event handler.
+- **Counter**: state, computed value, dynamic text, and event handler.
+
+Each build emits `module-report.json` from Rolldown's chunk metadata. The report records each included module's rendered length and rendered exports. Rolldown's `renderedLength` is measured after tree-shaking but before final chunk minification, so it is useful for finding retained modules but is not a per-module gzip measurement.
+
+The trace is written to `benchmarks/results/vynn-trace.json`. It includes the final entry's raw, gzip, and Brotli sizes plus the module-level report. Use the differences between scenarios to see which modules enter the bundle when state, computed values, and event handling are added.
+
 ## What is measured
 
-For both the initial entry graph and all emitted assets, the report records:
+For the cross-framework report, initial static import graph and all emitted JavaScript/CSS assets are measured separately. The report records raw, gzip (level 9), and Brotli (quality 11) bytes for JavaScript and CSS independently.
 
-- Raw JavaScript and CSS bytes.
-- Gzip bytes (level 9).
-- Brotli bytes (quality 11).
-- Asset counts.
-
-Compressed totals are calculated by compressing each emitted resource independently and summing the results. That reflects separate HTTP resources more closely than compressing all files as one artificial archive.
-
-HTML documents, manifests, source maps, compression sidecars, and build tooling are excluded. CSS is measured separately so the JavaScript comparison remains visible.
+Compressed totals are calculated by compressing each emitted resource independently and summing the results. HTML documents, manifests, source maps, compression sidecars, and build tooling are excluded.
 
 ## Fairness and limitations
 
