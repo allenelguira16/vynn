@@ -34,6 +34,10 @@
     "./server-functions/server": {
       "types": "./src/server-functions/server.ts",
       "import": "./src/server-functions/server.ts"
+    },
+    "./internal/state-value": {
+      "types": "./src/reactivity/state-value.ts",
+      "import": "./src/reactivity/state-value.ts"
     }
   },
   "scripts": {

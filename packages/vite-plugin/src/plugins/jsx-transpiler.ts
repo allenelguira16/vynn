@@ -20,7 +20,7 @@ export function vynnOxcPlugin(options: VynnOxcPluginOptions = {}): Plugin {
 
       const cleanId = id.split("?", 1)[0];
       if (!/\.(?:[cm]?[jt]sx?)$/i.test(cleanId)) return null;
-      if (!source.includes("<")) return null;
+      if (!source.includes("<") && !source.includes("$state")) return null;
 
       const result = transformVynnOxcWithMap(source, cleanId, compilerOptions);
       return {
