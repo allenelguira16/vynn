@@ -1,5 +1,3 @@
-import type { SSR_NODE } from "../server/resolve-node";
-
 export type TemplateElementDescriptor = {
   kind: "element";
   tag: string;
@@ -22,7 +20,7 @@ export type TemplateNodeDescriptor =
   | TemplateTextDescriptor
   | TemplateAnchorDescriptor;
 
-export type TemplateRuntimeNode = Node | SSR_NODE;
+export type TemplateRuntimeNode = object;
 
 export type TemplateBlueprint = {
   readonly steps: TemplateNodeDescriptor[];
@@ -35,14 +33,6 @@ export type TemplateInstance = TemplateBlueprint & {
   readonly descriptors: WeakMap<object, TemplateNodeDescriptor>;
   cursor: number;
   hydrating: boolean;
-};
-
-export type TemplateData = {
-  descriptor: TemplateElementDescriptor;
-  blueprint: TemplateBlueprint;
-  template?: HTMLTemplateElement;
-  documentRoot?: Element;
-  simpleTag?: string;
 };
 
 export const templateInstances = new WeakMap<object, TemplateInstance>();

@@ -208,7 +208,7 @@ export function $claimTemplateAnchor(parent: SSR_ELEMENT, id: string): SSR_NODE 
   const descriptor = parentDescriptor.children.find((child): child is TemplateAnchorDescriptor => child.kind === "anchor" && child.id === id);
   if (!descriptor) throw new Error("[vynn]: Missing compiled dynamic child slot " + JSON.stringify(id) + ".");
   const existing = instance.nodes.get(descriptor);
-  if (existing) return existing as SSR_NODE;
+  if (existing) return existing as unknown as SSR_NODE;
   const anchor = parent.children.find((child): child is SSR_COMMENT => child instanceof SSR_COMMENT && getTemplateAnchorId(child.value) === id);
   if (anchor) { registerTemplateNode(instance, descriptor, anchor); return anchor; }
   throw new Error("[vynn]: Missing dynamic child anchor for slot " + JSON.stringify(id) + ".");

@@ -657,7 +657,7 @@ export function $child<E extends Element = Element>(parent: Element): E {
     const childDescriptor = parentDescriptor.children[0];
     const child = childDescriptor ? instance.nodes.get(childDescriptor) : undefined;
 
-    if (child) return resolveTemplateNavigationNode(child) as E;
+    if (child) return resolveTemplateNavigationNode(child as Node) as E;
   }
 
   return resolveTemplateNavigationNode(parent.firstChild) as E;
@@ -680,7 +680,7 @@ export function $sibling<E extends Element = Element>(
     const nextDescriptor = parentDescriptor.children[index + count];
     const next = nextDescriptor ? instance.nodes.get(nextDescriptor) : undefined;
 
-    if (next) return resolveTemplateNavigationNode(next) as E;
+    if (next) return resolveTemplateNavigationNode(next as Node) as E;
   }
 
   let sibling: Node | null = node;
