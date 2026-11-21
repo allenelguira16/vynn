@@ -4,9 +4,9 @@ import { afterEach, describe, expect, it } from "vitest";
 import { withHydration } from "../src/client/hydration";
 import { initializeHeadContext } from "../src/context/head-context";
 import { createOwner, disposeOwner, runWithOwner } from "../src/life-cycle/owner";
-import { $nodes } from "../src/render/$nodes";
+import { $nodes } from "../src/render/client/$nodes";
 import { $registerHead } from "../src/render/head-runtime";
-import { $text } from "../src/render/$text";
+import { $text } from "../src/render/client/$text";
 import { renderToServer } from "../src/server/render-to-server";
 import type { JSX } from "../src/types/jsx";
 

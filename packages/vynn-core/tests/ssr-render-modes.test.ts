@@ -11,12 +11,12 @@ import {
 } from "../../vite-plugin/src/plugins/app/documents.ts";
 import { serverFunctionsPlugin } from "../../vite-plugin/src/plugins/server-functions/index.ts";
 import { Catch } from "../src/components/catch";
+import { Portal } from "../src/components/portal";
 import { lazy } from "../src/components/lazy";
 import { registerSsrModule } from "../src/context/ssr-module-context";
 import { createOwner, disposeOwner, getOwner, runWithOwner } from "../src/life-cycle/owner";
 import { $registerHead } from "../src/render/head-runtime";
-import { $cmpnt } from "../src/render/$cmpnt";
-import { $insert } from "../src/render/$insert";
+import { $insert } from "../src/render/server/$insert";
 import {
   createSSRAsync,
   createSSRComment,
@@ -161,13 +161,15 @@ describe("renderToServer modes", () => {
     expect(configureServer.call(plugin, {})).toBeUndefined();
   });
 
-  it("selects the server component wrapper when defined before SSR starts", () => {
-    // Framework components such as Portal are wrapped during module evaluation,
-    // before renderToServer establishes the server render-mode context.
-    const Component = $cmpnt(() => "Server component" as JSX.Element);
-    const rendered = renderToServer(Component, "sync");
+  it("uses the server component primitive for components defined before SSR starts", () => {
+    // Portal is wrapped at module evaluation time, before renderToServer
+    // establishes the server render-mode context.
+    const rendered = renderToServer(
+      () => Portal({ mount: {} as Element, children: null as unknown as JSX.Element }),
+      "sync",
+    );
 
-    expect(rendered.body).toContain("Server component");
+    expect(rendered.body).toBe("");
   });
 
   it("returns an explicit render result in sync mode", () => {

@@ -6,14 +6,19 @@ import type { JSX } from "../src/types/jsx";
 import { hydrateToDOM } from "../src/client/hydrate-to-dom";
 import { renderToDOM } from "../src/client/render-to-dom";
 import { $state } from "../src/reactivity/$state";
-import { $attr } from "../src/render/$attr";
-import { $insert } from "../src/render/$insert";
-import { $template } from "../src/render/$template";
+import * as clientRender from "../src/render/client/index";
+import * as serverRender from "../src/render/server/index";
+import { isServer } from "../src/context/is-server-context";
 import { renderToServer } from "../src/server/render-to-server";
 
 const parsedCode = '<pre><code class="language-ts">const value = 1 &amp; 2;</code></pre>';
 
+function getRenderPrimitives(): typeof clientRender {
+  return (isServer() ? serverRender : clientRender) as typeof clientRender;
+}
+
 function RawHtmlApp(): JSX.Element {
+  const { $attr, $insert, $template } = getRenderPrimitives();
   const main = $template("<main></main>")();
 
   $insert(main, () => {
@@ -109,6 +114,7 @@ describe("raw HTML content", () => {
   it("rejects combining raw HTML with Vynn-managed children during SSR", () => {
     expect(() =>
       renderToServer(() => {
+        const { $attr, $insert, $template } = getRenderPrimitives();
         const element = $template("<div></div>")();
         $attr(element, "html", "<strong>Raw</strong>");
         $insert(element, "Managed child");

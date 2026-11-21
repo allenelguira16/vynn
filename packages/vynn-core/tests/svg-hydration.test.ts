@@ -13,13 +13,13 @@ import {
   runWithOwner,
 } from "../src/life-cycle/owner";
 import { $state } from "../src/reactivity/$state";
-import { $attr } from "../src/render/$attr";
-import { $for } from "../src/render/$for";
-import { $if } from "../src/render/$if";
-import { $insert } from "../src/render/$insert";
-import { $nodes } from "../src/render/$nodes";
-import { $on } from "../src/render/$on";
-import { $template } from "../src/render/$template";
+import { $attr } from "../src/render/client/$attr";
+import { $for } from "../src/render/client/$for";
+import { $if } from "../src/render/client/$if";
+import { $insert } from "../src/render/client/$insert";
+import { $nodes } from "../src/render/client/$nodes";
+import { $on } from "../src/render/client/$on";
+import { $template } from "../src/render/client/$template";
 import { createSSRAsync } from "../src/render/server/resolve-node";
 import { renderToServer } from "../src/server/render-to-server";
 
