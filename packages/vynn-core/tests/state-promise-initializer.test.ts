@@ -68,6 +68,41 @@ describe("Promise-returning initializers", () => {
     }
   });
 
+
+  it("keeps a manual value when it is assigned before async resource loading finishes", async () => {
+    const owner = createOwner(null);
+    let value!: State<number>;
+    let loadingPromise: Promise<unknown> | undefined;
+
+    try {
+      runWithOwner(owner, () => {
+        initializeAsyncContext();
+        value = $state(() => new Promise<number>(() => {}));
+
+        try {
+          value.value;
+        } catch (error) {
+          expect(error).toBeInstanceOf(NotReadyError);
+          loadingPromise = (error as NotReadyError).promise;
+        }
+
+        value.value = 12;
+        expect(value.value).toBe(12);
+        expect(isPending(value)).toBe(false);
+      });
+
+      expect(loadingPromise).toBeDefined();
+      await loadingPromise;
+
+      runWithOwner(owner, () => {
+        expect(value.value).toBe(12);
+        expect(isPending(value)).toBe(false);
+      });
+    } finally {
+      disposeOwner(owner);
+    }
+  });
+
   it("$state detects a Promise returned without the async keyword", async () => {
     const owner = createOwner(null);
     let count!: State<number>;

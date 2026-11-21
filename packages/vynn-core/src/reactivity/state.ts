@@ -87,11 +87,11 @@ function createBridge<T>(
   const start = () => {
     if (!loading) {
       loading = load(control).catch((error: unknown) => {
-          failed = true;
-          failure = error;
-          onFailure?.();
-          throw error;
-        });
+        failed = true;
+        failure = error;
+        onFailure?.();
+        throw error;
+      });
       void loading.catch(() => {});
     }
     return loading;
@@ -150,7 +150,7 @@ function createPromoted<T>(
   initial: Initial<T>,
 ): VynnRef<T> {
   return createBridge(
-    () =>
+    (control) =>
       import("./maybe-async-resource").then(({ createPromotedMaybeAsyncResource }) =>
         createPromotedMaybeAsyncResource(initializer, owner, resourceOwner, initial, control),
       ),
