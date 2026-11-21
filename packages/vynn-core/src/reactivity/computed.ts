@@ -2,7 +2,7 @@ import { getAsyncBoundary } from "../context/async-boundary";
 import { hasAsyncHydrationValue } from "../context/async-context";
 import { getErrorBoundary } from "../context/error-boundary-context";
 import { isAsyncGetterFromLazy, registerPromiseFromLazy } from "../context/lazy-context";
-import { createOwner, getOwner, runWithOwner, type Owner } from "../life-cycle/owner";
+import { createOwner, getOwner, peekOwnerID, runWithOwner, type Owner } from "../life-cycle/owner";
 import {
   cleanupSubscriber,
   track,
@@ -41,6 +41,7 @@ function createAsyncComputed<T>(
   let loading: Promise<VynnRef<T>> | undefined;
   let failed = false;
   let failure: unknown;
+  let suppressFallbackDuringHydration = false;
   const target = {};
 
   function start(): Promise<VynnRef<T>> {
@@ -51,6 +52,10 @@ function createAsyncComputed<T>(
     if (!owner) {
       // Keep module-level resources dormant until their first read so they can
       // acquire the consuming render's hydration identity.
+      const candidateID = peekOwnerID(getOwner());
+      suppressFallbackDuringHydration =
+        candidateID !== undefined && hasAsyncHydrationValue(candidateID);
+
       loadResource = import("./resource").then(({ createAsyncResource }) =>
         runWithOwner(null, () => createAsyncResource(getter)),
       );
@@ -63,6 +68,7 @@ function createAsyncComputed<T>(
         !isAsyncGetterFromLazy(getter) &&
         candidateID !== undefined &&
         hasAsyncHydrationValue(candidateID);
+      suppressFallbackDuringHydration = canHydrate;
 
       if (canHydrate) {
         loadResource = import("./resource").then(({ createAsyncResourceFromOwner }) => {
@@ -141,7 +147,7 @@ function createAsyncComputed<T>(
       },
     );
 
-    if (isAsyncGetterFromLazy(getter)) {
+    if (isAsyncGetterFromLazy(getter) || suppressFallbackDuringHydration) {
       registerPromiseFromLazy(loading);
     }
 
