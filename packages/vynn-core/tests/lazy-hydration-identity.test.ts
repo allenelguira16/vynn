@@ -5,10 +5,10 @@ import { Catch } from "../src/components/catch";
 import { ASYNC_DATA_SSR_KEY, ERROR_BOUNDARY_DATA_SSR_KEY } from "../src/const";
 import {
   enterAsyncBoundary,
-  getAsyncValue,
   getAsyncValues,
   initializeAsyncContext,
 } from "../src/context/async-context";
+import { getAsyncValue } from "../src/context/async-hydration-context";
 import { initializeErrorBoundaryContext } from "../src/context/error-boundary-context";
 import {
   createHydrationIDTracker,

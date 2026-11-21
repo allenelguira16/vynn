@@ -1,11 +1,11 @@
 import {
   getAsyncBoundary,
-  getAsyncValue,
   getAsyncValues,
   hasAsyncHydrationOwnerIDReservation,
   hasAsyncHydrationValue,
   registerAsyncOwnerIDReservation,
 } from "../context/async-context";
+import { getAsyncValue } from "../context/async-hydration-context";
 
 import { isAsyncGetterFromLazy, registerPromiseFromLazy } from "../context/lazy-context";
 import {
