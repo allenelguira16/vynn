@@ -53,7 +53,8 @@ export type Async<T> = VynnRef<T>;
 
 export type MaybeAsyncResourceInitial<T> = {
   result?: T | PromiseLike<T>;
-  error?: NotReadyError;
+  error?: unknown;
+  hasError?: boolean;
   subscriber: ReactiveSubscriber;
   hasChanged: () => boolean;
 };
@@ -64,6 +65,21 @@ export function createMaybeAsyncResourceFromInitial<T>(
   initial: MaybeAsyncResourceInitial<T>,
 ): VynnRef<T> {
   return createResourceInternal(getter, true, { resourceOwner, initial });
+}
+
+export function createAsyncResourceFromInitial<T>(
+  getter: () => Promise<T>,
+  resourceOwner: Owner,
+  initial: MaybeAsyncResourceInitial<T>,
+): VynnRef<T> {
+  return createResourceInternal(getter, false, { resourceOwner, initial });
+}
+
+export function createAsyncResourceFromOwner<T>(
+  getter: () => Promise<T>,
+  resourceOwner: Owner,
+): VynnRef<T> {
+  return createResourceInternal(getter, false, { resourceOwner });
 }
 
 export function createAsyncResource<T>(getter: () => Promise<T>): VynnRef<T> {
@@ -82,7 +98,7 @@ export function createMaybeAsyncResource<T>(getter: () => T | PromiseLike<T>): V
 function createResourceInternal<T>(
   getter: () => T | PromiseLike<T>,
   detectPromiseLike: boolean,
-  initialState?: { resourceOwner: Owner; initial: MaybeAsyncResourceInitial<T> },
+  initialState?: { resourceOwner: Owner; initial?: MaybeAsyncResourceInitial<T> },
 ): VynnRef<T> {
   const owner = getOwner();
   const lazyGetter = isAsyncGetterFromLazy(getter);
@@ -103,6 +119,7 @@ function createResourceInternal<T>(
   let hasReadHydrationValue = false;
   let hydrationValue: { found: boolean; value: T | undefined } | undefined;
   let initialResultKind: "unknown" | "sync" | "async" | "error" = "unknown";
+  let hasConsumedInitialState = false;
 
   // The reactive effect mutates this state from inside its callback. Read it
   // through an accessor outside that callback so TypeScript doesn't retain
@@ -182,16 +199,20 @@ function createResourceInternal<T>(
         try {
           let result: T | PromiseLike<T>;
 
-          if (initialState && isInitialRun) {
-            // The lightweight state adapter already executed the initializer
+          if (initialState?.initial && !hasConsumedInitialState) {
+            // The state/computed adapter already executed the initializer
             // once. Reuse its result and collected dependencies.
-            initialResultKind = "async";
+            hasConsumedInitialState = true;
             hasReadHydrationValue = true;
-            allocateResourceIdentity();
+
+            if (detectPromiseLike) {
+              initialResultKind = "async";
+              allocateResourceIdentity();
+            }
 
             if (initialState.initial.hasChanged()) {
               result = getter();
-            } else if (initialState.initial.error) {
+            } else if (initialState.initial.hasError ?? initialState.initial.error !== undefined) {
               throw initialState.initial.error;
             } else {
               result = initialState.initial.result as T | PromiseLike<T>;
@@ -380,7 +401,7 @@ function createResourceInternal<T>(
 
     reactiveEffect = effect;
 
-    if (initialState) {
+    if (initialState?.initial) {
       const { subscriber } = initialState.initial;
 
       if (initialState.initial.hasChanged()) {
