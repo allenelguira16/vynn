@@ -4,6 +4,26 @@ import { getAsyncRenderContext } from "./async-render-context";
 
 export const ASYNC_OWNER_ID_RESERVATIONS_KEY = "$VYNN_OWNER_ID_RESERVATIONS";
 
+function getBrowserAsyncValues(): Record<string, unknown> | undefined {
+  if (import.meta.env.SSR || typeof window === "undefined") return undefined;
+
+  const values = (window as unknown as Record<string, unknown>)[ASYNC_DATA_SSR_KEY];
+  return values !== null && typeof values === "object"
+    ? (values as Record<string, unknown>)
+    : undefined;
+}
+
+function hasOwnerIDReservation(
+  values: Record<string, unknown>,
+  ownerPath: readonly number[],
+): boolean {
+  const reservations = values[ASYNC_OWNER_ID_RESERVATIONS_KEY];
+  return (
+    Array.isArray(reservations) &&
+    reservations.includes(getOwnerIdentityPathKey(ownerPath))
+  );
+}
+
 export function initializeAsyncOwnerIDReservations(): void {
   getAsyncRenderContext()?.reservations.clear();
 }
@@ -18,14 +38,17 @@ export function getAsyncOwnerIDReservations(): string[] {
 }
 
 export function hasAsyncHydrationOwnerIDReservation(ownerPath: readonly number[]): boolean {
-  if (import.meta.env.SSR || typeof window === "undefined") return false;
+  const values = getBrowserAsyncValues();
+  return values ? hasOwnerIDReservation(values, ownerPath) : false;
+}
 
-  const values = (window as unknown as Record<string, unknown>)[ASYNC_DATA_SSR_KEY];
-  if (values === null || typeof values !== "object") return false;
+/** Check whether hydration carries an async value or a reserved resource slot. */
+export function hasAsyncHydrationSlot(ownerPath: readonly number[]): boolean {
+  const values = getBrowserAsyncValues();
+  if (!values) return false;
 
-  const reservations = (values as Record<string, unknown>)[ASYNC_OWNER_ID_RESERVATIONS_KEY];
   return (
-    Array.isArray(reservations) &&
-    reservations.includes(getOwnerIdentityPathKey(ownerPath))
+    Object.prototype.hasOwnProperty.call(values, getOwnerIdentityPathKey(ownerPath)) ||
+    hasOwnerIDReservation(values, ownerPath)
   );
 }

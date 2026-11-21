@@ -151,7 +151,7 @@ describe("$computed", () => {
 
         runWithOwner(owner, () => {
           expect(asynchronous!.value).toBe(42);
-          expect(getAsyncValues()).toEqual({ "00": 42 });
+          expect(getAsyncValues()).toEqual({ "0.0": 42 });
         });
       });
     } finally {
@@ -606,7 +606,7 @@ describe("$async", () => {
     const owner = createOwner(null);
     const windowValues = window as unknown as Record<string, unknown>;
     windowValues[ASYNC_DATA_SSR_KEY] = {
-      "00": 10,
+      "0.0": 10,
     };
 
     let source: { value: number } | undefined;
@@ -651,7 +651,7 @@ describe("$async", () => {
     const owner = createOwner(null);
     const windowValues = window as unknown as Record<string, unknown>;
     windowValues[ASYNC_DATA_SSR_KEY] = {
-      "01": 99,
+      "0.1": 99,
     };
 
     let dependency: { value: number } | undefined;
@@ -857,7 +857,7 @@ describe("$async", () => {
       runWithOwner(owner, () => {
         expect(data.value).toBe("rendered");
         expect(getAsyncValues()).toEqual({
-          "00": "rendered",
+          "0.0": "rendered",
         });
       });
     } finally {

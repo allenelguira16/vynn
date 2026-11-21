@@ -1,7 +1,6 @@
-import { ASYNC_DATA_SSR_KEY } from "../const";
 import { getAsyncBoundary } from "../context/async-boundary";
 import {
-  ASYNC_OWNER_ID_RESERVATIONS_KEY,
+  hasAsyncHydrationSlot,
   registerAsyncOwnerIDReservation,
 } from "../context/async-owner-context";
 import { isAsyncGetterFromLazy } from "../context/lazy-context";
@@ -11,7 +10,6 @@ import {
   disposeOwner,
   getOwner,
   getOwnerIdentityPath,
-  getOwnerIdentityPathKey,
   peekOwnerIdentityPath,
   rollbackOwnerIdentityTransaction,
   runWithOwner,
@@ -21,6 +19,7 @@ import { cleanupSubscriber, withSubscriber, type ReactiveSubscriber } from "./gr
 import { NotReadyError } from "./not-ready-error";
 import { isPending, registerPending } from "./pending";
 import { createCell, markRef, type VynnRef } from "./ref";
+import { isPromiseLike } from "./utils";
 import type { MaybeAsyncResourceControl } from "./maybe-async-resource";
 
 export type State<T> = VynnRef<T>;
@@ -33,27 +32,6 @@ type Initial<T> = {
 };
 
 type BridgeControl<T> = MaybeAsyncResourceControl<T>;
-
-function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
-  return (
-    value !== null &&
-    (typeof value === "object" || typeof value === "function") &&
-    typeof (value as { then?: unknown }).then === "function"
-  );
-}
-
-function hasHydrationSlot(path: readonly number[] | undefined): boolean {
-  if (!path || import.meta.env.SSR || typeof window === "undefined") return false;
-  const values = (window as unknown as Record<string, unknown>)[ASYNC_DATA_SSR_KEY];
-  if (!values || typeof values !== "object") return false;
-  const payload = values as Record<string, unknown>;
-  const key = getOwnerIdentityPathKey(path);
-  const reservations = payload[ASYNC_OWNER_ID_RESERVATIONS_KEY];
-  return (
-    Object.prototype.hasOwnProperty.call(payload, key) ||
-    (Array.isArray(reservations) && reservations.includes(key))
-  );
-}
 
 function finishInitializer(owner: Owner): void {
   const hasChildren = owner.children.length > 0 || owner.nodeCount > 0;
@@ -171,7 +149,7 @@ function createMaybeAsyncState<T>(initializer: () => T | PromiseLike<T>): VynnRe
 
   const resourceOwner = createOwnerIdentityTransaction(owner);
   const path = getOwnerIdentityPath(resourceOwner) ?? peekOwnerIdentityPath(resourceOwner.parent);
-  if (hasHydrationSlot(path)) {
+  if (path && hasAsyncHydrationSlot(path)) {
     rollbackOwnerIdentityTransaction(resourceOwner);
     disposeOwner(resourceOwner);
     return createLegacy(initializer, owner);

@@ -203,12 +203,12 @@ describe("SSR async Catch", () => {
     }>;
 
     // The rejected resource correctly has no fulfilled value in $AD, but its
-    // allocated ID is reserved so the following sibling keeps owner ID 01.
-    expect(asyncValues).not.toHaveProperty("000");
-    expect(asyncValues["01"]).toEqual(["string", "after boundary"]);
+    // allocated numeric path is reserved so the following sibling keeps its index.
+    expect(asyncValues).not.toHaveProperty("0.0.0");
+    expect(asyncValues["0.1"]).toEqual(["string", "after boundary"]);
     expect(errorBoundaries[0]).toMatchObject({
       status: "fallback",
-      ownerIDs: { "00": 1 },
+      ownerIDs: { "0.0": 1 },
     });
   });
 

@@ -13,7 +13,7 @@ import {
 import { NotReadyError } from "./not-ready-error";
 import { isPending, registerPending } from "./pending";
 import { markRef, type VynnReadonlyRef, type VynnRef } from "./ref";
-import { isAsyncFunction } from "./utils";
+import { isAsyncFunction, isPromiseLike } from "./utils";
 
 export type Computed<T> = VynnReadonlyRef<T>;
 
@@ -24,14 +24,6 @@ type AsyncComputedInitial<T> = {
   subscriber: ReactiveSubscriber;
   hasChanged: () => boolean;
 };
-
-function isPromiseLikeValue(value: unknown): value is PromiseLike<unknown> {
-  return (
-    value !== null &&
-    (typeof value === "object" || typeof value === "function") &&
-    typeof (value as { then?: unknown }).then === "function"
-  );
-}
 
 function createAsyncComputed<T>(
   getter: () => Promise<T>,
@@ -98,7 +90,7 @@ function createAsyncComputed<T>(
           result = runWithOwner(resourceOwner, () =>
             withSubscriber(subscriber, () => getter()),
           );
-          promiseLike = isPromiseLikeValue(result);
+          promiseLike = isPromiseLike(result);
         } catch (error) {
           didThrow = true;
           initialError = error;
@@ -222,7 +214,7 @@ export function $computed<T>(getter: () => T | Promise<T>): Computed<T> {
         withSubscriber(computation, () => getter() as T),
       );
 
-      if (isPromiseLikeValue(nextValue)) {
+      if (isPromiseLike(nextValue)) {
         throw new TypeError(
           "[vynn]: An asynchronous $computed() getter must be declared with the async keyword.",
         );
