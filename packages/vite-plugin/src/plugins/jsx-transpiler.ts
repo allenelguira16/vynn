@@ -22,9 +22,17 @@ export function vynnOxcPlugin(options: VynnOxcPluginOptions = {}): Plugin {
       if (!/\.(?:[cm]?[jt]sx?)$/i.test(cleanId)) return null;
       if (!source.includes("<")) return null;
 
+      // Vite 6+ exposes the active named environment on the hook context.
+      // Prefer its consumer; keep the SSR option as a fallback for older Vite APIs.
+      const consumer = this.environment?.config.consumer;
+      const runtimeTarget =
+        consumer === "server" || (consumer == null && transformOptions?.ssr)
+          ? "server"
+          : "client";
+
       const result = transformVynnOxcWithMap(source, cleanId, {
         ...compilerOptions,
-        runtimeTarget: transformOptions?.ssr ? "server" : "client",
+        runtimeTarget,
       });
       return {
         code: result.code,
