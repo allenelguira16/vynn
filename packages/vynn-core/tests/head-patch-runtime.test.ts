@@ -48,7 +48,7 @@ describe("streamed SSR head patches", () => {
     expect(document.head.querySelector('meta[name="description"]')?.getAttribute("content")).toBe(
       "Documentation",
     );
-    expect(document.head.querySelector("template[data-vynn-head-fallback")?.innerHTML).toBe(
+    expect(document.head.querySelector("template[data-vynn-head-fallback]")?.innerHTML).toBe(
       "<title>Vynn documentation</title>",
     );
   });
@@ -70,6 +70,32 @@ describe("streamed SSR head patches", () => {
     expect(document.head.querySelector("title")?.textContent).toBe("Second route");
     expect(document.head.querySelector('meta[name="description"]')).toBeNull();
     expect(document.head.querySelector('link[rel="icon"]')).not.toBeNull();
+  });
+
+  it("restores the authored fallback title when a streamed title is removed", () => {
+    document.head.innerHTML = [
+      '<meta charset="UTF-8" key="meta:charset">',
+      '<template data-vynn-head-fallback><title>Vynn documentation</title></template>',
+      '<title key="title">Quick start | Vynn</title>',
+      '<link rel="icon" href="/vynn-logo.webp">',
+    ].join("");
+
+    installHeadPatchRuntime()('<meta name="description" content="Updated" key="meta:name:description">');
+
+    const children = Array.from(document.head.children).filter(
+      (element) => element.localName !== "template",
+    );
+    expect(children.map((element) => element.localName)).toEqual([
+      "meta",
+      "title",
+      "link",
+      "meta",
+    ]);
+    expect(document.head.querySelector("title")?.textContent).toBe("Vynn documentation");
+    expect(document.head.querySelector('meta[charset]')).not.toBeNull();
+    expect(document.head.querySelector('meta[name="description"]')?.getAttribute("content")).toBe(
+      "Updated",
+    );
   });
 
   it("replaces an Open Graph collection at its original position", () => {

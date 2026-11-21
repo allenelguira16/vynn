@@ -110,6 +110,19 @@ export function renderHeadPatchRuntime(): string {
       e.remove();
     }
   }
+  function restoreFallback(identity,tag,before){
+    var f=document.head.querySelector('template[data-vynn-head-fallback]');
+    if(!f)return false;
+    var candidates=Array.prototype.slice.call(f.content.querySelectorAll(tag));
+    for(var i=0;i<candidates.length;i++){
+      var candidate=candidates[i];
+      if(!candidate.hasAttribute("key")&&k(candidate)===identity){
+        document.head.insertBefore(candidate,before);
+        return true;
+      }
+    }
+    return false;
+  }
   var incoming=Array.prototype.slice.call(t.content.children);
   var incomingSet=new Set(incoming);
   var handled=new Set();
@@ -147,7 +160,10 @@ export function renderHeadPatchRuntime(): string {
   });
   incoming.forEach(function(n){n.removeAttribute("data-vynn-head-replace");});
   Array.prototype.slice.call(document.head.querySelectorAll("[key]")).forEach(function(n){
-    if(!incomingSet.has(n))n.remove();
+    if(incomingSet.has(n))return;
+    var identity=n.getAttribute("key");
+    if(identity!=="meta:charset")restoreFallback(identity,n.tagName.toLowerCase(),n);
+    n.remove();
   });
   document.head.append(t.content);
 };`;
