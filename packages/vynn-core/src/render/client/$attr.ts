@@ -26,115 +26,6 @@ const XLINK_NAMESPACE = "http://www.w3.org/1999/xlink";
 const XML_NAMESPACE = "http://www.w3.org/XML/1998/namespace";
 const XMLNS_NAMESPACE = "http://www.w3.org/2000/xmlns/";
 
-// DOM properties that should be assigned directly on HTML elements.
-const properties = new Set([
-  "value",
-  "checked",
-  "selected",
-  "disabled",
-  "multiple",
-  "required",
-  "readOnly",
-  "muted",
-  "indeterminate",
-]);
-
-const booleanAttributes = new Set([
-  "allowfullscreen",
-  "async",
-  "autofocus",
-  "autoplay",
-  "checked",
-  "controls",
-  "default",
-  "defer",
-  "disabled",
-  "formnovalidate",
-  "hidden",
-  "inert",
-  "ismap",
-  "itemscope",
-  "loop",
-  "multiple",
-  "muted",
-  "nomodule",
-  "novalidate",
-  "open",
-  "playsinline",
-  "readonly",
-  "required",
-  "reversed",
-  "selected",
-]);
-
-// SVG uses kebab-case for most presentation attributes, but a small set of
-// standardized names intentionally retain internal capitals.
-const preservedSvgAttributeNames = new Set([
-  "attributeName",
-  "attributeType",
-  "baseFrequency",
-  "baseProfile",
-  "calcMode",
-  "contentScriptType",
-  "contentStyleType",
-  "diffuseConstant",
-  "externalResourcesRequired",
-  "filterRes",
-  "filterUnits",
-  "gradientTransform",
-  "gradientUnits",
-  "kernelMatrix",
-  "kernelUnitLength",
-  "keyPoints",
-  "keySplines",
-  "keyTimes",
-  "lengthAdjust",
-  "limitingConeAngle",
-  "markerHeight",
-  "markerUnits",
-  "markerWidth",
-  "numOctaves",
-  "pathLength",
-  "patternContentUnits",
-  "patternTransform",
-  "patternUnits",
-  "preserveAspectRatio",
-  "primitiveUnits",
-  "refX",
-  "refY",
-  "specularConstant",
-  "specularExponent",
-  "stdDeviation",
-  "surfaceScale",
-  "targetX",
-  "targetY",
-  "textLength",
-  "viewBox",
-  "viewTarget",
-  "xChannelSelector",
-  "yChannelSelector",
-]);
-
-const svgAttributeAliases: Record<string, string> = {
-  autoCapitalize: "autocapitalize",
-  className: "class",
-  contentEditable: "contenteditable",
-  enterKeyHint: "enterkeyhint",
-  htmlFor: "for",
-  inputMode: "inputmode",
-  tabIndex: "tabindex",
-  xlinkActuate: "xlink:actuate",
-  xlinkArcrole: "xlink:arcrole",
-  xlinkHref: "xlink:href",
-  xlinkRole: "xlink:role",
-  xlinkShow: "xlink:show",
-  xlinkTitle: "xlink:title",
-  xlinkType: "xlink:type",
-  xmlBase: "xml:base",
-  xmlLang: "xml:lang",
-  xmlSpace: "xml:space",
-  xmlnsXlink: "xmlns:xlink",
-};
 
 function getAttributeNamespace(name: string): string | null {
   if (name.startsWith("xlink:")) return XLINK_NAMESPACE;
@@ -167,6 +58,7 @@ function removeDOMAttribute(element: Element, name: string): void {
 
 
 export function setDOMAttributeValue<E extends Element>(element: E, name: string, next: AttributeValue): void {
+  assertSafeAttributeName(name);
   if (name === "html") {
     if (
       next != null &&
@@ -228,39 +120,4 @@ export function setDOMAttributeValue<E extends Element>(element: E, name: string
   }
 
   setDOMAttribute(element, attributeName, String(next));
-}
-
-export function $attr<E extends Element>(element: E, name: string, value: AttributeValue | (() => AttributeValue)): void {
-  const hydrating = isHydrationClaimActive();
-  let initial = true;
-
-  $renderEffect(() => {
-    const next = typeof value === "function" ? value() : value;
-
-    if (initial) {
-      initial = false;
-
-      if (hydrating && name !== "html") {
-        const isHtmlElement =
-          element.namespaceURI === HTML_NAMESPACE && element instanceof HTMLElement;
-        const attributeName = getAttributeName(element.namespaceURI, name);
-        const isHtmlBooleanAttribute =
-          isHtmlElement && booleanAttributes.has(attributeName.toLowerCase());
-        const expectedValue =
-          next == null
-            ? null
-            : isHtmlBooleanAttribute && typeof next === "boolean"
-              ? next
-                ? ""
-                : null
-              : name === "style"
-                ? serializeStyleValue(next)
-                : String(next);
-
-        diagnoseHydrationAttribute(element, attributeName, expectedValue);
-      }
-    }
-
-    setDOMAttributeValue(element, name, next);
-  });
 }
