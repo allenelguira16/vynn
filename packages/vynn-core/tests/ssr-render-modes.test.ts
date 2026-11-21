@@ -15,6 +15,7 @@ import { lazy } from "../src/components/lazy";
 import { registerSsrModule } from "../src/context/ssr-module-context";
 import { createOwner, disposeOwner, getOwner, runWithOwner } from "../src/life-cycle/owner";
 import { $registerHead } from "../src/render/head-runtime";
+import { $cmpnt } from "../src/render/$cmpnt";
 import { $insert } from "../src/render/$insert";
 import {
   createSSRAsync,
@@ -158,6 +159,15 @@ describe("renderToServer modes", () => {
     const configureServer = plugin.configureServer as unknown as (server: unknown) => unknown;
 
     expect(configureServer.call(plugin, {})).toBeUndefined();
+  });
+
+  it("selects the server component wrapper when defined before SSR starts", () => {
+    // Framework components such as Portal are wrapped during module evaluation,
+    // before renderToServer establishes the server render-mode context.
+    const Component = $cmpnt(() => "Server component" as JSX.Element);
+    const rendered = renderToServer(Component, "sync");
+
+    expect(rendered.body).toContain("Server component");
   });
 
   it("returns an explicit render result in sync mode", () => {
