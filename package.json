@@ -7,7 +7,8 @@
     "lint:fix": "oxlint --fix",
     "fmt": "oxfmt",
     "fmt:check": "oxfmt --check",
-    "bench:size": "node benchmarks/scripts/size.mjs"
+    "bench:size": "node benchmarks/scripts/size.mjs",
+    "bench:vynn": "node benchmarks/scripts/trace-vynn.mjs"
   },
   "devDependencies": {
     "oxfmt": "^0.75.0",

@@ -1,13 +1,51 @@
 import { fileURLToPath } from "node:url";
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 import vynn from "vite-plugin-vynn";
 
+const scenarioEntries: Record<string, string> = {
+  minimal: "./src/Minimal.tsx",
+  cell: "./src/Cell.tsx",
+  dynamic: "./src/Dynamic.tsx",
+  state: "./src/State.tsx",
+  computed: "./src/Computed.tsx",
+  event: "./src/Event.tsx",
+  counter: "./src/Counter.tsx",
+};
+
+function moduleSizeReport(): Plugin {
+  return {
+    name: "benchmark-module-size-report",
+    apply: "build",
+    generateBundle(_options, bundle) {
+      const chunks = Object.values(bundle)
+        .filter((output) => output.type === "chunk")
+        .map((chunk) => ({
+          file: chunk.fileName,
+          isEntry: chunk.isEntry,
+          modules: Object.entries(chunk.modules)
+            .map(([id, module]) => ({
+              id,
+              renderedLength: module.renderedLength,
+              renderedExports: module.renderedExports,
+            }))
+            .sort((left, right) => (right.renderedLength ?? 0) - (left.renderedLength ?? 0)),
+        }));
+
+      this.emitFile({
+        type: "asset",
+        fileName: "module-report.json",
+        source: JSON.stringify({ chunks }, null, 2),
+      });
+    },
+  };
+}
+
 export default defineConfig(({ mode }) => ({
-  plugins: [vynn()],
+  plugins: [vynn(), moduleSizeReport()],
   resolve: {
     alias: {
       "@benchmark-app": fileURLToPath(
-        new URL(mode === "counter" ? "./src/Counter.tsx" : "./src/Minimal.tsx", import.meta.url),
+        new URL(scenarioEntries[mode] ?? scenarioEntries.minimal, import.meta.url),
       ),
     },
   },
