@@ -2,9 +2,16 @@ import { EMPTY_TEXT_SSR_MARKER } from "../../const";
 import { claimHydrationElement, claimHydrationText, isHydrationClaimActive } from "../../client/hydration";
 import { isHydrationElementCompatible, synchronizeHydrationText } from "../../client/hydration-diagnostics";
 import { getChildDOMNamespace, getElementNamespace, HTML_NAMESPACE, SVG_NAMESPACE } from "../namespace";
-import { createTemplateBlueprint, createTemplateInstance, getTemplateAnchorId, getTemplateAnchorMarker, registerTemplateNode, templateInstances, voidElements, type TemplateAnchorDescriptor, type TemplateData, type TemplateElementDescriptor, type TemplateNodeDescriptor } from "../shared/template";
+import { createTemplateBlueprint, createTemplateInstance, getTemplateAnchorId, getTemplateAnchorMarker, registerTemplateNode, templateInstances, voidElements, type TemplateAnchorDescriptor, type TemplateBlueprint, type TemplateElementDescriptor, type TemplateNodeDescriptor } from "../shared/template";
 
 type TemplateRuntimeNode = Node;
+type TemplateData = {
+  descriptor: TemplateElementDescriptor;
+  blueprint: TemplateBlueprint;
+  template?: HTMLTemplateElement;
+  documentRoot?: Element;
+  simpleTag?: string;
+};
 const templateDataCache = new Map<string, TemplateData>();
 
 function normalizeTemplateTextAnchors(root: Node): void {
