@@ -5,77 +5,97 @@ import {
   createOwner,
   createOwnerIdentityTransaction,
   disposeOwner,
-  getOwnerIdentityID,
+  getOwnerIdentityPath,
   hasOwnerIdentityTransaction,
   rollbackOwnerIdentityTransaction,
 } from "../src/life-cycle/owner";
 
-describe("owner identity allocation transactions", () => {
-  it("commits the candidate ID only when the transaction is committed", () => {
+describe("numeric owner identity paths", () => {
+  it("allocates numeric child indexes and derives nested paths", () => {
     const root = createOwner(null);
 
     try {
-      const staged = createOwnerIdentityTransaction(root);
+      const children = Array.from({ length: 12 }, () => createOwner(root));
+      const nested = createOwner(children[10]!);
 
-      expect(staged.id).toBeUndefined();
-      expect(getOwnerIdentityID(staged)).toBe("00");
-      expect(root.nodeCount).toBe(0);
-      expect(hasOwnerIdentityTransaction(staged)).toBe(true);
-
-      expect(commitOwnerIdentityTransaction(staged)).toBe("00");
-      expect(staged.id).toBe("00");
-
-      expect(root.nodeCount).toBe(1);
-      expect(hasOwnerIdentityTransaction(staged)).toBe(false);
-      expect(createOwner(root).id).toBe("01");
+      expect(root.identityIndex).toBe(0);
+      expect(children.map((owner) => owner.identityIndex)).toEqual(
+        Array.from({ length: 12 }, (_, index) => index),
+      );
+      expect(nested.identityIndex).toBe(0);
+      expect(getOwnerIdentityPath(nested)).toEqual([0, 10, 0]);
+      expect(new Set(children.map((owner) => owner.identityIndex)).size).toBe(children.length);
     } finally {
       disposeOwner(root);
     }
   });
 
-  it("rolls back an unused candidate without consuming the parent slot", () => {
+  it("commits a tentative numeric index only when requested", () => {
     const root = createOwner(null);
 
     try {
       const staged = createOwnerIdentityTransaction(root);
 
-      expect(staged.id).toBeUndefined();
-      expect(getOwnerIdentityID(staged)).toBe("00");
+      expect(staged.identityIndex).toBeUndefined();
+      expect(getOwnerIdentityPath(staged)).toEqual([0, 0]);
+      expect(root.nodeCount).toBe(0);
+      expect(hasOwnerIdentityTransaction(staged)).toBe(true);
+
+      expect(commitOwnerIdentityTransaction(staged)).toBe(0);
+      expect(staged.identityIndex).toBe(0);
+      expect(getOwnerIdentityPath(staged)).toEqual([0, 0]);
+      expect(root.nodeCount).toBe(1);
+      expect(hasOwnerIdentityTransaction(staged)).toBe(false);
+      expect(createOwner(root).identityIndex).toBe(1);
+    } finally {
+      disposeOwner(root);
+    }
+  });
+
+  it("rolls back an unused candidate without consuming the parent index", () => {
+    const root = createOwner(null);
+
+    try {
+      const staged = createOwnerIdentityTransaction(root);
+
+      expect(staged.identityIndex).toBeUndefined();
+      expect(getOwnerIdentityPath(staged)).toEqual([0, 0]);
 
       rollbackOwnerIdentityTransaction(staged);
 
-      expect(getOwnerIdentityID(staged)).toBeUndefined();
+      expect(staged.identityIndex).toBeUndefined();
       expect(staged.identityOwner).toBe(root);
       expect(root.nodeCount).toBe(0);
       expect(hasOwnerIdentityTransaction(staged)).toBe(false);
 
       disposeOwner(staged);
 
-      expect(createOwner(root).id).toBe("00");
+      expect(createOwner(root).identityIndex).toBe(0);
     } finally {
       disposeOwner(root);
     }
   });
 
-  it("preserves descendant identities when the parent transaction commits", () => {
+  it("preserves descendant paths when the parent transaction commits", () => {
     const root = createOwner(null);
 
     try {
       const staged = createOwnerIdentityTransaction(root);
       const child = createOwner(staged);
 
-      expect(staged.id).toBeUndefined();
-      expect(getOwnerIdentityID(staged)).toBe("00");
-      expect(child.id).toBe("000");
+      expect(staged.identityIndex).toBeUndefined();
+      expect(getOwnerIdentityPath(staged)).toEqual([0, 0]);
+      expect(child.identityIndex).toBe(0);
+      expect(getOwnerIdentityPath(child)).toEqual([0, 0, 0]);
       expect(root.nodeCount).toBe(0);
       expect(staged.nodeCount).toBe(1);
 
       commitOwnerIdentityTransaction(staged);
 
-      expect(staged.id).toBe("00");
+      expect(staged.identityIndex).toBe(0);
       expect(root.nodeCount).toBe(1);
-      expect(child.id).toBe("000");
-      expect(createOwner(root).id).toBe("01");
+      expect(getOwnerIdentityPath(child)).toEqual([0, 0, 0]);
+      expect(createOwner(root).identityIndex).toBe(1);
     } finally {
       disposeOwner(root);
     }

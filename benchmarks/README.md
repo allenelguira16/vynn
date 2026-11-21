@@ -2,7 +2,7 @@
 
 This workspace compares the minimum production client payload produced by Vynn, Solid 2, Svelte 5, and React 19.
 
-The first pass intentionally measures only two scenarios:
+The cross-framework comparison measures two scenarios:
 
 - **Minimal**: mount a component that renders the same small static markup.
 - **Counter**: render the same markup plus reactive state, a derived value, and an increment button.
@@ -39,6 +39,28 @@ pnpm bench:size -- --scenario counter
 The script builds each framework in production mode with Vite 8.3.6, the Oxc minifier, and an ES2022 target. It then reads each Vite manifest to identify the initial entry's static import graph. Dynamic imports are excluded from the initial payload. All emitted JavaScript and CSS are measured separately as a second figure.
 
 Results are written to `benchmarks/results/latest.json`. The results directory is generated locally and is not committed.
+
+## Trace Vynn's reactive costs
+
+The Vynn-only trace builds nine focused scenarios:
+
+```sh
+pnpm bench:vynn
+```
+
+- **Minimal**: static template and mount path.
+- **Cell**: `$state(0)` is read by the app but is not rendered reactively.
+- **Dynamic**: dynamic text binding without reactive state.
+- **State**: one `$state(0)` value rendered as dynamic text.
+- **Initializer**: a synchronous function initializer that performs work before returning a value.
+- **Promise**: a non-async initializer that returns a Promise.
+- **Computed**: state plus a synchronous `$computed` value.
+- **Event**: state, dynamic text, and an event handler.
+- **Counter**: state, computed value, dynamic text, and event handler.
+
+Each build emits Rolldown chunk metadata with the retained modules' `renderedLength` and rendered exports. The trace separates modules in the entry's static import graph from dynamically deferred chunks. It reports initial entry gzip/Brotli separately from total deferred JavaScript gzip/Brotli, so a lazy resource implementation is not counted as initial JavaScript. Module lengths are useful for identifying retained code, not exact per-module compressed attribution.
+
+The trace is written to `benchmarks/results/vynn-trace.json`, which is ignored by git.
 
 ## What is measured
 

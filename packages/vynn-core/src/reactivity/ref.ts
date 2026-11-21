@@ -1,4 +1,4 @@
-import { track, trigger } from "./effect";
+import { track, trigger } from "./graph";
 
 declare const VYNN_REF: unique symbol;
 

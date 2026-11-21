@@ -107,5 +107,6 @@ export function renderToServer(App: () => JSX.Element, mode: RenderMode, request
       }
     });
 
-  return requestContext ? runWithServerFunctionContext(requestContext, render) : render();
+  const run = () => runWithServerAsyncContext(render);
+  return requestContext ? runWithServerFunctionContext(requestContext, run) : run();
 }

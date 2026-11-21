@@ -4,7 +4,8 @@ export { onDestroy } from "./life-cycle/on-destroy";
 export { type State, $state } from "./reactivity/state";
 export { $effect, $renderEffect, batch, transaction, untrack } from "./reactivity/effect";
 export { $computed, type Computed } from "./reactivity/computed";
-export { type Async, isPending } from "./reactivity/resource";
+export type { Async } from "./reactivity/resource";
+export { isPending } from "./reactivity/pending";
 export { $store, type Store } from "./reactivity/store";
 
 export { getOwner, runWithOwner, createOwner, disposeOwner } from "./life-cycle/owner";

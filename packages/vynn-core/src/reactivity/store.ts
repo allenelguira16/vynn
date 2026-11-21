@@ -1,13 +1,6 @@
 import { getOwner } from "../life-cycle/owner";
-import {
-  createReactiveEffect,
-  batch,
-  track,
-  trigger,
-  triggerAll,
-  triggerArrayLength,
-  untrack,
-} from "./effect";
+import { createReactiveEffect, batch } from "./effect";
+import { track, trigger, triggerAll, triggerArrayLength, untrack } from "./graph";
 import { NotReadyError } from "./not-ready-error";
 import { isPending, registerPending } from "./pending";
 import { isRef, type VynnReadonlyRef, type VynnRef } from "./ref";

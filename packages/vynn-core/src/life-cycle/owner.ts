@@ -5,8 +5,8 @@ export interface Owner {
   mount: (() => void | (() => void))[];
   disposed?: boolean;
   context: Map<string | symbol, unknown>;
-  /** Stable hydration identity for this owner, when it owns an identity slot. */
-  id: string | undefined;
+  /** Numeric child index within the nearest identity-bearing owner. */
+  identityIndex: number | undefined;
   /** Nearest ancestor (or self) that owns the hydration ID sequence. */
   identityOwner: Owner | null;
   /** Number of identity-bearing children allocated by this owner. */
@@ -27,7 +27,7 @@ type OwnerIDTracker = Map<string, number>;
 type OwnerIdentityTransaction = {
   identityParent: Owner | null;
   index: number | undefined;
-  candidateID: string | undefined;
+  candidateIndex: number | undefined;
 };
 
 const ownerIdentityTransactions = new WeakMap<Owner, OwnerIdentityTransaction>();
@@ -35,22 +35,7 @@ const ownerIdentityTransactions = new WeakMap<Owner, OwnerIdentityTransaction>()
 const OWNER_ID_RESERVATIONS = Symbol("vynn.owner-id-reservations");
 const OWNER_ID_TRACKERS = Symbol("vynn.owner-id-trackers");
 
-const ROOT_OWNER_ID = "0";
-
 let currentOwner: Owner | null = null;
-
-/**
- * Encode one child index so hierarchical owner IDs can be concatenated
- * without separators. Single-digit indexes use one character; multi-digit
- * indexes carry a width marker (a=2 digits, b=3 digits, etc.).
- */
-function appendOwnerID(parentID: string, index: number): string {
-  const value = String(index);
-  const width = value.length - 1;
-  const marker = width > 0 ? String.fromCharCode(96 + width) : "";
-
-  return parentID + marker + value;
-}
 
 function getOwnerContext<T>(owner: Owner | null, key: string | symbol): T | undefined {
   while (owner) {
@@ -64,11 +49,29 @@ function getOwnerContext<T>(owner: Owner | null, key: string | symbol): T | unde
   return undefined;
 }
 
-/** Resolve a committed owner ID or the candidate held by its active transaction. */
-export function getOwnerIdentityID(owner: Owner | null): string | undefined {
-  if (!owner) return undefined;
+/**
+ * Resolve the numeric owner path, including an uncommitted identity
+ * transaction. Paths remain stable across async completion and lazy scopes.
+ */
+export function getOwnerIdentityPath(owner: Owner | null): number[] | undefined {
+  let current = owner?.identityOwner ?? null;
+  if (!current) return undefined;
+  const path: number[] = [];
 
-  return owner.id ?? ownerIdentityTransactions.get(owner)?.candidateID;
+  while (current) {
+    const index = current.identityIndex ?? ownerIdentityTransactions.get(current)?.candidateIndex;
+    if (index === undefined) return undefined;
+    path.push(index);
+    current = current.parent?.identityOwner ?? null;
+  }
+
+  path.reverse();
+  return path;
+}
+
+/** Convert a numeric owner path to its hydration payload key. */
+export function getOwnerIdentityPathKey(path: readonly number[]): string {
+  return path.join(".");
 }
 
 function recordOwnerIDReservation(
@@ -76,68 +79,55 @@ function recordOwnerIDReservation(
   identityParent: Owner,
   next: number,
 ): void {
-  const id = getOwnerIdentityID(identityParent);
-  if (!id) return;
-
-  // Read trackers from the actual owner scope. The identity parent can be
-  // above a transparent owner that installed a nested tracker.
+  const parentPath = getOwnerIdentityPath(identityParent);
+  if (!parentPath) return;
+  const key = getOwnerIdentityPathKey(parentPath);
   const trackers = getOwnerContext<OwnerIDTracker[]>(scopeOwner, OWNER_ID_TRACKERS);
 
   for (const tracker of trackers ?? []) {
-    tracker.set(id, Math.max(tracker.get(id) ?? 0, next));
+    tracker.set(key, Math.max(tracker.get(key) ?? 0, next));
   }
 
   const reservations = getOwnerContext<OwnerIDReservations>(scopeOwner, OWNER_ID_RESERVATIONS);
-  reservations?.set(id, Math.max(reservations.get(id) ?? 0, next));
+  reservations?.set(key, Math.max(reservations.get(key) ?? 0, next));
 }
 
-/**
- * Allocate one child identity from the nearest identity-bearing owner.
- *
- * This is used by module-level async resources, which have no lifecycle owner
- * at declaration time but can acquire an identity on their first render read.
- */
-export function createOwnerID(parent = currentOwner): string | undefined {
+/** Allocate the next numeric child index for an ownerless async resource. */
+export function createOwnerIdentityPath(parent = currentOwner): number[] | undefined {
   const identityParent = parent?.identityOwner ?? null;
-  const identityParentID = getOwnerIdentityID(identityParent);
-
-  if (!identityParent || !identityParentID) return undefined;
+  const parentPath = getOwnerIdentityPath(identityParent);
+  if (!identityParent || !parentPath) return undefined;
 
   const index = identityParent.nodeCount++;
   recordOwnerIDReservation(parent, identityParent, identityParent.nodeCount);
-
-  return appendOwnerID(identityParentID, index);
+  return [...parentPath, index];
 }
 
-/** Peek at the next child ID without reserving it. */
-export function peekOwnerID(parent = currentOwner): string | undefined {
+/** Peek at the next numeric child path without consuming its index. */
+export function peekOwnerIdentityPath(parent = currentOwner): number[] | undefined {
   const identityParent = parent?.identityOwner ?? null;
-  const identityParentID = getOwnerIdentityID(identityParent);
+  const parentPath = getOwnerIdentityPath(identityParent);
+  if (!identityParent || !parentPath) return undefined;
 
-  if (!identityParent || !identityParentID) return undefined;
-
-  return appendOwnerID(identityParentID, identityParent.nodeCount);
+  return [...parentPath, identityParent.nodeCount];
 }
 
 /**
- * Commit the identity allocation transaction associated with an owner.
- *
- * A transaction reserves the next identity without advancing its parent's
- * cursor. Committing makes that reservation permanent and records it for SSR
- * hydration and error-boundary recovery.
+ * Commit a tentative numeric child index after an initializer proves async
+ * or creates descendants that need a stable owner scope.
  */
-export function commitOwnerIdentityTransaction(owner: Owner): string | undefined {
+export function commitOwnerIdentityTransaction(owner: Owner): number | undefined {
   const transaction = ownerIdentityTransactions.get(owner);
-  if (!transaction) return owner.id;
+  if (!transaction) return owner.identityIndex;
 
-  const { identityParent, index, candidateID } = transaction;
-  const identityParentID = getOwnerIdentityID(identityParent);
+  const { identityParent, index, candidateIndex } = transaction;
+  const parentPath = getOwnerIdentityPath(identityParent);
 
   if (
     identityParent &&
-    identityParentID &&
+    parentPath &&
     index !== undefined &&
-    candidateID &&
+    candidateIndex !== undefined &&
     identityParent.nodeCount !== index
   ) {
     throw new Error("[vynn]: An owner identity transaction was invalidated before commit.");
@@ -145,31 +135,30 @@ export function commitOwnerIdentityTransaction(owner: Owner): string | undefined
 
   ownerIdentityTransactions.delete(owner);
 
-  if (!identityParent || !identityParentID || index === undefined || !candidateID) {
+  if (!identityParent || !parentPath || index === undefined || candidateIndex === undefined) {
     owner.identityOwner = owner;
     return undefined;
   }
 
   identityParent.nodeCount = index + 1;
-  owner.id = candidateID;
+  owner.identityIndex = candidateIndex;
   recordOwnerIDReservation(owner.parent, identityParent, identityParent.nodeCount);
 
   const reservations = owner.parent
     ? getOwnerContext<OwnerIDReservations>(owner.parent, OWNER_ID_RESERVATIONS)
     : undefined;
-
-  owner.nodeCount = reservations?.get(candidateID) ?? owner.nodeCount;
-
-  return candidateID;
+  const ownerPathKey = getOwnerIdentityPathKey([...parentPath, candidateIndex]);
+  owner.nodeCount = reservations?.get(ownerPathKey) ?? owner.nodeCount;
+  return candidateIndex;
 }
 
-/** Roll back an unused owner identity transaction without advancing its parent. */
+/** Roll back an unused owner identity transaction without consuming its index. */
 export function rollbackOwnerIdentityTransaction(owner: Owner): void {
   const transaction = ownerIdentityTransactions.get(owner);
   if (!transaction) return;
 
   ownerIdentityTransactions.delete(owner);
-  owner.id = undefined;
+  owner.identityIndex = undefined;
   owner.identityOwner = transaction.identityParent ?? owner;
 }
 
@@ -190,29 +179,22 @@ export function enterOwnerIDTracker(tracker: OwnerIDTracker): void {
 
 /**
  * Restore owner-child cursors for descendants skipped by an SSR ErrorBoundary
- * fallback. Reservations for not-yet-created nested owners remain in the
- * request-local registry and are applied when those owners are created.
+ * fallback. Reservations are keyed by numeric owner-index paths.
  */
 export function reserveOwnerIDReservations(reservations?: Record<string, number>): void {
   if (!reservations) return;
 
   const registry = getContext<OwnerIDReservations>(OWNER_ID_RESERVATIONS);
   const activeIdentityOwner = currentOwner?.identityOwner ?? null;
-  const activeIdentityOwnerID = getOwnerIdentityID(activeIdentityOwner);
+  const activePath = getOwnerIdentityPath(activeIdentityOwner);
+  const activePathKey = activePath ? getOwnerIdentityPathKey(activePath) : undefined;
 
-  for (const [id, next] of Object.entries(reservations)) {
+  for (const [pathKey, next] of Object.entries(reservations)) {
     if (!Number.isSafeInteger(next) || next < 0) continue;
+    const previous = registry?.get(pathKey) ?? 0;
+    if (registry && next > previous) registry.set(pathKey, next);
 
-    const previous = registry?.get(id) ?? 0;
-    if (registry && next > previous) {
-      registry.set(id, next);
-    }
-
-    if (
-      activeIdentityOwner &&
-      activeIdentityOwnerID === id &&
-      next > activeIdentityOwner.nodeCount
-    ) {
+    if (activeIdentityOwner && activePathKey === pathKey && next > activeIdentityOwner.nodeCount) {
       activeIdentityOwner.nodeCount = next;
     }
   }
@@ -230,27 +212,19 @@ export function getOwner(): Owner | null {
 /**
  * Creates a new owner and optionally attaches it to a parent owner.
  *
- * Identity-bearing owners consume one child slot from the nearest
- * identity-bearing parent. A root owner starts the compact owner-ID scope.
- * Pass { identity: false } for lifecycle-only scopes that should not affect
- * hydration identity allocation.
- *
- * @param parent The parent owner, or the current owner when omitted.
- * @param options Owner identity options.
- * @returns The newly created owner.
+ * Identity-bearing owners consume one numeric child index from the nearest
+ * identity-bearing parent. Pass { identity: false } for lifecycle-only scopes.
  */
 export function createOwner(parent = currentOwner, options: OwnerOptions = {}): Owner {
   const hasIdentity = options.identity !== false;
   const identityParent = parent?.identityOwner ?? null;
-  const identityParentID = getOwnerIdentityID(identityParent);
-  let id: string | undefined;
+  let identityIndex: number | undefined;
 
   if (hasIdentity) {
     if (parent === null) {
-      id = ROOT_OWNER_ID;
-    } else if (identityParent && identityParentID) {
-      const index = identityParent.nodeCount++;
-      id = appendOwnerID(identityParentID, index);
+      identityIndex = 0;
+    } else if (identityParent) {
+      identityIndex = identityParent.nodeCount++;
       recordOwnerIDReservation(parent, identityParent, identityParent.nodeCount);
     }
   }
@@ -265,51 +239,49 @@ export function createOwner(parent = currentOwner, options: OwnerOptions = {}): 
     cleanups: [],
     mount: [],
     context: new Map<string | symbol, unknown>(),
-    id,
+    identityIndex,
     identityOwner: null,
-    nodeCount: id ? (reservations?.get(id) ?? 0) : 0,
+    nodeCount: 0,
   };
 
   owner.identityOwner = hasIdentity ? owner : identityParent;
+
+  if (identityIndex !== undefined) {
+    const ownerPath = getOwnerIdentityPath(owner);
+    if (ownerPath) owner.nodeCount = reservations?.get(getOwnerIdentityPathKey(ownerPath)) ?? 0;
+  }
 
   if (parent === null && hasIdentity) {
     owner.context.set(OWNER_ID_RESERVATIONS, new Map<string, number>());
   }
 
   parent?.children.push(owner);
-
   return owner;
 }
 
 /**
- * Create an owner with an identity allocation transaction.
- *
- * The candidate ID stays outside the Owner record until commit. Descendants
- * can still resolve it through getOwnerIdentityID() while the parent cursor
- * remains unchanged.
+ * Create an owner with an identity allocation transaction. Descendants can
+ * resolve its candidate numeric index while the parent's cursor stays intact.
  */
 export function createOwnerIdentityTransaction(parent = currentOwner): Owner {
   const owner = createOwner(parent, { identity: false });
   const identityParent = parent?.identityOwner ?? null;
-  const identityParentID = getOwnerIdentityID(identityParent);
+  const parentPath = getOwnerIdentityPath(identityParent);
   const index =
-    identityParent && identityParentID && parent !== null ? identityParent.nodeCount : undefined;
-  const candidateID =
-    identityParentID && index !== undefined ? appendOwnerID(identityParentID, index) : undefined;
+    identityParent && parentPath && parent !== null ? identityParent.nodeCount : undefined;
+  const candidateIndex = index;
 
   const reservations = parent
     ? getOwnerContext<OwnerIDReservations>(parent, OWNER_ID_RESERVATIONS)
     : undefined;
 
   owner.identityOwner = owner;
-  owner.nodeCount = candidateID ? (reservations?.get(candidateID) ?? 0) : 0;
+  if (candidateIndex !== undefined && parentPath) {
+    const key = getOwnerIdentityPathKey([...parentPath, candidateIndex]);
+    owner.nodeCount = reservations?.get(key) ?? 0;
+  }
 
-  ownerIdentityTransactions.set(owner, {
-    identityParent,
-    index,
-    candidateID,
-  });
-
+  ownerIdentityTransactions.set(owner, { identityParent, index, candidateIndex });
   return owner;
 }
 
