@@ -42,7 +42,7 @@ Results are written to `benchmarks/results/latest.json`. The results directory i
 
 ## Trace Vynn's reactive costs
 
-The Vynn-only trace builds seven progressively richer scenarios:
+The Vynn-only trace builds seven focused scenarios:
 
 ```sh
 pnpm bench:vynn
