@@ -12,28 +12,32 @@ export type MaybeAsyncResourceControl = {
   getReadOwner(): Owner | null;
 };
 
-export function createLegacyMaybeAsyncResource<T>(
+export async function createLegacyMaybeAsyncResource<T>(
   initializer: () => T | PromiseLike<T>,
   owner: Owner | null,
   control: MaybeAsyncResourceControl,
-): VynnRef<T> {
+): Promise<VynnRef<T>> {
   const activationOwner = control.hasRead() ? control.getReadOwner() : owner;
-  return runWithOwner(activationOwner, () => createMaybeAsyncResource(initializer));
+  const resource = runWithOwner(activationOwner, () => createMaybeAsyncResource(initializer));
+  await waitForInitialValue(resource, activationOwner);
+  return resource;
 }
 
-export function createPromotedMaybeAsyncResource<T>(
+export async function createPromotedMaybeAsyncResource<T>(
   initializer: () => T | PromiseLike<T>,
   owner: Owner,
   resourceOwner: Owner,
   initial: MaybeAsyncResourceInitial<T>,
-): VynnRef<T> {
+): Promise<VynnRef<T>> {
   if (owner.disposed || resourceOwner.disposed) {
     throw new Error("[vynn]: Cannot promote state after its owner was disposed.");
   }
 
-  return runWithOwner(owner, () =>
+  const resource = runWithOwner(owner, () =>
     createMaybeAsyncResourceFromInitial(initializer, resourceOwner, initial),
   );
+  await waitForInitialValue(resource, owner);
+  return resource;
 }
 
 export async function waitForInitialValue<T>(
