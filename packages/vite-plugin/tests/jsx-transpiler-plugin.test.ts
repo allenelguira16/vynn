@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { vynnOxcPlugin } from "../src/plugins/jsx-transpiler.ts";
 
@@ -84,35 +84,6 @@ describe("Vynn Vite JSX adapter", () => {
     expect(result && typeof result === "object" ? result.code : "").toContain(
       'from "vynn/render/server"',
     );
-  });
-
-  it("resolves framework client-entry imports to the server entry in SSR", async () => {
-    const plugin = vynnOxcPlugin();
-    const resolveId = plugin.resolveId;
-    const resolve = vi.fn().mockResolvedValue({ id: "/repo/packages/vynn-core/src/render/server/index.ts" });
-
-    if (typeof resolveId !== "function") {
-      throw new Error("Expected the Vynn Oxc plugin to expose a resolveId hook.");
-    }
-
-    const result = await resolveId.call(
-      {
-        environment: {
-          name: "ssr",
-          config: { consumer: "server" },
-        },
-        resolve,
-      } as never,
-      "vynn/render/client",
-      "/repo/packages/vynn-core/src/components/portal.ts",
-    );
-
-    expect(resolve).toHaveBeenCalledWith(
-      "vynn/render/server",
-      "/repo/packages/vynn-core/src/components/portal.ts",
-      { skipSelf: true },
-    );
-    expect(result).toEqual({ id: "/repo/packages/vynn-core/src/render/server/index.ts" });
   });
 
   it("ignores dependencies and modules without JSX", () => {

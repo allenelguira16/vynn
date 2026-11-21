@@ -14,21 +14,6 @@ export function vynnOxcPlugin(options: VynnOxcPluginOptions = {}): Plugin {
   return {
     name: "vynn-jsx-transpiler",
     enforce: "pre",
-    resolveId(source, importer, options) {
-      if (source !== "vynn/render/client") return null;
-
-      const isServer =
-        this.environment?.config.consumer === "server" ||
-        this.environment?.name === "ssr" ||
-        options?.ssr === true;
-
-      if (!isServer) return null;
-
-      // Framework-owned components use the client entry as their stable
-      // source import. Resolve it to the server implementation in SSR graphs.
-      return this.resolve("vynn/render/server", importer, { skipSelf: true });
-    },
-
     transform(source, id, transformOptions) {
       if (enabled === false) return null;
       if (id.includes("node_modules") || id.startsWith("\0")) return null;
