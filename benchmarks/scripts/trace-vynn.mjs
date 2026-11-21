@@ -69,7 +69,7 @@ async function measureEntry(outputDirectory) {
   const entry = entries.find((item) => item.isEntry && /\.m?js$/i.test(item.file));
   if (!entry) throw new Error("Could not find the Vynn JavaScript entry in the Vite manifest.");
 
-  const staticFiles = collectStaticFiles(manifest, entry).filter((file) => /\\.m?js$/i.test(file));
+  const staticFiles = collectStaticFiles(manifest, entry).filter((file) => /\.m?js$/i.test(file));
   const staticAssets = await Promise.all(staticFiles.map(async (file) => {
     const content = await readFile(resolve(outputDirectory, file));
     return {
