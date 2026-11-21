@@ -89,6 +89,31 @@ describe("new reactivity API", () => {
     stop();
   });
 
+  it("disposes computed subscriptions with their owner", () => {
+    const owner = createOwner();
+    const count = $state(1);
+    let getterRuns = 0;
+    let doubled!: ReturnType<typeof $computed<number>>;
+
+    runWithOwner(owner, () => {
+      doubled = $computed(() => {
+        getterRuns++;
+        return count.value * 2;
+      });
+    });
+
+    expect(doubled.value).toBe(2);
+    expect(getterRuns).toBe(1);
+
+    disposeOwner(owner);
+    count.value = 2;
+
+    // Disposed computed nodes keep their last value but no longer subscribe
+    // to dependencies or re-evaluate after their owner is disposed.
+    expect(doubled.value).toBe(2);
+    expect(getterRuns).toBe(1);
+  });
+
   it("replaces computed dependencies when its getter reads a different state", async () => {
     const left = $state(1);
     const right = $state(2);
