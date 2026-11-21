@@ -1,4 +1,4 @@
-import { claimHydrationText, isHydrationClaimActive } from "../../client/hydration";
+import { isHydrationClaimActive } from "../../client/hydration";
 import { diagnoseHydrationAttribute } from "../../client/hydration-diagnostics";
 import { $renderEffect } from "../../reactivity/effect";
 import { assertSafeAttributeName } from "../attribute-name";

@@ -5,7 +5,7 @@ import { synchronizeHeadContext } from "../render/head-runtime";
 import { initializeLazyContext } from "../context/lazy-context";
 import { JSX } from "../jsx-runtime";
 import { createOwner, disposeOwner, runWithOwner } from "../life-cycle/owner";
-import { addUnmountListener, isRootNode } from "../render/$cmpnt";
+import { addUnmountListener, isRootNode } from "../render/client/component-nodes";
 import { HTML_NAMESPACE, getChildDOMNamespace, withDOMNamespace } from "../render/namespace";
 import { resolveNode } from "../render/client/resolve-node";
 

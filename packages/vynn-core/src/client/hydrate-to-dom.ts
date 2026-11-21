@@ -4,7 +4,7 @@ import { initializeHeadContext } from "../context/head-context";
 import { initializeLazyContext } from "../context/lazy-context";
 import { JSX } from "../jsx-runtime";
 import { createOwner, disposeOwner, runWithOwner } from "../life-cycle/owner";
-import { addUnmountListener } from "../render/$cmpnt";
+import { addUnmountListener } from "../render/client/component-nodes";
 import { HTML_NAMESPACE, getChildDOMNamespace, withDOMNamespace } from "../render/namespace";
 import { resolveNode } from "../render/client/resolve-node";
 import { withHydration } from "./hydration";

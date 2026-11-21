@@ -639,6 +639,15 @@ describe("Vynn compiler output", () => {
     });
   });
 
+  it("selects a target-specific render runtime import", () => {
+    const source = "function Page() { return <main>Content</main>; }";
+
+    expect(transformVynnOxc(source, "page.tsx")).toContain('from "vynn/render/client"');
+    expect(transformVynnOxc(source, "page.tsx", { runtimeTarget: "server" })).toContain(
+      'from "vynn/render/server"',
+    );
+  });
+
   it("returns the original source when no JSX is present", () => {
     const source = "export const answer: number = 42;";
     expect(transformVynnOxcWithMap(source, "answer.ts")).toEqual({

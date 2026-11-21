@@ -646,7 +646,7 @@ function resolveTemplateNavigationNode(node: TemplateRuntimeNode | null): Templa
 
   claimTemplateThrough(instance, descriptor);
 
-  return instance.nodes.get(descriptor) ?? node;
+  return (instance.nodes.get(descriptor) as Node | undefined) ?? node;
 }
 
 export function $child<E extends Element = Element>(parent: Element): E {
@@ -719,8 +719,6 @@ export function $claimTemplateAnchor(
   if (node) return node as Node;
 
   return findHydrationAnchor(parent, descriptor);
-
-  throw new Error("[vynn]: Missing dynamic child anchor for slot " + JSON.stringify(id) + ".");
 }
 
 /** Completes remaining static hydration claims after the template bindings. */

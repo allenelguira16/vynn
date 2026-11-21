@@ -21,6 +21,17 @@ describe("Vynn Vite JSX adapter", () => {
       code: expect.any(String),
       map: expect.any(Object),
     });
+    expect(result && typeof result === "object" ? result.code : "").toContain('from "vynn/render/client"');
+
+    const ssrResult = transform.call(
+      {} as never,
+      "function Page() { return <main>Content</main>; }",
+      "/project/src/page.tsx",
+      { ssr: true } as never,
+    );
+    expect(ssrResult && typeof ssrResult === "object" ? ssrResult.code : "").toContain(
+      'from "vynn/render/server"',
+    );
   });
 
   it("ignores dependencies and modules without JSX", () => {

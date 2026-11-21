@@ -1,6 +1,6 @@
 import { getOwner, runWithOwner } from "../../life-cycle/owner";
 import { $renderEffect } from "../../reactivity/effect";
-import { $attr, setDOMAttributeValue, type AttributeValue } from "./$attr";
+import { setDOMAttributeValue, type AttributeValue } from "./$attr";
 
 type EventBinding = {
   eventName: string;

@@ -376,7 +376,7 @@ class TransformState {
 
   private findExistingRuntimeImport(name: RuntimeHelperName): NodeOfType<"Identifier"> | null {
     for (const statement of this.program.body) {
-      if (!isImportDeclaration(statement) || statement.source?.value !== this.runtimeImportSource)
+      if (!isImportDeclaration(statement) || (statement.source?.value !== this.runtimeImportSource && statement.source?.value !== "vynn/render"))
         continue;
       for (const specifier of statement.specifiers ?? []) {
         if (!isImportSpecifier(specifier)) continue;
@@ -411,7 +411,7 @@ class TransformState {
 
     let existingImport: NodeOfType<"ImportDeclaration"> | undefined;
     for (const statement of this.program.body) {
-      if (isImportDeclaration(statement) && statement.source?.value === this.runtimeImportSource) {
+      if (isImportDeclaration(statement) && (statement.source?.value === this.runtimeImportSource || statement.source?.value === "vynn/render")) {
         existingImport = statement;
         break;
       }
