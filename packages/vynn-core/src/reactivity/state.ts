@@ -62,7 +62,7 @@ function finishInitializer(owner: Owner): void {
 }
 
 function createBridge<T>(
-  load: (control: BridgeControl<T>) => Promise<VynnRef<T>>,
+  load: (control: BridgeControl) => Promise<VynnRef<T>>,
   owner: Owner | null,
   onFailure?: () => void,
 ): VynnRef<T> {
@@ -152,7 +152,7 @@ function createPromoted<T>(
   initial: Initial<T>,
 ): VynnRef<T> {
   return createBridge(
-    (control) =>
+    () =>
       import("./maybe-async-resource").then(({ createPromotedMaybeAsyncResource }) =>
         createPromotedMaybeAsyncResource(initializer, owner, resourceOwner, initial),
       ),
