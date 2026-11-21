@@ -20,6 +20,7 @@ import { cleanupSubscriber, withSubscriber, type ReactiveSubscriber } from "./gr
 import { NotReadyError } from "./not-ready-error";
 import { isPending, registerPending } from "./pending";
 import { createCell, markRef, type VynnRef } from "./ref";
+import type { MaybeAsyncResourceControl } from "./maybe-async-resource";
 
 export type State<T> = VynnRef<T>;
 
@@ -30,11 +31,7 @@ type Initial<T> = {
   hasChanged: () => boolean;
 };
 
-type BridgeControl<T> = {
-  attach(resource: VynnRef<T>): void;
-  hasRead(): boolean;
-  getReadOwner(): Owner | null;
-};
+type BridgeControl = MaybeAsyncResourceControl;
 
 function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
   return (
@@ -78,23 +75,25 @@ function createBridge<T>(
   let readOwner: Owner | null = null;
   let hasRead = false;
 
-  const control: BridgeControl<T> = {
-    attach(value) {
-      resource = value;
-      if (hasOverride) value.value = override;
-    },
+  const control: BridgeControl = {
     hasRead: () => hasRead,
     getReadOwner: () => readOwner,
   };
 
   const start = () => {
     if (!loading) {
-      loading = load(control).catch((error: unknown) => {
-        failed = true;
-        failure = error;
-        onFailure?.();
-        throw error;
-      });
+      loading = load(control)
+        .then((next) => {
+          resource = next;
+          if (hasOverride) next.value = override;
+          return next;
+        })
+        .catch((error: unknown) => {
+          failed = true;
+          failure = error;
+          onFailure?.();
+          throw error;
+        });
       void loading.catch(() => {});
     }
     return loading;
@@ -155,7 +154,7 @@ function createPromoted<T>(
   return createBridge(
     (control) =>
       import("./maybe-async-resource").then(({ createPromotedMaybeAsyncResource }) =>
-        createPromotedMaybeAsyncResource(initializer, owner, resourceOwner, initial, control),
+        createPromotedMaybeAsyncResource(initializer, owner, resourceOwner, initial),
       ),
     owner,
     () => {

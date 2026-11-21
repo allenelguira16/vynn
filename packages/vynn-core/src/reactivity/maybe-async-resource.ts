@@ -7,11 +7,18 @@ import {
 import { NotReadyError } from "./not-ready-error";
 import type { VynnRef } from "./ref";
 
+export type MaybeAsyncResourceControl = {
+  hasRead(): boolean;
+  getReadOwner(): Owner | null;
+};
+
 export function createLegacyMaybeAsyncResource<T>(
   initializer: () => T | PromiseLike<T>,
   owner: Owner | null,
+  control: MaybeAsyncResourceControl,
 ): VynnRef<T> {
-  return runWithOwner(owner, () => createMaybeAsyncResource(initializer));
+  const activationOwner = control.hasRead() ? control.getReadOwner() : owner;
+  return runWithOwner(activationOwner, () => createMaybeAsyncResource(initializer));
 }
 
 export function createPromotedMaybeAsyncResource<T>(

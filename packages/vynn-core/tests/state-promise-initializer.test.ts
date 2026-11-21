@@ -15,8 +15,59 @@ import { $state, type State } from "../src/reactivity/state";
 import { $store, type Store } from "../src/reactivity/store";
 import { serializeServerFunctionValue } from "../src/server-functions/serialization";
 import { renderAsyncUtilities } from "../src/server/render-to-server.util";
+import {
+  importedAsyncInitializer,
+  importedSyncInitializer,
+} from "./fixtures/state-initializers";
 
 describe("Promise-returning initializers", () => {
+  it("evaluates an imported synchronous initializer immediately", () => {
+    const owner = createOwner(null);
+
+    try {
+      runWithOwner(owner, () => {
+        const value = $state(importedSyncInitializer);
+
+        expect(value.value).toBe(7);
+        expect(owner.children).toEqual([]);
+      });
+    } finally {
+      disposeOwner(owner);
+    }
+  });
+
+  it("promotes an imported Promise-returning initializer at runtime", async () => {
+    const owner = createOwner(null);
+    let value!: State<number>;
+    let pendingPromise: Promise<unknown> | undefined;
+
+    try {
+      runWithOwner(owner, () => {
+        initializeAsyncContext();
+        value = $state(importedAsyncInitializer);
+
+        expect(isPending(value)).toBe(true);
+
+        try {
+          value.value;
+        } catch (error) {
+          expect(error).toBeInstanceOf(NotReadyError);
+          pendingPromise = (error as NotReadyError).promise;
+        }
+      });
+
+      expect(pendingPromise).toBeDefined();
+      await pendingPromise;
+
+      runWithOwner(owner, () => {
+        expect(value.value).toBe(42);
+        expect(isPending(value)).toBe(false);
+      });
+    } finally {
+      disposeOwner(owner);
+    }
+  });
+
   it("$state detects a Promise returned without the async keyword", async () => {
     const owner = createOwner(null);
     let count!: State<number>;
