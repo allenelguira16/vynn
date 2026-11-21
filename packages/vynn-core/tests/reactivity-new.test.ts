@@ -93,7 +93,7 @@ describe("new reactivity API", () => {
     const owner = createOwner();
     const count = $state(1);
     let getterRuns = 0;
-    let doubled!: ReturnType<typeof $computed<number>>;
+    let doubled!: { readonly value: number };
 
     runWithOwner(owner, () => {
       doubled = $computed(() => {
