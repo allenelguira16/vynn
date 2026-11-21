@@ -131,6 +131,228 @@ async function findCssAssets(outDir: string, directory = outDir): Promise<string
   return stylesheets;
 }
 
+/**
+ * Reconciles server-rendered head metadata without changing the authored
+ * document-head order. The client template hydrator walks those authored
+ * elements in order, so replacing a title must not move it past later links
+ * and meta elements.
+ */
+export function reconcileHeadMarkup(existing: string, incoming: string): string {
+  function scan(source: string) {
+    const result: Array<{
+      start: number;
+      end: number;
+      tag: string;
+      attributes: Record<string, string>;
+      html: string;
+    }> = [];
+    let offset = 0;
+    const lower = source.toLowerCase();
+
+    while ((offset = source.indexOf("<", offset)) !== -1) {
+      if (source.startsWith("<!--", offset)) {
+        const commentEnd = source.indexOf("-->", offset + 4);
+        offset = commentEnd === -1 ? source.length : commentEnd + 3;
+        continue;
+      }
+
+      let end = offset + 1;
+      let quote = "";
+      while (end < source.length) {
+        const character = source[end];
+        if (quote) {
+          if (character === quote) quote = "";
+        } else if (character === '"' || character === "'") {
+          quote = character;
+        } else if (character === ">") {
+          break;
+        }
+        end++;
+      }
+      if (end >= source.length) break;
+
+      const opening = source.slice(offset, end + 1);
+      const rawTextTag = /^<\\s*(script|style|template)\\b/i.exec(opening);
+      if (rawTextTag) {
+        const close = lower.indexOf("</" + rawTextTag[1].toLowerCase(), end + 1);
+        if (close !== -1) {
+          const closeEnd = source.indexOf(">", close);
+          offset = closeEnd === -1 ? source.length : closeEnd + 1;
+        } else {
+          offset = end + 1;
+        }
+        continue;
+      }
+
+      const name = /^<\\s*(title|meta|link)\\b/i.exec(opening);
+      if (!name) {
+        offset = end + 1;
+        continue;
+      }
+
+      let finish = end + 1;
+      if (name[1].toLowerCase() === "title") {
+        const close = lower.indexOf("</title", finish);
+        if (close !== -1) {
+          const closeEnd = source.indexOf(">", close);
+          if (closeEnd !== -1) finish = closeEnd + 1;
+        }
+      }
+
+      result.push({
+        start: offset,
+        end: finish,
+        tag: name[1].toLowerCase(),
+        attributes: parseAttributes(opening),
+        html: source.slice(offset, finish),
+      });
+      offset = finish;
+    }
+
+    return result;
+  }
+
+  function parseAttributes(opening: string): Record<string, string> {
+    const attributes: Record<string, string> = Object.create(null);
+    const source = opening.replace(/^<\\s*[A-Za-z][A-Za-z0-9:-]*/, "").replace(/>$/, "");
+    const pattern = /([^\\s=/>]+)(?:\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+)))?/g;
+    let match: RegExpExecArray | null;
+
+    while ((match = pattern.exec(source))) {
+      const name = match[1].toLowerCase();
+      const value = match[2] ?? match[3] ?? match[4] ?? "";
+      attributes[name] = value
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&amp;/g, "&");
+    }
+
+    return attributes;
+  }
+
+  function identity(entry: { tag: string; attributes: Record<string, string> }): string | null {
+    const attributes = entry.attributes;
+    if (entry.tag === "title") return "title";
+
+    if (entry.tag === "meta") {
+      if ("charset" in attributes) return "meta:charset";
+      if (attributes.name) return "meta:name:" + attributes.name.toLowerCase();
+      if (attributes.property) return "meta:property:" + attributes.property.toLowerCase();
+      if (attributes["http-equiv"]) return "meta:http-equiv:" + attributes["http-equiv"].toLowerCase();
+    }
+
+    if (entry.tag === "link") {
+      const rel = (attributes.rel || "").toLowerCase();
+      return rel === "canonical"
+        ? "link:canonical"
+        : "link:" + rel + ":" + (attributes.href || "");
+    }
+
+    return null;
+  }
+
+  function collection(entry: { tag: string; attributes: Record<string, string> }): string | null {
+    if (entry.tag !== "meta" || !entry.attributes.property) return null;
+
+    const property = entry.attributes.property.toLowerCase();
+    for (const root of ["og:image", "og:video", "og:audio", "og:locale:alternate"]) {
+      if (property === root || property.indexOf(root + ":") === 0) {
+        return "meta:property:" + root;
+      }
+    }
+
+    return null;
+  }
+
+  const current = scan(existing);
+  const next = scan(incoming);
+  const hasCharset = (entries: ReturnType<typeof scan>) =>
+    entries.some((entry) => entry.tag === "meta" && "charset" in entry.attributes);
+  const injectCharset = !hasCharset(current) && !hasCharset(next);
+  const charsetMarkup = injectCharset
+    ? '<meta charset="UTF-8" key="meta:charset">'
+    : "";
+
+  const replacedCollections = new Set(
+    next.map((entry) => entry.attributes["data-vynn-head-replace"]).filter(Boolean),
+  );
+  const nextByIdentity = new Map<string, (typeof next)[number]>();
+  const nextByCollection = new Map<string, Array<(typeof next)[number]>>();
+
+  for (const entry of next) {
+    const collectionKey = collection(entry);
+    if (collectionKey) {
+      const entries = nextByCollection.get(collectionKey) ?? [];
+      entries.push(entry);
+      nextByCollection.set(collectionKey, entries);
+      continue;
+    }
+
+    if (entry.attributes["data-vynn-head-replace"]) continue;
+    const key = identity(entry);
+    if (key) nextByIdentity.set(key, entry);
+  }
+
+  const usedNext = new Set<(typeof next)[number]>();
+  const insertedCollections = new Set<string>();
+  const restorable: string[] = [];
+  let output = "";
+  let cursor = 0;
+
+  for (const entry of current) {
+    output += existing.slice(cursor, entry.start);
+
+    const collectionKey = collection(entry);
+    if (collectionKey && replacedCollections.has(collectionKey)) {
+      if (!insertedCollections.has(collectionKey)) {
+        for (const replacement of nextByCollection.get(collectionKey) ?? []) {
+          output += replacement.html;
+          usedNext.add(replacement);
+        }
+        insertedCollections.add(collectionKey);
+      }
+
+      if (!entry.attributes.key && !(entry.tag === "meta" && "charset" in entry.attributes)) {
+        restorable.push(entry.html);
+      }
+      cursor = entry.end;
+      continue;
+    }
+
+    const key = identity(entry);
+    const replacement = key ? nextByIdentity.get(key) : undefined;
+    if (replacement) {
+      output += replacement.html;
+      usedNext.add(replacement);
+
+      if (!entry.attributes.key && !(entry.tag === "meta" && "charset" in entry.attributes)) {
+        restorable.push(entry.html);
+      }
+    } else {
+      output += entry.html;
+    }
+
+    cursor = entry.end;
+  }
+
+  output += existing.slice(cursor);
+
+  const trailing = next
+    .filter((entry) => !usedNext.has(entry))
+    .map((entry) => entry.html)
+    .join("");
+  const fallback = restorable.length
+    ? '<template data-vynn-head-fallback>' + restorable.join("") + "</template>"
+    : "";
+
+  return (charsetMarkup + output + trailing + fallback).replace(
+    /\\sdata-vynn-head-replace="[^"]*"/g,
+    "",
+  );
+}
+
 export function createSsrHandlerCode(options: {
   clientEntryUrl: string;
   css: string[];
@@ -162,144 +384,7 @@ export function createSsrHandlerCode(options: {
     `const IS_DEV = ${JSON.stringify(dev)};`,
     `const SSR_MANIFEST = ${JSON.stringify(ssrManifest)};`,
     `function escapeAttribute(value) { return String(value).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }`,
-    String.raw`function reconcileHeadMarkup(existing, incoming) {
-  function scan(source) {
-    const result = [];
-    let offset = 0;
-    const lower = source.toLowerCase();
-    while ((offset = source.indexOf("<", offset)) !== -1) {
-      if (source.startsWith("<!--", offset)) {
-        const commentEnd = source.indexOf("-->", offset + 4);
-        offset = commentEnd === -1 ? source.length : commentEnd + 3;
-        continue;
-      }
-      let end = offset + 1;
-      let quote = "";
-      while (end < source.length) {
-        const character = source[end];
-        if (quote) {
-          if (character === quote) quote = "";
-        } else if (character === '"' || character === "'") {
-          quote = character;
-        } else if (character === ">") {
-          break;
-        }
-        end++;
-      }
-      if (end >= source.length) break;
-      const opening = source.slice(offset, end + 1);
-      const rawTextTag = /^<\s*(script|style|template)\b/i.exec(opening);
-      if (rawTextTag) {
-        const close = lower.indexOf("</" + rawTextTag[1].toLowerCase(), end + 1);
-        if (close !== -1) {
-          const closeEnd = source.indexOf(">", close);
-          offset = closeEnd === -1 ? source.length : closeEnd + 1;
-        } else {
-          offset = end + 1;
-        }
-        continue;
-      }
-      const name = /^<\s*(title|meta|link)\b/i.exec(opening);
-      if (!name) {
-        offset = end + 1;
-        continue;
-      }
-      let finish = end + 1;
-      if (name[1].toLowerCase() === "title") {
-        const close = lower.indexOf("</title", finish);
-        if (close !== -1) {
-          const closeEnd = source.indexOf(">", close);
-          if (closeEnd !== -1) finish = closeEnd + 1;
-        }
-      }
-      result.push({
-        start: offset,
-        end: finish,
-        tag: name[1].toLowerCase(),
-        open: opening,
-        attributes: parseAttributes(opening),
-        html: source.slice(offset, finish)
-      });
-      offset = finish;
-    }
-    return result;
-  }
-  function parseAttributes(opening) {
-    const attributes = Object.create(null);
-    const source = opening.replace(/^<\s*[A-Za-z][A-Za-z0-9:-]*/, "").replace(/>$/, "");
-    const pattern = /([^\s=/>]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+)))?/g;
-    let match;
-    while ((match = pattern.exec(source))) {
-      const name = match[1].toLowerCase();
-      const value = match[2] ?? match[3] ?? match[4] ?? "";
-      attributes[name] = value.replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
-    }
-    return attributes;
-  }
-  function identity(entry) {
-    const a = entry.attributes;
-    if (entry.tag === "title") return "title";
-    if (entry.tag === "meta") {
-      if ("charset" in a) return "meta:charset";
-      if (a.name) return "meta:name:" + a.name.toLowerCase();
-      if (a.property) return "meta:property:" + a.property.toLowerCase();
-      if (a["http-equiv"]) return "meta:http-equiv:" + a["http-equiv"].toLowerCase();
-    }
-    if (entry.tag === "link") {
-      const rel = (a.rel || "").toLowerCase();
-      return rel === "canonical" ? "link:canonical" : "link:" + rel + ":" + (a.href || "");
-    }
-    return null;
-  }
-  function collection(entry) {
-    if (entry.tag !== "meta" || !entry.attributes.property) return null;
-    const property = entry.attributes.property.toLowerCase();
-    for (const root of ["og:image", "og:video", "og:audio", "og:locale:alternate"]) {
-      if (property === root || property.indexOf(root + ":") === 0) {
-        return "meta:property:" + root;
-      }
-    }
-    return null;
-  }
-  function isArrayValue(entry) {
-    return collection(entry) !== null;
-  }
-  const current = scan(existing);
-  const next = scan(incoming);
-  const hasCharset = (entries) =>
-    entries.some((entry) => entry.tag === "meta" && "charset" in entry.attributes);
-  const injectCharset = !hasCharset(current) && !hasCharset(next);
-  const charsetMarkup = injectCharset
-    ? '<meta charset="UTF-8" key="meta:charset">'
-    : "";
-  const replacedCollections = new Set(
-    next.map((entry) => entry.attributes["data-vynn-head-replace"]).filter(Boolean)
-  );
-  const replacedIdentities = new Set(
-    next.filter((entry) => !entry.attributes["data-vynn-head-replace"] && !isArrayValue(entry))
-      .map(identity).filter(Boolean)
-  );
-  const removals = current.filter((entry) => {
-    const collectionKey = collection(entry);
-    if (collectionKey && replacedCollections.has(collectionKey)) return true;
-    const key = identity(entry);
-    return key !== null && replacedIdentities.has(key);
-  });
-  let output = "";
-  let cursor = 0;
-  for (const entry of removals) {
-    output += existing.slice(cursor, entry.start);
-    cursor = entry.end;
-  }
-  const restorable = removals.filter(
-    (entry) => !(entry.tag === "meta" && "charset" in entry.attributes)
-  );
-  const fallback = restorable.length
-    ? '<template data-vynn-head-fallback>' + restorable.map((entry) => entry.html).join("") + '</template>'
-    : "";
-  return charsetMarkup + output + existing.slice(cursor) + fallback + incoming.replace(/\sdata-vynn-head-replace="[^"]*"/g, "");
-}`,
-    `function wrapInternalRange(value) { return value ? "<!--vynn:internal:start-->" + value + "<!--vynn:internal:end-->" : ""; }`,
+    `${reconcileHeadMarkup.toString()}`, 
     `function isWebResponse(value) { return !!value && typeof value === "object" && typeof value.status === "number" && value.headers && typeof value.headers.forEach === "function" && "body" in value && (value.body === null || typeof value.body?.getReader === "function") && typeof value.arrayBuffer === "function"; }`,
     `function assetUrl(path) {`,
     `  const value = String(path).replace(/^\\/+/, "");`,
