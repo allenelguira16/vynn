@@ -326,6 +326,12 @@ export function vynnAppPlugin({
           return;
         }
 
+        // Deployment integrations such as Nitro own the SSR module runner and
+        // its HMR lifecycle. Restarting the host Vite server here can tear down
+        // the transport while the deployment worker is fetching transformed
+        // modules, surfacing as "socket hang up".
+        if (hasExternalDeployment) return;
+
         // Vite invokes this hook for each environment. Restart only once from
         // the client environment; a restart rebuilds both client and SSR graphs.
         if (this.environment.name !== "client" || restarting) return [];
