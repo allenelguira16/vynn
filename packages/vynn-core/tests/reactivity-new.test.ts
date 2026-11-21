@@ -89,6 +89,36 @@ describe("new reactivity API", () => {
     stop();
   });
 
+  it("replaces computed dependencies when its getter reads a different state", async () => {
+    const left = $state(1);
+    const right = $state(2);
+    const useLeft = $state(true);
+    const selected = $computed(() => (useLeft.value ? left.value : right.value));
+    const values: number[] = [];
+
+    const stop = $effect(() => {
+      values.push(selected.value);
+    });
+
+    left.value = 3;
+    await flushEffects();
+    expect(values).toEqual([1, 3]);
+
+    useLeft.value = false;
+    await flushEffects();
+    expect(values).toEqual([1, 3, 2]);
+
+    // The old branch is no longer a dependency.
+    left.value = 4;
+    await flushEffects();
+    expect(values).toEqual([1, 3, 2]);
+
+    right.value = 5;
+    await flushEffects();
+    expect(values).toEqual([1, 3, 2, 5]);
+    stop();
+  });
+
   it("evaluates synchronous computed getters eagerly", () => {
     let getterRuns = 0;
     const value = $computed(() => {
