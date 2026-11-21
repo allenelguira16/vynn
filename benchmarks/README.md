@@ -58,7 +58,7 @@ pnpm bench:vynn
 - **Event**: state, dynamic text, and an event handler.
 - **Counter**: state, computed value, dynamic text, and event handler.
 
-Each build emits Rolldown chunk metadata with the retained modules' `renderedLength` and rendered exports. The trace reports final entry gzip/Brotli sizes and pre-minification module lengths. Module lengths are useful for identifying retained code, not exact per-module compressed attribution.
+Each build emits Rolldown chunk metadata with the retained modules' `renderedLength` and rendered exports. The trace separates modules in the entry's static import graph from dynamically deferred chunks. It reports initial entry gzip/Brotli separately from total deferred JavaScript gzip/Brotli, so a lazy resource implementation is not counted as initial JavaScript. Module lengths are useful for identifying retained code, not exact per-module compressed attribution.
 
 The trace is written to `benchmarks/results/vynn-trace.json`, which is ignored by git.
 

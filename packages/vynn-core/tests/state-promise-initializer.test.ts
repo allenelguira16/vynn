@@ -458,4 +458,54 @@ describe("Promise-returning initializers", () => {
       }
     }
   });
+
+  it("re-runs a promoted initializer if a dependency changes while the resource chunk loads", async () => {
+    const owner = createOwner(null);
+    const resolvers = new Map<number, (value: number) => void>();
+    let source!: State<number>;
+    let value!: State<number>;
+    let pendingPromise: Promise<unknown> | undefined;
+    let executions = 0;
+
+    try {
+      runWithOwner(owner, () => {
+        initializeAsyncContext();
+        source = $state(0);
+
+        value = $state(() => {
+          executions++;
+          const current = source.value;
+
+          return new Promise<number>((resolve) => {
+            resolvers.set(current, resolve);
+          });
+        });
+
+        source.value = 1;
+
+        try {
+          value.value;
+        } catch (error) {
+          expect(error).toBeInstanceOf(NotReadyError);
+          pendingPromise = (error as NotReadyError).promise;
+        }
+      });
+
+      expect(pendingPromise).toBeDefined();
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+      expect(executions).toBe(2);
+      expect(resolvers.has(1)).toBe(true);
+
+      resolvers.get(1)?.(1);
+      await pendingPromise;
+
+      runWithOwner(owner, () => {
+        expect(value.value).toBe(1);
+        expect(isPending(value)).toBe(false);
+      });
+    } finally {
+      disposeOwner(owner);
+    }
+  });
 });

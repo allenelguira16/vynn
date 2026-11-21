@@ -45,6 +45,22 @@ function getModuleGroup(id) {
   return "other";
 }
 
+function collectStaticFiles(manifest, entry) {
+  const files = new Set();
+
+  function visit(item) {
+    if (!item || files.has(item.file)) return;
+    files.add(item.file);
+
+    for (const importedId of item.imports ?? []) {
+      visit(manifest[importedId]);
+    }
+  }
+
+  visit(entry);
+  return [...files];
+}
+
 async function measureEntry(outputDirectory) {
   const manifest = JSON.parse(
     await readFile(resolve(outputDirectory, ".vite/manifest.json"), "utf8"),
@@ -56,12 +72,34 @@ async function measureEntry(outputDirectory) {
   const content = await readFile(resolve(outputDirectory, entry.file));
   return {
     file: entry.file,
+    staticFiles: collectStaticFiles(manifest, entry),
     raw: content.byteLength,
     gzip: gzipSync(content, { level: 9 }).byteLength,
     brotli: brotliCompressSync(content, {
       params: { [zlibConstants.BROTLI_PARAM_QUALITY]: 11 },
     }).byteLength,
   };
+}
+
+async function measureDeferredChunks(outputDirectory, chunks, staticFiles) {
+  const initialFiles = new Set(staticFiles);
+  const deferred = chunks.filter((chunk) => !initialFiles.has(chunk.file));
+
+  return Promise.all(deferred.map(async (chunk) => {
+    const content = await readFile(resolve(outputDirectory, chunk.file));
+    return {
+      file: chunk.file,
+      raw: content.byteLength,
+      gzip: gzipSync(content, { level: 9 }).byteLength,
+      brotli: brotliCompressSync(content, {
+        params: { [zlibConstants.BROTLI_PARAM_QUALITY]: 11 },
+      }).byteLength,
+      renderedLength: chunk.modules.reduce(
+        (sum, module) => sum + (module.renderedLength ?? 0),
+        0,
+      ),
+    };
+  }));
 }
 
 async function main() {
@@ -78,13 +116,26 @@ async function main() {
       readFile(resolve(outputDirectory, "module-report.json"), "utf8").then(JSON.parse),
     ]);
 
-    const modules = moduleReport.chunks.flatMap((chunk) =>
+    const staticFiles = new Set(entry.staticFiles);
+    const initialChunks = moduleReport.chunks.filter((chunk) => staticFiles.has(chunk.file));
+    const deferredChunks = moduleReport.chunks.filter((chunk) => !staticFiles.has(chunk.file));
+    const deferredAssets = await measureDeferredChunks(outputDirectory, moduleReport.chunks, entry.staticFiles);
+
+    const modules = initialChunks.flatMap((chunk) =>
       chunk.modules.map((module) => ({
         ...module,
         group: getModuleGroup(module.id),
         id: normalizeModuleId(module.id),
       })),
     );
+    const deferredModules = deferredChunks.flatMap((chunk) =>
+      chunk.modules.map((module) => ({
+        ...module,
+        group: getModuleGroup(module.id),
+        id: normalizeModuleId(module.id),
+      })),
+    );
+    const deferredGzip = deferredAssets.reduce((sum, asset) => sum + asset.gzip, 0);
     const grouped = new Map();
     for (const module of modules) {
       const entries = grouped.get(module.group) ?? [];
@@ -106,6 +157,11 @@ async function main() {
       entry,
       moduleCount: modules.length,
       groupTotals,
+      deferredAssets,
+      deferredGzip,
+      deferredModules: deferredModules.sort(
+        (left, right) => (right.renderedLength ?? 0) - (left.renderedLength ?? 0),
+      ),
       modules: modules.sort(
         (left, right) => (right.renderedLength ?? 0) - (left.renderedLength ?? 0),
       ),
@@ -114,7 +170,8 @@ async function main() {
     const core = groupTotals["vynn-core"];
     console.log(
       `${scenario.padEnd(9)} entry gzip ${(entry.gzip / 1000).toFixed(2)} kB | ` +
-      `vynn-core modules ${core?.modules ?? 0} | pre-minify rendered ${core?.renderedLength ?? 0} bytes`,
+      `initial vynn-core ${core?.modules ?? 0} modules / ${core?.renderedLength ?? 0} bytes | ` +
+      `deferred gzip ${(deferredGzip / 1000).toFixed(2)} kB (${deferredAssets.length} chunks)`,
     );
   }
 
@@ -157,7 +214,7 @@ async function main() {
       brotliQuality: 11,
     },
     moduleSizes:
-      "Rolldown renderedLength after tree-shaking and before chunk minification; not final compressed attribution.",
+      "Rolldown renderedLength after tree-shaking and before chunk minification, split between the static entry graph and deferred dynamic chunks; not final compressed attribution.",
     results,
   };
 

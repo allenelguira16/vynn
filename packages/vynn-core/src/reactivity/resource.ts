@@ -23,6 +23,7 @@ import {
   type Owner,
 } from "../life-cycle/owner";
 import { createReactiveEffect, stopReactiveEffect } from "./effect";
+import { cleanupSubscriber, type ReactiveSubscriber } from "./graph";
 import { withFakeAsyncApis } from "./fake-async";
 import { NotReadyError } from "./not-ready-error";
 import { isPending, registerPending } from "./pending";
@@ -50,6 +51,21 @@ type ResourceRecord<T> =
 
 export type Async<T> = VynnRef<T>;
 
+export type MaybeAsyncResourceInitial<T> = {
+  result?: T | PromiseLike<T>;
+  error?: NotReadyError;
+  subscriber: ReactiveSubscriber;
+  hasChanged: () => boolean;
+};
+
+export function createMaybeAsyncResourceFromInitial<T>(
+  getter: () => T | PromiseLike<T>,
+  resourceOwner: Owner,
+  initial: MaybeAsyncResourceInitial<T>,
+): VynnRef<T> {
+  return createResourceInternal(getter, true, { resourceOwner, initial });
+}
+
 export function createAsyncResource<T>(getter: () => Promise<T>): VynnRef<T> {
   return createResourceInternal(getter, false);
 }
@@ -66,14 +82,15 @@ export function createMaybeAsyncResource<T>(getter: () => T | PromiseLike<T>): V
 function createResourceInternal<T>(
   getter: () => T | PromiseLike<T>,
   detectPromiseLike: boolean,
+  initialState?: { resourceOwner: Owner; initial: MaybeAsyncResourceInitial<T> },
 ): VynnRef<T> {
   const owner = getOwner();
   const lazyGetter = isAsyncGetterFromLazy(getter);
-  const resourceOwner = owner
+  const resourceOwner = initialState?.resourceOwner ?? (owner
     ? detectPromiseLike && !lazyGetter
       ? createOwnerIdentityTransaction(owner)
       : createOwner(owner)
-    : null;
+    : null);
   const effectOwner = resourceOwner ?? owner;
   const record = createCell<ResourceRecord<T> | undefined>(undefined);
 
@@ -165,75 +182,87 @@ function createResourceInternal<T>(
         try {
           let result: T | PromiseLike<T>;
 
-          if (detectPromiseLike && isInitialRun && !lazyGetter) {
-            const candidateOwnerID = getCandidateOwnerID();
-
-            if (
-              candidateOwnerID !== undefined &&
-              (hasAsyncHydrationValue(candidateOwnerID) ||
-                hasAsyncHydrationOwnerIDReservation(candidateOwnerID))
-            ) {
-              // A fake pass classifies a maybe-async initializer only when
-              // the next owner ID has a serialized value to hydrate.
-              const probe = withFakeAsyncApis(getter);
-              hydrationProbeCompleted = true;
-
-              if (!isPromiseLike<T>(probe)) {
-                initialResultKind = "sync";
-                initialValue = probe;
-
-                // A server-side suspension may have committed this slot even
-                // though hydrated dependencies let the initializer finish
-                // synchronously on the client.
-                if (hasAsyncHydrationOwnerIDReservation(candidateOwnerID)) {
-                  allocateResourceIdentity();
-                }
-
-                record.value = {
-                  status: "resolved",
-                  value: probe,
-                  version: currentVersion,
-                };
-
-                if (hasCompletedStart) {
-                  finalizeSynchronousInitializer();
-                }
-
-                return;
-              }
-
-              initialResultKind = "async";
-              allocateResourceIdentity();
-
-              if (resourceOwnerID === candidateOwnerID) {
-                hydrationValue = getAsyncValue<T>(candidateOwnerID);
-                hasReadHydrationValue = true;
-              }
-            }
-          } else if (!lazyGetter && resourceOwnerID !== undefined && !hasReadHydrationValue) {
-            hydrationValue = getAsyncValue<T>(resourceOwnerID);
+          if (initialState && isInitialRun) {
+            // The lightweight state adapter already executed the initializer
+            // once. Reuse its result and collected dependencies.
+            initialResultKind = "async";
             hasReadHydrationValue = true;
-          }
+            allocateResourceIdentity();
 
-          if (hydrationValue?.found) {
-            if (!hydrationProbeCompleted) withFakeAsyncApis(getter);
+            if (initialState.initial.hasChanged()) {
+              result = getter();
+            } else if (initialState.initial.error) {
+              throw initialState.initial.error;
+            } else {
+              result = initialState.initial.result as T | PromiseLike<T>;
+            }
+          } else {
+            if (detectPromiseLike && isInitialRun && !lazyGetter) {
+              const candidateOwnerID = getCandidateOwnerID();
 
-            const value = hydrationValue.value as T;
-            hydrationValue = undefined;
+              if (
+                candidateOwnerID !== undefined &&
+                (hasAsyncHydrationValue(candidateOwnerID) ||
+                  hasAsyncHydrationOwnerIDReservation(candidateOwnerID))
+              ) {
+                // Probe only when this owner has serialized data or a reserved slot.
+                const probe = withFakeAsyncApis(getter);
+                hydrationProbeCompleted = true;
 
-            if (detectPromiseLike && isInitialRun) {
-              initialResultKind = "async";
+                if (!isPromiseLike<T>(probe)) {
+                  initialResultKind = "sync";
+                  initialValue = probe;
+
+                  if (hasAsyncHydrationOwnerIDReservation(candidateOwnerID)) {
+                    allocateResourceIdentity();
+                  }
+
+                  record.value = {
+                    status: "resolved",
+                    value: probe,
+                    version: currentVersion,
+                  };
+
+                  if (hasCompletedStart) {
+                    finalizeSynchronousInitializer();
+                  }
+
+                  return;
+                }
+
+                initialResultKind = "async";
+                allocateResourceIdentity();
+
+                if (resourceOwnerID === candidateOwnerID) {
+                  hydrationValue = getAsyncValue<T>(candidateOwnerID);
+                  hasReadHydrationValue = true;
+                }
+              }
+            } else if (!lazyGetter && resourceOwnerID !== undefined && !hasReadHydrationValue) {
+              hydrationValue = getAsyncValue<T>(resourceOwnerID);
+              hasReadHydrationValue = true;
             }
 
-            record.value = {
-              status: "resolved",
-              value,
-              version: currentVersion,
-            };
-            return;
-          }
+            if (hydrationValue?.found) {
+              if (!hydrationProbeCompleted) withFakeAsyncApis(getter);
 
-          result = getter();
+              const value = hydrationValue.value as T;
+              hydrationValue = undefined;
+
+              if (detectPromiseLike && isInitialRun) {
+                initialResultKind = "async";
+              }
+
+              record.value = {
+                status: "resolved",
+                value,
+                version: currentVersion,
+              };
+              return;
+            }
+
+            result = getter();
+          }
 
           if (!isPromiseLike<T>(result)) {
             if (detectPromiseLike && isInitialRun && initialResultKind === "unknown") {
@@ -312,12 +341,7 @@ function createResourceInternal<T>(
             // A suspended initializer must commit its identity transaction.
             // Otherwise a later sibling could claim the same ID before this
             // initializer retries and discovers its final sync/async result.
-            if (
-              detectPromiseLike &&
-              isInitialRun &&
-              resourceOwner &&
-              hasOwnerIdentityTransaction(resourceOwner)
-            ) {
+            if (detectPromiseLike && isInitialRun && resourceOwner) {
               allocateResourceIdentity();
 
               if (resourceOwnerID !== undefined) {
@@ -355,6 +379,24 @@ function createResourceInternal<T>(
     );
 
     reactiveEffect = effect;
+
+    if (initialState) {
+      const { subscriber } = initialState.initial;
+
+      if (initialState.initial.hasChanged()) {
+        cleanupSubscriber(subscriber);
+      } else {
+        for (const dependency of subscriber.dependencies) {
+          dependency.delete(subscriber);
+          dependency.add(effect);
+          effect.dependencies.push(dependency);
+        }
+        subscriber.dependencies.length = 0;
+      }
+
+      subscriber.disposed = true;
+    }
+
     hasCompletedStart = true;
 
     if (

@@ -1,84 +1,27 @@
 import { ASYNC_DATA_SSR_KEY } from "../const";
-import { getContext, setContext } from "../life-cycle/owner";
 import { deserializeServerFunctionValue } from "../server-functions/serialization";
+import { getContext, setContext } from "../life-cycle/owner";
+import { initializeAsyncOwnerIDReservations } from "./async-owner-context";
 
-export type AsyncBoundary<T = unknown> = (promise: Promise<T>) => void;
+export { ASYNC_OWNER_ID_RESERVATIONS_KEY, getAsyncOwnerIDReservations, hasAsyncHydrationOwnerIDReservation, registerAsyncOwnerIDReservation } from "./async-owner-context";
+export type { AsyncBoundary } from "./async-boundary";
+export { enterAsyncBoundary, getAsyncBoundary, isInsideAwaitBoundary } from "./async-boundary";
 
-const ASYNC_BOUNDARY = Symbol("vynn.async-boundary");
-const AWAIT_BOUNDARY = Symbol("vynn.await-boundary");
 const ASYNC_VALUES = Symbol("vynn.async-values");
-const ASYNC_OWNER_ID_RESERVATIONS = Symbol("vynn.async-owner-id-reservations");
-
-/** Reserved metadata key stored alongside async values in the hydration payload. */
-export const ASYNC_OWNER_ID_RESERVATIONS_KEY = "$VYNN_OWNER_ID_RESERVATIONS";
 
 export type AsyncHydrationValue<T = unknown> = {
   found: boolean;
   value: T | undefined;
 };
 
-export function isInsideAwaitBoundary(): boolean {
-  return getContext<boolean>(AWAIT_BOUNDARY) ?? false;
-}
-
-export function getAsyncBoundary<T = unknown>(): AsyncBoundary<T> | undefined {
-  return getContext<AsyncBoundary<T>>(ASYNC_BOUNDARY);
-}
-
-/**
- * Permanently sets the boundary on the current owner.
- * Use for a component-level boundary such as client-side Await.
- */
-export function enterAsyncBoundary<T>(boundary: AsyncBoundary<T>): void {
-  setContext(ASYNC_BOUNDARY, boundary);
-  setContext(AWAIT_BOUNDARY, true);
-}
-
 /** Initialize the request-local async hydration value registry. */
 export function initializeAsyncContext(): void {
   setContext<Record<string, unknown>>(ASYNC_VALUES, Object.create(null));
-  setContext<Set<string>>(ASYNC_OWNER_ID_RESERVATIONS, new Set());
+  initializeAsyncOwnerIDReservations();
 }
 
 export function getAsyncValues(): Record<string, unknown> | undefined {
   return getContext<Record<string, unknown>>(ASYNC_VALUES);
-}
-
-/**
- * Preserve owner slots that were committed after a server-side suspension.
- * The initializer can complete synchronously on the client because its
- * dependencies were hydrated, but following resources must still use the
- * same IDs as they did on the server.
- */
-export function registerAsyncOwnerIDReservation(ownerID: string): void {
-  if (!import.meta.env.SSR) return;
-
-  let reservations = getContext<Set<string>>(ASYNC_OWNER_ID_RESERVATIONS);
-
-  if (!reservations) {
-    reservations = new Set<string>();
-    setContext(ASYNC_OWNER_ID_RESERVATIONS, reservations);
-  }
-
-  reservations.add(ownerID);
-}
-
-/** Return the owner slots that must be preserved by the hydration payload. */
-export function getAsyncOwnerIDReservations(): string[] {
-  return [...(getContext<Set<string>>(ASYNC_OWNER_ID_RESERVATIONS) ?? [])];
-}
-
-/** Check whether the server reserved an owner ID without serializing a value for it. */
-export function hasAsyncHydrationOwnerIDReservation(ownerID: string): boolean {
-  if (import.meta.env.SSR || typeof window === "undefined") return false;
-
-  const values = (window as unknown as Record<string, unknown>)[ASYNC_DATA_SSR_KEY];
-
-  if (values === null || typeof values !== "object") return false;
-
-  const reservations = (values as Record<string, unknown>)[ASYNC_OWNER_ID_RESERVATIONS_KEY];
-
-  return Array.isArray(reservations) && reservations.includes(ownerID);
 }
 
 /**
