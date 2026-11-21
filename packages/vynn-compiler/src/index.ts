@@ -639,20 +639,20 @@ class TransformState {
     }
 
     const stateValueImport = importDeclaration(
-        [importSpecifier(identifier(stateValueLocal), identifier("$stateValue"))],
-        "vynn/internal/state-value",
-      );
-      let insertionIndex = 0;
+      [importSpecifier(identifier(stateValueLocal), identifier("$stateValue"))],
+      "vynn/internal/state-value",
+    );
+    let insertionIndex = 0;
 
-      while (insertionIndex < this.program.body.length) {
-        const statement = this.program.body[insertionIndex]!;
-        const isDirective =
-          isExpressionStatement(statement) &&
-          isType(statement.expression, "Literal") &&
-          typeof statement.expression.value === "string";
-        if (!isImportDeclaration(statement) && !isDirective) break;
-        insertionIndex++;
-      }
+    while (insertionIndex < this.program.body.length) {
+      const statement = this.program.body[insertionIndex]!;
+      const isDirective =
+        isExpressionStatement(statement) &&
+        isType(statement.expression, "Literal") &&
+        typeof statement.expression.value === "string";
+      if (!isImportDeclaration(statement) && !isDirective) break;
+      insertionIndex++;
+    }
 
     const body = [...this.program.body];
     body.splice(insertionIndex, 0, stateValueImport);
