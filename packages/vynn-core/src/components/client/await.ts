@@ -1,16 +1,14 @@
-import type { JSX } from "../types/jsx";
+import type { JSX } from "../../types/jsx";
 
-import { isHydrationClaimActive } from "../client/hydration";
-import { enterAsyncBoundary } from "../context/async-context";
-import { isServer } from "../context/is-server-context";
-import { isPromiseFromLazy } from "../context/lazy-context";
-import { getOwner, runWithOwner } from "../life-cycle/owner";
-import { untrack } from "../reactivity/effect";
-import { $state } from "../reactivity/state";
-import { createComponent } from "./create-component";
-import { $if } from "../render/client/$if";
-import { SSR_NODE, createSSRAsync, resolveNode } from "../render/server/resolve-node";
-import { memo } from "../utils/memo";
+import { isHydrationClaimActive } from "../../client/hydration";
+import { enterAsyncBoundary } from "../../context/async-context";
+import { isPromiseFromLazy } from "../../context/lazy-context";
+import { getOwner, runWithOwner } from "../../life-cycle/owner";
+import { untrack } from "../../reactivity/effect";
+import { $state } from "../../reactivity/state";
+import { $cmpnt } from "../../render/client/$cmpnt";
+import { $if } from "../../render/client/$if";
+import { memo } from "../../utils/memo";
 
 /**
  * Displays a fallback while the children are initially loading.
@@ -18,11 +16,8 @@ import { memo } from "../utils/memo";
  * By default, the fallback is shown only during the first pending state.
  * Set `suspense` to show it again whenever the children start another async
  * operation.
- *
- * @param props The fallback content, children, and suspense behavior.
- * @returns The rendered content.
  */
-export const Await = createComponent(function Await(props: {
+export const Await = $cmpnt(function Await(props: {
   fallback?: JSX.Element;
   suspense?: boolean;
   children: JSX.Element;
@@ -31,28 +26,6 @@ export const Await = createComponent(function Await(props: {
 
   const fallback = memo(() => runWithOwner(owner, () => props.fallback));
   const children = memo(() => runWithOwner(owner, () => props.children));
-
-  if (isServer()) {
-    const pending: Promise<any>[] = [];
-
-    enterAsyncBoundary((promise) => {
-      pending.push(promise);
-    });
-
-    try {
-      children();
-    } finally {
-      if (!pending.length) {
-        return resolveNode(children);
-      }
-
-      return createSSRAsync(
-        () => resolveNode(fallback) as unknown as SSR_NODE[],
-        () => resolveNode(children) as unknown as SSR_NODE[],
-        pending,
-      ) as unknown as JSX.Element;
-    }
-  }
 
   return untrack(() => {
     let isResolved = false;

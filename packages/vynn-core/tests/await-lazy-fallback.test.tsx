@@ -5,9 +5,9 @@ import type { JSX } from "../src/types/jsx";
 
 import { hydrateToDOM } from "../src/client/hydrate-to-dom";
 import { renderToDOM } from "../src/client/render-to-dom";
-import { Await } from "../src/components/await";
-import { Catch } from "../src/components/catch";
-import { lazy } from "../src/components/lazy";
+import { Await } from "../src/components/client/await";
+import { Catch } from "../src/components/client/catch";
+import { lazy } from "../src/components/client/lazy";
 import { getOwner } from "../src/life-cycle/owner";
 import { $state } from "../src/reactivity/state";
 

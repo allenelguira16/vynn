@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { JSX } from "../src/types/jsx";
 
 import { hydrateToDOM } from "../src/client/hydrate-to-dom";
-import { Portal } from "../src/components/portal";
+import { Portal } from "../src/components/client/portal";
 
 let requestAnimationFrameDescriptor: PropertyDescriptor | undefined;
 

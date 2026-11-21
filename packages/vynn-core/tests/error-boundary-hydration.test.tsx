@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { JSX } from "../src/types/jsx";
 
 import { hydrateToDOM } from "../src/client/hydrate-to-dom";
-import { Catch } from "../src/components/catch";
+import { Catch } from "../src/components/client/catch";
 import { ERROR_BOUNDARY_DATA_SSR_KEY } from "../src/const";
 
 afterEach(() => {

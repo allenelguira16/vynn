@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { vynnOxcPlugin } from "../src/plugins/jsx-transpiler.ts";
 
@@ -84,6 +84,62 @@ describe("Vynn Vite JSX adapter", () => {
     expect(result && typeof result === "object" ? result.code : "").toContain(
       'from "vynn/render/server"',
     );
+  });
+
+  it("resolves the public package entry to the server component entry in SSR", async () => {
+    const plugin = vynnOxcPlugin();
+    const resolveId = plugin.resolveId;
+
+    if (typeof resolveId !== "function") {
+      throw new Error("Expected the Vynn Oxc plugin to expose a resolveId hook.");
+    }
+
+    const resolve = vi.fn().mockResolvedValue({
+      id: "/workspace/packages/vynn-core/src/index.ts",
+    });
+    const result = await resolveId.call(
+      {
+        environment: {
+          name: "ssr",
+          config: { consumer: "server" },
+        },
+        resolve,
+      } as never,
+      "vynn",
+      "/workspace/app/src/App.tsx",
+    );
+
+    expect(result).toBe("/workspace/packages/vynn-core/src/server-entry.ts");
+    expect(resolve).toHaveBeenCalledWith(
+      "vynn",
+      "/workspace/app/src/App.tsx",
+      { skipSelf: true },
+    );
+  });
+
+  it("leaves the public package entry unchanged in the client environment", async () => {
+    const plugin = vynnOxcPlugin();
+    const resolveId = plugin.resolveId;
+
+    if (typeof resolveId !== "function") {
+      throw new Error("Expected the Vynn Oxc plugin to expose a resolveId hook.");
+    }
+
+    const resolve = vi.fn();
+    const result = await resolveId.call(
+      {
+        environment: {
+          name: "client",
+          config: { consumer: "client" },
+        },
+        resolve,
+      } as never,
+      "vynn",
+      "/workspace/app/src/App.tsx",
+    );
+
+    expect(result).toBeNull();
+    expect(resolve).not.toHaveBeenCalled();
   });
 
   it("ignores dependencies and modules without JSX", () => {

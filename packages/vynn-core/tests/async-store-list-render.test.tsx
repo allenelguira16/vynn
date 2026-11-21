@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import { renderToDOM } from "../src/client/render-to-dom";
-import { Await } from "../src/components/await";
+import { Await } from "../src/components/client/await";
 import { $computed } from "../src/reactivity/computed";
 import { isPending } from "../src/reactivity/pending";
 import { $state } from "../src/reactivity/state";

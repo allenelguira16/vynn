@@ -1,23 +1,18 @@
-import type { JSX } from "../types/jsx";
+import type { JSX } from "../../types/jsx";
 
 import {
   finishServerRenderedLazy,
   getServerRenderedLazyRange,
   withServerRenderedLazy,
-} from "../client/hydration";
-import { LAZY_END_SSR_MARKER, LAZY_START_SSR_MARKER } from "../const";
-import { isServer } from "../context/is-server-context";
+} from "../../client/hydration";
 import {
   getLazyID,
   initializeLazyScope,
   regsterAsyncGetterFromLazy,
-} from "../context/lazy-context";
-import { registerSsrModule } from "../context/ssr-module-context";
-import { $computed } from "../reactivity/computed";
-import { createComponent } from "./create-component";
-import { $nodes as clientNodes } from "../render/client/$nodes";
-import { $nodes as serverNodes } from "../render/server/$nodes";
-import { createSSRComment } from "../render/server/resolve-node";
+} from "../../context/lazy-context";
+import { $computed } from "../../reactivity/computed";
+import { $cmpnt } from "../../render/client/$cmpnt";
+import { $nodes } from "../../render/client/$nodes";
 
 type AnyComponent = (props: never) => JSX.Element;
 
@@ -46,7 +41,7 @@ export function lazy<M extends Record<string, unknown> & { default: AnyComponent
 export function lazy<M extends Record<string, unknown>, K extends keyof M = "default" & keyof M>(
   loader: () => Promise<M>,
   namedExport = "default" as K,
-  moduleId?: string,
+  _moduleId?: string,
 ): ComponentExport<M, K> {
   type Component = ComponentExport<M, K>;
 
@@ -77,7 +72,7 @@ export function lazy<M extends Record<string, unknown>, K extends keyof M = "def
     return componentPromise;
   }
 
-  const LazyComponent = createComponent(function LazyComponent(
+  const LazyComponent = $cmpnt(function LazyComponent(
     props: Parameters<Component>[0],
   ): JSX.Element {
     const lazyID = getLazyID();
@@ -85,20 +80,6 @@ export function lazy<M extends Record<string, unknown>, K extends keyof M = "def
     // Descendant lazy marker IDs use this scope. Async resources derive their
     // hydration IDs from this component's owner.
     initializeLazyScope(lazyID);
-
-    if (isServer()) {
-      registerSsrModule(moduleId);
-      regsterAsyncGetterFromLazy(loadComponent);
-      const component = $computed(loadComponent);
-
-      return serverNodes(() => {
-        return [
-          createSSRComment(`${LAZY_START_SSR_MARKER}:${lazyID}`),
-          component.value(props),
-          createSSRComment(`${LAZY_END_SSR_MARKER}:${lazyID}`),
-        ] as JSX.Element;
-      });
-    }
 
     const existingRange = getServerRenderedLazyRange(lazyID);
 
@@ -116,7 +97,7 @@ export function lazy<M extends Record<string, unknown>, K extends keyof M = "def
     const component = $computed(loadComponent);
 
     return withServerRenderedLazy(lazyID, () =>
-      clientNodes(() => {
+      $nodes(() => {
         const rendered = component.value(props);
         finishServerRenderedLazy(lazyID);
         return rendered;

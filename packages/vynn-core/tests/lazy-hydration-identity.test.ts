@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 
-import { Catch } from "../src/components/catch";
+import { Catch } from "../src/components/client/catch";
 import { ASYNC_DATA_SSR_KEY, ERROR_BOUNDARY_DATA_SSR_KEY } from "../src/const";
 import {
   enterAsyncBoundary,

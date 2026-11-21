@@ -10,9 +10,9 @@ import {
   createSsrHandlerCode,
 } from "../../vite-plugin/src/plugins/app/documents.ts";
 import { serverFunctionsPlugin } from "../../vite-plugin/src/plugins/server-functions/index.ts";
-import { Catch } from "../src/components/catch";
-import { Portal } from "../src/components/portal";
-import { lazy } from "../src/components/lazy";
+import { Catch } from "../src/components/server/catch";
+import { Portal } from "../src/components/server/portal";
+import { lazy } from "../src/components/server/lazy";
 import { registerSsrModule } from "../src/context/ssr-module-context";
 import { createOwner, disposeOwner, getOwner, runWithOwner } from "../src/life-cycle/owner";
 import { $registerHead } from "../src/render/head-runtime";

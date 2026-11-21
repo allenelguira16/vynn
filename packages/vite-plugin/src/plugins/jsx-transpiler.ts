@@ -14,6 +14,23 @@ export function vynnOxcPlugin(options: VynnOxcPluginOptions = {}): Plugin {
   return {
     name: "vynn-jsx-transpiler",
     enforce: "pre",
+    async resolveId(source, importer) {
+      if (source !== "vynn") return null;
+
+      const consumer = this.environment?.config.consumer;
+      if (consumer !== "server" && this.environment?.name !== "ssr") return null;
+
+      // Resolve the package's normal public entry first, then switch only its
+      // entry file. This keeps all internal imports package-manager agnostic.
+      const resolved = await this.resolve(source, importer, { skipSelf: true });
+      if (!resolved || resolved.external) return null;
+
+      const resolvedId = resolved.id.split("?", 1)[0];
+      const clientEntrySuffix = "/src/index.ts";
+      if (!resolvedId.endsWith(clientEntrySuffix)) return null;
+
+      return resolvedId.slice(0, -"/index.ts".length) + "/server-entry.ts";
+    },
     transform(source, id, transformOptions) {
       if (enabled === false) return null;
       if (id.includes("node_modules") || id.startsWith("\0")) return null;

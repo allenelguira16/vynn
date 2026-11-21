@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import type { JSX } from "../src/types/jsx";
 
-import { Await } from "../src/components/await";
-import { Catch } from "../src/components/catch";
+import { Await } from "../src/components/server/await";
+import { Catch } from "../src/components/server/catch";
 import { getLazyID, initializeLazyScope } from "../src/context/lazy-context";
 import { $state } from "../src/reactivity/state";
 import { $insert } from "../src/render/server/$insert";
