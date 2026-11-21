@@ -135,7 +135,7 @@ describe("$computed", () => {
 
         // Only the asynchronous computed creates an identity-bearing resource
         // owner. The synchronous computed must not consume an owner slot.
-        expect(owner.children.map((child) => child.id)).toEqual(["00"]);
+        expect(owner.children.map((child) => child.identityIndex)).toEqual([0]);
 
         let resourceLoad: Promise<unknown> | undefined;
 
