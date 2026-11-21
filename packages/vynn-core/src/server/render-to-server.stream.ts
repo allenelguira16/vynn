@@ -19,7 +19,7 @@ import {
   type SSR_NODE,
   SSR_TEXT,
   resolveNode,
-} from "../render/resolve-node";
+} from "../render/server/resolve-node";
 import { renderHeadPatch, type SsrHeadManager } from "./head";
 import {
   joinHTMLElements,

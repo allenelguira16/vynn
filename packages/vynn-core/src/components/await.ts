@@ -9,7 +9,7 @@ import { untrack } from "../reactivity/effect";
 import { $state } from "../reactivity/state";
 import { $cmpnt } from "../render/$cmpnt";
 import { $if } from "../render/$if";
-import { SSR_NODE, createSSRAsync, resolveNode } from "../render/resolve-node";
+import { SSR_NODE, createSSRAsync, resolveNode } from "../render/server/resolve-node";
 import { memo } from "../utils/memo";
 
 /**

@@ -1,6 +1,6 @@
 import type { JSX } from "../jsx-runtime";
 import type { Owner } from "../life-cycle/owner";
-import type { SSR_ERROR_BOUNDARY, SSR_NODE } from "../render/resolve-node";
+import type { SSR_ERROR_BOUNDARY, SSR_NODE } from "../render/server/resolve-node";
 
 import {
   enterErrorBoundary,
@@ -13,7 +13,7 @@ import { isServer } from "../context/is-server-context";
 import { createOwner, disposeOwner, getOwner, runWithOwner } from "../life-cycle/owner";
 import { $state } from "../reactivity/state";
 import { $cmpnt, $nodes } from "../render";
-import { createSSRErrorBoundary, resolveNode } from "../render/resolve-node";
+import { createSSRErrorBoundary, resolveNode } from "../render/server/resolve-node";
 
 export type CatchSSRState =
   | { status: "children" }

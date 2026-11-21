@@ -15,7 +15,7 @@ import {
 import { getErrorBoundaryValues } from "../context/error-boundary-context";
 import { getRenderMode } from "../context/render-mode";
 import { assertSafeAttributeName } from "../render/attribute-name";
-import { SSR_ELEMENT, SSR_TEXT } from "../render/resolve-node";
+import { SSR_ELEMENT, SSR_TEXT } from "../render/server/resolve-node";
 import { serializeServerFunctionValue } from "../server-functions/serialization";
 import { escapeHtml } from "../utils/escape-html";
 

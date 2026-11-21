@@ -7,7 +7,7 @@ import { JSX } from "../jsx-runtime";
 import { createOwner, disposeOwner, runWithOwner } from "../life-cycle/owner";
 import { addUnmountListener, isRootNode } from "../render/$cmpnt";
 import { HTML_NAMESPACE, getChildDOMNamespace, withDOMNamespace } from "../render/namespace";
-import { resolveNode } from "../render/resolve-node";
+import { resolveNode } from "../render/client/resolve-node";
 
 function getHeadMetadataIdentity(element: Element): string | undefined {
   const tag = element.localName;

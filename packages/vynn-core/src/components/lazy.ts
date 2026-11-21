@@ -15,7 +15,7 @@ import {
 import { registerSsrModule } from "../context/ssr-module-context";
 import { $computed } from "../reactivity/computed";
 import { $cmpnt, $nodes } from "../render";
-import { createSSRComment } from "../render/resolve-node";
+import { createSSRComment } from "../render/server/resolve-node";
 
 type AnyComponent = (props: never) => JSX.Element;
 
