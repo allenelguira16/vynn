@@ -15,6 +15,10 @@
     "./jsx-runtime": {
       "import": "./src/jsx-runtime.ts"
     },
+    "./internal/state-value": {
+      "types": "./src/reactivity/state-value.ts",
+      "import": "./src/reactivity/state-value.ts"
+    },
     "./render": {
       "import": "./src/render/index.ts"
     },
