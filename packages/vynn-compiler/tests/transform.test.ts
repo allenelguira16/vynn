@@ -52,6 +52,67 @@ describe("Vynn Oxc JSX compiler", () => {
     expect(code).toContain("$state(1)");
   });
 
+  it("routes direct synchronous $computed getters through the lightweight runtime entry", () => {
+    const code = transformVynnOxc(
+      `import { $computed as computed } from "vynn";
+      export function Counter() {
+        const count = computed(() => 1 + 1);
+        return <button>{count.value}</button>;
+      }`,
+      "counter.tsx",
+    );
+
+    expect(code).toContain('from "vynn/internal/computed-sync"');
+    expect(code).toContain("_$computedSync(() => 1 + 1)");
+    expect(code).not.toContain("_$computed(");
+  });
+
+  it("leaves async and indirect computed getters on the public runtime path", () => {
+    const code = transformVynnOxc(
+      `import { $computed } from "vynn";
+      const importedGetter = getGetter();
+      export function Counter() {
+        const asyncValue = $computed(async () => 1);
+        const indirectValue = $computed(importedGetter);
+        return <button>{String(asyncValue.value) + String(indirectValue.value)}</button>;
+      }`,
+      "counter.tsx",
+    );
+
+    expect(code).not.toContain("vynn/internal/computed-sync");
+    expect(code).toContain("$computed(async () => 1)");
+    expect(code).toContain("$computed(importedGetter)");
+  });
+
+  it("respects computed aliases, namespace imports, and lexical shadowing", () => {
+    const code = transformVynnOxc(
+      `import * as Vynn from "vynn";
+      function Counter() {
+        const count = Vynn.$computed(() => 1);
+        function local($computed: (getter: () => number) => number) {
+          return $computed(() => 2);
+        }
+        return <button>{count.value + local(() => 0)}</button>;
+      }`,
+      "counter.tsx",
+    );
+
+    expect(code).toContain('from "vynn/internal/computed-sync"');
+    expect(code).toContain("_$computedSync(() => 1)");
+    expect(code).toContain("$computed(() => 2)");
+  });
+
+  it("rewrites direct synchronous computed getters in TypeScript modules without JSX", () => {
+    const code = transformVynnOxc(
+      `import { $computed } from "vynn";
+      export const result = $computed(() => 42);`,
+      "computed.ts",
+    );
+
+    expect(code).toContain('from "vynn/internal/computed-sync"');
+    expect(code).toContain("_$computedSync(() => 42)");
+  });
+
   it("rewrites direct state values in TypeScript modules without JSX", () => {
     const code = transformVynnOxc(
       `import { $state } from "vynn";
