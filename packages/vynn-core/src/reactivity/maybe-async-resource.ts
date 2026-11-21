@@ -4,6 +4,7 @@ import {
   createMaybeAsyncResourceFromInitial,
   type MaybeAsyncResourceInitial,
 } from "./resource";
+import { NotReadyError } from "./not-ready-error";
 import type { VynnRef } from "./ref";
 
 export function createLegacyMaybeAsyncResource<T>(
@@ -26,4 +27,26 @@ export function createPromotedMaybeAsyncResource<T>(
   return runWithOwner(owner, () =>
     createMaybeAsyncResourceFromInitial(initializer, resourceOwner, initial),
   );
+}
+
+export async function waitForInitialValue<T>(
+  resource: VynnRef<T>,
+  owner: Owner | null,
+): Promise<void> {
+  while (true) {
+    try {
+      runWithOwner(owner, () => {
+        void resource.value;
+      });
+      return;
+    } catch (error) {
+      if (!(error instanceof NotReadyError)) return;
+
+      try {
+        await error.promise;
+      } catch {
+        // Resource rejections are stored internally and surfaced on retry.
+      }
+    }
+  }
 }
