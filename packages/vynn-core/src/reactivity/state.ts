@@ -10,8 +10,9 @@ import {
   createOwnerIdentityTransaction,
   disposeOwner,
   getOwner,
-  getOwnerIdentityID,
-  peekOwnerID,
+  getOwnerIdentityPath,
+  getOwnerIdentityPathKey,
+  peekOwnerIdentityPath,
   rollbackOwnerIdentityTransaction,
   runWithOwner,
   type Owner,
@@ -41,15 +42,16 @@ function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
   );
 }
 
-function hasHydrationSlot(id: string | undefined): boolean {
-  if (!id || import.meta.env.SSR || typeof window === "undefined") return false;
+function hasHydrationSlot(path: readonly number[] | undefined): boolean {
+  if (!path || import.meta.env.SSR || typeof window === "undefined") return false;
   const values = (window as unknown as Record<string, unknown>)[ASYNC_DATA_SSR_KEY];
   if (!values || typeof values !== "object") return false;
   const payload = values as Record<string, unknown>;
+  const key = getOwnerIdentityPathKey(path);
   const reservations = payload[ASYNC_OWNER_ID_RESERVATIONS_KEY];
   return (
-    Object.prototype.hasOwnProperty.call(payload, id) ||
-    (Array.isArray(reservations) && reservations.includes(id))
+    Object.prototype.hasOwnProperty.call(payload, key) ||
+    (Array.isArray(reservations) && reservations.includes(key))
   );
 }
 
@@ -168,8 +170,8 @@ function createMaybeAsyncState<T>(initializer: () => T | PromiseLike<T>): VynnRe
   if (!owner || isAsyncGetterFromLazy(initializer)) return createLegacy(initializer, owner);
 
   const resourceOwner = createOwnerIdentityTransaction(owner);
-  const id = getOwnerIdentityID(resourceOwner) ?? peekOwnerID(resourceOwner.parent);
-  if (hasHydrationSlot(id)) {
+  const path = getOwnerIdentityPath(resourceOwner) ?? peekOwnerIdentityPath(resourceOwner.parent);
+  if (hasHydrationSlot(path)) {
     rollbackOwnerIdentityTransaction(resourceOwner);
     disposeOwner(resourceOwner);
     return createLegacy(initializer, owner);
@@ -218,8 +220,9 @@ function createMaybeAsyncState<T>(initializer: () => T | PromiseLike<T>): VynnRe
     subscriber,
     hasChanged: () => changed,
   };
-  const ownerID = commitOwnerIdentityTransaction(resourceOwner);
-  if (initial.error && ownerID) registerAsyncOwnerIDReservation(ownerID);
+  commitOwnerIdentityTransaction(resourceOwner);
+  const ownerPath = getOwnerIdentityPath(resourceOwner);
+  if (initial.error && ownerPath) registerAsyncOwnerIDReservation(ownerPath);
   if (promiseLike) void Promise.resolve(result as PromiseLike<T>).catch(() => {});
 
   return createPromoted(initializer, owner, resourceOwner, initial);

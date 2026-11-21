@@ -189,7 +189,7 @@ describe("Promise-returning initializers", () => {
     let second!: State<number>;
 
     globalWindow[ASYNC_DATA_SSR_KEY] = {
-      "01": serializeServerFunctionValue(42),
+      "0.1": serializeServerFunctionValue(42),
     };
 
     try {
@@ -245,8 +245,8 @@ describe("Promise-returning initializers", () => {
           return Promise.resolve(1);
         });
 
-        expect(owner.children.map((item) => item.id)).toEqual(["00"]);
-        expect(owner.children[0]?.children.map((item) => item.id)).toEqual(["000"]);
+        expect(owner.children.map((item) => item.identityIndex)).toEqual([0]);
+        expect(owner.children[0]?.children.map((item) => item.identityIndex)).toEqual([0]);
 
         try {
           parent.value;
@@ -315,8 +315,8 @@ describe("Promise-returning initializers", () => {
           siblingPromise = (error as NotReadyError).promise;
         }
 
-        expect(owner.children.map((item) => item.id)).toEqual(["00", "01", "02"]);
-        expect(owner.children.find((item) => item.id === "01")?.children).toEqual([]);
+        expect(owner.children.map((item) => item.identityIndex)).toEqual([0, 1, 2]);
+        expect(owner.children.find((item) => item.identityIndex === 1)?.children).toEqual([]);
       });
 
       expect(parentPromise).toBeDefined();
@@ -325,9 +325,9 @@ describe("Promise-returning initializers", () => {
       await Promise.resolve();
 
       runWithOwner(owner, () => {
-        const parentOwner = owner.children.find((item) => item.id === "01");
+        const parentOwner = owner.children.find((item) => item.identityIndex === 1);
 
-        expect(parentOwner?.children.map((item) => item.id)).toEqual(["010"]);
+        expect(parentOwner?.children.map((item) => item.identityIndex)).toEqual([0]);
         expect(parent.value).toBe(3);
         expect(child.value).toBe(2);
         expect(sibling.value).toBe(4);
@@ -353,8 +353,8 @@ describe("Promise-returning initializers", () => {
         });
 
         expect(parent.value).toBe(1);
-        expect(owner.children.map((item) => item.id)).toEqual(["00"]);
-        expect(owner.children[0]?.children.map((item) => item.id)).toEqual(["000"]);
+        expect(owner.children.map((item) => item.identityIndex)).toEqual([0]);
+        expect(owner.children[0]?.children.map((item) => item.identityIndex)).toEqual([0]);
 
         try {
           child.value;
@@ -386,7 +386,7 @@ describe("Promise-returning initializers", () => {
     const owner = createOwner(null);
 
     globalWindow[ASYNC_DATA_SSR_KEY] = {
-      "00": serializeServerFunctionValue(42),
+      "0.0": serializeServerFunctionValue(42),
     };
 
     try {
@@ -395,7 +395,7 @@ describe("Promise-returning initializers", () => {
 
         expect(count.value).toBe(42);
         expect(isPending(count)).toBe(false);
-        expect(owner.children.map((child) => child.id)).toEqual([]);
+        expect(owner.children.map((child) => child.identityIndex)).toEqual([]);
         expect(owner.nodeCount).toBe(1);
       });
     } finally {
@@ -445,7 +445,7 @@ describe("Promise-returning initializers", () => {
           siblingPromise = (error as NotReadyError).promise;
         }
 
-        expect(serverOwner.children.map((item) => item.id)).toEqual(["00", "01", "02"]);
+        expect(serverOwner.children.map((item) => item.identityIndex)).toEqual([0, 1, 2]);
       });
 
       expect(dependencyPromise).toBeDefined();
@@ -459,7 +459,7 @@ describe("Promise-returning initializers", () => {
 
         expect(encodedValues).toBeDefined();
         serverPayload = JSON.parse(encodedValues!) as Record<string, unknown>;
-        expect(serverPayload[ASYNC_OWNER_ID_RESERVATIONS_KEY]).toEqual(["01"]);
+        expect(serverPayload[ASYNC_OWNER_ID_RESERVATIONS_KEY]).toEqual(["0.1"]);
       });
 
       const clientOwner = createOwner(null);
@@ -478,7 +478,7 @@ describe("Promise-returning initializers", () => {
           expect(dependency.value).toBe(1);
           expect(parent.value).toBe(2);
           expect(sibling.value).toBe(4);
-          expect(clientOwner.children.map((item) => item.id)).toEqual(["00", "01", "02"]);
+          expect(clientOwner.children.map((item) => item.identityIndex)).toEqual([0, 1, 2]);
         });
       } finally {
         disposeOwner(clientOwner);
@@ -506,7 +506,7 @@ describe("Promise-returning initializers", () => {
     let executions = 0;
 
     globalWindow[ASYNC_DATA_SSR_KEY] = {
-      "00": serializeServerFunctionValue(42),
+      "0.0": serializeServerFunctionValue(42),
     };
 
     try {
@@ -530,7 +530,7 @@ describe("Promise-returning initializers", () => {
         expect(executions).toBe(1);
         expect(isPending(count)).toBe(false);
 
-        expect(owner.children.map((child) => child.id)).toEqual(["00"]);
+        expect(owner.children.map((child) => child.identityIndex)).toEqual([0]);
         expect(owner.nodeCount).toBe(1);
       });
     } finally {

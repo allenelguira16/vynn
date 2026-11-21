@@ -1,4 +1,5 @@
 import { ASYNC_DATA_SSR_KEY } from "../const";
+import { getOwnerIdentityPathKey } from "../life-cycle/owner";
 import { deserializeServerFunctionValue } from "../server-functions/serialization";
 
 export type AsyncHydrationValue<T = unknown> = {
@@ -6,11 +7,10 @@ export type AsyncHydrationValue<T = unknown> = {
   value: T | undefined;
 };
 
-/**
- * Read one serialized result without confusing a valid falsy value with a
- * missing entry. The key is the async resource owner's stable hydration ID.
- */
-export function getAsyncValue<T = unknown>(ownerID: string): AsyncHydrationValue<T> {
+/** Read a serialized result using its numeric owner-index path. */
+export function getAsyncValue<T = unknown>(
+  ownerPath: readonly number[],
+): AsyncHydrationValue<T> {
   if (import.meta.env.SSR) {
     return { found: false, value: undefined };
   }
@@ -18,13 +18,14 @@ export function getAsyncValue<T = unknown>(ownerID: string): AsyncHydrationValue
   const values = (window as unknown as Record<string, unknown>)[ASYNC_DATA_SSR_KEY] as
     | Record<string, unknown>
     | undefined;
+  const key = getOwnerIdentityPathKey(ownerPath);
 
-  if (!values || !Object.prototype.hasOwnProperty.call(values, ownerID)) {
+  if (!values || !Object.prototype.hasOwnProperty.call(values, key)) {
     return { found: false, value: undefined };
   }
 
-  const encodedValue = values[ownerID];
-  delete values[ownerID];
+  const encodedValue = values[key];
+  delete values[key];
 
   return {
     found: true,

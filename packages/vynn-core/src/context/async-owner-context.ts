@@ -1,36 +1,31 @@
 import { ASYNC_DATA_SSR_KEY } from "../const";
-import { getContext, setContext } from "../life-cycle/owner";
-
-const ASYNC_OWNER_ID_RESERVATIONS = Symbol("vynn.async-owner-id-reservations");
+import { getOwnerIdentityPathKey } from "../life-cycle/owner";
+import { getAsyncRenderContext } from "./async-render-context";
 
 export const ASYNC_OWNER_ID_RESERVATIONS_KEY = "$VYNN_OWNER_ID_RESERVATIONS";
 
 export function initializeAsyncOwnerIDReservations(): void {
-  setContext<Set<string>>(ASYNC_OWNER_ID_RESERVATIONS, new Set());
+  getAsyncRenderContext()?.reservations.clear();
 }
 
-export function registerAsyncOwnerIDReservation(ownerID: string): void {
+export function registerAsyncOwnerIDReservation(ownerPath: readonly number[]): void {
   if (!import.meta.env.SSR) return;
-
-  let reservations = getContext<Set<string>>(ASYNC_OWNER_ID_RESERVATIONS);
-  if (!reservations) {
-    reservations = new Set<string>();
-    setContext(ASYNC_OWNER_ID_RESERVATIONS, reservations);
-  }
-
-  reservations.add(ownerID);
+  getAsyncRenderContext()?.reservations.add(getOwnerIdentityPathKey(ownerPath));
 }
 
 export function getAsyncOwnerIDReservations(): string[] {
-  return [...(getContext<Set<string>>(ASYNC_OWNER_ID_RESERVATIONS) ?? [])];
+  return [...(getAsyncRenderContext()?.reservations ?? [])];
 }
 
-export function hasAsyncHydrationOwnerIDReservation(ownerID: string): boolean {
+export function hasAsyncHydrationOwnerIDReservation(ownerPath: readonly number[]): boolean {
   if (import.meta.env.SSR || typeof window === "undefined") return false;
 
   const values = (window as unknown as Record<string, unknown>)[ASYNC_DATA_SSR_KEY];
   if (values === null || typeof values !== "object") return false;
 
   const reservations = (values as Record<string, unknown>)[ASYNC_OWNER_ID_RESERVATIONS_KEY];
-  return Array.isArray(reservations) && reservations.includes(ownerID);
+  return (
+    Array.isArray(reservations) &&
+    reservations.includes(getOwnerIdentityPathKey(ownerPath))
+  );
 }

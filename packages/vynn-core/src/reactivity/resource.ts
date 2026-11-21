@@ -10,14 +10,15 @@ import { getAsyncValue } from "../context/async-hydration-context";
 import { isAsyncGetterFromLazy, registerPromiseFromLazy } from "../context/lazy-context";
 import {
   createOwner,
-  createOwnerID,
+  createOwnerIdentityPath,
   createOwnerIdentityTransaction,
   commitOwnerIdentityTransaction,
   disposeOwner,
   getOwner,
-  getOwnerIdentityID,
+  getOwnerIdentityPath,
+  getOwnerIdentityPathKey,
   hasOwnerIdentityTransaction,
-  peekOwnerID,
+  peekOwnerIdentityPath,
   rollbackOwnerIdentityTransaction,
   runWithOwner,
   type Owner,
@@ -89,7 +90,7 @@ export function createAsyncResource<T>(getter: () => Promise<T>): VynnRef<T> {
 /**
  * Creates a resource from a callback that may return either a value or a
  * PromiseLike. Synchronous callbacks without owned descendants roll back
- * their identity allocation transaction; async or suspended callbacks commit it.
+ * their tentative numeric child index; async or suspended callbacks commit it.
  */
 export function createMaybeAsyncResource<T>(getter: () => T | PromiseLike<T>): VynnRef<T> {
   return createResourceInternal(getter, true);
@@ -113,8 +114,12 @@ function createResourceInternal<T>(
   let version = 0;
   let started = false;
 
-  let resourceOwnerID: string | undefined =
-    lazyGetter || detectPromiseLike ? undefined : resourceOwner?.id;
+  let resourceOwnerPath: number[] | undefined =
+    lazyGetter || detectPromiseLike
+      ? undefined
+      : resourceOwner
+        ? getOwnerIdentityPath(resourceOwner)
+        : undefined;
   let asyncValues = getAsyncValues();
   let hasReadHydrationValue = false;
   let hydrationValue: { found: boolean; value: T | undefined } | undefined;
@@ -134,20 +139,23 @@ function createResourceInternal<T>(
   let reactiveEffect: ReturnType<typeof createReactiveEffect> | undefined;
   let activationOwner: Owner | null = owner;
 
-  function getCandidateOwnerID(): string | undefined {
+  function getCandidateOwnerPath(): number[] | undefined {
     return resourceOwner
-      ? (getOwnerIdentityID(resourceOwner) ?? peekOwnerID(resourceOwner.parent))
-      : peekOwnerID(activationOwner);
+      ? (getOwnerIdentityPath(resourceOwner) ?? peekOwnerIdentityPath(resourceOwner.parent))
+      : peekOwnerIdentityPath(activationOwner);
   }
 
   function allocateResourceIdentity(): void {
     if (lazyGetter) return;
 
-    if (resourceOwnerID !== undefined) return;
+    if (resourceOwnerPath !== undefined) return;
 
-    resourceOwnerID = resourceOwner
-      ? commitOwnerIdentityTransaction(resourceOwner)
-      : createOwnerID(activationOwner);
+    if (resourceOwner) {
+      commitOwnerIdentityTransaction(resourceOwner);
+      resourceOwnerPath = getOwnerIdentityPath(resourceOwner);
+    } else {
+      resourceOwnerPath = createOwnerIdentityPath(activationOwner);
+    }
   }
 
   function finalizeSynchronousInitializer(): void {
@@ -173,7 +181,7 @@ function createResourceInternal<T>(
       return;
     }
 
-    if (!resourceOwner.id && !hasOwnedIdentityWork && !hasLifetimeWork) {
+    if (resourceOwner.identityIndex === undefined && !hasOwnedIdentityWork && !hasLifetimeWork) {
       disposeOwner(resourceOwner);
     }
   }
@@ -184,8 +192,8 @@ function createResourceInternal<T>(
 
     activationOwner = getOwner();
 
-    if (!lazyGetter && !detectPromiseLike && resourceOwnerID === undefined) {
-      resourceOwnerID = createOwnerID(activationOwner);
+    if (!lazyGetter && !detectPromiseLike && resourceOwnerPath === undefined) {
+      resourceOwnerPath = createOwnerIdentityPath(activationOwner);
     }
 
     if (!asyncValues) asyncValues = getAsyncValues();
@@ -219,12 +227,12 @@ function createResourceInternal<T>(
             }
           } else {
             if (detectPromiseLike && isInitialRun && !lazyGetter) {
-              const candidateOwnerID = getCandidateOwnerID();
+              const candidateOwnerPath = getCandidateOwnerPath();
 
               if (
-                candidateOwnerID !== undefined &&
-                (hasAsyncHydrationValue(candidateOwnerID) ||
-                  hasAsyncHydrationOwnerIDReservation(candidateOwnerID))
+                candidateOwnerPath !== undefined &&
+                (hasAsyncHydrationValue(candidateOwnerPath) ||
+                  hasAsyncHydrationOwnerIDReservation(candidateOwnerPath))
               ) {
                 // Probe only when this owner has serialized data or a reserved slot.
                 const probe = withFakeAsyncApis(getter);
@@ -234,7 +242,7 @@ function createResourceInternal<T>(
                   initialResultKind = "sync";
                   initialValue = probe;
 
-                  if (hasAsyncHydrationOwnerIDReservation(candidateOwnerID)) {
+                  if (hasAsyncHydrationOwnerIDReservation(candidateOwnerPath)) {
                     allocateResourceIdentity();
                   }
 
@@ -254,13 +262,17 @@ function createResourceInternal<T>(
                 initialResultKind = "async";
                 allocateResourceIdentity();
 
-                if (resourceOwnerID === candidateOwnerID) {
-                  hydrationValue = getAsyncValue<T>(candidateOwnerID);
+                if (
+                  resourceOwnerPath !== undefined &&
+                  getOwnerIdentityPathKey(resourceOwnerPath) ===
+                    getOwnerIdentityPathKey(candidateOwnerPath)
+                ) {
+                  hydrationValue = getAsyncValue<T>(candidateOwnerPath);
                   hasReadHydrationValue = true;
                 }
               }
-            } else if (!lazyGetter && resourceOwnerID !== undefined && !hasReadHydrationValue) {
-              hydrationValue = getAsyncValue<T>(resourceOwnerID);
+            } else if (!lazyGetter && resourceOwnerPath !== undefined && !hasReadHydrationValue) {
+              hydrationValue = getAsyncValue<T>(resourceOwnerPath);
               hasReadHydrationValue = true;
             }
 
@@ -325,8 +337,8 @@ function createResourceInternal<T>(
               if (currentVersion !== version) return;
 
               runWithOwner(effectOwner, () => {
-                if (asyncValues && resourceOwnerID !== undefined) {
-                  asyncValues[resourceOwnerID] = value;
+                if (asyncValues && resourceOwnerPath !== undefined) {
+                  asyncValues[getOwnerIdentityPathKey(resourceOwnerPath)] = value;
                 }
 
                 record.value = {
@@ -365,8 +377,8 @@ function createResourceInternal<T>(
             if (detectPromiseLike && isInitialRun && resourceOwner) {
               allocateResourceIdentity();
 
-              if (resourceOwnerID !== undefined) {
-                registerAsyncOwnerIDReservation(resourceOwnerID);
+              if (resourceOwnerPath !== undefined) {
+                registerAsyncOwnerIDReservation(resourceOwnerPath);
               }
             }
 
@@ -483,7 +495,7 @@ function createResourceInternal<T>(
 
   // Ownerless module resources are activated by their first read so they can
   // acquire the request-local hydration scope of the render that consumes them.
-  if (owner !== null || resourceOwnerID !== undefined) start();
+  if (owner !== null || resourceOwnerPath !== undefined) start();
 
   if (detectPromiseLike && owner !== null && getInitialResultKind() === "sync") {
     return createCell(initialValue);
