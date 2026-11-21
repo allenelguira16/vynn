@@ -12,7 +12,8 @@ import {
 import { isServer } from "../context/is-server-context";
 import { createOwner, disposeOwner, getOwner, runWithOwner } from "../life-cycle/owner";
 import { $state } from "../reactivity/state";
-import { $cmpnt, $nodes } from "vynn/render";
+import { $cmpnt } from "../render/$cmpnt";
+import { $nodes } from "../render/$nodes";
 import { createSSRErrorBoundary, resolveNode } from "../render/server/resolve-node";
 
 export type CatchSSRState =

@@ -648,6 +648,24 @@ describe("Vynn compiler output", () => {
     );
   });
 
+  it("normalizes existing client runtime imports for server compilation", () => {
+    const source = `import { $cmpnt } from "vynn/render/client";
+      function Page() { return <main>Content</main>; }`;
+    const code = transformVynnOxc(source, "page.tsx", { runtimeTarget: "server" });
+
+    expect(code).toContain('from "vynn/render/server"');
+    expect(code).not.toContain('from "vynn/render/client"');
+  });
+
+  it("migrates the removed render umbrella import to the selected target", () => {
+    const source = `import { $cmpnt } from "vynn/render";
+      function Page() { return <main>Content</main>; }`;
+    const code = transformVynnOxc(source, "page.tsx", { runtimeTarget: "server" });
+
+    expect(code).toContain('from "vynn/render/server"');
+    expect(code).not.toContain('from "vynn/render"');
+  });
+
   it("returns the original source when no JSX is present", () => {
     const source = "export const answer: number = 42;";
     expect(transformVynnOxcWithMap(source, "answer.ts")).toEqual({

@@ -374,10 +374,19 @@ class TransformState {
     };
   }
 
+  private isRuntimeImportSource(source: unknown): boolean {
+    return (
+      source === "vynn/render" ||
+      source === "vynn/render/client" ||
+      source === "vynn/render/server"
+    );
+  }
+
   private findExistingRuntimeImport(name: RuntimeHelperName): NodeOfType<"Identifier"> | null {
     for (const statement of this.program.body) {
-      if (!isImportDeclaration(statement) || (statement.source?.value !== this.runtimeImportSource && statement.source?.value !== "vynn/render"))
+      if (!isImportDeclaration(statement) || !this.isRuntimeImportSource(statement.source?.value)) {
         continue;
+      }
       for (const specifier of statement.specifiers ?? []) {
         if (!isImportSpecifier(specifier)) continue;
         const importedName = isIdentifier(specifier.imported)
@@ -411,10 +420,16 @@ class TransformState {
 
     let existingImport: NodeOfType<"ImportDeclaration"> | undefined;
     for (const statement of this.program.body) {
-      if (isImportDeclaration(statement) && (statement.source?.value === this.runtimeImportSource || statement.source?.value === "vynn/render")) {
-        existingImport = statement;
-        break;
+      if (!isImportDeclaration(statement) || !this.isRuntimeImportSource(statement.source?.value)) {
+        continue;
       }
+
+      // Normalize explicit client/server imports and the removed umbrella
+      // import to the runtime selected for this compilation.
+      if (statement.source) {
+        setNodeProperty(statement.source, "value", this.runtimeImportSource);
+      }
+      existingImport ??= statement;
     }
 
     if (existingImport) {

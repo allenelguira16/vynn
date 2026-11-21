@@ -14,7 +14,8 @@ import {
 } from "../context/lazy-context";
 import { registerSsrModule } from "../context/ssr-module-context";
 import { $computed } from "../reactivity/computed";
-import { $cmpnt, $nodes } from "vynn/render";
+import { $cmpnt } from "../render/$cmpnt";
+import { $nodes } from "../render/$nodes";
 import { createSSRComment } from "../render/server/resolve-node";
 
 type AnyComponent = (props: never) => JSX.Element;

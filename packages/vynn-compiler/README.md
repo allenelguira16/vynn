@@ -23,7 +23,9 @@ Both functions accept optional compiler settings:
 
 The output imports generated helpers from `vynn/render/client` by default.
 Set `runtimeTarget: "server"` to generate imports from `vynn/render/server`.
-The Vite plugin selects the target automatically for client and SSR transforms. Generated local aliases keep
+The Vite plugin selects the target automatically for client and SSR transforms.
+There is no `vynn/render` umbrella entry; use the explicit client or server
+subpath when importing render helpers directly. Generated local aliases keep
 the helper's `$` prefix while adding a leading underscore, for example
 `$cmpnt as _$cmpnt`. The underscore marks a compiler-generated binding without
 hiding which Vynn runtime helper it refers to. Numeric suffixes are added only

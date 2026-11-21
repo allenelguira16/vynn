@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { $state, type JSX } from "vynn";
 import { renderToDOM } from "vynn/client";
-import { $insert, $template } from "vynn/render";
+import { $insert, $template } from "vynn/render/client";
 
 import { navigate, redirect, Router, type Route } from "../src";
 

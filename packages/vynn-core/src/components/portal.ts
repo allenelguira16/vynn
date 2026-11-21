@@ -1,6 +1,7 @@
 import { isServer } from "../context/is-server-context";
 import { onMount } from "../life-cycle/on-mount";
-import { $cmpnt, $insert } from "vynn/render";
+import { $cmpnt } from "../render/$cmpnt";
+import { $insert } from "../render/$insert";
 import { JSX } from "../types/jsx";
 import { PropsWithChildren } from "../types/props";
 

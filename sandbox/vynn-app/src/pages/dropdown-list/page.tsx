@@ -2,7 +2,7 @@ import { $effect, $state, $store } from "vynn";
 
 import { Template } from "../../components/template";
 import { name } from "../../utils";
-// import { $for } from "vynn/render";
+// import { $for } from "vynn/render/client";
 
 type SortDirection = "asc" | "desc";
 
