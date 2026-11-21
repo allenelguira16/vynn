@@ -385,6 +385,7 @@ export function createSsrHandlerCode(options: {
     `const SSR_MANIFEST = ${JSON.stringify(ssrManifest)};`,
     `function escapeAttribute(value) { return String(value).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }`,
     `${reconcileHeadMarkup.toString()}`, 
+    `function wrapInternalRange(value) { return value ? "<!--vynn:internal:start-->" + value + "<!--vynn:internal:end-->" : ""; }`,
     `function isWebResponse(value) { return !!value && typeof value === "object" && typeof value.status === "number" && value.headers && typeof value.headers.forEach === "function" && "body" in value && (value.body === null || typeof value.body?.getReader === "function") && typeof value.arrayBuffer === "function"; }`,
     `function assetUrl(path) {`,
     `  const value = String(path).replace(/^\\/+/, "");`,

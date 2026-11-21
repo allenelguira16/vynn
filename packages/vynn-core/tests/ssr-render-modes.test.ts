@@ -642,6 +642,10 @@ describe("renderToServer modes", () => {
     expect(handler).toContain("await render(url.pathname + url.search)");
     expect(handler).toContain("rendered.head.render()");
     expect(handler).toContain("reconcileHeadMarkup(existing, incoming)");
+    expect(handler).toContain("function wrapInternalRange(value)");
+    expect(handler.indexOf("function wrapInternalRange(value)")).toBeLessThan(
+      handler.indexOf("function createHeadAssets"),
+    );
     expect(handler).toContain("rendered.modules");
     expect(handler).toContain("vynn:internal:start");
     expect(handler).toContain("vynn:internal:end");
