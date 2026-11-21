@@ -85,13 +85,18 @@ async function main() {
         id: normalizeModuleId(module.id),
       })),
     );
-    const grouped = Object.groupBy(modules, (module) => module.group);
+    const grouped = new Map();
+    for (const module of modules) {
+      const entries = grouped.get(module.group) ?? [];
+      entries.push(module);
+      grouped.set(module.group, entries);
+    }
     const groupTotals = Object.fromEntries(
-      Object.entries(grouped).map(([group, entries]) => [
+      [...grouped.entries()].map(([group, entries]) => [
         group,
         {
           modules: entries.length,
-          renderedLength: entries.reduce((sum, module) => sum + module.renderedLength, 0),
+          renderedLength: entries.reduce((sum, module) => sum + (module.renderedLength ?? 0), 0),
         },
       ]),
     );
