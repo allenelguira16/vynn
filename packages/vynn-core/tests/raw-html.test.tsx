@@ -71,6 +71,7 @@ describe("raw HTML content", () => {
   });
 
   it("updates raw HTML reactively on the client", () => {
+    const { $attr, $template } = clientRender;
     const host = document.createElement("div");
     const html = $state("<strong>Initial</strong>");
     let element!: Element;
