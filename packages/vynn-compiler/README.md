@@ -19,9 +19,11 @@ Both functions accept optional compiler settings:
   language from the filename.
 - `sourceType`: `"module"`, `"script"`, or `"unambiguous"`. Defaults to
   `"module"`.
+- `runtimeTarget`: `"client"` or `"server"`. Defaults to `"client"`.
 
-The output imports generated helpers from `vynn/render`, so transformed
-applications must include the `vynn` runtime package. Generated local aliases keep
+The output imports generated helpers from `vynn/render/client` by default.
+Set `runtimeTarget: "server"` to generate imports from `vynn/render/server`.
+The Vite plugin selects the target automatically for client and SSR transforms. Generated local aliases keep
 the helper's `$` prefix while adding a leading underscore, for example
 `$cmpnt as _$cmpnt`. The underscore marks a compiler-generated binding without
 hiding which Vynn runtime helper it refers to. Numeric suffixes are added only

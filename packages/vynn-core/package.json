@@ -15,7 +15,23 @@
       "import": "./src/jsx-runtime.ts"
     },
     "./render": {
-      "import": "./src/render/index.ts"
+      "types": "./src/render/client/index.ts",
+      "browser": "./src/render/client/index.ts",
+      "node": "./src/render/server/index.ts",
+      "worker": "./src/render/server/index.ts",
+      "default": "./src/render/client/index.ts"
+    },
+    "./render/client": {
+      "types": "./src/render/client/index.ts",
+      "import": "./src/render/client/index.ts"
+    },
+    "./render/server": {
+      "types": "./src/render/server/index.ts",
+      "import": "./src/render/server/index.ts"
+    },
+    "./render/shared": {
+      "types": "./src/render/shared/index.ts",
+      "import": "./src/render/shared/index.ts"
     },
     "./client": {
       "import": "./src/client/index.ts"

@@ -130,6 +130,8 @@ export type VynnCompilerOptions = {
   lang?: "js" | "jsx" | "ts" | "tsx";
   /** Source module type; Vynn modules are normally ESM. */
   sourceType?: "module" | "script" | "unambiguous";
+  /** Select the target-specific runtime helper entry. Defaults to the client target. */
+  runtimeTarget?: "client" | "server";
 };
 
 type ComponentPropAccessStep = {
@@ -158,8 +160,6 @@ type TemplateBinding = {
   node: Node;
   slot?: string;
 };
-
-const runtimeImportSource = "vynn/render";
 
 export type VynnSourceMap = {
   version: number;
@@ -223,7 +223,8 @@ function compileVynnOxc(
   }
   if (!programContainsJSX(program)) return { code: source, map: null };
   addSourceLocations(program, source);
-  const state = new TransformState(program, filename);
+  const runtimeImportSource = options.runtimeTarget === "server" ? "vynn/render/server" : "vynn/render/client";
+  const state = new TransformState(program, filename, runtimeImportSource);
   state.transformProgram();
 
   // Oxc exposes comment spans as offsets. esrap accepts ESTree-style comment
@@ -250,6 +251,7 @@ function compileVynnOxc(
 class TransformState {
   private readonly program: NodeOfType<"Program">;
   private readonly filename: string;
+  private readonly runtimeImportSource: string;
   private readonly runtimeHelpers = new Map<RuntimeHelperName, NodeOfType<"Identifier">>();
   private readonly templateStatements: Node[] = [];
   private readonly templateFactories = new Map<string, NodeOfType<"Identifier">>();
@@ -268,9 +270,10 @@ class TransformState {
   private readonly documentHeadNodes = new WeakSet<object>();
   private readonly documentHeadContentNodes = new WeakSet<object>();
 
-  constructor(program: NodeOfType<"Program">, filename: string) {
+  constructor(program: NodeOfType<"Program">, filename: string, runtimeImportSource: string) {
     this.program = program;
     this.filename = filename;
+    this.runtimeImportSource = runtimeImportSource;
     this.collectUsedNames(program);
     this.collectSvgDescendants(program, false);
     this.collectDocumentHeadNodes(program);
@@ -373,7 +376,7 @@ class TransformState {
 
   private findExistingRuntimeImport(name: RuntimeHelperName): NodeOfType<"Identifier"> | null {
     for (const statement of this.program.body) {
-      if (!isImportDeclaration(statement) || statement.source?.value !== runtimeImportSource)
+      if (!isImportDeclaration(statement) || statement.source?.value !== this.runtimeImportSource)
         continue;
       for (const specifier of statement.specifiers ?? []) {
         if (!isImportSpecifier(specifier)) continue;
@@ -408,7 +411,7 @@ class TransformState {
 
     let existingImport: NodeOfType<"ImportDeclaration"> | undefined;
     for (const statement of this.program.body) {
-      if (isImportDeclaration(statement) && statement.source?.value === runtimeImportSource) {
+      if (isImportDeclaration(statement) && statement.source?.value === this.runtimeImportSource) {
         existingImport = statement;
         break;
       }
@@ -436,7 +439,7 @@ class TransformState {
       importSpecifier(cloneNode(local), identifier(name)),
     );
     setNodeProperty(this.program, "body", [
-      importDeclaration(specifiers, runtimeImportSource),
+      importDeclaration(specifiers, this.runtimeImportSource),
       ...this.program.body,
     ]);
   }

@@ -14,7 +14,7 @@ export function vynnOxcPlugin(options: VynnOxcPluginOptions = {}): Plugin {
   return {
     name: "vynn-jsx-transpiler",
     enforce: "pre",
-    transform(source, id) {
+    transform(source, id, transformOptions) {
       if (enabled === false) return null;
       if (id.includes("node_modules") || id.startsWith("\0")) return null;
 
@@ -22,7 +22,10 @@ export function vynnOxcPlugin(options: VynnOxcPluginOptions = {}): Plugin {
       if (!/\.(?:[cm]?[jt]sx?)$/i.test(cleanId)) return null;
       if (!source.includes("<")) return null;
 
-      const result = transformVynnOxcWithMap(source, cleanId, compilerOptions);
+      const result = transformVynnOxcWithMap(source, cleanId, {
+        ...compilerOptions,
+        runtimeTarget: transformOptions?.ssr ? "server" : "client",
+      });
       return {
         code: result.code,
         map: result.map as Rolldown.SourceMapInput | null,
