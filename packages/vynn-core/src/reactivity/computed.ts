@@ -86,10 +86,13 @@ function createAsyncComputed<T>(
 
         let result: T | PromiseLike<T> | undefined;
 
+        let promiseLike = false;
+
         try {
           result = runWithOwner(resourceOwner, () =>
             withSubscriber(subscriber, () => getter()),
           );
+          promiseLike = isPromiseLikeValue(result);
         } catch (error) {
           didThrow = true;
           initialError = error;
@@ -108,7 +111,7 @@ function createAsyncComputed<T>(
           cleanupSubscriber(subscriber);
         });
 
-        if (!didThrow && isPromiseLikeValue(result)) {
+        if (!didThrow && promiseLike) {
           void Promise.resolve(result).catch(() => {});
         }
 

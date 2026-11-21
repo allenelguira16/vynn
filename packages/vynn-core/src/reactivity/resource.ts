@@ -212,7 +212,7 @@ function createResourceInternal<T>(
 
             if (initialState.initial.hasChanged()) {
               result = getter();
-            } else if (initialState.initial.hasError ?? initialState.initial.error !== undefined) {
+            } else if (initialState.initial.hasError ?? (initialState.initial.error !== undefined)) {
               throw initialState.initial.error;
             } else {
               result = initialState.initial.result as T | PromiseLike<T>;
