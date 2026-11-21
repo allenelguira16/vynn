@@ -12,7 +12,8 @@ import {
 import { isServer } from "../context/is-server-context";
 import { createOwner, disposeOwner, getOwner, runWithOwner } from "../life-cycle/owner";
 import { $state } from "../reactivity/state";
-import { $cmpnt, $nodes } from "vynn/render/client";
+import { createComponent } from "./create-component";
+import { $nodes } from "../render/client/$nodes";
 import { createSSRErrorBoundary, resolveNode } from "../render/server/resolve-node";
 
 export type CatchSSRState =
@@ -23,7 +24,7 @@ export type CatchSSRState =
       message: string;
     };
 
-export const Catch = $cmpnt(function Catch(props: {
+export const Catch = createComponent(function Catch(props: {
   fallback?: (error: Error, reset: () => void) => JSX.Element;
   children: JSX.Element;
 }) {

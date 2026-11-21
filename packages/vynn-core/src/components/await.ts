@@ -7,7 +7,8 @@ import { isPromiseFromLazy } from "../context/lazy-context";
 import { getOwner, runWithOwner } from "../life-cycle/owner";
 import { untrack } from "../reactivity/effect";
 import { $state } from "../reactivity/state";
-import { $cmpnt, $if } from "vynn/render/client";
+import { createComponent } from "./create-component";
+import { $if } from "../render/client/$if";
 import { SSR_NODE, createSSRAsync, resolveNode } from "../render/server/resolve-node";
 import { memo } from "../utils/memo";
 
@@ -21,7 +22,7 @@ import { memo } from "../utils/memo";
  * @param props The fallback content, children, and suspense behavior.
  * @returns The rendered content.
  */
-export const Await = $cmpnt(function Await(props: {
+export const Await = createComponent(function Await(props: {
   fallback?: JSX.Element;
   suspense?: boolean;
   children: JSX.Element;

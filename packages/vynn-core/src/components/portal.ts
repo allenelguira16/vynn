@@ -1,6 +1,7 @@
 import { isServer } from "../context/is-server-context";
 import { onMount } from "../life-cycle/on-mount";
-import { $cmpnt, $insert } from "vynn/render/client";
+import { createComponent } from "./create-component";
+import { $insert } from "../render/client/$insert";
 import { JSX } from "../types/jsx";
 import { PropsWithChildren } from "../types/props";
 
@@ -13,7 +14,7 @@ import { PropsWithChildren } from "../types/props";
  * @param props The portal mount node and child content to render.
  * @returns `null` because the portal does not render at its original location.
  */
-export const Portal = $cmpnt(function Portal<E extends Element>(
+export const Portal = createComponent(function Portal<E extends Element>(
   props: PropsWithChildren<{ mount: E }>,
 ): JSX.Element {
   if (isServer()) {

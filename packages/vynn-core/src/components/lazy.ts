@@ -14,7 +14,9 @@ import {
 } from "../context/lazy-context";
 import { registerSsrModule } from "../context/ssr-module-context";
 import { $computed } from "../reactivity/computed";
-import { $cmpnt, $nodes } from "vynn/render/client";
+import { createComponent } from "./create-component";
+import { $nodes as clientNodes } from "../render/client/$nodes";
+import { $nodes as serverNodes } from "../render/server/$nodes";
 import { createSSRComment } from "../render/server/resolve-node";
 
 type AnyComponent = (props: never) => JSX.Element;
@@ -75,7 +77,7 @@ export function lazy<M extends Record<string, unknown>, K extends keyof M = "def
     return componentPromise;
   }
 
-  const LazyComponent = $cmpnt(function LazyComponent(
+  const LazyComponent = createComponent(function LazyComponent(
     props: Parameters<Component>[0],
   ): JSX.Element {
     const lazyID = getLazyID();
@@ -89,7 +91,7 @@ export function lazy<M extends Record<string, unknown>, K extends keyof M = "def
       regsterAsyncGetterFromLazy(loadComponent);
       const component = $computed(loadComponent);
 
-      return $nodes(() => {
+      return serverNodes(() => {
         return [
           createSSRComment(`${LAZY_START_SSR_MARKER}:${lazyID}`),
           component.value(props),
@@ -114,7 +116,7 @@ export function lazy<M extends Record<string, unknown>, K extends keyof M = "def
     const component = $computed(loadComponent);
 
     return withServerRenderedLazy(lazyID, () =>
-      $nodes(() => {
+      clientNodes(() => {
         const rendered = component.value(props);
         finishServerRenderedLazy(lazyID);
         return rendered;
