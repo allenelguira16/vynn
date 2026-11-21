@@ -6,7 +6,10 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_SERVER_FUNCTION_ENDPOINT } from "../../vynn-core/src/server-functions/constants.ts";
 import { serverFunctions } from "../src/index.ts";
 import { registerServerFunctionDevMiddleware } from "../src/plugins/server-functions/dev-middleware.ts";
-import { createServerFunctionManifestCode } from "../src/plugins/server-functions/index.ts";
+import {
+  createServerFunctionManifestCode,
+  serverFunctionsPlugin,
+} from "../src/plugins/server-functions/index.ts";
 import { makeClientRuntime, makeServerRuntime } from "../src/plugins/server-functions/runtime.ts";
 import { DEFAULT_ENDPOINT } from "../src/plugins/server-functions/shared.ts";
 
@@ -118,4 +121,60 @@ describe("standalone server-function Vite integration", () => {
     expect(code).not.toContain("new URL(path, import.meta.url)");
     expect(code).not.toContain("Invalid Vynn server-function entry chunk");
   });
+
+  it("keeps client transforms in the client runtime when the shared plugin also has an SSR build", () => {
+    const plugin = serverFunctionsPlugin();
+    const configure = plugin.configResolved as unknown as (config: unknown) => void;
+    configure.call({}, {
+      root: "/project",
+      command: "build",
+      base: "/",
+      build: {
+        ssr: true,
+        outDir: "dist",
+        rolldownOptions: { input: "/project/src/actions.ts" },
+      },
+      environments: {},
+    });
+
+    const transform = plugin.transform as unknown as (
+      this: {
+        environment: { config: { consumer: string } };
+        error(message: string): never;
+      },
+      source: string,
+      id: string,
+      options?: { ssr?: boolean },
+    ) => { code: string } | null;
+
+    const source = `export const action = () => {
+      "use server";
+      return true;
+    };`;
+    const transformFor = (consumer: "client" | "server") =>
+      transform.call(
+        {
+          environment: { config: { consumer } },
+          error(message: string): never {
+            throw new Error(message);
+          },
+        },
+        source,
+        "/project/src/actions.ts",
+        { ssr: false },
+      );
+
+    const client = transformFor("client");
+    const server = transformFor("server");
+
+    expect(client?.code).toContain('from "virtual:vynn/server-functions/client-runtime"');
+    expect(client?.code).not.toContain('from "virtual:vynn/server-functions/server-runtime"');
+    expect(client?.code).not.toContain("node:async_hooks");
+    expect(client?.code).not.toContain('from "virtual:vynn/server-functions"');
+
+    expect(server?.code).toContain('from "virtual:vynn/server-functions/server-runtime"');
+    expect(server?.code).toContain('from "virtual:vynn/server-functions"');
+    expect(server?.code).not.toContain('from "virtual:vynn/server-functions/client-runtime"');
+  });
+
 });

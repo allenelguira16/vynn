@@ -330,10 +330,16 @@ export function serverFunctionsPlugin(
       const environmentConsumer = (
         this as unknown as { environment?: { config?: { consumer?: string } } }
       ).environment?.config?.consumer;
+      const transformSsr = (transformOptions as { ssr?: boolean } | undefined)?.ssr;
+      // Vite shares this plugin instance across environments. The global SSR
+      // build flag is only a fallback for legacy/single-environment builds;
+      // an explicit environment consumer must always win.
       const isServer =
-        environmentConsumer === "server" ||
-        isSsrBuild ||
-        (transformOptions as { ssr?: boolean } | undefined)?.ssr === true;
+        typeof environmentConsumer === "string"
+          ? environmentConsumer === "server"
+          : typeof transformSsr === "boolean"
+            ? transformSsr
+            : isSsrBuild;
       const target = isServer ? "server" : "client";
 
       // Keep each environment's discoveries independent. An SSR transform
@@ -345,7 +351,7 @@ export function serverFunctionsPlugin(
       // virtual server-functions API.
       let injectedHandlerExport = false;
       const normalizedModuleId = resolve(projectRoot, cleanId).replace(/\\/g, "/");
-      if (isSsrBuild && ssrEntryIds.has(normalizedModuleId)) {
+      if (isServer && isSsrBuild && ssrEntryIds.has(normalizedModuleId)) {
         const alreadyExportsHandler =
           /\bexport\s*\{[^}]*\bhandleServerFunctionRequest\b[^}]*\}/s.test(source);
 
