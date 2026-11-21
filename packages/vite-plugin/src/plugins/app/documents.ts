@@ -172,7 +172,7 @@ export function reconcileHeadMarkup(existing: string, incoming: string): string 
       if (end >= source.length) break;
 
       const opening = source.slice(offset, end + 1);
-      const rawTextTag = /^<\\s*(script|style|template)\\b/i.exec(opening);
+      const rawTextTag = /^<\s*(script|style|template)\b/i.exec(opening);
       if (rawTextTag) {
         const close = lower.indexOf("</" + rawTextTag[1].toLowerCase(), end + 1);
         if (close !== -1) {
@@ -184,7 +184,7 @@ export function reconcileHeadMarkup(existing: string, incoming: string): string 
         continue;
       }
 
-      const name = /^<\\s*(title|meta|link)\\b/i.exec(opening);
+      const name = /^<\s*(title|meta|link)\b/i.exec(opening);
       if (!name) {
         offset = end + 1;
         continue;
@@ -214,8 +214,8 @@ export function reconcileHeadMarkup(existing: string, incoming: string): string 
 
   function parseAttributes(opening: string): Record<string, string> {
     const attributes: Record<string, string> = Object.create(null);
-    const source = opening.replace(/^<\\s*[A-Za-z][A-Za-z0-9:-]*/, "").replace(/>$/, "");
-    const pattern = /([^\\s=/>]+)(?:\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+)))?/g;
+    const source = opening.replace(/^<\s*[A-Za-z][A-Za-z0-9:-]*/, "").replace(/>$/, "");
+    const pattern = /([^\s=/>]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+)))?/g;
     let match: RegExpExecArray | null;
 
     while ((match = pattern.exec(source))) {
@@ -348,7 +348,7 @@ export function reconcileHeadMarkup(existing: string, incoming: string): string 
     : "";
 
   return (charsetMarkup + output + trailing + fallback).replace(
-    /\\sdata-vynn-head-replace="[^"]*"/g,
+    /\sdata-vynn-head-replace="[^"]*"/g,
     "",
   );
 }
