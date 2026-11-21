@@ -68,7 +68,6 @@ describe("Promise-returning initializers", () => {
     }
   });
 
-
   it("keeps a manual value when it is assigned before async resource loading finishes", async () => {
     const owner = createOwner(null);
     let value!: State<number>;
