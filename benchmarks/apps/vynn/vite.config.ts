@@ -1,8 +1,8 @@
 import { fileURLToPath } from "node:url";
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 import vynn from "vite-plugin-vynn";
 
-const scenarioEntries = {
+const scenarioEntries: Record<string, string> = {
   minimal: "./src/Minimal.tsx",
   state: "./src/State.tsx",
   computed: "./src/Computed.tsx",
@@ -10,7 +10,7 @@ const scenarioEntries = {
   counter: "./src/Counter.tsx",
 };
 
-function moduleSizeReport() {
+function moduleSizeReport(): Plugin {
   return {
     name: "benchmark-module-size-report",
     apply: "build",
