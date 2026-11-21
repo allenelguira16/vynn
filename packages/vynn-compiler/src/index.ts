@@ -427,7 +427,11 @@ class TransformState {
       // Normalize explicit client/server imports and the removed umbrella
       // import to the runtime selected for this compilation.
       if (statement.source) {
-        setNodeProperty(statement.source, "value", this.runtimeImportSource);
+        setNodeProperty(
+          statement,
+          "source",
+          inheritSourceLocation(stringLiteral(this.runtimeImportSource), statement.source),
+        );
       }
       existingImport ??= statement;
     }
