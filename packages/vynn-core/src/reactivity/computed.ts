@@ -1,7 +1,7 @@
 import { getAsyncBoundary } from "../context/async-boundary";
 import { hasAsyncHydrationValue } from "../context/async-context";
 import { getErrorBoundary } from "../context/error-boundary-context";
-import { isAsyncGetterFromLazy } from "../context/lazy-context";
+import { isAsyncGetterFromLazy, registerPromiseFromLazy } from "../context/lazy-context";
 import { createOwner, getOwner, runWithOwner, type Owner } from "../life-cycle/owner";
 import {
   cleanupSubscriber,
@@ -140,6 +140,10 @@ function createAsyncComputed<T>(
         throw error;
       },
     );
+
+    if (isAsyncGetterFromLazy(getter)) {
+      registerPromiseFromLazy(loading);
+    }
 
     void loading.catch(() => {});
     return loading;
