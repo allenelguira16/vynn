@@ -6,8 +6,8 @@ import { Await } from "../src/components/await";
 import { Catch } from "../src/components/catch";
 import { getLazyID, initializeLazyScope } from "../src/context/lazy-context";
 import { $state } from "../src/reactivity/state";
-import { $insert } from "../src/render/$insert";
-import { $template } from "../src/render/$template";
+import { $insert } from "../src/render/server/$insert";
+import { $template } from "../src/render/server/$template";
 import { renderToServer } from "../src/server/render-to-server";
 
 function deferred<T>() {

@@ -5,8 +5,8 @@ import type { JSX } from "../src/types/jsx";
 import { APPLY_HEAD_PATCH_SSR_KEY } from "../src/const";
 import { getOwner } from "../src/life-cycle/owner";
 import { $registerHead, $registerHeadGroup } from "../src/render/head-runtime";
-import { $child, $sibling, $template } from "../src/render/$template";
-import { $insert } from "../src/render/$insert";
+import { $child, $sibling, $template } from "../src/render/server/$template";
+import { $insert } from "../src/render/server/$insert";
 import { createSSRAsync, createSSRNode } from "../src/render/server/resolve-node";
 import { renderToServer } from "../src/server/render-to-server";
 

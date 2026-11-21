@@ -6,7 +6,7 @@ import { initializeHeadContext } from "../src/context/head-context";
 import { $state } from "../src/reactivity/state";
 import { createOwner, disposeOwner, runWithOwner } from "../src/life-cycle/owner";
 import { $registerHead, $registerHeadGroup } from "../src/render/head-runtime";
-import { $template } from "../src/render/$template";
+import { $template } from "../src/render/client/$template";
 
 afterEach(() => {
   document.head.innerHTML = "";

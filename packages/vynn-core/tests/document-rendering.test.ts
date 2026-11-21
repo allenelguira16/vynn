@@ -5,11 +5,12 @@ import type { JSX } from "../src/types/jsx";
 
 import { hydrateToDOM } from "../src/client/hydrate-to-dom";
 import { renderToDOM } from "../src/client/render-to-dom";
-import { $attr } from "../src/render/$attr";
-import { $child, $sibling, $template } from "../src/render/$template";
-import { $cmpnt, isRootNode } from "../src/render/$cmpnt";
+import { $attr } from "../src/render/client/$attr";
+import { $child, $sibling, $template } from "../src/render/client/$template";
+import { $cmpnt } from "../src/render/client/$cmpnt";
+import { isRootNode } from "../src/render/client/component-nodes";
 import { $registerHead } from "../src/render/head-runtime";
-import { $insert } from "../src/render/$insert";
+import { $insert } from "../src/render/client/$insert";
 import { $state } from "../src/reactivity/state";
 
 afterEach(() => {
