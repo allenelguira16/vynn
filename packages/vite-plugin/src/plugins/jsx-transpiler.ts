@@ -22,8 +22,8 @@ export function vynnOxcPlugin(options: VynnOxcPluginOptions = {}): Plugin {
       if (!/\.(?:[cm]?[jt]sx?)$/i.test(cleanId)) return null;
       if (!source.includes("<")) return null;
 
-      // Vite 6+ exposes the active named environment on the hook context.
-      // Prefer its consumer; keep the SSR option as a fallback for older Vite APIs.
+      // Prefer the environment consumer. The default Vite SSR environment name
+      // and the legacy hook flag cover configurations without a server consumer.
       const consumer = this.environment?.config.consumer;
       const runtimeTarget =
         consumer === "server" ||

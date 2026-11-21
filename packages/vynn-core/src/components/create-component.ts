@@ -16,8 +16,9 @@ export function createComponent<P>(Component: (props: P) => JSX.Element): (props
 export function createComponent<P>(
   Component: ((props?: P) => JSX.Element) | (() => JSX.Element),
 ) {
-  const clientComponent = clientCmpnt(Component as never);
-  const serverComponent = serverCmpnt(Component as never);
+  const renderableComponent = Component as (props: P) => JSX.Element;
+  const clientComponent = clientCmpnt(renderableComponent);
+  const serverComponent = serverCmpnt(renderableComponent);
 
   return (props?: P): JSX.Element =>
     isServer() ? serverComponent(props) : clientComponent(props);
