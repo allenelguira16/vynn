@@ -6,7 +6,8 @@
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
     "fmt": "oxfmt",
-    "fmt:check": "oxfmt --check"
+    "fmt:check": "oxfmt --check",
+    "bench:size": "node benchmarks/scripts/size.mjs"
   },
   "devDependencies": {
     "oxfmt": "^0.75.0",

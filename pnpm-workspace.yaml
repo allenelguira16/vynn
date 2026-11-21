@@ -2,6 +2,7 @@ packages:
   - "packages/*"
   - "sandbox/*"
   - "docs/*"
+  - "benchmarks/apps/*"
 allowBuilds:
   esbuild: true
 minimumReleaseAgeExclude:

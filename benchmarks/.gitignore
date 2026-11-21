@@ -1,0 +1,3 @@
+apps/*/dist/
+results/*.json
+!results/.gitkeep

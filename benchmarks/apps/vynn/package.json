@@ -1,0 +1,16 @@
+{
+  "name": "@vynn-bench/vynn",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build"
+  },
+  "dependencies": {
+    "vite-plugin-vynn": "workspace:*",
+    "vynn": "workspace:*"
+  },
+  "devDependencies": {
+    "vite": "8.3.6"
+  }
+}
