@@ -31,7 +31,7 @@ type Initial<T> = {
   hasChanged: () => boolean;
 };
 
-type BridgeControl = MaybeAsyncResourceControl;
+type BridgeControl<T> = MaybeAsyncResourceControl<T>;
 
 function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
   return (
@@ -62,7 +62,7 @@ function finishInitializer(owner: Owner): void {
 }
 
 function createBridge<T>(
-  load: (control: BridgeControl) => Promise<VynnRef<T>>,
+  load: (control: BridgeControl<T>) => Promise<VynnRef<T>>,
   owner: Owner | null,
   onFailure?: () => void,
 ): VynnRef<T> {
@@ -75,20 +75,18 @@ function createBridge<T>(
   let readOwner: Owner | null = null;
   let hasRead = false;
 
-  const control: BridgeControl = {
+  const control: BridgeControl<T> = {
+    attach(value) {
+      resource = value;
+      if (hasOverride) value.value = override;
+    },
     hasRead: () => hasRead,
     getReadOwner: () => readOwner,
   };
 
   const start = () => {
     if (!loading) {
-      loading = load(control)
-        .then((next) => {
-          resource = next;
-          if (hasOverride) next.value = override;
-          return next;
-        })
-        .catch((error: unknown) => {
+      loading = load(control).catch((error: unknown) => {
           failed = true;
           failure = error;
           onFailure?.();
@@ -154,7 +152,7 @@ function createPromoted<T>(
   return createBridge(
     () =>
       import("./maybe-async-resource").then(({ createPromotedMaybeAsyncResource }) =>
-        createPromotedMaybeAsyncResource(initializer, owner, resourceOwner, initial),
+        createPromotedMaybeAsyncResource(initializer, owner, resourceOwner, initial, control),
       ),
     owner,
     () => {
