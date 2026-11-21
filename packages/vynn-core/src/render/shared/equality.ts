@@ -1,0 +1,114 @@
+export function isEqual(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) {
+    return true;
+  }
+
+  if (typeof a !== typeof b) {
+    return false;
+  }
+
+  if (a === null || b === null) {
+    return false;
+  }
+
+  if (typeof a !== "object") {
+    return false;
+  }
+
+  if (typeof b !== "object") {
+    return false;
+  }
+
+  if (a instanceof Date && b instanceof Date) {
+    return a.getTime() === b.getTime();
+  }
+
+  if (a instanceof RegExp && b instanceof RegExp) {
+    return a.source === b.source && a.flags === b.flags;
+  }
+
+  if (a instanceof Map && b instanceof Map) {
+    if (a.size !== b.size) {
+      return false;
+    }
+
+    for (const [keyA, valueA] of a) {
+      let found = false;
+
+      for (const [keyB, valueB] of b) {
+        if (isEqual(keyA, keyB) && isEqual(valueA, valueB)) {
+          found = true;
+          break;
+        }
+      }
+
+      if (!found) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  if (a instanceof Set && b instanceof Set) {
+    if (a.size !== b.size) {
+      return false;
+    }
+
+    for (const valueA of a) {
+      let found = false;
+
+      for (const valueB of b) {
+        if (isEqual(valueA, valueB)) {
+          found = true;
+          break;
+        }
+      }
+
+      if (!found) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  if (Array.isArray(a) || Array.isArray(b)) {
+    if (!Array.isArray(a) || !Array.isArray(b)) {
+      return false;
+    }
+
+    if (a.length !== b.length) {
+      return false;
+    }
+
+    for (let i = 0; i < a.length; i++) {
+      if (!isEqual(a[i], b[i])) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  const keysA = Reflect.ownKeys(a);
+  const keysB = Reflect.ownKeys(b);
+
+  if (keysA.length !== keysB.length) {
+    return false;
+  }
+
+  for (const key of keysA) {
+    if (!Object.prototype.hasOwnProperty.call(b, key)) {
+      return false;
+    }
+
+    if (
+      !isEqual((a as Record<PropertyKey, unknown>)[key], (b as Record<PropertyKey, unknown>)[key])
+    ) {
+      return false;
+    }
+  }
+
+  return true;
+}
