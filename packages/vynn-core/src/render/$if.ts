@@ -5,7 +5,7 @@ import { isServer } from "../context/is-server-context";
 import { $renderEffect } from "../reactivity/effect";
 import { untrack } from "../reactivity/effect";
 import { NotReadyError } from "../reactivity/not-ready-error";
-import { markParked, unmarkParked } from "./$cmpnt.util";
+import { markParked, unmarkParked } from "./client/component-nodes";
 import { getCurrentDOMNamespace, withDOMNamespace } from "./namespace";
 import { resolveNode } from "./client/resolve-node";
 import { resolveSSRChild } from "./server/resolve-node";

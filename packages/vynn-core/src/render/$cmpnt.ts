@@ -11,7 +11,7 @@ import {
   parkedNodes,
   rootNodes,
   unmarkParked,
-} from "./$cmpnt.util";
+} from "./client/component-nodes";
 
 /**
  * Creates a component function with its own reactive owner and lifecycle.
