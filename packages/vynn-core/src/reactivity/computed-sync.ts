@@ -1,6 +1,6 @@
 import { getAsyncBoundary } from "../context/async-boundary";
 import { getErrorBoundary } from "../context/error-boundary-context";
-import { getOwner, runWithOwner, type Owner } from "../life-cycle/owner";
+import { getOwner, runWithOwner } from "../life-cycle/owner";
 import {
   cleanupSubscriber,
   track,
