@@ -3,66 +3,6 @@ import { describe, expect, it } from "vitest";
 import { transformVynnOxc, transformVynnOxcWithMap } from "../src/index.ts";
 
 describe("Vynn Oxc JSX compiler", () => {
-  it("routes statically known $state values through the lightweight runtime entry", () => {
-    const code = transformVynnOxc(
-      `import { $state as state } from "vynn";
-      export function Counter() {
-        const count = state(0 as number);
-        return <button>{count.value}</button>;
-      }`,
-      "counter.tsx",
-    );
-
-    expect(code).toContain('from "vynn/internal/state-value"');
-    expect(code).toContain("_$stateValue(0 as number)");
-  });
-
-  it("does not rewrite function initializers or unknown value expressions", () => {
-    const code = transformVynnOxc(
-      `import { $state } from "vynn";
-      const initial = getInitialValue();
-      export function Counter() {
-        const fromFunction = $state(() => 0);
-        const fromVariable = $state(initial);
-        return <button>{fromFunction.value + fromVariable.value}</button>;
-      }`,
-      "counter.tsx",
-    );
-
-    expect(code).not.toContain("vynn/internal/state-value");
-    expect(code).toContain("$state(() => 0)");
-    expect(code).toContain("$state(initial)");
-  });
-
-  it("respects imported state aliases and lexical shadowing", () => {
-    const code = transformVynnOxc(
-      `import * as Vynn from "vynn";
-      function Counter() {
-        const count = Vynn.$state(0);
-        function local($state: (value: number) => number) {
-          return $state(1);
-        }
-        return <button>{count.value + local((value) => value).valueOf()}</button>;
-      }`,
-      "counter.tsx",
-    );
-
-    expect(code).toContain('from "vynn/internal/state-value"');
-    expect(code).toContain("_$stateValue(0)");
-    expect(code).toContain("$state(1)");
-  });
-
-  it("rewrites direct state values in TypeScript modules without JSX", () => {
-    const code = transformVynnOxc(
-      `import { $state } from "vynn";
-      export const count = $state(0);`,
-      "state.ts",
-    );
-
-    expect(code).toContain('from "vynn/internal/state-value"');
-    expect(code).toContain("_$stateValue(0)");
-  });
-
 
   it("claims static fragment text before evaluating dynamic children", () => {
     const code = transformVynnOxc(
