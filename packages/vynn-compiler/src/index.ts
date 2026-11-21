@@ -520,9 +520,6 @@ class TransformState {
       return false;
     };
 
-    const stateValueLocal = this.generateUidIdentifier("$stateValue", "_$").name;
-    const helperName = (): string => stateValueLocal;
-
     const matchesStateCall = (callee: Node): boolean => {
       if (isIdentifier(callee)) return stateBindings.has(callee.name);
       if (!isMemberExpression(callee) || callee.optional) return false;
@@ -541,7 +538,7 @@ class TransformState {
       );
     };
 
-    let transformed = false;
+    const directStateCalls: Node[] = [];
     const visit = (node: Node, shadowed: ReadonlySet<string>): void => {
       if (!isNode(node)) return;
 
@@ -625,8 +622,7 @@ class TransformState {
               ? node.callee.object.name
               : "";
           if (!shadowed.has(bindingName)) {
-            setNodeProperty(node, "callee", identifier(helperName()));
-            transformed = true;
+            directStateCalls.push(node);
           }
         }
       }
@@ -635,11 +631,15 @@ class TransformState {
     };
 
     visit(this.program, new Set());
-    if (!transformed) return false;
+    if (directStateCalls.length === 0) return false;
 
-    {
-      const stateValueImport = importDeclaration(
-        [importSpecifier(identifier(helperName()), identifier("$stateValue"))],
+    const stateValueLocal = this.generateUidIdentifier("$stateValue", "_$").name;
+    for (const call of directStateCalls) {
+      setNodeProperty(call, "callee", identifier(stateValueLocal));
+    }
+
+    const stateValueImport = importDeclaration(
+        [importSpecifier(identifier(stateValueLocal), identifier("$stateValue"))],
         "vynn/internal/state-value",
       );
       let insertionIndex = 0;
@@ -654,10 +654,9 @@ class TransformState {
         insertionIndex++;
       }
 
-      const body = [...this.program.body];
-      body.splice(insertionIndex, 0, stateValueImport);
-      setNodeProperty(this.program, "body", body);
-    }
+    const body = [...this.program.body];
+    body.splice(insertionIndex, 0, stateValueImport);
+    setNodeProperty(this.program, "body", body);
 
     return true;
   }
