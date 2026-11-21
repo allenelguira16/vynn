@@ -1,4 +1,4 @@
-import type { SSR_ELEMENT } from "./resolve-node";
+import type { SSR_ELEMENT } from "./server/resolve-node";
 
 import { isHydrationClaimActive } from "../client/hydration";
 import { diagnoseHydrationAttribute } from "../client/hydration-diagnostics";

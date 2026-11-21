@@ -1,18 +1,9 @@
-import { claimHydrationText, isHydrationClaimActive } from "../client/hydration";
-import { synchronizeHydrationText } from "../client/hydration-diagnostics";
-import { getErrorBoundary } from "../context/error-boundary-context";
-import { isServer } from "../context/is-server-context";
-import { JSX } from "../jsx-runtime";
-import { getOwner, runWithOwner } from "../life-cycle/owner";
-import { NotReadyError } from "../reactivity/not-ready-error";
-import { getCurrentDOMNamespace, getElementNamespace, withDOMNamespace } from "./namespace";
+import { getErrorBoundary } from "../../context/error-boundary-context";
+import type { JSX } from "../../types/jsx";
+import { getOwner, runWithOwner } from "../../life-cycle/owner";
+import { NotReadyError } from "../../reactivity/not-ready-error";
+import { getCurrentDOMNamespace, getElementNamespace, withDOMNamespace } from "../namespace";
 
-/**
- * Base class for every server-rendering node.
- *
- * Node classes provide runtime identity to the SSR renderers without relying
- * on reserved string tags or structural property checks.
- */
 export abstract class SSR_NODE {
   parent: SSR_ELEMENT | null = null;
 
@@ -229,6 +220,12 @@ export function createSSRDeferred(
   return new SSR_DEFERRED(children, promises, blocking, getErrorBoundary());
 }
 
+
+/** Resolve a component result into server-side nodes. */
+export function resolveNode(child: () => JSX.Element): SSR_NODE[] {
+  return resolveElementString(child());
+}
+
 /**
  * Resolves an SSR child expression and collects pending promises.
  *
@@ -237,7 +234,7 @@ export function createSSRDeferred(
  */
 export function resolveSSRChild(child: () => JSX.Element): SSR_NODE[] {
   try {
-    return resolveNode(child) as unknown as SSR_NODE[];
+    return resolveNode(child);
   } catch (error) {
     if (!(error instanceof NotReadyError)) throw error;
 
@@ -290,6 +287,7 @@ export function resolveElement(element: JSX.Element, claimText = true): Node[] {
 
   return element.flatMap((child) => resolveElement(child, claimText));
 }
+
 
 export function resolveElementString(element: JSX.Element): SSR_NODE[] {
   if (element === null || element === undefined || element === false) {

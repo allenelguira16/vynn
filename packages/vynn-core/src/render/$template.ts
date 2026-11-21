@@ -23,7 +23,7 @@ import {
   SSR_COMMENT,
   SSR_ELEMENT,
   type SSR_NODE,
-} from "./resolve-node";
+} from "./server/resolve-node";
 
 type TemplateElementDescriptor = {
   kind: "element";

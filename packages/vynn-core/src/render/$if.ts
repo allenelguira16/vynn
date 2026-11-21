@@ -7,7 +7,8 @@ import { untrack } from "../reactivity/effect";
 import { NotReadyError } from "../reactivity/not-ready-error";
 import { markParked, unmarkParked } from "./$cmpnt.util";
 import { getCurrentDOMNamespace, withDOMNamespace } from "./namespace";
-import { resolveNode, resolveSSRChild } from "./resolve-node";
+import { resolveNode } from "./client/resolve-node";
+import { resolveSSRChild } from "./server/resolve-node";
 
 type IfBranch = {
   start: Comment;

@@ -4,7 +4,7 @@ import { claimHydrationText, isHydrationClaimActive } from "../client/hydration"
 import { synchronizeHydrationText } from "../client/hydration-diagnostics";
 import { isServer } from "../context/is-server-context";
 import { isCreatingHeadElement } from "./head-runtime";
-import { createSSRText } from "./resolve-node";
+import { createSSRText } from "./server/resolve-node";
 
 /**
  * Creates a text node for static JSX text.

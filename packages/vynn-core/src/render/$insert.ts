@@ -7,14 +7,14 @@ import { isServer } from "../context/is-server-context";
 import { $renderEffect } from "../reactivity/effect";
 import { hasRawHTMLContent } from "./$attr";
 import { getChildDOMNamespace, withDOMNamespace } from "./namespace";
+import { resolveNode } from "./client/resolve-node";
 import {
   createSSRText,
-  resolveNode,
   resolveSSRChild,
   SSR_ELEMENT,
   SSR_TEXT,
   type SSR_NODE,
-} from "./resolve-node";
+} from "./server/resolve-node";
 
 function getSSRTextContent(node: SSR_NODE): string {
   if (node instanceof SSR_TEXT) return node.value;
