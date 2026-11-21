@@ -7,7 +7,7 @@ import { getOwner } from "../src/life-cycle/owner";
 import { $registerHead, $registerHeadGroup } from "../src/render/head-runtime";
 import { $child, $sibling, $template } from "../src/render/$template";
 import { $insert } from "../src/render/$insert";
-import { createSSRAsync, createSSRNode } from "../src/render/resolve-node";
+import { createSSRAsync, createSSRNode } from "../src/render/server/resolve-node";
 import { renderToServer } from "../src/server/render-to-server";
 
 describe("JSX head rendering", () => {

@@ -29,7 +29,7 @@ import {
   SSR_NODE,
   SSR_PENDING,
   SSR_TEXT,
-} from "../src/render/resolve-node";
+} from "../src/render/server/resolve-node";
 import { renderToServer } from "../src/server/render-to-server";
 
 describe("renderToServer modes", () => {

@@ -4,7 +4,7 @@ import type { JSX } from "../src/types/jsx";
 
 import { vynnSsrPreloadPlugin } from "../../vite-plugin/src/plugins/ssr-preload.ts";
 import { registerSsrModule } from "../src/context/ssr-module-context";
-import { createSSRAsync } from "../src/render/resolve-node";
+import { createSSRAsync } from "../src/render/server/resolve-node";
 import { injectSsrPreloadLinks } from "../src/server/preload.inject-links";
 import { renderSsrPreloadLinks } from "../src/server/preload.render-preload-links";
 import { renderToServer } from "../src/server/render-to-server";

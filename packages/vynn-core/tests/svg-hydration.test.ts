@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { SSR_NODE } from "../src/render/resolve-node";
+import type { SSR_NODE } from "../src/render/server/resolve-node";
 import type { JSX } from "../src/types/jsx";
 
 import { hydrateToDOM } from "../src/client/hydrate-to-dom";
@@ -20,7 +20,7 @@ import { $insert } from "../src/render/$insert";
 import { $nodes } from "../src/render/$nodes";
 import { $on } from "../src/render/$on";
 import { $template } from "../src/render/$template";
-import { createSSRAsync } from "../src/render/resolve-node";
+import { createSSRAsync } from "../src/render/server/resolve-node";
 import { renderToServer } from "../src/server/render-to-server";
 
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
