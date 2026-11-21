@@ -1,17 +1,22 @@
 import { getErrorBoundary } from "../context/error-boundary-context";
 import { getOwner, runWithOwner, type Owner } from "../life-cycle/owner";
 import { NotReadyError } from "./not-ready-error";
+import {
+  cleanupSubscriber,
+  withSubscriber,
+  type ReactiveSubscriber,
+} from "./graph";
+
+export { track, trigger, triggerAll, triggerArrayLength, untrack } from "./graph";
 
 export type EffectPhase = "render" | "effect";
 
-export interface ReactiveEffect {
+export interface ReactiveEffect extends ReactiveSubscriber {
   callback: () => void | (() => void);
   phase: EffectPhase;
   owner: Owner | null;
-  dependencies: Set<ReactiveEffect>[];
   cleanup?: () => void;
   scheduler?: () => void;
-  disposed: boolean;
   running: boolean;
   rerun: boolean;
   run: () => void;
@@ -23,45 +28,12 @@ export type ReactiveEffectOptions = {
   scheduler?: () => void;
 };
 
-const dependencies = new WeakMap<object, Map<unknown, Set<ReactiveEffect>>>();
 const renderQueue = new Set<ReactiveEffect>();
 const effectQueue = new Set<ReactiveEffect>();
-
-let activeEffect: ReactiveEffect | null = null;
 let batchDepth = 0;
 let isFlushingRenderEffects = false;
 let isFlushingEffects = false;
 let isEffectFlushScheduled = false;
-
-function getDependency(target: object, key: unknown): Set<ReactiveEffect> {
-  let targetDependencies = dependencies.get(target);
-
-  if (!targetDependencies) {
-    targetDependencies = new Map();
-    dependencies.set(target, targetDependencies);
-  }
-
-  let dependency = targetDependencies.get(key);
-
-  if (!dependency) {
-    dependency = new Set();
-    targetDependencies.set(key, dependency);
-  }
-
-  return dependency;
-}
-
-export function track(target: object, key: unknown): void {
-  const effect = activeEffect;
-
-  if (!effect || effect.disposed) return;
-
-  const dependency = getDependency(target, key);
-  if (dependency.has(effect)) return;
-
-  dependency.add(effect);
-  effect.dependencies.push(dependency);
-}
 
 function schedule(effect: ReactiveEffect): void {
   if (effect.disposed) return;
@@ -84,58 +56,6 @@ function schedule(effect: ReactiveEffect): void {
 
   effectQueue.add(effect);
   scheduleEffectFlush();
-}
-
-export function trigger(target: object, key: unknown): void {
-  const dependency = dependencies.get(target)?.get(key);
-  if (!dependency) return;
-
-  for (const effect of [...dependency]) schedule(effect);
-}
-
-export function triggerAll(target: object): void {
-  const targetDependencies = dependencies.get(target);
-  if (!targetDependencies) return;
-
-  const effects = new Set<ReactiveEffect>();
-
-  for (const dependency of targetDependencies.values()) {
-    for (const effect of dependency) effects.add(effect);
-  }
-
-  for (const effect of effects) schedule(effect);
-}
-
-export function triggerArrayLength(
-  target: object,
-  nextLength: number,
-  iterationKey: PropertyKey,
-): void {
-  const targetDependencies = dependencies.get(target);
-  if (!targetDependencies) return;
-
-  const effects = new Set<ReactiveEffect>();
-
-  for (const [key, dependency] of targetDependencies) {
-    const isIndex =
-      typeof key === "string" &&
-      key !== "" &&
-      Number.isInteger(Number(key)) &&
-      Number(key) >= 0 &&
-      Number(key) < 0xffff_ffff &&
-      String(Number(key)) === key;
-
-    if (key === "length" || key === iterationKey || (isIndex && Number(key) >= nextLength)) {
-      for (const effect of dependency) effects.add(effect);
-    }
-  }
-
-  for (const effect of effects) schedule(effect);
-}
-
-function removeDependencies(effect: ReactiveEffect): void {
-  for (const dependency of effect.dependencies) dependency.delete(effect);
-  effect.dependencies.length = 0;
 }
 
 function handleEffectError(error: unknown): void {
@@ -166,7 +86,7 @@ function runEffect(effect: ReactiveEffect): void {
       effect.rerun = false;
       if (effect.disposed) break;
 
-      removeDependencies(effect);
+      cleanupSubscriber(effect);
 
       if (effect.cleanup) {
         const cleanup = effect.cleanup;
@@ -179,22 +99,21 @@ function runEffect(effect: ReactiveEffect): void {
         }
       }
 
-      const previousEffect = activeEffect;
-      activeEffect = effect;
       batchDepth++;
 
       try {
-        const cleanup = runWithOwner(effect.owner, () => {
-          try {
-            return effect.callback();
-          } catch (error) {
-            handleEffectError(error);
-            return undefined;
-          }
-        });
+        const cleanup = withSubscriber(effect, () =>
+          runWithOwner(effect.owner, () => {
+            try {
+              return effect.callback();
+            } catch (error) {
+              handleEffectError(error);
+              return undefined;
+            }
+          }),
+        );
         if (typeof cleanup === "function") effect.cleanup = cleanup;
       } finally {
-        activeEffect = previousEffect;
         batchDepth--;
       }
     } while (effect.rerun && !effect.disposed);
@@ -291,6 +210,7 @@ export function createReactiveEffect(
     disposed: false,
     running: false,
     rerun: false,
+    notify: () => schedule(effect),
     run: () => runEffect(effect),
   };
 
@@ -307,7 +227,7 @@ export function stopReactiveEffect(effect: ReactiveEffect): void {
   if (effect.disposed) return;
 
   effect.disposed = true;
-  removeDependencies(effect);
+  cleanupSubscriber(effect);
 
   if (effect.cleanup) {
     const cleanup = effect.cleanup;
@@ -331,17 +251,6 @@ export function batch<T>(callback: () => T): T {
 }
 
 export const transaction = batch;
-
-export function untrack<T>(callback: () => T): T {
-  const previousEffect = activeEffect;
-  activeEffect = null;
-
-  try {
-    return callback();
-  } finally {
-    activeEffect = previousEffect;
-  }
-}
 
 export function $effect(callback: () => void | (() => void)): () => void {
   const effect = createReactiveEffect(callback, { phase: "effect" });
