@@ -13,6 +13,7 @@ import {
   runWithOwner,
 } from "../src/life-cycle/owner";
 import { $attr } from "../src/render/$attr";
+import { $attr as clientAttr } from "../src/render/client/$attr";
 import { $template } from "../src/render/$template";
 import { resolveElement } from "../src/render/client/resolve-node";
 
@@ -88,7 +89,7 @@ describe("hydration mismatch diagnostics", () => {
     runWithOwner(owner, () => {
       withHydration(() => {
         const button = $template("<button></button>")();
-        $attr(button, "title", "client");
+        clientAttr(button, "title", "client");
       }, root);
     });
 

@@ -121,3 +121,48 @@ export function setDOMAttributeValue<E extends Element>(element: E, name: string
 
   setDOMAttribute(element, attributeName, String(next));
 }
+
+/**
+ * Sets a reactive DOM attribute or property.
+ *
+ * Attribute updates run in the render phase so DOM state is synchronized with
+ * the reactive transaction that produced it.
+ */
+export function $attr<E extends Element>(
+  element: E,
+  name: string,
+  value: AttributeValue | (() => AttributeValue),
+): void {
+  const hydrating = isHydrationClaimActive();
+  let initial = true;
+
+  $renderEffect(() => {
+    const next = typeof value === "function" ? value() : value;
+
+    if (initial) {
+      initial = false;
+
+      if (hydrating && name !== "html") {
+        const isHtmlElement =
+          element.namespaceURI === HTML_NAMESPACE && element instanceof HTMLElement;
+        const attributeName = getAttributeName(element.namespaceURI, name);
+        const isHtmlBooleanAttribute =
+          isHtmlElement && booleanAttributes.has(attributeName.toLowerCase());
+        const expectedValue =
+          next == null
+            ? null
+            : isHtmlBooleanAttribute && typeof next === "boolean"
+              ? next
+                ? ""
+                : null
+              : name === "style"
+                ? serializeStyleValue(next)
+                : String(next);
+
+        diagnoseHydrationAttribute(element, attributeName, expectedValue);
+      }
+    }
+
+    setDOMAttributeValue(element, name, next);
+  });
+}
