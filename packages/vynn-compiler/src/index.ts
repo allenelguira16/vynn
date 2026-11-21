@@ -457,8 +457,6 @@ class TransformState {
   transformDirectStateValues(): boolean {
     const stateBindings = new Set<string>();
     const namespaceBindings = new Set<string>();
-    let stateValueLocal: string | undefined;
-    let hasStateValueImport = false;
 
     for (const statement of this.program.body) {
       if (!isImportDeclaration(statement)) continue;
@@ -484,25 +482,6 @@ class TransformState {
             if (importedName === "$state") stateBindings.add(local.name);
           } else if (isType(specifier, "ImportNamespaceSpecifier")) {
             namespaceBindings.add(local.name);
-          }
-        }
-      } else if (sourceName === "vynn/internal/state-value") {
-        for (const specifier of statement.specifiers ?? []) {
-          if (!isImportSpecifier(specifier) || getNodeProperty(specifier, "importKind") === "type") {
-            continue;
-          }
-
-          const imported = getNodeProperty(specifier, "imported");
-          const importedName = isIdentifier(imported)
-            ? imported.name
-            : isLiteralString(imported)
-              ? imported.value
-              : null;
-          const local = getNodeProperty(specifier, "local");
-          if (importedName === "$stateValue" && isIdentifier(local)) {
-            stateValueLocal = local.name;
-            hasStateValueImport = true;
-            break;
           }
         }
       }
@@ -541,11 +520,8 @@ class TransformState {
       return false;
     };
 
-    const helperName = (): string => {
-      if (stateValueLocal) return stateValueLocal;
-      stateValueLocal = this.generateUidIdentifier("$stateValue", "_$").name;
-      return stateValueLocal;
-    };
+    const stateValueLocal = this.generateUidIdentifier("$stateValue", "_$").name;
+    const helperName = (): string => stateValueLocal;
 
     const matchesStateCall = (callee: Node): boolean => {
       if (isIdentifier(callee)) return stateBindings.has(callee.name);
@@ -558,7 +534,11 @@ class TransformState {
         return callee.property.name === "$state";
       }
 
-      return callee.computed && isLiteralString(callee.property) && callee.property.value === "$state";
+      return (
+        callee.computed &&
+        isLiteralString(callee.property) &&
+        callee.property.value === "$state"
+      );
     };
 
     let transformed = false;
@@ -657,7 +637,7 @@ class TransformState {
     visit(this.program, new Set());
     if (!transformed) return false;
 
-    if (!hasStateValueImport) {
+    {
       const stateValueImport = importDeclaration(
         [importSpecifier(identifier(helperName()), identifier("$stateValue"))],
         "vynn/internal/state-value",
