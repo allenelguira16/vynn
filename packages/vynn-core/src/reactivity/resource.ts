@@ -22,7 +22,7 @@ import {
   runWithOwner,
   type Owner,
 } from "../life-cycle/owner";
-import { createReactiveEffect, stopReactiveEffect } from "./effect";
+import { createReactiveEffect, stopReactiveEffect, track, trigger, untrack } from "./effect";
 import { withFakeAsyncApis } from "./fake-async";
 import { NotReadyError } from "./not-ready-error";
 import { isPending, registerPending } from "./pending";
@@ -50,55 +50,80 @@ type ResourceRecord<T> =
 
 export type Async<T> = VynnRef<T>;
 
-export function createAsyncResource<T>(getter: () => Promise<T>): VynnRef<T> {
-  return createResourceInternal(getter, false);
-}
+export type ResourceOptions = {
+  /** Keep synchronous results reactive, as required by $computed. */
+  computed?: boolean;
+};
 
 /**
- * Creates a resource from a callback that may return either a value or a
- * PromiseLike. Synchronous callbacks without owned descendants roll back
- * their identity allocation transaction; async or suspended callbacks commit it.
+ * Runs the getter in a reactive effect and classifies its actual return value.
+ * Synchronous state initializers become cells; PromiseLike results use the
+ * async resource lifecycle. Computed resources keep tracking synchronous
+ * results and can transition to async when a later run returns a promise.
  */
-export function createMaybeAsyncResource<T>(getter: () => T | PromiseLike<T>): VynnRef<T> {
-  return createResourceInternal(getter, true);
-}
-
-function createResourceInternal<T>(
+export function createResource<T>(
   getter: () => T | PromiseLike<T>,
-  detectPromiseLike: boolean,
+  options: ResourceOptions = {},
 ): VynnRef<T> {
+  const { computed = false } = options;
   const owner = getOwner();
   const lazyGetter = isAsyncGetterFromLazy(getter);
-  const resourceOwner = owner
-    ? detectPromiseLike && !lazyGetter
-      ? createOwnerIdentityTransaction(owner)
-      : createOwner(owner)
-    : null;
-  const effectOwner = resourceOwner ?? owner;
-  const record = createCell<ResourceRecord<T> | undefined>(undefined);
+  let resourceOwner = owner && lazyGetter ? createOwner(owner) : null;
+  let effectOwner: Owner | null = resourceOwner ?? owner;
+  let record: VynnRef<ResourceRecord<T> | undefined> | undefined = computed
+    ? createCell<ResourceRecord<T> | undefined>(undefined)
+    : undefined;
 
   let version = 0;
   let started = false;
-
-  let resourceOwnerID: string | undefined =
-    lazyGetter || detectPromiseLike ? undefined : resourceOwner?.id;
+  let resourceOwnerID: string | undefined = lazyGetter ? undefined : resourceOwner?.id;
   let asyncValues = getAsyncValues();
   let hasReadHydrationValue = false;
   let hydrationValue: { found: boolean; value: T | undefined } | undefined;
-  let initialResultKind: "unknown" | "sync" | "async" | "error" = "unknown";
-
-  // The reactive effect mutates this state from inside its callback. Read it
-  // through an accessor outside that callback so TypeScript doesn't retain
-  // the initializer's initial "unknown" narrowing.
-  function getInitialResultKind(): "unknown" | "sync" | "async" | "error" {
-    return initialResultKind;
-  }
+  let initialResultKind: "unknown" | "sync" | "async" | "suspended" | "error" = "unknown";
+  let hasObservedPromise = false;
+  let computedDirty = false;
+  let readingComputed = false;
+  const computedTarget = {};
 
   let initialValue!: T;
   let initialError: unknown;
   let hasCompletedStart = false;
   let reactiveEffect: ReturnType<typeof createReactiveEffect> | undefined;
   let activationOwner: Owner | null = owner;
+
+  function setRecord(next: ResourceRecord<T>): void {
+    if (!record) {
+      record = createCell<ResourceRecord<T> | undefined>(undefined);
+    }
+
+    record.value = next;
+
+    // Computed consumers track this resource's public value rather than the
+    // internal record cell, avoiding duplicate notifications during a read.
+    if (computed && !readingComputed) trigger(computedTarget, "value");
+  }
+
+  function observePromise(): void {
+    hasObservedPromise = true;
+
+    // Once the getter is asynchronous, refresh it like a resource effect.
+    // The default render scheduler preserves batching and eager refreshes.
+    if (computed && reactiveEffect) {
+      reactiveEffect.scheduler = undefined;
+    }
+  }
+
+  function runForComputedRead(callback: () => void): void {
+    const previous = readingComputed;
+    readingComputed = true;
+
+    try {
+      callback();
+    } finally {
+      readingComputed = previous;
+    }
+  }
 
   function getCandidateOwnerID(): string | undefined {
     return resourceOwner
@@ -107,9 +132,12 @@ function createResourceInternal<T>(
   }
 
   function allocateResourceIdentity(): void {
-    if (lazyGetter) return;
+    if (lazyGetter || resourceOwnerID !== undefined) return;
 
-    if (resourceOwnerID !== undefined) return;
+    if (!resourceOwner && computed && owner) {
+      resourceOwner = createOwner(owner);
+      effectOwner = resourceOwner;
+    }
 
     resourceOwnerID = resourceOwner
       ? commitOwnerIdentityTransaction(resourceOwner)
@@ -117,29 +145,35 @@ function createResourceInternal<T>(
   }
 
   function finalizeSynchronousInitializer(): void {
-    if (!detectPromiseLike || !reactiveEffect) return;
+    if (!reactiveEffect) return;
 
-    stopReactiveEffect(reactiveEffect);
-
+    if (!computed) stopReactiveEffect(reactiveEffect);
     if (!resourceOwner) return;
 
     const hasOwnedIdentityWork = resourceOwner.children.length > 0 || resourceOwner.nodeCount > 0;
-    const hasLifetimeWork = resourceOwner.cleanups.length > 1 || resourceOwner.mount.length > 0;
+    const hasLifetimeWork =
+      (computed ? resourceOwner.cleanups.length > 0 : resourceOwner.cleanups.length > 1) ||
+      resourceOwner.mount.length > 0;
 
     if (hasOwnerIdentityTransaction(resourceOwner)) {
-      if (hasOwnedIdentityWork) {
+      if (hasOwnedIdentityWork || hasLifetimeWork) {
         allocateResourceIdentity();
       } else {
         rollbackOwnerIdentityTransaction(resourceOwner);
-      }
 
-      if (!hasOwnedIdentityWork && !hasLifetimeWork) {
-        disposeOwner(resourceOwner);
+        if (computed) {
+          const unusedOwner = resourceOwner;
+          resourceOwner = null;
+          effectOwner = owner;
+          disposeOwner(unusedOwner);
+        } else {
+          disposeOwner(resourceOwner);
+        }
       }
       return;
     }
 
-    if (!resourceOwner.id && !hasOwnedIdentityWork && !hasLifetimeWork) {
+    if (!computed && !resourceOwner.id && !hasOwnedIdentityWork && !hasLifetimeWork) {
       disposeOwner(resourceOwner);
     }
   }
@@ -148,10 +182,13 @@ function createResourceInternal<T>(
     if (started) return;
     started = true;
 
-    activationOwner = getOwner();
+    activationOwner = owner ?? getOwner();
 
-    if (!lazyGetter && !detectPromiseLike && resourceOwnerID === undefined) {
-      resourceOwnerID = createOwnerID(activationOwner);
+    // Allocate a tentative owner only when evaluation begins, then commit it
+    // only if the getter is async, suspends, or creates owned descendants.
+    if (!computed && !resourceOwner && owner) {
+      resourceOwner = createOwnerIdentityTransaction(owner);
+      effectOwner = resourceOwner;
     }
 
     if (!asyncValues) asyncValues = getAsyncValues();
@@ -159,13 +196,19 @@ function createResourceInternal<T>(
     const effect = createReactiveEffect(
       () => {
         const currentVersion = ++version;
-        const isInitialRun = detectPromiseLike && initialResultKind === "unknown";
+
+        if (computed && !resourceOwner && owner) {
+          resourceOwner = createOwnerIdentityTransaction(owner);
+          effectOwner = resourceOwner;
+        }
+
+        const isInitialRun = initialResultKind === "unknown";
         let hydrationProbeCompleted = false;
 
         try {
           let result: T | PromiseLike<T>;
 
-          if (detectPromiseLike && isInitialRun && !lazyGetter) {
+          if (isInitialRun && !lazyGetter) {
             const candidateOwnerID = getCandidateOwnerID();
 
             if (
@@ -173,36 +216,35 @@ function createResourceInternal<T>(
               (hasAsyncHydrationValue(candidateOwnerID) ||
                 hasAsyncHydrationOwnerIDReservation(candidateOwnerID))
             ) {
-              // A fake pass classifies a maybe-async initializer only when
-              // the next owner ID has a serialized value to hydrate.
-              const probe = withFakeAsyncApis(getter);
+              // Probe only when the candidate slot has serialized data. Fake
+              // async APIs collect synchronous dependencies without refetching.
+              const probe = withFakeAsyncApis(() => runWithOwner(effectOwner, getter));
               hydrationProbeCompleted = true;
 
               if (!isPromiseLike<T>(probe)) {
                 initialResultKind = "sync";
                 initialValue = probe;
 
-                // A server-side suspension may have committed this slot even
-                // though hydrated dependencies let the initializer finish
-                // synchronously on the client.
+                // The server may have reserved this slot after suspension,
+                // even though hydrated dependencies now make the getter sync.
                 if (hasAsyncHydrationOwnerIDReservation(candidateOwnerID)) {
                   allocateResourceIdentity();
                 }
 
-                record.value = {
-                  status: "resolved",
-                  value: probe,
-                  version: currentVersion,
-                };
-
-                if (hasCompletedStart) {
-                  finalizeSynchronousInitializer();
+                if (computed || owner === null) {
+                  setRecord({
+                    status: "resolved",
+                    value: probe,
+                    version: currentVersion,
+                  });
                 }
 
+                if (hasCompletedStart) finalizeSynchronousInitializer();
                 return;
               }
 
               initialResultKind = "async";
+              observePromise();
               allocateResourceIdentity();
 
               if (resourceOwnerID === candidateOwnerID) {
@@ -216,59 +258,64 @@ function createResourceInternal<T>(
           }
 
           if (hydrationValue?.found) {
-            if (!hydrationProbeCompleted) withFakeAsyncApis(getter);
+            if (!hydrationProbeCompleted) {
+              withFakeAsyncApis(() => runWithOwner(effectOwner, getter));
+            }
 
             const value = hydrationValue.value as T;
             hydrationValue = undefined;
 
-            if (detectPromiseLike && isInitialRun) {
+            if (isInitialRun) {
               initialResultKind = "async";
+              observePromise();
             }
 
-            record.value = {
+            setRecord({
               status: "resolved",
               value,
               version: currentVersion,
-            };
+            });
             return;
           }
 
-          result = getter();
+          result = runWithOwner(effectOwner, getter);
 
           if (!isPromiseLike<T>(result)) {
-            if (detectPromiseLike && isInitialRun && initialResultKind === "unknown") {
+            if (isInitialRun && initialResultKind === "unknown") {
               initialResultKind = "sync";
               initialValue = result as T;
             }
 
-            record.value = {
-              status: "resolved",
-              value: result as T,
-              version: currentVersion,
-            };
-
-            if (detectPromiseLike && isInitialRun && hasCompletedStart) {
-              finalizeSynchronousInitializer();
+            if (computed || owner === null || !isInitialRun) {
+              setRecord({
+                status: "resolved",
+                value: result as T,
+                version: currentVersion,
+              });
             }
 
+            if (hasCompletedStart && (isInitialRun || computed)) {
+              finalizeSynchronousInitializer();
+            }
             return;
           }
 
-          if (detectPromiseLike && isInitialRun && initialResultKind === "unknown") {
+          if (isInitialRun && initialResultKind === "unknown") {
             initialResultKind = "async";
           }
 
+          observePromise();
           allocateResourceIdentity();
 
           const promise = Promise.resolve(result);
 
           if (lazyGetter) registerPromiseFromLazy(promise);
 
-          record.value = {
+          setRecord({
             status: "pending",
             promise,
             version: currentVersion,
-          };
+          });
 
           promise.then(
             (value) => {
@@ -279,11 +326,11 @@ function createResourceInternal<T>(
                   asyncValues[resourceOwnerID] = value;
                 }
 
-                record.value = {
+                setRecord({
                   status: "resolved",
                   value,
                   version: currentVersion,
-                };
+                });
               });
             },
             (error: unknown) => {
@@ -291,33 +338,41 @@ function createResourceInternal<T>(
 
               runWithOwner(effectOwner, () => {
                 if (error instanceof NotReadyError) {
-                  record.value = {
+                  setRecord({
                     status: "pending",
                     promise: error.promise,
                     version: currentVersion,
-                  };
+                  });
                   return;
                 }
 
-                record.value = {
+                setRecord({
                   status: "rejected",
                   error,
                   version: currentVersion,
-                };
+                });
               });
             },
           );
         } catch (error) {
           if (error instanceof NotReadyError) {
-            // A suspended initializer must commit its identity transaction.
-            // Otherwise a later sibling could claim the same ID before this
-            // initializer retries and discovers its final sync/async result.
-            if (
-              detectPromiseLike &&
-              isInitialRun &&
-              resourceOwner &&
+            // A suspended initializer may resolve synchronously after hydration,
+            // or return its own promise after a dependency becomes available.
+            // Reserve its position now so sibling identities remain stable.
+            if (isInitialRun && initialResultKind === "unknown") {
+              initialResultKind = "suspended";
+              allocateResourceIdentity();
+
+              if (resourceOwnerID !== undefined) {
+                registerAsyncOwnerIDReservation(resourceOwnerID);
+              }
+            } else if (
+              computed &&
+              resourceOwner !== null &&
               hasOwnerIdentityTransaction(resourceOwner)
             ) {
+              // A previously synchronous computed may suspend on a later run.
+              // Reserve its position before another sibling can claim it.
               allocateResourceIdentity();
 
               if (resourceOwnerID !== undefined) {
@@ -325,55 +380,95 @@ function createResourceInternal<T>(
               }
             }
 
-            record.value = {
+            if (computed) observePromise();
+
+            setRecord({
               status: "pending",
               promise: error.promise,
               version: currentVersion,
-            };
+            });
             return;
           }
 
-          if (
-            detectPromiseLike &&
-            isInitialRun &&
-            initialResultKind === "unknown" &&
-            !hasCompletedStart
-          ) {
+          if (isInitialRun && initialResultKind === "unknown" && !hasCompletedStart) {
             initialResultKind = "error";
             initialError = error;
+            setRecord({
+              status: "rejected",
+              error,
+              version: currentVersion,
+            });
             return;
           }
 
-          record.value = {
+          setRecord({
             status: "rejected",
             error,
             version: currentVersion,
-          };
+          });
+
+          if (computed && hasCompletedStart) {
+            finalizeSynchronousInitializer();
+          }
         }
       },
-      { phase: "render", owner: effectOwner },
+      {
+        phase: "render",
+        // Computed effects live with their creating owner. Their temporary
+        // resource owner scopes descendants and receives an ID only when needed.
+        owner: computed ? owner : effectOwner,
+        scheduler: computed
+          ? () => {
+              if (computedDirty) return;
+              computedDirty = true;
+              trigger(computedTarget, "value");
+            }
+          : undefined,
+      },
     );
 
     reactiveEffect = effect;
     hasCompletedStart = true;
 
-    if (
-      detectPromiseLike &&
-      (getInitialResultKind() === "sync" || getInitialResultKind() === "error")
-    ) {
+    if (computed && hasObservedPromise) {
+      effect.scheduler = undefined;
+    }
+
+    if (initialResultKind === "sync" || initialResultKind === "error") {
       finalizeSynchronousInitializer();
     }
 
-    if (getInitialResultKind() === "error") {
+    if (initialResultKind === "error" && !computed) {
       throw initialError;
     }
   }
 
+  // Owned state initializers and non-lazy computed getters evaluate eagerly.
+  // A synchronous owned state initializer can return its cell immediately,
+  // without allocating any async-resource wrapper or record.
+  if (owner !== null || (computed && !lazyGetter)) start();
+
+  if (!computed && owner !== null && initialResultKind === "sync") {
+    return createCell(initialValue);
+  }
+
   const resource = markRef({
     get value(): T {
-      if (!started) start();
+      if (computed) {
+        track(computedTarget, "value");
 
-      const current = record.value;
+        if (computedDirty) {
+          computedDirty = false;
+          runForComputedRead(() => reactiveEffect?.run());
+        }
+      }
+
+      if (!started) {
+        if (computed) runForComputedRead(start);
+        else start();
+      }
+
+      const current = computed ? untrack(() => record?.value) : record?.value;
 
       if (!current) {
         throw new Error("[vynn]: The async resource did not start.");
@@ -399,32 +494,24 @@ function createResourceInternal<T>(
 
     set value(nextValue: T) {
       version++;
-      record.value = {
+      setRecord({
         status: "resolved",
         value: nextValue,
         version,
-      };
+      });
     },
   }) as VynnRef<T>;
 
   registerPending(resource, () => {
     // During SSR, reading isPending() must participate in the same async
-    // boundary as reading resource.value. Otherwise the server can serialize
-    // a permanently pending UI state without waiting for the first result.
+    // boundary as reading resource.value.
     if (import.meta.env.SSR) {
       void resource.value;
     }
 
-    return record.value?.status === "pending";
+    return record?.value?.status === "pending";
   });
 
-  // Ownerless module resources are activated by their first read so they can
-  // acquire the request-local hydration scope of the render that consumes them.
-  if (owner !== null || resourceOwnerID !== undefined) start();
-
-  if (detectPromiseLike && owner !== null && getInitialResultKind() === "sync") {
-    return createCell(initialValue);
-  }
-
+  // Module-level state resources acquire the consuming request's owner on first read.
   return resource;
 }

@@ -11,8 +11,8 @@ import {
 import { NotReadyError } from "./not-ready-error";
 import { isPending, registerPending } from "./pending";
 import { isRef, type VynnReadonlyRef, type VynnRef } from "./ref";
-import { createAsyncResource, createMaybeAsyncResource } from "./resource";
-import { isArrayIndex, isAsyncFunction, isPlainObject } from "./utils";
+import { createResource } from "./resource";
+import { isArrayIndex, isPlainObject } from "./utils";
 
 type StoreArrayValue<T> = T extends VynnReadonlyRef<unknown> ? T : StoreValue<T>;
 type StoreCollectionValue<T> = T extends VynnReadonlyRef<unknown> ? T : StoreValue<T>;
@@ -662,10 +662,11 @@ function createAsyncStore<T extends object>(resource: VynnRef<T>): Store<T> {
   return store as Store<T>;
 }
 
-export function $store<T extends object>(initializer: () => Promise<T>): Store<T>;
+export function $store<T extends object>(initializer: () => PromiseLike<T>): Store<T>;
 export function $store<T extends object>(initializer: () => T): Store<T>;
+export function $store<T extends object>(initializer: () => T | PromiseLike<T>): Store<T>;
 export function $store<T extends object>(value?: T): Store<T>;
-export function $store<T extends object>(source?: T | (() => T | Promise<T>)): Store<T> {
+export function $store<T extends object>(source?: T | (() => T | PromiseLike<T>)): Store<T> {
   if (typeof source !== "function") {
     if (source === null || typeof source !== "object") {
       throw new TypeError("[vynn]: $store() initializer must return an object.");
@@ -674,13 +675,7 @@ export function $store<T extends object>(source?: T | (() => T | Promise<T>)): S
     return createReactiveObject(source) as Store<T>;
   }
 
-  const initializer = source as () => T | Promise<T>;
-
-  if (isAsyncFunction(initializer)) {
-    return createAsyncStore(createAsyncResource(initializer as () => Promise<T>));
-  }
-
-  const resource = createMaybeAsyncResource(initializer);
+  const resource = createResource(source as () => T | PromiseLike<T>);
 
   try {
     const value = resource.value;

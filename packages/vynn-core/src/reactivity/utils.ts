@@ -1,10 +1,3 @@
-export function isAsyncFunction(value: unknown): value is () => Promise<unknown> {
-  return (
-    typeof value === "function" &&
-    Object.prototype.toString.call(value) === "[object AsyncFunction]"
-  );
-}
-
 export function isPromiseLike<T = unknown>(value: unknown): value is PromiseLike<T> {
   return (
     value !== null &&

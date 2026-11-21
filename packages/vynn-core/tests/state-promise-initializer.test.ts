@@ -9,6 +9,7 @@ import {
 } from "../src/context/async-context";
 import { setRenderMode } from "../src/context/render-mode";
 import { createOwner, disposeOwner, runWithOwner } from "../src/life-cycle/owner";
+import { $computed } from "../src/reactivity/computed";
 import { NotReadyError } from "../src/reactivity/not-ready-error";
 import { isPending } from "../src/reactivity/pending";
 import { $state, type State } from "../src/reactivity/state";
@@ -456,6 +457,56 @@ describe("Promise-returning initializers", () => {
       } else {
         delete globalWindow[ASYNC_DATA_SSR_KEY];
       }
+    }
+  });
+  
+  it("$computed detects PromiseLike results and can transition from sync to async", async () => {
+    const owner = createOwner(null);
+    const countRef = $state(0);
+    const resolvers = new Map<number, (value: number) => void>();
+    let result!: { readonly value: string | number };
+    let pendingPromise: Promise<unknown> | undefined;
+
+    try {
+      runWithOwner(owner, () => {
+        initializeAsyncContext();
+
+        result = $computed(() => {
+          const count = countRef.value;
+          if (count === 0) return "sync";
+
+          return new Promise<number>((resolve) => {
+            resolvers.set(count, resolve);
+          });
+        });
+
+        expect(result.value).toBe("sync");
+        expect(owner.nodeCount).toBe(0);
+
+        countRef.value = 1;
+
+        try {
+          result.value;
+        } catch (error) {
+          expect(error).toBeInstanceOf(NotReadyError);
+          pendingPromise = (error as NotReadyError).promise;
+        }
+
+        expect(pendingPromise).toBeDefined();
+        expect(resolvers.has(1)).toBe(true);
+        expect(isPending(result)).toBe(true);
+        expect(owner.nodeCount).toBe(1);
+        resolvers.get(1)?.(10);
+      });
+
+      await pendingPromise;
+
+      runWithOwner(owner, () => {
+        expect(result.value).toBe(10);
+        expect(isPending(result)).toBe(false);
+      });
+    } finally {
+      disposeOwner(owner);
     }
   });
 });

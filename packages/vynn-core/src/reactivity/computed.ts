@@ -1,114 +1,30 @@
-import { getAsyncBoundary } from "../context/async-context";
-
-import { isAsyncGetterFromLazy } from "../context/lazy-context";
-import { createReactiveEffect, track, trigger } from "./effect";
-import { NotReadyError } from "./not-ready-error";
 import { isPending, registerPending } from "./pending";
 import { markRef, type VynnReadonlyRef } from "./ref";
-import { createAsyncResource } from "./resource";
-import { isAsyncFunction } from "./utils";
+import { createResource } from "./resource";
 
 export type Computed<T> = VynnReadonlyRef<T>;
 
-export function $computed<T>(getter: () => Promise<T>): Computed<T>;
+export function $computed<T>(getter: () => PromiseLike<T>): Computed<T>;
+export function $computed<T>(getter: () => T | PromiseLike<T>): Computed<T>;
 export function $computed<T>(getter: () => T): Computed<T>;
-export function $computed<T>(getter: () => T | Promise<T>): Computed<T> {
+export function $computed<T>(getter: () => T | PromiseLike<T>): Computed<T> {
   if (typeof getter !== "function") {
     throw new TypeError("[vynn]: $computed() requires a getter function.");
   }
 
-  if (isAsyncFunction(getter) || isAsyncGetterFromLazy(getter)) {
-    const resource = createAsyncResource(getter as () => Promise<T>);
-
-    const computed = markRef({
-      get value(): T {
-        return resource.value;
-      },
-    }) as Computed<T>;
-
-    registerPending(computed, () => isPending(resource));
-    return computed;
-  }
-
-  const target = {};
-  let value: T;
-  let hasValue = false;
-  let dirty = true;
-  let pendingError: NotReadyError | undefined;
+  // Synchronous results are cached and re-evaluated lazily after invalidation.
+  // PromiseLike results use the same resource lifecycle for refreshes,
+  // pending state, hydration, and async-boundary integration.
+  const resource = createResource(getter, {
+    computed: true,
+  });
 
   const computed = markRef({
     get value(): T {
-      track(target, "value");
-
-      if (dirty) computation.run();
-
-      if (pendingError) {
-        const boundary = getAsyncBoundary();
-        boundary?.(pendingError.promise);
-
-        throw new NotReadyError(pendingError.promise, boundary ?? pendingError.boundary);
-      }
-
-      return value;
+      return resource.value;
     },
   }) as Computed<T>;
 
-  const computation = createReactiveEffect(
-    () => {
-      dirty = false;
-
-      try {
-        const nextValue = getter() as T;
-        if (isPromiseLikeValue(nextValue)) {
-          throw new TypeError(
-            "[vynn]: An asynchronous $computed() getter must be declared with the async keyword.",
-          );
-        }
-
-        pendingError = undefined;
-
-        if (!hasValue || !Object.is(value, nextValue)) {
-          value = nextValue;
-          hasValue = true;
-        }
-      } catch (error) {
-        if (error instanceof NotReadyError) {
-          pendingError = error;
-          return;
-        }
-
-        dirty = true;
-        throw error;
-      }
-    },
-    {
-      phase: "render",
-      scheduler: () => {
-        if (dirty) return;
-        dirty = true;
-        trigger(target, "value");
-      },
-    },
-  );
-
-  registerPending(computed, () => {
-    // A synchronous computed can still be waiting on an async dependency.
-    // During SSR, force its first value read so the active Await boundary
-    // captures that dependency and retries after it settles.
-    if (import.meta.env.SSR && pendingError) {
-      void computed.value;
-    }
-
-    return pendingError !== undefined;
-  });
-
+  registerPending(computed, () => isPending(resource));
   return computed;
-}
-
-function isPromiseLikeValue(value: unknown): value is PromiseLike<unknown> {
-  return (
-    value !== null &&
-    (typeof value === "object" || typeof value === "function") &&
-    typeof (value as { then?: unknown }).then === "function"
-  );
 }
