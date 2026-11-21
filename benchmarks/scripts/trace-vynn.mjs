@@ -50,7 +50,7 @@ async function measureEntry(outputDirectory) {
     await readFile(resolve(outputDirectory, ".vite/manifest.json"), "utf8"),
   );
   const entries = Object.values(manifest);
-  const entry = entries.find((item) => item.isEntry && /\\.m?js$/i.test(item.file));
+  const entry = entries.find((item) => item.isEntry && /\.m?js$/i.test(item.file));
   if (!entry) throw new Error("Could not find the Vynn JavaScript entry in the Vite manifest.");
 
   const content = await readFile(resolve(outputDirectory, entry.file));
