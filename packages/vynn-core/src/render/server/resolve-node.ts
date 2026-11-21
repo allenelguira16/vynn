@@ -226,66 +226,14 @@ export function resolveNode(child: () => JSX.Element): SSR_NODE[] {
   return resolveElementString(child());
 }
 
-/**
- * Resolves an SSR child expression and collects pending promises.
- *
- * If the expression suspends, returns a deferred SSR node that retries
- * the expression after the collected promises settle.
- */
 export function resolveSSRChild(child: () => JSX.Element): SSR_NODE[] {
   try {
-    return resolveNode(child);
+    return resolveNode(child) as unknown as SSR_NODE[];
   } catch (error) {
     if (!(error instanceof NotReadyError)) throw error;
 
     return [createSSRDeferred(() => resolveSSRChild(child), [error.promise])];
   }
-}
-
-/**
- * Resolves JSX into DOM nodes on the client or SSR nodes on the server.
- * The Node[] return type is retained for compatibility with existing callers.
- */
-export function resolveNode(child: () => JSX.Element, claimText = true): Node[] {
-  if (isServer()) {
-    return resolveElementString(child()) as unknown as Node[];
-  }
-
-  return resolveElement(child(), claimText);
-}
-
-export function resolveElement(element: JSX.Element, claimText = true): Node[] {
-  if (element === null || element === undefined || element === false) {
-    return [document.createTextNode("")];
-  }
-
-  if (typeof element === "string" || typeof element === "number") {
-    const value = String(element);
-    const text = document.createTextNode(value);
-
-    if (claimText) {
-      const hydrating = isHydrationClaimActive();
-      const claimed = claimHydrationText();
-
-      if (!hydrating) {
-        if (claimed) return [claimed];
-      } else if (synchronizeHydrationText(claimed, value)) {
-        return [claimed];
-      }
-    }
-
-    return [text];
-  }
-
-  if (element instanceof Node) {
-    return [element];
-  }
-
-  if (typeof element === "function") {
-    return resolveElement((element as unknown as () => JSX.Element)(), claimText);
-  }
-
-  return element.flatMap((child) => resolveElement(child, claimText));
 }
 
 
