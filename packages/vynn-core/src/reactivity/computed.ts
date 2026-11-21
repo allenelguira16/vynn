@@ -1,7 +1,8 @@
 import { getAsyncBoundary } from "../context/async-context";
 
 import { isAsyncGetterFromLazy } from "../context/lazy-context";
-import { createReactiveEffect, track, trigger } from "./effect";
+import { createReactiveEffect } from "./effect";
+import { track, trigger } from "./graph";
 import { NotReadyError } from "./not-ready-error";
 import { isPending, registerPending } from "./pending";
 import { markRef, type VynnReadonlyRef } from "./ref";
