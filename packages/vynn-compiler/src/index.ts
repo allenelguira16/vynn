@@ -222,13 +222,14 @@ function compileVynnOxc(
     throw new Error(`Oxc returned an invalid program for ${filename}.`);
   }
   const containsJSX = programContainsJSX(program);
-  if (!containsJSX && !source.includes("$state")) return { code: source, map: null };
+  if (!containsJSX && !source.includes("$state") && !source.includes("$computed")) return { code: source, map: null };
 
   addSourceLocations(program, source);
   const state = new TransformState(program, filename);
   const transformedStateValues = state.transformDirectStateValues();
+  const transformedComputedValues = state.transformDirectComputedValues();
 
-  if (!containsJSX && !transformedStateValues) {
+  if (!containsJSX && !transformedStateValues && !transformedComputedValues) {
     return { code: source, map: null };
   }
 
@@ -651,6 +652,201 @@ class TransformState {
 
     const body = [...this.program.body];
     body.splice(insertionIndex, 0, stateValueImport);
+    setNodeProperty(this.program, "body", body);
+
+    return true;
+  }
+
+  transformDirectComputedValues(): boolean {
+    const computedBindings = new Set<string>();
+    const namespaceBindings = new Set<string>();
+
+    for (const statement of this.program.body) {
+      if (!isImportDeclaration(statement)) continue;
+
+      const source = getNodeProperty(statement, "source");
+      const sourceName = isLiteralString(source) ? source.value : "";
+      if (sourceName !== "vynn" || getNodeProperty(statement, "importKind") === "type") continue;
+
+      for (const specifier of statement.specifiers ?? []) {
+        if (getNodeProperty(specifier, "importKind") === "type") continue;
+
+        const local = getNodeProperty(specifier, "local");
+        if (!isIdentifier(local)) continue;
+
+        if (isImportSpecifier(specifier)) {
+          const imported = getNodeProperty(specifier, "imported");
+          const importedName = isIdentifier(imported)
+            ? imported.name
+            : isLiteralString(imported)
+              ? imported.value
+              : null;
+          if (importedName === "$computed") computedBindings.add(local.name);
+        } else if (isType(specifier, "ImportNamespaceSpecifier")) {
+          namespaceBindings.add(local.name);
+        }
+      }
+    }
+
+    if (computedBindings.size === 0 && namespaceBindings.size === 0) return false;
+
+    const unwrapGetter = (node: Node | null | undefined): Node | null => {
+      let current = node;
+      while (
+        current &&
+        (
+          isTSAsExpression(current) ||
+          isTSNonNullExpression(current) ||
+          isType(current, "TSSatisfiesExpression") ||
+          isType(current, "TSTypeAssertion")
+        )
+      ) {
+        const expression = getNodeProperty(current, "expression");
+        current = isNode(expression) ? expression : null;
+      }
+      return current;
+    };
+
+    const matchesComputedCall = (callee: Node): boolean => {
+      if (isIdentifier(callee)) return computedBindings.has(callee.name);
+      if (!isMemberExpression(callee) || callee.optional) return false;
+
+      const object = callee.object;
+      if (!isIdentifier(object) || !namespaceBindings.has(object.name)) return false;
+
+      if (!callee.computed && isIdentifier(callee.property)) {
+        return callee.property.name === "$computed";
+      }
+
+      return (
+        callee.computed &&
+        isLiteralString(callee.property) &&
+        callee.property.value === "$computed"
+      );
+    };
+
+    const directComputedCalls: Node[] = [];
+    const visit = (node: Node, shadowed: ReadonlySet<string>): void => {
+      if (!isNode(node)) return;
+
+      if (isFunctionLike(node)) {
+        const local = new Set(shadowed);
+        if (node.id && isIdentifier(node.id)) local.add(node.id.name);
+        for (const parameter of node.params ?? []) {
+          this.collectBindingNames(parameter, local);
+        }
+
+        if (isBlockStatement(node.body)) {
+          this.collectDirectBlockBindings(node.body, local);
+          this.collectFunctionVarBindings(node.body, local);
+          visit(node.body, local);
+        } else if (isNode(node.body)) {
+          visit(node.body, local);
+        }
+
+        for (const parameter of node.params ?? []) visit(parameter, local);
+        return;
+      }
+
+      if (isBlockStatement(node)) {
+        const local = new Set(shadowed);
+        this.collectDirectBlockBindings(node, local);
+        for (const statement of node.body) visit(statement, local);
+        return;
+      }
+
+      if (isType(node, "ClassDeclaration") || isType(node, "ClassExpression")) {
+        const local = new Set(shadowed);
+        if (node.id && isIdentifier(node.id)) local.add(node.id.name);
+        forEachChild(node, (child) => visit(child, local));
+        return;
+      }
+
+      if (isType(node, "CatchClause")) {
+        const local = new Set(shadowed);
+        if (node.param) this.collectBindingNames(node.param, local);
+        if (isNode(node.body)) visit(node.body, local);
+        return;
+      }
+
+      if (isType(node, "SwitchStatement")) {
+        const local = new Set(shadowed);
+        this.collectSwitchBindings(node, local);
+        forEachChild(node, (child) => visit(child, local));
+        return;
+      }
+
+      if (
+        isType(node, "ForStatement") ||
+        isType(node, "ForInStatement") ||
+        isType(node, "ForOfStatement")
+      ) {
+        const local = new Set(shadowed);
+        const binding = getNodeProperty(node, "init") ?? getNodeProperty(node, "left");
+        if (isVariableDeclaration(binding) && binding.kind !== "var") {
+          for (const declaration of binding.declarations) {
+            this.collectBindingNames(declaration.id, local);
+          }
+        }
+
+        for (const key of getVisitorKeys(node)) {
+          const value = getNodeProperty(node, key);
+          if (isNodeArray(value)) {
+            for (const child of value) if (child) visit(child, local);
+          } else if (isNode(value)) {
+            visit(value, local);
+          }
+        }
+        return;
+      }
+
+      if (isCallExpression(node) && !node.optional) {
+        const args = node.arguments ?? [];
+        const getter = args.length === 1 ? unwrapGetter(args[0]) : null;
+        const isDirectFunction =
+          getter !== null &&
+          (isArrowFunctionExpression(getter) || isFunctionExpression(getter)) &&
+          getNodeProperty(getter, "async") !== true;
+
+        if (isDirectFunction && matchesComputedCall(node.callee)) {
+          const bindingName = isIdentifier(node.callee)
+            ? node.callee.name
+            : isMemberExpression(node.callee) && isIdentifier(node.callee.object)
+              ? node.callee.object.name
+              : "";
+          if (!shadowed.has(bindingName)) directComputedCalls.push(node);
+        }
+      }
+
+      forEachChild(node, (child) => visit(child, shadowed));
+    };
+
+    visit(this.program, new Set());
+    if (directComputedCalls.length === 0) return false;
+
+    const computedSyncLocal = this.generateUidIdentifier("$computedSync", "_$").name;
+    for (const call of directComputedCalls) {
+      setNodeProperty(call, "callee", identifier(computedSyncLocal));
+    }
+
+    const computedSyncImport = importDeclaration(
+      [importSpecifier(identifier(computedSyncLocal), identifier("$computedSync"))],
+      "vynn/internal/computed-sync",
+    );
+    let insertionIndex = 0;
+
+    while (insertionIndex < this.program.body.length) {
+      const statement = this.program.body[insertionIndex]!;
+      const isDirective =
+        isExpressionStatement(statement) &&
+        isType(statement.expression, "Literal") &&
+        typeof statement.expression.value === "string";
+      if (!isImportDeclaration(statement) && !isDirective) break;
+      insertionIndex++;
+    }
+
+    const body = [...this.program.body];
+    body.splice(insertionIndex, 0, computedSyncImport);
     setNodeProperty(this.program, "body", body);
 
     return true;

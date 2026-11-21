@@ -38,6 +38,10 @@
     "./internal/state-value": {
       "types": "./src/reactivity/state-value.ts",
       "import": "./src/reactivity/state-value.ts"
+    },
+    "./internal/computed-sync": {
+      "types": "./src/reactivity/computed-sync.ts",
+      "import": "./src/reactivity/computed-sync.ts"
     }
   },
   "scripts": {
