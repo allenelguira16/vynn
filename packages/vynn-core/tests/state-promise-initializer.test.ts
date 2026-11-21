@@ -465,6 +465,10 @@ describe("Promise-returning initializers", () => {
     let source!: State<number>;
     let value!: State<number>;
     let pendingPromise: Promise<unknown> | undefined;
+    let notifySecondExecution!: () => void;
+    const secondExecution = new Promise<void>((resolve) => {
+      notifySecondExecution = resolve;
+    });
     let executions = 0;
 
     try {
@@ -475,6 +479,7 @@ describe("Promise-returning initializers", () => {
         value = $state(() => {
           executions++;
           const current = source.value;
+          if (current === 1) notifySecondExecution();
 
           return new Promise<number>((resolve) => {
             resolvers.set(current, resolve);
@@ -492,7 +497,7 @@ describe("Promise-returning initializers", () => {
       });
 
       expect(pendingPromise).toBeDefined();
-      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      await secondExecution;
 
       expect(executions).toBe(2);
       expect(resolvers.has(1)).toBe(true);

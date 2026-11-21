@@ -1,6 +1,9 @@
 import { ASYNC_DATA_SSR_KEY } from "../const";
 import { getAsyncBoundary } from "../context/async-boundary";
-import { ASYNC_OWNER_ID_RESERVATIONS_KEY, registerAsyncOwnerIDReservation } from "../context/async-owner-context";
+import {
+  ASYNC_OWNER_ID_RESERVATIONS_KEY,
+  registerAsyncOwnerIDReservation,
+} from "../context/async-owner-context";
 import { isAsyncGetterFromLazy } from "../context/lazy-context";
 import {
   commitOwnerIdentityTransaction,

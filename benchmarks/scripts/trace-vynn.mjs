@@ -69,15 +69,26 @@ async function measureEntry(outputDirectory) {
   const entry = entries.find((item) => item.isEntry && /\.m?js$/i.test(item.file));
   if (!entry) throw new Error("Could not find the Vynn JavaScript entry in the Vite manifest.");
 
-  const content = await readFile(resolve(outputDirectory, entry.file));
+  const staticFiles = collectStaticFiles(manifest, entry).filter((file) => /\\.m?js$/i.test(file));
+  const staticAssets = await Promise.all(staticFiles.map(async (file) => {
+    const content = await readFile(resolve(outputDirectory, file));
+    return {
+      file,
+      raw: content.byteLength,
+      gzip: gzipSync(content, { level: 9 }).byteLength,
+      brotli: brotliCompressSync(content, {
+        params: { [zlibConstants.BROTLI_PARAM_QUALITY]: 11 },
+      }).byteLength,
+    };
+  }));
+
   return {
     file: entry.file,
-    staticFiles: collectStaticFiles(manifest, entry),
-    raw: content.byteLength,
-    gzip: gzipSync(content, { level: 9 }).byteLength,
-    brotli: brotliCompressSync(content, {
-      params: { [zlibConstants.BROTLI_PARAM_QUALITY]: 11 },
-    }).byteLength,
+    staticFiles,
+    staticAssets,
+    raw: staticAssets.reduce((sum, asset) => sum + asset.raw, 0),
+    gzip: staticAssets.reduce((sum, asset) => sum + asset.gzip, 0),
+    brotli: staticAssets.reduce((sum, asset) => sum + asset.brotli, 0),
   };
 }
 
@@ -119,7 +130,11 @@ async function main() {
     const staticFiles = new Set(entry.staticFiles);
     const initialChunks = moduleReport.chunks.filter((chunk) => staticFiles.has(chunk.file));
     const deferredChunks = moduleReport.chunks.filter((chunk) => !staticFiles.has(chunk.file));
-    const deferredAssets = await measureDeferredChunks(outputDirectory, moduleReport.chunks, entry.staticFiles);
+    const deferredAssets = await measureDeferredChunks(
+      outputDirectory,
+      moduleReport.chunks,
+      entry.staticFiles,
+    );
 
     const modules = initialChunks.flatMap((chunk) =>
       chunk.modules.map((module) => ({
