@@ -66,58 +66,91 @@ export function createSsrHeadManager(context: HeadContext): SsrHeadManager {
  */
 export function renderHeadPatchRuntime(): string {
   return `window.${APPLY_HEAD_PATCH_SSR_KEY}=window.${APPLY_HEAD_PATCH_SSR_KEY}||function(h){
-    var t=document.createElement("template");
-    t.innerHTML=h;
-    function k(n){
-      var t=n.tagName.toLowerCase();
-      if(t==="title")return"title";
-      if(t==="meta"){
-        if(n.hasAttribute("charset"))return"meta:charset";
-        var v=n.getAttribute("name");
-        if(v)return"meta:name:"+v.toLowerCase();
-        v=n.getAttribute("property");
-        if(v)return"meta:property:"+v.toLowerCase();
-        v=n.getAttribute("http-equiv");
-        if(v)return"meta:http-equiv:"+v.toLowerCase();
-      }
-      if(t==="link"){
-        var r=(n.getAttribute("rel")||"").toLowerCase(),h=n.getAttribute("href")||"";
-        return r==="canonical"?"link:canonical":"link:"+r+":"+h;
-      }
-      return null;
+  var t=document.createElement("template");
+  t.innerHTML=h;
+  function k(n){
+    var tag=n.tagName.toLowerCase();
+    if(tag==="title")return"title";
+    if(tag==="meta"){
+      if(n.hasAttribute("charset"))return"meta:charset";
+      var v=n.getAttribute("name");
+      if(v)return"meta:name:"+v.toLowerCase();
+      v=n.getAttribute("property");
+      if(v)return"meta:property:"+v.toLowerCase();
+      v=n.getAttribute("http-equiv");
+      if(v)return"meta:http-equiv:"+v.toLowerCase();
     }
-    function preserve(e){
-      if(!e.hasAttribute("key")){
-        var f=document.head.querySelector('template[data-vynn-head-fallback]');
-        if(!f){
-          f=document.createElement("template");
-          f.setAttribute("data-vynn-head-fallback","");
-          document.head.append(f);
-        }
-        f.content.append(e);
-      }else{
-        e.remove();
-      }
+    if(tag==="link"){
+      var r=(n.getAttribute("rel")||"").toLowerCase(),href=n.getAttribute("href")||"";
+      return r==="canonical"?"link:canonical":"link:"+r+":"+href;
     }
-    t.content.querySelectorAll("[data-vynn-head-replace]").forEach(function(n){
-      var c=n.getAttribute("data-vynn-head-replace");
-      document.head.querySelectorAll("meta[property]").forEach(function(e){
-        var p="meta:property:"+(e.getAttribute("property")||"").toLowerCase();
-        if(p===c||p.indexOf(c+":")===0)preserve(e);
+    return null;
+  }
+  function c(n){
+    if(n.tagName.toLowerCase()!=="meta")return null;
+    var property=(n.getAttribute("property")||"").toLowerCase();
+    if(!property)return null;
+    var roots=["og:image","og:video","og:audio","og:locale:alternate"];
+    for(var i=0;i<roots.length;i++){
+      var root=roots[i];
+      if(property===root||property.indexOf(root+":")===0)return"meta:property:"+root;
+    }
+    return null;
+  }
+  function preserve(e){
+    if(!e.hasAttribute("key")){
+      var f=document.head.querySelector('template[data-vynn-head-fallback]');
+      if(!f){
+        f=document.createElement("template");
+        f.setAttribute("data-vynn-head-fallback","");
+        document.head.append(f);
+      }
+      f.content.append(e);
+    }else{
+      e.remove();
+    }
+  }
+  var incoming=Array.prototype.slice.call(t.content.children);
+  var incomingSet=new Set(incoming);
+  var handled=new Set();
+  var replacedCollections=new Set();
+  incoming.forEach(function(n){
+    if(handled.has(n))return;
+    var collection=n.getAttribute("data-vynn-head-replace");
+    if(collection){
+      if(replacedCollections.has(collection))return;
+      replacedCollections.add(collection);
+      var related=incoming.filter(function(candidate){return c(candidate)===collection;});
+      related.forEach(function(candidate){handled.add(candidate);});
+      var existing=Array.prototype.slice.call(document.head.querySelectorAll("meta[property]")).filter(function(e){
+        return c(e)===collection;
       });
+      if(existing.length){
+        var anchor=existing[0];
+        related.forEach(function(candidate){
+          candidate.removeAttribute("data-vynn-head-replace");
+          document.head.insertBefore(candidate,anchor);
+        });
+        existing.forEach(preserve);
+      }
+      return;
+    }
+    var identity=n.getAttribute("key");
+    if(!identity)return;
+    var existing=Array.prototype.slice.call(document.head.querySelectorAll(n.tagName.toLowerCase())).filter(function(e){
+      return e.getAttribute("key")===identity||k(e)===identity;
     });
-    t.content.querySelectorAll("[key]").forEach(function(n){
-      var v=n.getAttribute("key");
-      document.head.querySelectorAll(n.tagName.toLowerCase()).forEach(function(e){
-        if(e.getAttribute("key")===v||(!n.hasAttribute("data-vynn-head-replace")&&k(e)===v))preserve(e);
-      });
-    });
-    t.content.querySelectorAll("[data-vynn-head-replace]").forEach(function(n){
-      n.removeAttribute("data-vynn-head-replace");
-    });
-    document.head.querySelectorAll("[key]").forEach(function(n){n.remove();});
-    document.head.append(t.content);
-  };`;
+    if(existing.length){
+      document.head.insertBefore(n,existing[0]);
+      existing.forEach(preserve);
+    }
+  });
+  incoming.forEach(function(n){n.removeAttribute("data-vynn-head-replace");});
+  Array.prototype.slice.call(document.head.querySelectorAll("[key]")).forEach(function(n){
+    if(!incomingSet.has(n))n.remove();
+  });
+  document.head.append(t.content);
+};`;
 }
 
 /** Encodes a complete head snapshot as a browser-side patch. */
