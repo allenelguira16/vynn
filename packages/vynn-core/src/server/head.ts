@@ -160,9 +160,8 @@ export function renderHeadPatchRuntime(): string {
   });
   incoming.forEach(function(n){n.removeAttribute("data-vynn-head-replace");});
   Array.prototype.slice.call(document.head.querySelectorAll("[key]")).forEach(function(n){
-    if(incomingSet.has(n))return;
-    var identity=n.getAttribute("key");
-    if(identity!=="meta:charset")restoreFallback(identity,n.tagName.toLowerCase(),n);
+    if(incomingSet.has(n)||n.getAttribute("key")==="meta:charset")return;
+    restoreFallback(n.getAttribute("key"),n.tagName.toLowerCase(),n);
     n.remove();
   });
   document.head.append(t.content);
