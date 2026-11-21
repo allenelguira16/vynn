@@ -11,41 +11,32 @@ import {
   disposeOwner,
   getOwner,
   getOwnerIdentityID,
-  hasOwnerIdentityTransaction,
   peekOwnerID,
   rollbackOwnerIdentityTransaction,
   runWithOwner,
   type Owner,
 } from "../life-cycle/owner";
-import {
-  cleanupSubscriber,
-  withSubscriber,
-  type ReactiveSubscriber,
-} from "./graph";
+import { cleanupSubscriber, withSubscriber, type ReactiveSubscriber } from "./graph";
 import { NotReadyError } from "./not-ready-error";
 import { isPending, registerPending } from "./pending";
 import { createCell, markRef, type VynnRef } from "./ref";
 
 export type State<T> = VynnRef<T>;
 
-type InitialOutcome<T> = {
+type Initial<T> = {
   result?: T | PromiseLike<T>;
   error?: NotReadyError;
   subscriber: ReactiveSubscriber;
   hasChanged: () => boolean;
 };
 
-type FirstRead = {
-  read: boolean;
-  owner: Owner | null;
+type BridgeControl<T> = {
+  attach(resource: VynnRef<T>): void;
+  hasRead(): boolean;
+  getReadOwner(): Owner | null;
 };
 
-type LoadedResource<T> = {
-  resource: VynnRef<T>;
-  waitForInitialValue: (resource: VynnRef<T>, owner: Owner | null) => Promise<void>;
-};
-
-function isPromiseLike<T>(value: T | PromiseLike<T>): value is PromiseLike<T> {
+function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
   return (
     value !== null &&
     (typeof value === "object" || typeof value === "function") &&
@@ -53,121 +44,91 @@ function isPromiseLike<T>(value: T | PromiseLike<T>): value is PromiseLike<T> {
   );
 }
 
-function hasHydrationSlot(ownerID: string | undefined): boolean {
-  if (!ownerID || import.meta.env.SSR || typeof window === "undefined") return false;
-
-  const payload = (window as unknown as Record<string, unknown>)[ASYNC_DATA_SSR_KEY];
-  if (payload === null || typeof payload !== "object") return false;
-
-  const values = payload as Record<string, unknown>;
-  if (Object.prototype.hasOwnProperty.call(values, ownerID)) return true;
-
-  const reservations = values[ASYNC_OWNER_ID_RESERVATIONS_KEY];
-  return Array.isArray(reservations) && reservations.includes(ownerID);
+function hasHydrationSlot(id: string | undefined): boolean {
+  if (!id || import.meta.env.SSR || typeof window === "undefined") return false;
+  const values = (window as unknown as Record<string, unknown>)[ASYNC_DATA_SSR_KEY];
+  if (!values || typeof values !== "object") return false;
+  const payload = values as Record<string, unknown>;
+  const reservations = payload[ASYNC_OWNER_ID_RESERVATIONS_KEY];
+  return (
+    Object.prototype.hasOwnProperty.call(payload, id) ||
+    (Array.isArray(reservations) && reservations.includes(id))
+  );
 }
 
-function finalizeSynchronousInitializer(owner: Owner): void {
-  const hasOwnedIdentityWork = owner.children.length > 0 || owner.nodeCount > 0;
-  const hasLifetimeWork = owner.cleanups.length > 0 || owner.mount.length > 0;
-
-  if (hasOwnerIdentityTransaction(owner)) {
-    if (hasOwnedIdentityWork) {
-      commitOwnerIdentityTransaction(owner);
-    } else {
-      rollbackOwnerIdentityTransaction(owner);
-    }
-
-    if (!hasOwnedIdentityWork && !hasLifetimeWork) {
-      disposeOwner(owner);
-    }
-    return;
-  }
-
-  if (!owner.id && !hasOwnedIdentityWork && !hasLifetimeWork) {
-    disposeOwner(owner);
-  }
+function finishInitializer(owner: Owner): void {
+  const hasChildren = owner.children.length > 0 || owner.nodeCount > 0;
+  const hasCleanups = owner.cleanups.length > 0 || owner.mount.length > 0;
+  if (hasChildren) commitOwnerIdentityTransaction(owner);
+  else rollbackOwnerIdentityTransaction(owner);
+  if (!hasChildren && !hasCleanups) disposeOwner(owner);
 }
 
-function createResourceBridge<T>(
-  load: () => Promise<LoadedResource<T>>,
-  onLoadFailure?: () => void,
-  eager = false,
+function createBridge<T>(
+  load: (control: BridgeControl<T>) => Promise<VynnRef<T>>,
+  owner: Owner | null,
+  onFailure?: () => void,
 ): VynnRef<T> {
   let resource: VynnRef<T> | undefined;
   let loading: Promise<VynnRef<T>> | undefined;
-  let failed = false;
   let failure: unknown;
+  let failed = false;
   let hasOverride = false;
   let override!: T;
-  const firstRead: FirstRead = { read: false, owner: null };
+  let readOwner: Owner | null = null;
+  let hasRead = false;
 
-  function startLoading(): Promise<VynnRef<T>> {
-    if (loading) return loading;
+  const control: BridgeControl<T> = {
+    attach(value) {
+      resource = value;
+      if (hasOverride) value.value = override;
+    },
+    hasRead: () => hasRead,
+    getReadOwner: () => readOwner,
+  };
 
-    loading = load()
-      .then(async ({ resource: value, waitForInitialValue }) => {
-        resource = value;
-        if (hasOverride) resource.value = override;
-
-        if (firstRead.read) {
-          await waitForInitialValue(value, firstRead.owner);
-        }
-
-        return value;
-      })
-      .catch((error: unknown) => {
+  const start = () => {
+    if (!loading) {
+      loading = load(control).catch((error: unknown) => {
         failed = true;
         failure = error;
-        onLoadFailure?.();
+        onFailure?.();
         throw error;
       });
-
-    void loading.catch(() => {});
+      void loading.catch(() => {});
+    }
     return loading;
-  }
+  };
 
-  if (eager) startLoading();
+  if (owner) start();
 
   const bridge = markRef({
     get value(): T {
       if (failed) throw failure;
       if (hasOverride && !resource) return override;
-
-      if (!resource) {
-        if (!firstRead.read) {
-          firstRead.read = true;
-          firstRead.owner = getOwner();
-        }
-
-        const boundary = getAsyncBoundary();
-        const pending = startLoading();
-        boundary?.(pending);
-        throw new NotReadyError(pending, boundary);
-      }
-
-      return resource.value;
+      if (resource) return resource.value;
+      hasRead = true;
+      readOwner ??= getOwner();
+      const boundary = getAsyncBoundary();
+      const promise = start();
+      boundary?.(promise);
+      throw new NotReadyError(promise, boundary);
     },
-
-    set value(nextValue: T) {
+    set value(next: T) {
       if (resource) {
-        resource.value = nextValue;
-      } else {
-        hasOverride = true;
-        override = nextValue;
-        if (!firstRead.read) {
-          firstRead.read = true;
-          firstRead.owner = getOwner();
-        }
-        startLoading();
+        resource.value = next;
+        return;
       }
+      hasOverride = true;
+      override = next;
+      hasRead = true;
+      readOwner ??= getOwner();
+      start();
     },
   }) as VynnRef<T>;
 
   registerPending(bridge, () => {
-    if (import.meta.env.SSR && !resource && !failed && !hasOverride) {
-      void bridge.value;
-    }
-
+    if (import.meta.env.SSR && !resource && !failed && !hasOverride) void bridge.value;
     if (hasOverride && !resource) return false;
     return resource ? isPending(resource) : loading !== undefined && !failed;
   });
@@ -175,127 +136,96 @@ function createResourceBridge<T>(
   return bridge;
 }
 
-function createLegacyResource<T>(
-  initializer: () => T | PromiseLike<T>,
-  owner: Owner | null,
-): VynnRef<T> {
-  return createResourceBridge(
-    () =>
-      import("./maybe-async-resource").then((module) => ({
-        resource: module.createLegacyMaybeAsyncResource(initializer, owner),
-        waitForInitialValue: module.waitForInitialValue,
-      })),
-    undefined,
-    owner !== null,
+function createLegacy<T>(initializer: () => T | PromiseLike<T>, owner: Owner | null): VynnRef<T> {
+  return createBridge(
+    (control) =>
+      import("./maybe-async-resource").then(({ createLegacyMaybeAsyncResource }) =>
+        createLegacyMaybeAsyncResource(initializer, owner, control),
+      ),
+    owner,
   );
 }
 
-function createPromotedResource<T>(
+function createPromoted<T>(
   initializer: () => T | PromiseLike<T>,
   owner: Owner,
   resourceOwner: Owner,
-  initial: InitialOutcome<T>,
+  initial: Initial<T>,
 ): VynnRef<T> {
-  return createResourceBridge(
-    () =>
-      import("./maybe-async-resource").then((module) => ({
-        resource: module.createPromotedMaybeAsyncResource(
-          initializer,
-          owner,
-          resourceOwner,
-          initial,
-        ),
-        waitForInitialValue: module.waitForInitialValue,
-      })),
+  return createBridge(
+    (control) =>
+      import("./maybe-async-resource").then(({ createPromotedMaybeAsyncResource }) =>
+        createPromotedMaybeAsyncResource(initializer, owner, resourceOwner, initial, control),
+      ),
+    owner,
     () => {
       initial.subscriber.disposed = true;
       cleanupSubscriber(initial.subscriber);
       disposeOwner(resourceOwner);
     },
-    true,
   );
 }
 
-function createMaybeAsyncState<T>(
-  initializer: () => T | PromiseLike<T>,
-): VynnRef<T> {
+function createMaybeAsyncState<T>(initializer: () => T | PromiseLike<T>): VynnRef<T> {
   const owner = getOwner();
-
-  if (!owner || isAsyncGetterFromLazy(initializer)) {
-    return createLegacyResource(initializer, owner);
-  }
+  if (!owner || isAsyncGetterFromLazy(initializer)) return createLegacy(initializer, owner);
 
   const resourceOwner = createOwnerIdentityTransaction(owner);
-  const candidateOwnerID =
-    getOwnerIdentityID(resourceOwner) ?? peekOwnerID(resourceOwner.parent);
-
-  if (hasHydrationSlot(candidateOwnerID)) {
+  const id = getOwnerIdentityID(resourceOwner) ?? peekOwnerID(resourceOwner.parent);
+  if (hasHydrationSlot(id)) {
     rollbackOwnerIdentityTransaction(resourceOwner);
     disposeOwner(resourceOwner);
-    return createLegacyResource(initializer, owner);
+    return createLegacy(initializer, owner);
   }
 
   let changed = false;
   const subscriber: ReactiveSubscriber = {
     dependencies: [],
     disposed: false,
-    notify() {
+    notify: () => {
       changed = true;
     },
   };
 
   let result: T | PromiseLike<T> | undefined;
-  let initialError: unknown;
+  let error: unknown;
   let didThrow = false;
+  let promiseLike = false;
 
   try {
     result = runWithOwner(resourceOwner, () =>
       withSubscriber(subscriber, () => initializer()),
     );
-  } catch (error) {
+    promiseLike = isPromiseLike(result);
+  } catch (caught) {
     didThrow = true;
-    initialError = error;
-  }
-
-  let promiseLike = false;
-  if (!didThrow) {
-    try {
-      promiseLike = isPromiseLike<T>(result as T | PromiseLike<T>);
-    } catch (error) {
-      didThrow = true;
-      initialError = error;
-    }
+    error = caught;
   }
 
   if (!didThrow && !promiseLike) {
     subscriber.disposed = true;
     cleanupSubscriber(subscriber);
-    finalizeSynchronousInitializer(resourceOwner);
+    finishInitializer(resourceOwner);
     return createCell(result as T);
   }
-
-  if (didThrow && !(initialError instanceof NotReadyError)) {
+  if (didThrow && !(error instanceof NotReadyError)) {
     subscriber.disposed = true;
     cleanupSubscriber(subscriber);
-    finalizeSynchronousInitializer(resourceOwner);
-    throw initialError;
+    finishInitializer(resourceOwner);
+    throw error;
   }
 
-  const initial: InitialOutcome<T> = {
+  const initial: Initial<T> = {
     result: promiseLike ? result : undefined,
-    error: initialError instanceof NotReadyError ? initialError : undefined,
+    error: error instanceof NotReadyError ? error : undefined,
     subscriber,
     hasChanged: () => changed,
   };
-
   const ownerID = commitOwnerIdentityTransaction(resourceOwner);
   if (initial.error && ownerID) registerAsyncOwnerIDReservation(ownerID);
+  if (promiseLike) void Promise.resolve(result as PromiseLike<T>).catch(() => {});
 
-  if (promiseLike) {
-    void Promise.resolve(result as PromiseLike<T>).catch(() => {});
-  }
-
-  return createPromotedResource(initializer, owner, resourceOwner, initial);
+  return createPromoted(initializer, owner, resourceOwner, initial);
 }
 
 export function $state<T>(initializer: () => Promise<T>): State<T>;
@@ -303,9 +233,7 @@ export function $state<T>(initializer: () => PromiseLike<T>): State<T>;
 export function $state<T>(initializer: () => T): State<T>;
 export function $state<T>(value?: T): State<T>;
 export function $state<T>(source?: T | (() => T | PromiseLike<T>)): State<T> {
-  if (typeof source !== "function") {
-    return createCell(source as T);
-  }
-
-  return createMaybeAsyncState(source as () => T | PromiseLike<T>);
+  return typeof source === "function"
+    ? createMaybeAsyncState(source as () => T | PromiseLike<T>)
+    : createCell(source as T);
 }
