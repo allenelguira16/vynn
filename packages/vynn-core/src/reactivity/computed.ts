@@ -2,7 +2,13 @@ import { getAsyncBoundary } from "../context/async-context";
 import { getErrorBoundary } from "../context/error-boundary-context";
 import { isAsyncGetterFromLazy } from "../context/lazy-context";
 import { getOwner, runWithOwner } from "../life-cycle/owner";
-import { cleanupSubscriber, track, trigger, withSubscriber, type ReactiveSubscriber } from "./graph";
+import {
+  cleanupSubscriber,
+  track,
+  trigger,
+  withSubscriber,
+  type ReactiveSubscriber,
+} from "./graph";
 import { NotReadyError } from "./not-ready-error";
 import { isPending, registerPending } from "./pending";
 import { markRef, type VynnReadonlyRef } from "./ref";

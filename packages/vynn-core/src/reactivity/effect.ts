@@ -1,7 +1,11 @@
 import { getErrorBoundary } from "../context/error-boundary-context";
 import { getOwner, runWithOwner, type Owner } from "../life-cycle/owner";
 import { NotReadyError } from "./not-ready-error";
-import { cleanupSubscriber, withSubscriber, type ReactiveSubscriber } from "./graph";
+import {
+  cleanupSubscriber,
+  withSubscriber,
+  type ReactiveSubscriber,
+} from "./graph";
 
 export { track, trigger, triggerAll, triggerArrayLength, untrack } from "./graph";
 
