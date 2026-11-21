@@ -34,6 +34,24 @@ describe("Vynn Oxc JSX compiler", () => {
     expect(code).toContain("$state(initial)");
   });
 
+  it("respects imported state aliases and lexical shadowing", () => {
+    const code = transformVynnOxc(
+      `import * as Vynn from "vynn";
+      function Counter() {
+        const count = Vynn.$state(0);
+        function local($state: (value: number) => number) {
+          return $state(1);
+        }
+        return <button>{count.value + local((value) => value).valueOf()}</button>;
+      }`,
+      "counter.tsx",
+    );
+
+    expect(code).toContain('from "vynn/internal/state-value"');
+    expect(code).toContain("_$stateValue(0)");
+    expect(code).toContain("$state(1)");
+  });
+
   it("rewrites direct state values in TypeScript modules without JSX", () => {
     const code = transformVynnOxc(
       `import { $state } from "vynn";

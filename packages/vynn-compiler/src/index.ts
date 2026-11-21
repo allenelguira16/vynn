@@ -591,6 +591,13 @@ class TransformState {
         return;
       }
 
+      if (isType(node, "ClassDeclaration") || isType(node, "ClassExpression")) {
+        const local = new Set(shadowed);
+        if (node.id && isIdentifier(node.id)) local.add(node.id.name);
+        forEachChild(node, (child) => visit(child, local));
+        return;
+      }
+
       if (isType(node, "CatchClause")) {
         const local = new Set(shadowed);
         if (node.param) this.collectBindingNames(node.param, local);
