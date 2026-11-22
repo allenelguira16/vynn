@@ -9,13 +9,12 @@ import {
 } from "../const";
 
 import { removeInternalRangeMarkers } from "../dom/internal-range";
+import { getOwnerContext, setOwnerContext } from "../context/owner-context";
 import {
   type Owner,
   createOwner,
-  getContext,
   getOwner,
   runWithOwner,
-  setContext,
 } from "../life-cycle/owner";
 
 let serverRenderedElements: Element[] = [];
@@ -78,7 +77,7 @@ function hasUnclaimedHydrationNodes(): boolean {
  * cannot make later client-side updates look like hydration work.
  */
 export function isHydrationClaimActive(): boolean {
-  const scope = getContext<LazyHydrationNodes>(LAZY_HYDRATION);
+  const scope = getOwnerContext<LazyHydrationNodes>(LAZY_HYDRATION);
 
   return scope ? scope.hydrating : rootHydrationDepth > 0;
 }
@@ -169,7 +168,7 @@ function finishIfClaimed(scope: LazyHydrationNodes): void {
  * dynamic imports resolve.
  */
 export function claimHydrationElement<T extends Element>() {
-  const scope = getContext<LazyHydrationNodes>(LAZY_HYDRATION);
+  const scope = getOwnerContext<LazyHydrationNodes>(LAZY_HYDRATION);
 
   try {
     if (scope) {
@@ -189,7 +188,7 @@ export function claimHydrationElement<T extends Element>() {
 }
 
 export function claimHydrationText() {
-  const scope = getContext<LazyHydrationNodes>(LAZY_HYDRATION);
+  const scope = getOwnerContext<LazyHydrationNodes>(LAZY_HYDRATION);
 
   try {
     if (scope) {
@@ -237,14 +236,14 @@ export function withServerRenderedLazy<T>(lazyID: string | number, callback: () 
   const owner = createOwner(undefined, { identity: false });
 
   return runWithOwner(owner, () => {
-    setContext(LAZY_HYDRATION, scope);
+    setOwnerContext(LAZY_HYDRATION, scope);
     return callback();
   });
 }
 
 /** Capture the current cursor before a render-effect attempt. */
 export function beginHydrationClaim(): HydrationClaimSnapshot {
-  const scope = getContext<LazyHydrationNodes>(LAZY_HYDRATION);
+  const scope = getOwnerContext<LazyHydrationNodes>(LAZY_HYDRATION);
 
   return {
     scope,

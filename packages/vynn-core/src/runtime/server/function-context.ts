@@ -1,4 +1,13 @@
-import { AsyncLocalStorage } from "node:async_hooks";
+import "./context";
+
+import {
+  createRuntimeContext,
+  getContext,
+  getRuntimeContextStore,
+  runWithRuntimeContext,
+  runWithRuntimeContextScope,
+  setContext,
+} from "../context";
 
 export type ServerFunctionCookieOptions = {
   domain?: string;
@@ -64,29 +73,7 @@ type ServerFunctionContextInput = {
   locals?: Map<unknown, unknown>;
 };
 
-// Vite can load the RPC runtime and a server function through distinct SSR
-// module graphs. Keep one async context store per Node.js realm so both module
-// instances observe the same active request scope without sharing request data.
-const requestContextStorageKey = Symbol.for("vynn.server-function-context.v1");
-const globalStorage = globalThis as typeof globalThis & Record<symbol, unknown>;
-const existingStorage = globalStorage[requestContextStorageKey];
-
-if (existingStorage !== undefined && !(existingStorage instanceof AsyncLocalStorage)) {
-  throw new Error("[Vynn] The global request-context storage key is already occupied.");
-}
-
-const serverFunctionContext =
-  (existingStorage as AsyncLocalStorage<ServerFunctionContext> | undefined) ??
-  new AsyncLocalStorage<ServerFunctionContext>();
-
-if (existingStorage === undefined) {
-  Object.defineProperty(globalThis, requestContextStorageKey, {
-    configurable: false,
-    enumerable: false,
-    value: serverFunctionContext,
-    writable: false,
-  });
-}
+const REQUEST_CONTEXT = Symbol.for("vynn.server-function-context");
 const createdContexts = new WeakSet<object>();
 
 function validateServerFunctionResponseStatus(status: number): void {
@@ -236,7 +223,12 @@ export function runWithServerFunctionContext<T>(
     ? (context as RequestContext)
     : createServerFunctionContext(context as ServerFunctionContextInput);
 
-  return serverFunctionContext.run(normalized, callback);
+  const parent = getRuntimeContextStore() ?? null;
+
+  return runWithRuntimeContext(createRuntimeContext(parent), () => {
+    setContext(REQUEST_CONTEXT, normalized);
+    return callback();
+  });
 }
 
 /**
@@ -246,21 +238,21 @@ export function runWithServerFunctionContext<T>(
  * When called outside a request scope, the implementation runs unchanged.
  */
 export function runWithServerFunctionInvocation<T>(functionId: string, callback: () => T): T {
-  const current = serverFunctionContext.getStore();
+  const current = getContext<RequestContext>(REQUEST_CONTEXT);
   if (!current) return callback();
 
-  return serverFunctionContext.run(
-    {
+  return runWithRuntimeContextScope(() => {
+    setContext(REQUEST_CONTEXT, {
       ...current,
       functionId,
-    },
-    callback,
-  );
+    });
+    return callback();
+  });
 }
 
 /** Returns the active SSR or server-function request context. */
 export function getRequestContext(): RequestContext {
-  const context = serverFunctionContext.getStore();
+  const context = getContext<RequestContext>(REQUEST_CONTEXT);
   if (!context) {
     throw new Error(
       "[Vynn] No request context is active. This API is only available during an SSR request or server-function invocation.",

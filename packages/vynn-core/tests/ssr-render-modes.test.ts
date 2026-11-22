@@ -12,7 +12,7 @@ import {
 import { serverFunctionsPlugin } from "../../vite-plugin/src/plugins/server-functions/index.ts";
 import { Catch } from "../src/components/catch";
 import { lazy } from "../src/components/lazy";
-import { registerSsrModule } from "../src/context/ssr-module-context";
+import { registerSsrModule } from "../src/context/ssr-modules";
 import { createOwner, disposeOwner, getOwner, runWithOwner } from "../src/life-cycle/owner";
 import { $registerHead } from "../src/render/head-runtime";
 import { $insert } from "../src/render/$insert";

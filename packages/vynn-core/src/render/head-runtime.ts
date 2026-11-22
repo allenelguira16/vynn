@@ -14,11 +14,15 @@ import {
 import {
   createOwner,
   disposeOwner,
-  getContext,
   getOwner,
   runWithOwner,
-  setContext,
 } from "../life-cycle/owner";
+import { getOwnerContext, setOwnerContext } from "../context/owner-context";
+import {
+  getContext,
+  runWithRuntimeContextScope,
+  setContext,
+} from "../runtime/context";
 import { $renderEffect } from "../reactivity/effect";
 import { assertSafeAttributeName } from "./attribute-name";
 
@@ -35,25 +39,15 @@ export function isCreatingHeadElement(): boolean {
 
 /**
  * Temporarily marks synchronous child evaluation as head metadata creation.
- * The marker is stored on the current owner so nested components inherit it.
+ * The marker lives in a child runtime-context frame inherited by nested renders.
  */
 export function withHeadElementCreation<T>(callback: () => T): T {
-  const owner = getOwner();
-  if (!owner) return callback();
+  if (!getOwner()) return callback();
 
-  const hadOwnValue = owner.context.has(HEAD_ELEMENT_CREATION_CONTEXT);
-  const previousValue = owner.context.get(HEAD_ELEMENT_CREATION_CONTEXT);
-  owner.context.set(HEAD_ELEMENT_CREATION_CONTEXT, true);
-
-  try {
+  return runWithRuntimeContextScope(() => {
+    setContext(HEAD_ELEMENT_CREATION_CONTEXT, true);
     return callback();
-  } finally {
-    if (hadOwnValue) {
-      owner.context.set(HEAD_ELEMENT_CREATION_CONTEXT, previousValue);
-    } else {
-      owner.context.delete(HEAD_ELEMENT_CREATION_CONTEXT);
-    }
-  }
+  });
 }
 
 export type HeadProps = Record<string, unknown>;
@@ -397,7 +391,7 @@ export function $registerHead<T extends HeadTag>(
   props: HeadPropsInput,
 ): HeadEntry {
   const context = getHeadContext();
-  const group = getContext<HeadGroup>(HEAD_GROUP_CONTEXT);
+  const group = getOwnerContext<HeadGroup>(HEAD_GROUP_CONTEXT);
   const entry: HeadEntry = {
     tag,
     attributes: {},
@@ -452,10 +446,12 @@ export function $registerHeadGroup(render: () => unknown): [] {
   context.groups.push(group);
 
   try {
-    runWithOwner(groupOwner, () => {
-      setContext(HEAD_GROUP_CONTEXT, group);
-      withHeadElementCreation(render);
-    });
+    runWithRuntimeContextScope(() =>
+      runWithOwner(groupOwner, () => {
+        setOwnerContext(HEAD_GROUP_CONTEXT, group);
+        withHeadElementCreation(render);
+      }),
+    );
   } catch (error) {
     const index = context.groups.indexOf(group);
     if (index !== -1) context.groups.splice(index, 1);

@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { JSX } from "../src/types/jsx";
 
 import { vynnSsrPreloadPlugin } from "../../vite-plugin/src/plugins/ssr-preload.ts";
-import { registerSsrModule } from "../src/context/ssr-module-context";
+import { registerSsrModule } from "../src/context/ssr-modules";
 import { createSSRAsync } from "../src/render/resolve-node";
 import { injectSsrPreloadLinks } from "../src/server/preload.inject-links";
 import { renderSsrPreloadLinks } from "../src/server/preload.render-preload-links";

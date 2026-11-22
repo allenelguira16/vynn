@@ -1,5 +1,5 @@
-import { initializeAsyncContext } from "../context/async-context";
-import { initializeErrorBoundaryContext } from "../context/error-boundary-context";
+import { runWithRuntimeContextRoot } from "../runtime/context";
+import { initializeErrorBoundaryContext } from "../context/error-boundary";
 import { initializeHeadContext, refreshHeadCandidates } from "../context/head-context";
 import { synchronizeHeadContext } from "../render/head-runtime";
 import { initializeLazyContext } from "../context/lazy-context";
@@ -123,11 +123,10 @@ export function renderToDOM(
   if (node instanceof Document || node instanceof Element || node instanceof DocumentFragment) {
     const owner = createOwner();
 
-    runWithOwner(owner, () => {
+    runWithRuntimeContextRoot(() => runWithOwner(owner, () => {
       const currentHeadContext = initializeHeadContext();
       headContext = currentHeadContext;
       initializeLazyContext();
-      initializeAsyncContext();
       initializeErrorBoundaryContext();
 
       const app = withDOMNamespace(
@@ -201,7 +200,7 @@ export function renderToDOM(
       }
 
       releaseUnmountListener = addUnmountListener();
-    });
+    }));
 
     cleanup = () => {
       try {

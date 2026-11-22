@@ -1,12 +1,19 @@
+import "../runtime/server/context";
+
 import type { JSX } from "../types/jsx";
 
-import { initializeAsyncContext } from "../context/async-context";
-import { initializeErrorBoundaryContext } from "../context/error-boundary-context";
+import { initializeAsyncHydrationRuntime } from "../runtime/async/hydration";
+import { initializeErrorBoundaryContext } from "../context/error-boundary";
 import { initializeHeadContext } from "../context/head-context";
 import { initializeLazyContext } from "../context/lazy-context";
-import { type RenderMode, setRenderMode } from "../context/render-mode";
-import { getSsrModuleContext, initializeSsrModuleContext } from "../context/ssr-module-context";
+import { type RenderMode, setRenderMode } from "../runtime/render-mode";
+import { getSsrModuleContext, initializeSsrModuleContext } from "../context/ssr-modules";
 import { createOwner, disposeOwner, runWithOwner } from "../life-cycle/owner";
+import {
+  createRuntimeContext,
+  getRuntimeContextStore,
+  runWithRuntimeContext,
+} from "../runtime/context";
 import { createSsrHeadManager, type SsrHeadManager } from "./head";
 import { resolveAsync } from "./render-to-server.async";
 import { resolveStream } from "./render-to-server.stream";
@@ -15,7 +22,7 @@ import {
   createServerFunctionContext,
   runWithServerFunctionContext,
   type RequestContext,
-} from "./server-function-context";
+} from "../runtime/server/function-context";
 
 export interface SsrRenderResult<TBody> {
   readonly body: TBody;
@@ -55,7 +62,9 @@ export function renderToServer(App: () => JSX.Element, mode: RenderMode, request
   const requestContext = request ? createServerFunctionContext({ request }) : undefined;
 
   const render = () =>
-    runWithOwner(owner, () => {
+    runWithRuntimeContext(
+      createRuntimeContext(getRuntimeContextStore() ?? null),
+      () => runWithOwner(owner, () => {
       let disposeOnExit = true;
 
       try {
@@ -64,7 +73,7 @@ export function renderToServer(App: () => JSX.Element, mode: RenderMode, request
         const headContext = initializeHeadContext();
         initializeSsrModuleContext();
         initializeLazyContext();
-        initializeAsyncContext();
+        initializeAsyncHydrationRuntime();
         initializeErrorBoundaryContext();
 
         const head = createSsrHeadManager(headContext);
@@ -105,7 +114,8 @@ export function renderToServer(App: () => JSX.Element, mode: RenderMode, request
           disposeOwner(owner);
         }
       }
-    });
+    }),
+    );
 
   return requestContext ? runWithServerFunctionContext(requestContext, render) : render();
 }

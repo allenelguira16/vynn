@@ -20,7 +20,7 @@ const FakePromise = Object.assign(
       try {
         executor(noop, noop);
       } catch {
-        // This pass exists only to collect synchronous reactive reads.
+        // This pass only collects synchronous reactive reads.
       }
     }
 
@@ -49,10 +49,7 @@ function restoreGlobal(key: "Promise" | "fetch", descriptor: PropertyDescriptor 
   }
 }
 
-/**
- * Runs an async getter once with inert async APIs to collect its synchronous
- * reactive dependencies without repeating network requests during hydration.
- */
+/** Run a maybe-async initializer without repeating its async side effects. */
 export function withFakeAsyncApis<T>(callback: () => T): T {
   const promiseDescriptor = Object.getOwnPropertyDescriptor(globalThis, "Promise");
   const fetchDescriptor = Object.getOwnPropertyDescriptor(globalThis, "fetch");

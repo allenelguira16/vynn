@@ -1,5 +1,5 @@
 import { isWithinInternalRange } from "../dom/internal-range";
-import { getContext, setContext } from "../life-cycle/owner";
+import { getOwnerContext, setOwnerContext } from "./owner-context";
 
 export type HeadTag = "title" | "meta" | "link";
 
@@ -82,7 +82,7 @@ function createHeadContext(): HeadContext {
 
 /** Returns the head registry associated with the current owner, when present. */
 export function getOptionalHeadContext(): HeadContext | undefined {
-  return getContext<HeadContext>(HEAD_CONTEXT);
+  return getOwnerContext<HeadContext>(HEAD_CONTEXT);
 }
 
 /** Returns the head registry associated with the current render root. */
@@ -102,7 +102,7 @@ export function getHeadContext(): HeadContext {
  */
 export function initializeHeadContext(): HeadContext {
   const context = createHeadContext();
-  setContext<HeadContext>(HEAD_CONTEXT, context);
+  setOwnerContext<HeadContext>(HEAD_CONTEXT, context);
   return context;
 }
 

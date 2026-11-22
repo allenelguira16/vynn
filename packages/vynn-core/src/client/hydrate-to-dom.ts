@@ -1,5 +1,6 @@
-import { initializeAsyncContext } from "../context/async-context";
-import { initializeErrorBoundaryContext } from "../context/error-boundary-context";
+import { runWithRuntimeContextRoot } from "../runtime/context";
+import { initializeAsyncHydrationRuntime } from "../runtime/async/hydration";
+import { initializeErrorBoundaryContext } from "../context/error-boundary";
 import { initializeHeadContext } from "../context/head-context";
 import { initializeLazyContext } from "../context/lazy-context";
 import { JSX } from "../jsx-runtime";
@@ -36,9 +37,9 @@ export function hydrateToDOM(
   if (node instanceof Document || node instanceof Element || node instanceof DocumentFragment) {
     const owner = createOwner();
 
-    runWithOwner(owner, () => {
+    runWithRuntimeContextRoot(() => runWithOwner(owner, () => {
       initializeHeadContext();
-      initializeAsyncContext();
+      initializeAsyncHydrationRuntime();
       initializeLazyContext();
       initializeErrorBoundaryContext();
 
@@ -52,7 +53,7 @@ export function hydrateToDOM(
       }, node);
 
       releaseUnmountListener = addUnmountListener();
-    });
+    }));
 
     cleanup = () => {
       try {

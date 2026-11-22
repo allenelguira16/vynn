@@ -1,1276 +1,452 @@
-// @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 
-import { ASYNC_DATA_SSR_KEY } from "../src/const";
-import {
-  enterAsyncBoundary,
-  getAsyncValues,
-  initializeAsyncContext,
-} from "../src/context/async-context";
-import { isPromiseFromLazy, regsterAsyncGetterFromLazy } from "../src/context/lazy-context";
 import { createOwner, disposeOwner, runWithOwner } from "../src/life-cycle/owner";
-import { $computed } from "../src/reactivity/$computed";
-import { $effect } from "../src/reactivity/$effect";
-import { $state } from "../src/reactivity/$state";
-import { $store } from "../src/reactivity/$store";
-import { $async, isPending } from "../src/reactivity/async";
-import { NotReadyError } from "../src/reactivity/not-ready-error";
-import { transaction } from "../src/reactivity/transaction";
-import { untrack } from "../src/reactivity/untrack";
-import { sleep } from "../src/utils/sleep";
+import { $computed } from "../src/reactivity/computed";
+import { $effect, $renderEffect, batch } from "../src/reactivity/effect";
+import { NotReadyError } from "../src/reactivity/async/not-ready-error";
+import { isPending } from "../src/reactivity/async/pending";
+import { $state } from "../src/reactivity/state";
+import { $store } from "../src/reactivity/store";
 
-async function flushEffects() {
-  await new Promise<void>((resolve) => {
-    queueMicrotask(resolve);
-  });
+async function flushEffects(): Promise<void> {
+  await new Promise<void>((resolve) => queueMicrotask(resolve));
 }
 
-describe("$state", () => {
-  it("stores and updates a value", () => {
+describe("new reactivity API", () => {
+  it("accepts direct values for state and store", () => {
     const count = $state(0);
+    const store = $store({ count: 0 });
 
     expect(count.value).toBe(0);
+    expect(store.count).toBe(0);
+  });
 
-    count.value = 1;
+  it("does not attach SSR blocking policy to NotReadyError", () => {
+    const error = new NotReadyError(Promise.resolve());
+
+    expect(error).not.toHaveProperty("blocking");
+  });
+
+  it("initializes writable state from a function", () => {
+    const count = $state(() => 1);
 
     expect(count.value).toBe(1);
+
+    count.value = 2;
+    expect(count.value).toBe(2);
   });
 
-  it("runs synchronous initializers once", () => {
-    let executions = 0;
+  it("treats PromiseLike state and store initializers as async resources", async () => {
+    const state = $state(() => Promise.resolve(10));
+    const store = $store(() => Promise.resolve({ count: 1 }));
 
-    const count = $state(() => {
-      executions += 1;
-      return 10;
-    });
+    expect(isPending(state)).toBe(true);
+    expect(isPending(store)).toBe(true);
 
-    expect(count.value).toBe(10);
-    expect(count.value).toBe(10);
-    expect(executions).toBe(1);
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(state.value).toBe(10);
+    expect(store.count).toBe(1);
   });
 
-  it("reruns effects when the value changes", async () => {
-    const count = $state(0);
+  it("tracks state dependencies in effects", async () => {
+    const count = $state(() => 0);
     const values: number[] = [];
 
-    const dispose = $effect(() => {
+    const stop = $effect(() => {
       values.push(count.value);
     });
 
-    try {
-      expect(values).toEqual([0]);
+    count.value = 1;
+    count.value = 2;
+    await flushEffects();
 
-      count.value = 1;
-      await flushEffects();
-
-      expect(values).toEqual([0, 1]);
-
-      // Unchanged values should not trigger another execution.
-      count.value = 1;
-      await flushEffects();
-
-      expect(values).toEqual([0, 1]);
-    } finally {
-      dispose();
-    }
+    expect(values).toEqual([0, 2]);
+    stop();
   });
 
-  it("does not track with untrack", async () => {
-    const count = $state(0);
+  it("runs render effects synchronously and batches repeated writes", () => {
+    const count = $state(() => 0);
     const values: number[] = [];
 
-    const dispose = $effect(() => {
-      untrack(() => {
-        values.push(count.value);
-      });
+    const stop = $renderEffect(() => {
+      values.push(count.value);
     });
 
-    try {
-      expect(values).toEqual([0]);
-
+    batch(() => {
       count.value = 1;
-      await flushEffects();
-
-      expect(values).toEqual([0]);
-    } finally {
-      dispose();
-    }
-  });
-});
-
-describe("$computed", () => {
-  it("evaluates eagerly, memoizes its value, and updates synchronously", () => {
-    const firstName = $state("Ada");
-    let executions = 0;
-
-    const greeting = $computed(() => {
-      executions += 1;
-      return `Hello, ${firstName.value}!`;
+      count.value = 2;
+      count.value = 3;
     });
 
-    expect(executions).toBe(1);
-    expect(greeting.value).toBe("Hello, Ada!");
-    expect(greeting.value).toBe("Hello, Ada!");
-    expect(executions).toBe(1);
-
-    firstName.value = "Grace";
-
-    expect(executions).toBe(2);
-    expect(greeting.value).toBe("Hello, Grace!");
-    expect(executions).toBe(2);
+    expect(values).toEqual([0, 3]);
+    stop();
   });
 
-  it("keeps synchronous computed values out of async hydration identities", async () => {
-    const owner = createOwner(null);
+  it("derives values and invalidates consumers when dependencies change", async () => {
+    const count = $state(() => 2);
+    const doubled = $computed(() => count.value * 2);
+    const values: number[] = [];
 
-    try {
-      await runWithOwner(owner, async () => {
-        initializeAsyncContext();
+    const stop = $effect(() => {
+      values.push(doubled.value);
+    });
 
-        const synchronous = $computed(() => 41);
-        expect(synchronous.value).toBe(41);
+    expect(doubled.value).toBe(4);
 
-        const asynchronous = $computed(async () => 42);
-        expect(isPending(asynchronous)).toBe(true);
+    count.value = 4;
+    await flushEffects();
 
-        // Only the asynchronous computed creates an identity-bearing resource
-        // owner. The synchronous computed must not consume an owner slot.
-        expect(owner.children.map((child) => child.id)).toEqual(["00"]);
-
-        await Promise.resolve();
-
-        runWithOwner(owner, () => {
-          expect(asynchronous!.value).toBe(42);
-          expect(getAsyncValues()).toEqual({ "00": 42 });
-        });
-      });
-    } finally {
-      disposeOwner(owner);
-    }
+    expect(doubled.value).toBe(8);
+    expect(values).toEqual([4, 8]);
+    stop();
   });
 
-  it("defers synchronous computations until their first read when lazy", () => {
-    const firstName = $state("Ada");
-    let executions = 0;
-
-    const greeting = $computed(
-      () => {
-        executions += 1;
-        return `Hello, ${firstName.value}!`;
-      },
-      { lazy: true },
-    );
-
-    expect(executions).toBe(0);
-    expect(greeting.value).toBe("Hello, Ada!");
-    expect(executions).toBe(1);
-
-    firstName.value = "Grace";
-
-    expect(executions).toBe(2);
-    expect(greeting.value).toBe("Hello, Grace!");
-  });
-
-  it("binds lazy synchronous computations to their creation owner", () => {
-    const creator = createOwner(null);
-    const consumer = createOwner(null);
-    const count = $state(0);
-    let executions = 0;
-    let doubled: { readonly value: number } | undefined;
-
-    try {
-      runWithOwner(creator, () => {
-        doubled = $computed(
-          () => {
-            executions += 1;
-            return count.value * 2;
-          },
-          { lazy: true },
-        );
-      });
-
-      runWithOwner(consumer, () => {
-        expect(doubled!.value).toBe(0);
-      });
-
-      expect(executions).toBe(1);
-
-      disposeOwner(creator);
-      count.value = 1;
-
-      expect(executions).toBe(1);
-    } finally {
-      disposeOwner(creator);
-      disposeOwner(consumer);
-    }
-  });
-
-  it("registers a pending async dependency with the consuming Await boundary", async () => {
-    const owner = createOwner(null);
-    let greeting: { readonly value: string } | undefined;
-    let boundaryPromise: Promise<unknown> | undefined;
-
-    try {
-      runWithOwner(owner, () => {
-        initializeAsyncContext();
-
-        const name = $async(async () => "Ada");
-        greeting = $computed(() => `Hello, ${name.value}!`);
-      });
-
-      runWithOwner(owner, () => {
-        enterAsyncBoundary((promise) => {
-          boundaryPromise = promise;
-        });
-
-        expect(() => greeting!.value).toThrow(NotReadyError);
-        expect(isPending(greeting!)).toBe(true);
-      });
-
-      expect(boundaryPromise).toBeDefined();
-      await boundaryPromise;
-
-      runWithOwner(owner, () => {
-        expect(greeting!.value).toBe("Hello, Ada!");
-        expect(isPending(greeting!)).toBe(false);
-      });
-    } finally {
-      disposeOwner(owner);
-    }
-  });
-
-  it("propagates pending async dependencies through chained synchronous computeds", async () => {
-    const owner = createOwner(null);
-    let result: { readonly value: string } | undefined;
-    let boundaryPromise: Promise<unknown> | undefined;
-
-    try {
-      runWithOwner(owner, () => {
-        initializeAsyncContext();
-
-        const name = $async(async () => "Ada");
-        const greeting = $computed(() => `Hello, ${name.value}`);
-        result = $computed(() => `${greeting.value}!`);
-      });
-
-      runWithOwner(owner, () => {
-        enterAsyncBoundary((promise) => {
-          boundaryPromise = promise;
-        });
-
-        expect(() => result!.value).toThrow(NotReadyError);
-        expect(isPending(result!)).toBe(true);
-      });
-
-      expect(boundaryPromise).toBeDefined();
-      await boundaryPromise;
-
-      runWithOwner(owner, () => {
-        expect(result!.value).toBe("Hello, Ada!");
-        expect(isPending(result!)).toBe(false);
-      });
-    } finally {
-      disposeOwner(owner);
-    }
-  });
-
-  it("starts asynchronous computations immediately", async () => {
-    let executions = 0;
-
-    const doubled = $computed(async () => {
-      executions += 1;
+  it("evaluates synchronous computed getters eagerly", () => {
+    let getterRuns = 0;
+    const value = $computed(() => {
+      getterRuns++;
       return 42;
     });
 
-    expect(executions).toBe(1);
-    expect(isPending(doubled)).toBe(true);
-
-    await Promise.resolve();
-
-    expect(doubled.value).toBe(42);
-    expect(isPending(doubled)).toBe(false);
+    expect(getterRuns).toBe(1);
+    expect(value.value).toBe(42);
+    expect(getterRuns).toBe(1);
   });
 
-  it("defers async computations until their first read when lazy", async () => {
-    const owner = createOwner(null);
-    let executions = 0;
-    let resolveValue!: (value: number) => void;
-    let boundaryPromise: Promise<unknown> | undefined;
-    let doubled: { readonly value: number } | undefined;
+  it("starts async state, store, and computed initializers eagerly in an owner", async () => {
+    const owner = createOwner();
+    let stateRuns = 0;
+    let storeRuns = 0;
+    let computedRuns = 0;
 
-    try {
-      runWithOwner(owner, () => {
-        initializeAsyncContext();
+    const values = runWithOwner(owner, () => ({
+      state: $state(async () => {
+        stateRuns++;
+        return 42;
+      }),
+      store: $store(async () => {
+        storeRuns++;
+        return { count: 1 };
+      }),
+      computed: $computed(async () => {
+        computedRuns++;
+        return 84;
+      }),
+    }));
 
-        doubled = $computed(
-          async () => {
-            executions += 1;
-            return new Promise<number>((resolve) => {
-              resolveValue = resolve;
-            });
-          },
-          { lazy: true },
-        );
-      });
+    expect([stateRuns, storeRuns, computedRuns]).toEqual([1, 1, 1]);
 
-      expect(executions).toBe(0);
-      expect(isPending(doubled!)).toBe(false);
+    await flushEffects();
 
-      runWithOwner(owner, () => {
-        enterAsyncBoundary((promise) => {
-          boundaryPromise = promise;
-        });
+    expect(values.state.value).toBe(42);
+    expect(values.store.count).toBe(1);
+    expect(values.computed.value).toBe(84);
 
-        expect(() => doubled!.value).toThrow(NotReadyError);
-      });
-
-      expect(executions).toBe(1);
-      expect(boundaryPromise).toBeDefined();
-      expect(isPending(doubled!)).toBe(true);
-
-      resolveValue(42);
-      await boundaryPromise;
-
-      runWithOwner(owner, () => {
-        expect(doubled!.value).toBe(42);
-        expect(isPending(doubled!)).toBe(false);
-      });
-    } finally {
-      disposeOwner(owner);
-    }
+    disposeOwner(owner);
   });
 
-  it("marks the async promise returned by a lazy computed getter", async () => {
-    const owner = createOwner(null);
-    let value: { readonly value: number } | undefined;
-    let resolveValue!: (value: number) => void;
-    let boundaryPromise: Promise<unknown> | undefined;
+  it("suspends computed values when an async dependency refreshes", async () => {
+    const url = $state(() => "/first");
+    const resolvers = new Map<string, () => void>();
 
-    const getter = async () =>
-      new Promise<number>((resolve) => {
-        resolveValue = resolve;
+    const state = $state(async () => {
+      const requestedUrl = url.value;
+      await new Promise<void>((resolve) => {
+        resolvers.set(requestedUrl, resolve);
       });
-
-    try {
-      runWithOwner(owner, () => {
-        initializeAsyncContext();
-        regsterAsyncGetterFromLazy(getter);
-        value = $computed(getter);
-      });
-
-      runWithOwner(owner, () => {
-        enterAsyncBoundary((promise) => {
-          boundaryPromise = promise;
-        });
-
-        expect(() => value!.value).toThrow(NotReadyError);
-      });
-
-      expect(boundaryPromise).toBeDefined();
-      expect(isPromiseFromLazy(boundaryPromise!)).toBe(true);
-
-      resolveValue(42);
-      await boundaryPromise;
-
-      runWithOwner(owner, () => {
-        expect(value!.value).toBe(42);
-      });
-    } finally {
-      disposeOwner(owner);
-    }
-  });
-});
-
-describe("$store", () => {
-  it("runs synchronous initializers once", () => {
-    let executions = 0;
-
-    const state = $store(() => {
-      executions += 1;
-      return { value: 1 };
+      return requestedUrl;
     });
+    const computed = $computed(() => state.value.toUpperCase());
 
-    expect(state.value).toBe(1);
-    state.value = 2;
-    expect(state.value).toBe(2);
-    expect(executions).toBe(1);
+    let initialPromise: Promise<unknown> | undefined;
+    try {
+      computed.value;
+    } catch (error) {
+      expect(error).toBeInstanceOf(NotReadyError);
+      initialPromise = (error as NotReadyError).promise;
+    }
+
+    expect(initialPromise).toBeDefined();
+    expect(isPending(state)).toBe(true);
+    expect(isPending(computed)).toBe(true);
+
+    resolvers.get("/first")?.();
+    await initialPromise;
+
+    expect(computed.value).toBe("/FIRST");
+    expect(isPending(state)).toBe(false);
+    expect(isPending(computed)).toBe(false);
+
+    url.value = "/second";
+
+    expect(isPending(state)).toBe(true);
+    expect(isPending(computed)).toBe(true);
+
+    let refreshPromise: Promise<unknown> | undefined;
+    try {
+      computed.value;
+    } catch (error) {
+      expect(error).toBeInstanceOf(NotReadyError);
+      refreshPromise = (error as NotReadyError).promise;
+    }
+
+    expect(refreshPromise).toBeDefined();
+
+    resolvers.get("/second")?.();
+    await refreshPromise;
+
+    expect(computed.value).toBe("/SECOND");
+    expect(isPending(state)).toBe(false);
+    expect(isPending(computed)).toBe(false);
   });
 
-  it("tracks nested property changes", async () => {
-    const user = $store({
-      profile: {
-        name: "Ada",
-      },
-    });
-
+  it("reacts to nested object changes, additions, deletion and iteration", async () => {
+    const state = $store<{
+      profile: { name: string };
+      enabled?: boolean;
+      extra?: string;
+    }>(() => ({
+      profile: { name: "Ada" },
+      enabled: true,
+    }));
     const names: string[] = [];
+    const keys: string[][] = [];
 
-    const dispose = $effect(() => {
-      names.push(user.profile.name);
+    const stopName = $effect(() => {
+      names.push(state.profile.name);
+    });
+    const stopKeys = $effect(() => {
+      keys.push(Object.keys(state));
     });
 
-    try {
-      expect(names).toEqual(["Ada"]);
+    state.profile.name = "Grace";
+    state.extra = "compiler";
+    delete state.enabled;
+    await flushEffects();
 
-      user.profile.name = "Grace";
-      await flushEffects();
+    expect(names).toEqual(["Ada", "Grace"]);
+    expect(keys).toEqual([
+      ["profile", "enabled"],
+      ["profile", "enabled", "extra"],
+      ["profile", "extra"],
+    ]);
 
-      expect(names).toEqual(["Ada", "Grace"]);
-    } finally {
-      dispose();
-    }
+    stopName();
+    stopKeys();
   });
 
-  it("tracks getters as computed", async () => {
-    const state = $store({
-      single: 0,
-      get double() {
-        return this.single * 2;
-      },
+  it("tracks Map entries with arbitrary keys", async () => {
+    const objectKey = {};
+    const store = $store(() => ({
+      values: new Map<unknown, string>([
+        [objectKey, "initial"],
+        [undefined, "optional"],
+      ]),
+    }));
+    const snapshots: string[] = [];
+
+    const stop = $effect(() => {
+      snapshots.push(
+        `${store.values.get(objectKey) ?? "missing"}|${store.values.get(undefined) ?? "missing"}`,
+      );
     });
 
-    state.single = 10;
+    store.values.set(objectKey, "updated");
+    store.values.delete(undefined);
+    await flushEffects();
 
-    expect(state.double).toEqual(20);
+    expect(snapshots).toEqual(["initial|optional", "updated|missing"]);
+    stop();
   });
 
-  it("stores and runs functions as methods", async () => {
-    const state = $store({
-      number: 0,
-      update(newNumber: number) {
-        this.number = newNumber;
-      },
+  it("tracks Set membership with arbitrary values", async () => {
+    const objectValue = {};
+    const store = $store(() => ({ values: new Set<unknown>() }));
+    const snapshots: boolean[] = [];
+
+    const stop = $effect(() => {
+      snapshots.push(store.values.has(objectValue));
     });
 
-    state.update(20);
+    store.values.add(objectValue);
+    await flushEffects();
 
-    expect(state.number).toEqual(20);
+    expect(snapshots).toEqual([false, true]);
+    stop();
   });
 
-  it("updates properties inside an existing transaction", async () => {
-    const state = $store({
-      number: 0,
-    });
+  it("unwraps writable refs when assigning through a store", () => {
+    const count = $state(() => 1);
+    const store = $store(() => ({ count }));
 
-    const values: number[] = [];
+    store.count = 2;
 
-    const dispose = $effect(() => {
-      values.push(state.number);
-    });
-
-    try {
-      expect(values).toEqual([0]);
-
-      transaction(() => {
-        state.number = 10;
-        state.number = 20;
-      });
-
-      await flushEffects();
-
-      expect(state.number).toBe(20);
-
-      // Both writes are batched into one effect execution.
-      expect(values).toEqual([0, 20]);
-    } finally {
-      dispose();
-    }
-  });
-});
-
-describe("$async", () => {
-  it("executes immediately when created inside a Vynn owner", async () => {
-    const owner = createOwner();
-
-    try {
-      await runWithOwner(owner, async () => {
-        initializeAsyncContext();
-
-        let executions = 0;
-        const data = $async(async () => {
-          executions += 1;
-          return "test";
-        });
-
-        expect(executions).toBe(1);
-        expect(isPending(data)).toBe(true);
-
-        let pendingPromise: Promise<unknown> | undefined;
-
-        try {
-          data.value;
-        } catch (error) {
-          expect(error).toBeInstanceOf(NotReadyError);
-          pendingPromise = (error as NotReadyError).promise;
-        }
-
-        expect(executions).toBe(1);
-
-        // Additional reads share the same in-flight request.
-        expect(() => data.value).toThrow(NotReadyError);
-        expect(executions).toBe(1);
-
-        await pendingPromise;
-
-        expect(data.value).toBe("test");
-        expect(executions).toBe(1);
-      });
-    } finally {
-      disposeOwner(owner);
-    }
+    expect(count.value).toBe(2);
+    expect(store.count).toBe(2);
   });
 
-  it("retries an eager async resource when another async resource it reads resolves", async () => {
-    const owner = createOwner();
-
-    try {
-      await runWithOwner(owner, async () => {
-        initializeAsyncContext();
-
-        const dependency = $async(async () => 21);
-        let executions = 0;
-
-        const doubled = $async(async () => {
-          executions += 1;
-          return dependency.value * 2;
-        });
-
-        expect(executions).toBe(1);
-        expect(isPending(dependency)).toBe(true);
-        expect(isPending(doubled)).toBe(true);
-
-        let dependencyPromise: Promise<unknown> | undefined;
-
-        try {
-          dependency.value;
-        } catch (error) {
-          expect(error).toBeInstanceOf(NotReadyError);
-          dependencyPromise = (error as NotReadyError).promise;
-        }
-
-        await dependencyPromise;
-        await Promise.resolve();
-
-        expect(doubled.value).toBe(42);
-        expect(isPending(doubled)).toBe(false);
-        expect(executions).toBe(2);
-      });
-    } finally {
-      disposeOwner(owner);
-    }
-  });
-
-  it("keeps a manual assignment over an eager request", async () => {
-    const owner = createOwner();
-
-    try {
-      await runWithOwner(owner, async () => {
-        initializeAsyncContext();
-
-        let executions = 0;
-        const data = $async(async () => {
-          executions += 1;
-          return "getter value";
-        });
-
-        expect(executions).toBe(1);
-        expect(isPending(data)).toBe(true);
-
-        data.value = "manual value";
-
-        expect(data.value).toBe("manual value");
-        expect(executions).toBe(1);
-        expect(isPending(data)).toBe(false);
-
-        // The older in-flight result must not overwrite the manual value.
-        await Promise.resolve();
-
-        expect(data.value).toBe("manual value");
-      });
-    } finally {
-      disposeOwner(owner);
-    }
-  });
-
-  it("restores an eager resource from its SSR snapshot without repeating the request", async () => {
-    const owner = createOwner(null);
-    const windowValues = window as unknown as Record<string, unknown>;
-    windowValues[ASYNC_DATA_SSR_KEY] = {
-      "00": 10,
-    };
-
-    let source: { value: number } | undefined;
-    let data: { value: number } | undefined;
-    let executions = 0;
-
-    try {
-      runWithOwner(owner, () => {
-        initializeAsyncContext();
-
-        source = $state(1);
-        data = $async(() => {
-          executions += 1;
-          return Promise.resolve(source!.value);
-        });
-
-        // The tracking pass runs eagerly, but hydration supplies the value
-        // and prevents the original request from being repeated.
-        expect(executions).toBe(1);
-        expect(data!.value).toBe(10);
-      });
-
-      expect(windowValues[ASYNC_DATA_SSR_KEY]).toEqual({});
-
-      runWithOwner(owner, () => {
-        source!.value = 2;
-      });
-
-      await Promise.resolve();
-
-      runWithOwner(owner, () => {
-        expect(data!.value).toBe(2);
-      });
-      expect(executions).toBe(2);
-    } finally {
-      delete windowValues[ASYNC_DATA_SSR_KEY];
-      disposeOwner(owner);
-    }
-  });
-
-  it("retains its hydration snapshot while an async dependency is still pending", async () => {
-    const owner = createOwner(null);
-    const windowValues = window as unknown as Record<string, unknown>;
-    windowValues[ASYNC_DATA_SSR_KEY] = {
-      "01": 99,
-    };
-
-    let dependency: { value: number } | undefined;
-    let derived: { value: number } | undefined;
-    let dependencyRequests = 0;
-    let derivedGetterRuns = 0;
-
-    try {
-      runWithOwner(owner, () => {
-        initializeAsyncContext();
-
-        dependency = $async(async () => {
-          dependencyRequests += 1;
-          return 2;
-        });
-
-        derived = $async(() => {
-          derivedGetterRuns += 1;
-          return Promise.resolve(dependency!.value * 2);
-        });
-
-        // The derived hydration pass waits on the dependency while retaining
-        // its own serialized value for the retry.
-        expect(isPending(dependency!)).toBe(true);
-        expect(isPending(derived!)).toBe(true);
-      });
-
-      let dependencyPromise: Promise<unknown> | undefined;
-
-      runWithOwner(owner, () => {
-        try {
-          dependency!.value;
-        } catch (error) {
-          expect(error).toBeInstanceOf(NotReadyError);
-          dependencyPromise = (error as NotReadyError).promise;
-        }
-      });
-
-      await dependencyPromise;
-      await Promise.resolve();
-
-      runWithOwner(owner, () => {
-        expect(dependency!.value).toBe(2);
-        expect(derived!.value).toBe(99);
-        expect(isPending(derived!)).toBe(false);
-      });
-
-      expect(dependencyRequests).toBe(1);
-      expect(derivedGetterRuns).toBe(2);
-      expect(windowValues[ASYNC_DATA_SSR_KEY]).toEqual({});
-    } finally {
-      delete windowValues[ASYNC_DATA_SSR_KEY];
-      disposeOwner(owner);
-    }
-  });
-
-  it("fetches data and tracks pending state", async () => {
-    const isPendingSnapshots: boolean[] = [];
-    const owner = createOwner();
-
-    try {
-      await runWithOwner(owner, async () => {
-        initializeAsyncContext();
-
-        const data = $async(async () => {
-          await sleep(0);
-          return "test";
-        });
-
-        const resolved = await new Promise<string>((resolve) => {
-          $effect(() => {
-            try {
-              data.value;
-            } catch (error) {
-              if (!(error instanceof NotReadyError)) {
-                throw error;
-              }
-
-              isPendingSnapshots.push(isPending(data));
-              return;
-            }
-
-            isPendingSnapshots.push(isPending(data));
-            resolve(data.value);
-          });
-        });
-
-        expect(isPendingSnapshots).toEqual([true, false]);
-        expect(resolved).toBe("test");
-      });
-    } finally {
-      disposeOwner(owner);
-    }
-  });
-
-  it("allows mutation after the async value resolves", async () => {
-    const owner = createOwner();
-
-    try {
-      await runWithOwner(owner, async () => {
-        initializeAsyncContext();
-
-        const data = $async(async () => {
-          await sleep(0);
-          return "test";
-        });
-
-        // Wait until reading data.value succeeds.
-        await new Promise<void>((resolve) => {
-          $effect(() => {
-            // oxlint-disable
-            data.value;
-            resolve();
-          });
-        });
-
-        expect(data.value).toBe("test");
-        expect(isPending(data)).toBe(false);
-
-        data.value = "new value";
-
-        expect(data.value).toBe("new value");
-        expect(isPending(data)).toBe(false);
-      });
-    } finally {
-      disposeOwner(owner);
-    }
-  });
-
-  it("works outside an owner and initialized async context", async () => {
-    let executions = 0;
-    const data = $async(async () => {
-      executions += 1;
-      return "standalone";
-    });
-
-    expect(executions).toBe(0);
-    expect(isPending(data)).toBe(false);
+  it("keeps async state pending until its initializer resolves", async () => {
+    const state = $state(async () => 42);
 
     let pendingPromise: Promise<unknown> | undefined;
-
     try {
-      data.value;
+      state.value;
     } catch (error) {
       expect(error).toBeInstanceOf(NotReadyError);
       pendingPromise = (error as NotReadyError).promise;
     }
 
-    expect(executions).toBe(1);
-    expect(isPending(data)).toBe(true);
+    expect(pendingPromise).toBeDefined();
+    expect(isPending(state)).toBe(true);
 
     await pendingPromise;
 
-    expect(data.value).toBe("standalone");
-    expect(isPending(data)).toBe(false);
+    expect(state.value).toBe(42);
+    expect(isPending(state)).toBe(false);
   });
 
-  it("uses the consuming component's Await boundary when created outside an owner", async () => {
-    const data = $async(async () => "standalone boundary");
-    const owner = createOwner(null);
-    let boundaryPromise: Promise<unknown> | undefined;
-
-    try {
-      runWithOwner(owner, () => {
-        enterAsyncBoundary((promise) => {
-          boundaryPromise = promise;
-        });
-
-        expect(() => data.value).toThrow(NotReadyError);
-      });
-
-      expect(boundaryPromise).toBeDefined();
-      await boundaryPromise;
-
-      runWithOwner(owner, () => {
-        expect(data.value).toBe("standalone boundary");
-      });
-    } finally {
-      disposeOwner(owner);
-    }
-  });
-
-  it("acquires hydration context when a standalone resource is first read in a render", async () => {
-    const data = $async(async () => "rendered");
-    const owner = createOwner(null);
+  it("reconciles an async store into a stable reactive object", async () => {
+    const store = $store(async () => ({ count: 1, profile: { name: "Ada" } }));
 
     let pendingPromise: Promise<unknown> | undefined;
-
     try {
-      runWithOwner(owner, () => {
-        initializeAsyncContext();
-
-        try {
-          data.value;
-        } catch (error) {
-          expect(error).toBeInstanceOf(NotReadyError);
-          pendingPromise = (error as NotReadyError).promise;
-        }
-      });
-
-      await pendingPromise;
-
-      runWithOwner(owner, () => {
-        expect(data.value).toBe("rendered");
-        expect(getAsyncValues()).toEqual({
-          "00": "rendered",
-        });
-      });
-    } finally {
-      disposeOwner(owner);
+      store.count;
+    } catch (error) {
+      pendingPromise = (error as NotReadyError).promise;
     }
+
+    expect(pendingPromise).toBeDefined();
+    await pendingPromise;
+
+    expect(store.count).toBe(1);
+    expect(store.profile.name).toBe("Ada");
+
+    store.count = 2;
+    expect(store.count).toBe(2);
   });
 
-  it("tracks dependencies when created outside an owner", async () => {
-    const source = $state(1);
-    const resolvers = new Map<number, (value: number) => void>();
+  it("suspends async store reads while a refresh is pending", async () => {
+    const url = $state(() => "/first");
+    const resolvers = new Map<string, () => void>();
 
-    const data = $async(async () => {
-      const id = source.value;
+    const store = $store(async () => {
+      const requestedUrl = url.value;
 
-      return new Promise<number>((resolve) => {
-        resolvers.set(id, resolve);
+      await new Promise<void>((resolve) => {
+        resolvers.set(requestedUrl, resolve);
+      });
+
+      const names =
+        requestedUrl === "/first" ? ["Bulbasaur", "Ivysaur"] : ["Charmander", "Charmeleon"];
+
+      return {
+        results: names.map((name) => ({ name, url: requestedUrl })),
+      };
+    });
+
+    // Activate the ownerless resource and let its initial request resolve.
+    try {
+      store.results;
+    } catch (error) {
+      expect(error).toBeInstanceOf(NotReadyError);
+    }
+
+    expect(resolvers.has("/first")).toBe(true);
+    resolvers.get("/first")?.();
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    expect(store.results.map((item) => item.name)).toEqual(["Bulbasaur", "Ivysaur"]);
+
+    // Local sorting updates the current store snapshot. A later successful
+    // refresh reconciles the new server response into the same root store.
+    store.results = [...store.results].reverse();
+    expect(store.results.map((item) => item.name)).toEqual(["Ivysaur", "Bulbasaur"]);
+
+    // The resource no longer exposes its previous snapshot while refreshing.
+    url.value = "/second";
+    expect(isPending(store)).toBe(true);
+
+    let refreshPromise: Promise<unknown> | undefined;
+    try {
+      store.results;
+    } catch (error) {
+      expect(error).toBeInstanceOf(NotReadyError);
+      refreshPromise = (error as NotReadyError).promise;
+    }
+
+    expect(refreshPromise).toBeDefined();
+    resolvers.get("/second")?.();
+    await refreshPromise;
+
+    expect(store.results.map((item) => item.name)).toEqual(["Charmander", "Charmeleon"]);
+    expect(isPending(store)).toBe(false);
+  });
+
+  it("updates mapped consumers when an async store refreshes from a state dependency", async () => {
+    const url = $state(() => "/first");
+    const resolvers = new Map<string, () => void>();
+
+    const store = $store(async () => {
+      const requestedUrl = url.value;
+
+      await new Promise<void>((resolve) => {
+        resolvers.set(requestedUrl, resolve);
+      });
+
+      return {
+        results: [{ name: requestedUrl, url: requestedUrl }],
+      };
+    });
+
+    const renderedRows: string[] = [];
+    const stop = $renderEffect(() => {
+      renderedRows.push(
+        store.results
+          .map(({ name, url: resultUrl }, index) => `${index}:${name}:${resultUrl}`)
+          .join(","),
+      );
+    });
+
+    expect(isPending(store)).toBe(true);
+
+    resolvers.get("/first")?.();
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    expect(renderedRows.at(-1)).toBe("0:/first:/first");
+    expect(isPending(store)).toBe(false);
+
+    url.value = "/second";
+    expect(isPending(store)).toBe(true);
+
+    resolvers.get("/second")?.();
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    expect(renderedRows.at(-1)).toBe("0:/second:/second");
+    expect(isPending(store)).toBe(false);
+
+    stop();
+  });
+
+  it("disposes effects with their owner", async () => {
+    const owner = createOwner();
+    const count = $state(() => 0);
+    const values: number[] = [];
+
+    runWithOwner(owner, () => {
+      $effect(() => {
+        values.push(count.value);
       });
     });
 
-    let firstPromise: Promise<unknown> | undefined;
-
-    try {
-      data.value;
-    } catch (error) {
-      expect(error).toBeInstanceOf(NotReadyError);
-      firstPromise = (error as NotReadyError).promise;
-    }
-
-    resolvers.get(1)?.(10);
-    await firstPromise;
-
-    expect(data.value).toBe(10);
-
-    source.value = 2;
-
-    let secondPromise: Promise<unknown> | undefined;
-
-    try {
-      data.value;
-    } catch (error) {
-      expect(error).toBeInstanceOf(NotReadyError);
-      secondPromise = (error as NotReadyError).promise;
-    }
-
-    expect(isPending(data)).toBe(true);
-
-    resolvers.get(2)?.(20);
-    await secondPromise;
-
-    expect(data.value).toBe(20);
-    expect(isPending(data)).toBe(false);
-  });
-
-  it("receives rejection", async () => {
-    const owner = createOwner();
-    const error = new Error("An Error Occured");
-
-    try {
-      await runWithOwner(owner, async () => {
-        initializeAsyncContext();
-
-        const data = $async(async () => {
-          throw error;
-        });
-
-        const resolved = await new Promise<Error>((resolve) => {
-          $effect(() => {
-            try {
-              data.value;
-            } catch (error) {
-              if (error instanceof NotReadyError) {
-                throw error;
-              }
-
-              resolve(error as Error);
-            }
-          });
-        });
-
-        expect(resolved).toBe(error);
-      });
-    } finally {
-      disposeOwner(owner);
-    }
-  });
-});
-
-describe("async-derived $state", () => {
-  it("is writable and refreshes only when a dependency changes", async () => {
-    const owner = createOwner();
-
-    try {
-      await runWithOwner(owner, async () => {
-        initializeAsyncContext();
-
-        const source = $state(1);
-        const resolvers = new Map<number, (value: number) => void>();
-        let executions = 0;
-
-        const count = $state(async () => {
-          executions += 1;
-          const id = source.value;
-
-          return new Promise<number>((resolve) => {
-            resolvers.set(id, resolve);
-          });
-        });
-
-        expect(executions).toBe(1);
-        expect(isPending(count)).toBe(true);
-        expect(() => count.value).toThrow(NotReadyError);
-
-        resolvers.get(1)?.(0);
-        await Promise.resolve();
-
-        expect(count.value).toBe(0);
-        expect(isPending(count)).toBe(false);
-
-        count.value++;
-
-        expect(count.value).toBe(1);
-        expect(executions).toBe(1);
-
-        source.value = 2;
-
-        expect(executions).toBe(2);
-        expect(isPending(count)).toBe(true);
-
-        // A refresh keeps the previous resolved value readable.
-        expect(count.value).toBe(1);
-
-        resolvers.get(2)?.(20);
-        await Promise.resolve();
-
-        expect(count.value).toBe(20);
-        expect(isPending(count)).toBe(false);
-      });
-    } finally {
-      disposeOwner(owner);
-    }
-  });
-
-  it("retains the last resolved value across a failed refresh and retry", async () => {
-    const owner = createOwner();
-
-    try {
-      await runWithOwner(owner, async () => {
-        initializeAsyncContext();
-
-        const source = $state(0);
-        const resolvers = new Map<
-          number,
-          {
-            resolve: (value: number) => void;
-            reject: (error: unknown) => void;
-          }
-        >();
-
-        const value = $state(async () => {
-          const id = source.value;
-
-          return new Promise<number>((resolve, reject) => {
-            resolvers.set(id, { resolve, reject });
-          });
-        });
-
-        resolvers.get(0)?.resolve(10);
-        await Promise.resolve();
-
-        expect(value.value).toBe(10);
-
-        const error = new Error("Refresh failed");
-        source.value = 1;
-        resolvers.get(1)?.reject(error);
-        await Promise.resolve();
-
-        expect(() => value.value).toThrow(error);
-
-        // The failed request does not discard the last successful snapshot.
-        source.value = 2;
-        expect(isPending(value)).toBe(true);
-        expect(value.value).toBe(10);
-
-        resolvers.get(2)?.resolve(20);
-        await Promise.resolve();
-
-        expect(value.value).toBe(20);
-      });
-    } finally {
-      disposeOwner(owner);
-    }
-  });
-
-  it("ignores stale async results", async () => {
-    const owner = createOwner();
-
-    try {
-      await runWithOwner(owner, async () => {
-        initializeAsyncContext();
-
-        const source = $state(0);
-        const resolvers = new Map<number, (value: number) => void>();
-
-        const value = $state(async () => {
-          const id = source.value;
-
-          return new Promise<number>((resolve) => {
-            resolvers.set(id, resolve);
-          });
-        });
-
-        expect(resolvers.size).toBe(1);
-
-        source.value = 1;
-
-        expect(resolvers.size).toBe(2);
-
-        resolvers.get(1)?.(1);
-        await Promise.resolve();
-
-        expect(value.value).toBe(1);
-
-        // A slower result from the previous dependency value cannot win.
-        resolvers.get(0)?.(0);
-        await Promise.resolve();
-
-        expect(value.value).toBe(1);
-      });
-    } finally {
-      disposeOwner(owner);
-    }
-  });
-
-  it("preserves function values returned by an initializer", () => {
-    const callback = () => 42;
-    const state = $state(() => callback);
-
-    expect(state.value).toBe(callback);
-  });
-});
-
-describe("async-derived $store", () => {
-  it("notifies collection consumers when a reconciled array keeps its identity", async () => {
-    type Snapshot = {
-      data: {
-        results: Array<{
-          name: string;
-        }>;
-      };
-    };
-
-    const owner = createOwner();
-
-    try {
-      await runWithOwner(owner, async () => {
-        initializeAsyncContext();
-
-        const page = $state(1);
-        const resolvers = new Map<number, (value: Snapshot) => void>();
-
-        const store = $store<Snapshot>(async () => {
-          const currentPage = page.value;
-
-          return new Promise<Snapshot>((resolve) => {
-            resolvers.set(currentPage, resolve);
-          });
-        });
-
-        resolvers.get(1)?.({
-          data: {
-            results: [{ name: "bulbasaur" }],
-          },
-        });
-        await Promise.resolve();
-
-        const originalResults = store.data.results;
-        const mappedNames: string[][] = [];
-        const dispose = $effect(() => {
-          // Match the dependency shape of a JSX .map() expression: subscribe
-          // to the collection property, then destructure item fields.
-          const results = store.data.results;
-          mappedNames.push(results.map(({ name }) => name));
-        });
-
-        try {
-          expect(mappedNames).toEqual([["bulbasaur"]]);
-
-          page.value = 2;
-
-          resolvers.get(2)?.({
-            data: {
-              results: [{ name: "ivysaur" }],
-            },
-          });
-          await Promise.resolve();
-          await flushEffects();
-
-          expect(store.data.results).toBe(originalResults);
-          expect(store.data.results[0].name).toBe("ivysaur");
-          expect(mappedNames).toEqual([["bulbasaur"], ["ivysaur"]]);
-        } finally {
-          dispose();
-        }
-      });
-    } finally {
-      disposeOwner(owner);
-    }
-  });
-
-  it("reconciles refreshes into the same deeply reactive store", async () => {
-    type Snapshot = {
-      id: number;
-      profile: {
-        name: string;
-      };
-      items: Array<{
-        label: string;
-      }>;
-      stale?: boolean;
-      active?: boolean;
-    };
-
-    const owner = createOwner();
-
-    try {
-      await runWithOwner(owner, async () => {
-        initializeAsyncContext();
-
-        const source = $state(1);
-        const resolvers = new Map<number, (value: Snapshot) => void>();
-        let executions = 0;
-
-        const user = $store<Snapshot>(async () => {
-          executions += 1;
-          const id = source.value;
-
-          return new Promise<Snapshot>((resolve) => {
-            resolvers.set(id, resolve);
-          });
-        });
-
-        const identity = user;
-
-        expect(executions).toBe(1);
-        expect(isPending(user)).toBe(true);
-        expect(() => user.profile).toThrow(NotReadyError);
-
-        resolvers.get(1)?.({
-          id: 1,
-          profile: { name: "Ada" },
-          items: [{ label: "First" }],
-          stale: true,
-        });
-        await Promise.resolve();
-
-        expect(user.id).toBe(1);
-        expect(user.profile.name).toBe("Ada");
-
-        const profile = user.profile;
-        const items = user.items;
-        const firstItem = user.items[0];
-
-        // Manual nested and root mutations remain ordinary store writes.
-        user.id = 10;
-        user.profile.name = "Local";
-
-        expect(user.id).toBe(10);
-        expect(user.profile.name).toBe("Local");
-        expect(executions).toBe(1);
-
-        source.value = 2;
-
-        expect(executions).toBe(2);
-        expect(isPending(user)).toBe(true);
-
-        // Existing values stay available during refresh.
-        expect(user.id).toBe(10);
-        expect(user.profile.name).toBe("Local");
-
-        resolvers.get(2)?.({
-          id: 2,
-          profile: { name: "Grace" },
-          items: [{ label: "Updated" }],
-          active: true,
-        });
-        await Promise.resolve();
-
-        expect(user).toBe(identity);
-        expect(user.profile).toBe(profile);
-        expect(user.items).toBe(items);
-        // Changed array entries get new identities so mapped component props
-        // captured from destructured fields are recreated with fresh values.
-        expect(user.items[0]).not.toBe(firstItem);
-        expect(user.items[0].label).toBe("Updated");
-        expect(user.id).toBe(2);
-        expect(user.profile.name).toBe("Grace");
-        expect(user.stale).toBeUndefined();
-        expect(user.active).toBe(true);
-        expect(isPending(user)).toBe(false);
-      });
-    } finally {
-      disposeOwner(owner);
-    }
-  });
-});
-
-describe("async-derived state without an owner", () => {
-  it("supports async $state and $store outside a component", async () => {
-    const count = $state(async () => 42);
-    const settings = $store(async () => ({
-      theme: "dark",
-      preferences: {
-        compact: true,
-      },
-    }));
-
-    expect(isPending(count)).toBe(true);
-    expect(isPending(settings)).toBe(true);
-
-    await Promise.resolve();
-
-    expect(count.value).toBe(42);
-    expect(settings.theme).toBe("dark");
-    expect(settings.preferences.compact).toBe(true);
+    count.value = 1;
+    await flushEffects();
+    disposeOwner(owner);
+    count.value = 2;
+    await flushEffects();
+
+    expect(values).toEqual([0, 1]);
   });
 });

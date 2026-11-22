@@ -1,3 +1,13 @@
+import {
+  createRuntimeContext,
+  getContext,
+  getRuntimeContext,
+  runWithRuntimeContext,
+  runWithRuntimeContextScope,
+  setContext,
+  type RuntimeContext,
+} from "../runtime/context";
+
 export interface Owner {
   parent: Owner | null;
   children: Owner[];
@@ -9,7 +19,7 @@ export interface Owner {
   id: string | undefined;
   /** Nearest ancestor (or self) that owns the hydration ID sequence. */
   identityOwner: Owner | null;
-  /** Number of identity-bearing children allocated by this owner. */
+  /** Number of identity slots allocated by this owner. */
   nodeCount: number;
 }
 
@@ -24,27 +34,57 @@ export type OwnerOptions = {
 type OwnerIDReservations = Map<string, number>;
 type OwnerIDTracker = Map<string, number>;
 
-type OwnerIdentityTransaction = {
-  identityParent: Owner | null;
-  index: number | undefined;
-  candidateID: string | undefined;
-};
-
-const ownerIdentityTransactions = new WeakMap<Owner, OwnerIdentityTransaction>();
-
-const OWNER_ID_RESERVATIONS = Symbol("vynn.owner-id-reservations");
-const OWNER_ID_TRACKERS = Symbol("vynn.owner-id-trackers");
-
 const ROOT_OWNER_ID = "0";
+const CURRENT_OWNER = Symbol.for("vynn.current-owner.v1");
 
-let currentOwner: Owner | null = null;
+const ownerIDReservations = new WeakMap<Owner, OwnerIDReservations>();
+const ownerIDTrackers = new WeakMap<Owner, OwnerIDTracker[]>();
+const ownerRuntimeContexts = new WeakMap<Owner, RuntimeContext>();
+const initializedOwnerRuntimeContexts = new WeakSet<Owner>();
+
+function isWithinRuntimeContext(
+  context: RuntimeContext,
+  ancestor: RuntimeContext,
+): boolean {
+  let current: RuntimeContext | null = context;
+
+  while (current) {
+    if (current === ancestor) return true;
+    current = current.parent;
+  }
+
+  return false;
+}
+
+/**
+ * Each Owner retains the runtime context it was created under. This lets
+ * lifecycle callbacks re-enter an owner after an unbound async transition
+ * without losing the app, route, or boundary context it inherited.
+ */
+function getOwnerRuntimeContext(owner: Owner): RuntimeContext {
+  let context = ownerRuntimeContexts.get(owner);
+  if (context) return context;
+
+  const currentContext = getRuntimeContext();
+  const parentContext = owner.parent
+    ? getOwnerRuntimeContext(owner.parent)
+    : undefined;
+  const inheritedContext =
+    parentContext && isWithinRuntimeContext(currentContext, parentContext)
+      ? currentContext
+      : parentContext ?? currentContext;
+
+  context = createRuntimeContext(inheritedContext);
+  ownerRuntimeContexts.set(owner, context);
+  return context;
+}
 
 /**
  * Encode one child index so hierarchical owner IDs can be concatenated
  * without separators. Single-digit indexes use one character; multi-digit
  * indexes carry a width marker (a=2 digits, b=3 digits, etc.).
  */
-function appendOwnerID(parentID: string, index: number): string {
+export function appendOwnerIdentityID(parentID: string, index: number): string {
   const value = String(index);
   const width = value.length - 1;
   const marker = width > 0 ? String.fromCharCode(96 + width) : "";
@@ -52,23 +92,46 @@ function appendOwnerID(parentID: string, index: number): string {
   return parentID + marker + value;
 }
 
-function getOwnerContext<T>(owner: Owner | null, key: string | symbol): T | undefined {
+function getOwnerIDReservations(owner: Owner | null): OwnerIDReservations | undefined {
   while (owner) {
-    if (owner.context.has(key)) {
-      return owner.context.get(key) as T;
-    }
-
+    const reservations = ownerIDReservations.get(owner);
+    if (reservations) return reservations;
     owner = owner.parent;
   }
-
   return undefined;
 }
 
-/** Resolve a committed owner ID or the candidate held by its active transaction. */
+function getOwnerIDTrackers(owner: Owner | null): OwnerIDTracker[] | undefined {
+  while (owner) {
+    const trackers = ownerIDTrackers.get(owner);
+    if (trackers) return trackers;
+    owner = owner.parent;
+  }
+  return undefined;
+}
+
+/** Resolve an owner's committed hydration identity. */
 export function getOwnerIdentityID(owner: Owner | null): string | undefined {
+  return owner?.id;
+}
+
+/**
+ * Reserve the next identity slot under an owner's identity scope without
+ * creating a lifecycle Owner. Async resources use these slots so they share
+ * deterministic numbering with child Owners and participate in hydration
+ * identity reservations.
+ */
+export function allocateOwnerIdentityID(owner = getOwner()): string | undefined {
   if (!owner) return undefined;
 
-  return owner.id ?? ownerIdentityTransactions.get(owner)?.candidateID;
+  const identityOwner = owner.identityOwner ?? owner;
+  const parentID = getOwnerIdentityID(identityOwner);
+  if (parentID === undefined) return undefined;
+
+  const index = identityOwner.nodeCount++;
+  recordOwnerIDReservation(owner, identityOwner, identityOwner.nodeCount);
+
+  return appendOwnerIdentityID(parentID, index);
 }
 
 function recordOwnerIDReservation(
@@ -81,101 +144,14 @@ function recordOwnerIDReservation(
 
   // Read trackers from the actual owner scope. The identity parent can be
   // above a transparent owner that installed a nested tracker.
-  const trackers = getOwnerContext<OwnerIDTracker[]>(scopeOwner, OWNER_ID_TRACKERS);
+  const trackers = getOwnerIDTrackers(scopeOwner);
 
   for (const tracker of trackers ?? []) {
     tracker.set(id, Math.max(tracker.get(id) ?? 0, next));
   }
 
-  const reservations = getOwnerContext<OwnerIDReservations>(scopeOwner, OWNER_ID_RESERVATIONS);
+  const reservations = getOwnerIDReservations(scopeOwner);
   reservations?.set(id, Math.max(reservations.get(id) ?? 0, next));
-}
-
-/**
- * Allocate one child identity from the nearest identity-bearing owner.
- *
- * This is used by module-level async resources, which have no lifecycle owner
- * at declaration time but can acquire an identity on their first render read.
- */
-export function createOwnerID(parent = currentOwner): string | undefined {
-  const identityParent = parent?.identityOwner ?? null;
-  const identityParentID = getOwnerIdentityID(identityParent);
-
-  if (!identityParent || !identityParentID) return undefined;
-
-  const index = identityParent.nodeCount++;
-  recordOwnerIDReservation(parent, identityParent, identityParent.nodeCount);
-
-  return appendOwnerID(identityParentID, index);
-}
-
-/** Peek at the next child ID without reserving it. */
-export function peekOwnerID(parent = currentOwner): string | undefined {
-  const identityParent = parent?.identityOwner ?? null;
-  const identityParentID = getOwnerIdentityID(identityParent);
-
-  if (!identityParent || !identityParentID) return undefined;
-
-  return appendOwnerID(identityParentID, identityParent.nodeCount);
-}
-
-/**
- * Commit the identity allocation transaction associated with an owner.
- *
- * A transaction reserves the next identity without advancing its parent's
- * cursor. Committing makes that reservation permanent and records it for SSR
- * hydration and error-boundary recovery.
- */
-export function commitOwnerIdentityTransaction(owner: Owner): string | undefined {
-  const transaction = ownerIdentityTransactions.get(owner);
-  if (!transaction) return owner.id;
-
-  const { identityParent, index, candidateID } = transaction;
-  const identityParentID = getOwnerIdentityID(identityParent);
-
-  if (
-    identityParent &&
-    identityParentID &&
-    index !== undefined &&
-    candidateID &&
-    identityParent.nodeCount !== index
-  ) {
-    throw new Error("[vynn]: An owner identity transaction was invalidated before commit.");
-  }
-
-  ownerIdentityTransactions.delete(owner);
-
-  if (!identityParent || !identityParentID || index === undefined || !candidateID) {
-    owner.identityOwner = owner;
-    return undefined;
-  }
-
-  identityParent.nodeCount = index + 1;
-  owner.id = candidateID;
-  recordOwnerIDReservation(owner.parent, identityParent, identityParent.nodeCount);
-
-  const reservations = owner.parent
-    ? getOwnerContext<OwnerIDReservations>(owner.parent, OWNER_ID_RESERVATIONS)
-    : undefined;
-
-  owner.nodeCount = reservations?.get(candidateID) ?? owner.nodeCount;
-
-  return candidateID;
-}
-
-/** Roll back an unused owner identity transaction without advancing its parent. */
-export function rollbackOwnerIdentityTransaction(owner: Owner): void {
-  const transaction = ownerIdentityTransactions.get(owner);
-  if (!transaction) return;
-
-  ownerIdentityTransactions.delete(owner);
-  owner.id = undefined;
-  owner.identityOwner = transaction.identityParent ?? owner;
-}
-
-/** Whether an owner still has an uncommitted identity allocation transaction. */
-export function hasOwnerIdentityTransaction(owner: Owner): boolean {
-  return ownerIdentityTransactions.has(owner);
 }
 
 /**
@@ -184,8 +160,10 @@ export function hasOwnerIdentityTransaction(owner: Owner): boolean {
  * outer boundaries still account for the complete descendant subtree.
  */
 export function enterOwnerIDTracker(tracker: OwnerIDTracker): void {
-  const inherited = getContext<OwnerIDTracker[]>(OWNER_ID_TRACKERS) ?? [];
-  setContext(OWNER_ID_TRACKERS, [...inherited, tracker]);
+  const owner = getOwner();
+  if (!owner) return;
+  const inherited = getOwnerIDTrackers(owner) ?? [];
+  ownerIDTrackers.set(owner, [...inherited, tracker]);
 }
 
 /**
@@ -196,8 +174,9 @@ export function enterOwnerIDTracker(tracker: OwnerIDTracker): void {
 export function reserveOwnerIDReservations(reservations?: Record<string, number>): void {
   if (!reservations) return;
 
-  const registry = getContext<OwnerIDReservations>(OWNER_ID_RESERVATIONS);
-  const activeIdentityOwner = currentOwner?.identityOwner ?? null;
+  const owner = getOwner();
+  const registry = getOwnerIDReservations(owner);
+  const activeIdentityOwner = owner?.identityOwner ?? null;
   const activeIdentityOwnerID = getOwnerIdentityID(activeIdentityOwner);
 
   for (const [id, next] of Object.entries(reservations)) {
@@ -224,7 +203,7 @@ export function reserveOwnerIDReservations(reservations?: Record<string, number>
  * @returns The owner, or null when no owner is active.
  */
 export function getOwner(): Owner | null {
-  return currentOwner;
+  return getContext<Owner | null>(CURRENT_OWNER) ?? null;
 }
 
 /**
@@ -239,7 +218,7 @@ export function getOwner(): Owner | null {
  * @param options Owner identity options.
  * @returns The newly created owner.
  */
-export function createOwner(parent = currentOwner, options: OwnerOptions = {}): Owner {
+export function createOwner(parent = getOwner(), options: OwnerOptions = {}): Owner {
   const hasIdentity = options.identity !== false;
   const identityParent = parent?.identityOwner ?? null;
   const identityParentID = getOwnerIdentityID(identityParent);
@@ -250,14 +229,12 @@ export function createOwner(parent = currentOwner, options: OwnerOptions = {}): 
       id = ROOT_OWNER_ID;
     } else if (identityParent && identityParentID) {
       const index = identityParent.nodeCount++;
-      id = appendOwnerID(identityParentID, index);
+      id = appendOwnerIdentityID(identityParentID, index);
       recordOwnerIDReservation(parent, identityParent, identityParent.nodeCount);
     }
   }
 
-  const reservations = parent
-    ? getOwnerContext<OwnerIDReservations>(parent, OWNER_ID_RESERVATIONS)
-    : undefined;
+  const reservations = getOwnerIDReservations(parent);
 
   const owner: Owner = {
     parent,
@@ -273,42 +250,20 @@ export function createOwner(parent = currentOwner, options: OwnerOptions = {}): 
   owner.identityOwner = hasIdentity ? owner : identityParent;
 
   if (parent === null && hasIdentity) {
-    owner.context.set(OWNER_ID_RESERVATIONS, new Map<string, number>());
+    ownerIDReservations.set(owner, new Map<string, number>());
+  }
+
+  if (parent) {
+    const parentContext = getOwnerRuntimeContext(parent);
+    const currentContext = getRuntimeContext();
+    const inheritedContext = isWithinRuntimeContext(currentContext, parentContext)
+      ? currentContext
+      : parentContext;
+
+    ownerRuntimeContexts.set(owner, createRuntimeContext(inheritedContext));
   }
 
   parent?.children.push(owner);
-
-  return owner;
-}
-
-/**
- * Create an owner with an identity allocation transaction.
- *
- * The candidate ID stays outside the Owner record until commit. Descendants
- * can still resolve it through getOwnerIdentityID() while the parent cursor
- * remains unchanged.
- */
-export function createOwnerIdentityTransaction(parent = currentOwner): Owner {
-  const owner = createOwner(parent, { identity: false });
-  const identityParent = parent?.identityOwner ?? null;
-  const identityParentID = getOwnerIdentityID(identityParent);
-  const index =
-    identityParent && identityParentID && parent !== null ? identityParent.nodeCount : undefined;
-  const candidateID =
-    identityParentID && index !== undefined ? appendOwnerID(identityParentID, index) : undefined;
-
-  const reservations = parent
-    ? getOwnerContext<OwnerIDReservations>(parent, OWNER_ID_RESERVATIONS)
-    : undefined;
-
-  owner.identityOwner = owner;
-  owner.nodeCount = candidateID ? (reservations?.get(candidateID) ?? 0) : 0;
-
-  ownerIdentityTransactions.set(owner, {
-    identityParent,
-    index,
-    candidateID,
-  });
 
   return owner;
 }
@@ -324,15 +279,38 @@ export function createOwnerIdentityTransaction(parent = currentOwner): Owner {
  * @returns The function's return value.
  */
 export function runWithOwner<T>(owner: Owner | null, fn: () => T): T {
-  const previousOwner = currentOwner;
-
-  currentOwner = owner;
-
-  try {
-    return fn();
-  } finally {
-    currentOwner = previousOwner;
+  if (!owner) {
+    return runWithRuntimeContextScope(() => {
+      setContext(CURRENT_OWNER, null);
+      return fn();
+    });
   }
+
+  const ownerContext = getOwnerRuntimeContext(owner);
+
+  // The first activation initializes the persistent frame for this owner.
+  // Later activations use a child frame, preserving any explicitly captured
+  // descendant context while isolating temporary writes between callbacks.
+  if (!initializedOwnerRuntimeContexts.has(owner)) {
+    initializedOwnerRuntimeContexts.add(owner);
+
+    return runWithRuntimeContext(ownerContext, () => {
+      setContext(CURRENT_OWNER, owner);
+      return fn();
+    });
+  }
+
+  const activeContext = getRuntimeContext();
+  const parentContext = isWithinRuntimeContext(activeContext, ownerContext)
+    ? activeContext
+    : ownerContext;
+
+  return runWithRuntimeContext(parentContext, () =>
+    runWithRuntimeContextScope(() => {
+      setContext(CURRENT_OWNER, owner);
+      return fn();
+    }),
+  );
 }
 
 /**
@@ -388,85 +366,3 @@ export function disposeOwner(owner: Owner): void {
   }
 }
 
-/**
- * Sets a context value on the current owner.
- *
- * This always writes to the current owner, creating a local context entry
- * even if the same key exists on a parent.
- *
- * @param key The context key.
- * @param value The value to store.
- */
-export function setContext<T>(key: string | symbol, value: T): void {
-  const owner = currentOwner;
-
-  if (!owner) {
-    return;
-  }
-
-  owner.context.set(key, value);
-}
-
-/**
- * Updates the nearest existing context entry in the owner hierarchy.
- *
- * Unlike setOwnerContext(), this does not create a new entry or shadow
- * an inherited context value.
- *
- * @param key The context key.
- * @param value The replacement value.
- * @returns Whether an existing context entry was updated.
- */
-export function updateContext<T>(key: string | symbol, value: T): boolean {
-  let owner = currentOwner;
-
-  while (owner) {
-    if (owner.context.has(key)) {
-      owner.context.set(key, value);
-      return true;
-    }
-
-    owner = owner.parent;
-  }
-
-  return false;
-}
-
-/**
- * Updates an existing context value using an updater function.
- *
- * The updater receives the current value and returns its replacement.
- * The nearest owner containing the key is updated.
- *
- * @param key The context key.
- * @param updater A function that computes the replacement value.
- * @returns Whether an existing context entry was updated.
- */
-export function modifyContext<T>(key: string | symbol, updater: (current: T) => T): boolean {
-  let owner = currentOwner;
-
-  while (owner) {
-    if (owner.context.has(key)) {
-      const current = owner.context.get(key) as T;
-      owner.context.set(key, updater(current));
-
-      return true;
-    }
-
-    owner = owner.parent;
-  }
-
-  return false;
-}
-
-/**
- * Retrieves a context value from the current owner hierarchy.
- *
- * The current owner is checked first, followed by its ancestors.
- *
- * @param key The context key.
- * @returns The nearest matching value, or undefined if none exists.
- */
-export function getContext<T>(key: string | symbol): T | undefined {
-  return getOwnerContext<T>(currentOwner, key);
-}

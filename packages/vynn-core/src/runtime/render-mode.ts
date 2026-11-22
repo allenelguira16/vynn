@@ -1,4 +1,4 @@
-import { getContext, setContext } from "../life-cycle/owner";
+import { getContext, setContext } from "./context";
 
 export type RenderMode = "sync" | "async" | "stream";
 

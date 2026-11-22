@@ -1,114 +1,362 @@
-import { getAsyncBoundary } from "../context/async-context";
+import {
+  batch,
+  createComputation,
+  execute,
+  isPromiseLike,
+  node,
+  notify,
+  runComputation,
+  track,
+  type Source,
+} from "./graph";
+import {
+  createOwner,
+  getOwner,
+  runWithOwner,
+  type Owner,
+} from "../life-cycle/owner";
+import {
+  allocateAsyncResourceID,
+  hasAsyncResourceValue,
+  readAsyncResourceValue,
+  withAsyncHydrationProbe,
+  withAsyncResourceScope,
+  writeAsyncResourceValue,
+} from "../runtime/async/runtime";
+import { bindRuntimeContext } from "../runtime/context";
+import { isAsyncGetterFromLazy, registerPromiseFromLazy } from "../runtime/lazy";
+import { createAbortControllerSlot, settleAsync } from "./async/resource";
+import { registerPending } from "./async/pending";
+import { PendingReadError } from "./async/pending-error";
+import { markRef, type ReactiveRef } from "./ref";
 
-import { isAsyncGetterFromLazy } from "../context/lazy-context";
-import { createReactiveEffect, track, trigger } from "./effect";
-import { NotReadyError } from "./not-ready-error";
-import { isPending, registerPending } from "./pending";
-import { markRef, type VynnReadonlyRef } from "./ref";
-import { createAsyncResource } from "./resource";
-import { isAsyncFunction } from "./utils";
+export type Computed<T> = ReactiveRef<T>;
 
-export type Computed<T> = VynnReadonlyRef<T>;
+const asyncComputeds = new WeakSet<object>();
 
-export function $computed<T>(getter: () => Promise<T>): Computed<T>;
-export function $computed<T>(getter: () => T): Computed<T>;
-export function $computed<T>(getter: () => T | Promise<T>): Computed<T> {
+export function isAsyncComputed(value: object): boolean {
+  return asyncComputeds.has(value);
+}
+
+export type ComputedOptions<T> = {
+  /** Defer the first getter execution until .value is read. */
+  lazy?: boolean;
+  /** Defaults to Object.is. Set false to notify on every recomputation. */
+  equals?: false | ((previous: T, next: T) => boolean);
+};
+
+export function $computed<T>(
+  getter: (signal: AbortSignal) => PromiseLike<T>,
+  options?: ComputedOptions<T>,
+): Computed<T>;
+export function $computed<T>(
+  getter: (signal: AbortSignal) => T,
+  options?: ComputedOptions<T>,
+): Computed<T>;
+export function $computed<T>(
+  getter: (signal: AbortSignal) => T | PromiseLike<T>,
+  options?: ComputedOptions<T>,
+): Computed<T>;
+export function $computed<T>(
+  getter: (signal: AbortSignal) => T | PromiseLike<T>,
+  options: ComputedOptions<T> = {},
+): Computed<T> {
   if (typeof getter !== "function") {
     throw new TypeError("[vynn]: $computed() requires a getter function.");
   }
 
-  if (isAsyncFunction(getter) || isAsyncGetterFromLazy(getter)) {
-    const resource = createAsyncResource(getter as () => Promise<T>);
-
-    const computed = markRef({
-      get value(): T {
-        return resource.value;
-      },
-    }) as Computed<T>;
-
-    registerPending(computed, () => isPending(resource));
-    return computed;
+  const owner = getOwner();
+  if (owner?.disposed) {
+    throw new Error("[vynn]: Cannot create a computed value inside a disposed owner.");
   }
 
-  const target = {};
-  let value: T;
+  const lazyGetter = isAsyncGetterFromLazy(getter);
+  const executionOwner: Owner | null = owner
+    ? (lazyGetter || options.lazy ? createOwner(owner) : owner)
+    : null;
+  const resourceID = lazyGetter ? undefined : allocateAsyncResourceID(owner);
+
+  const source: Source = node();
+  let value: T | undefined;
   let hasValue = false;
+  let pending = false;
+  let pendingPromise: Promise<unknown> | undefined;
+  let error: unknown;
+  let hasError = false;
+  let version = 0;
   let dirty = true;
-  let pendingError: NotReadyError | undefined;
+  let hydrationProbeComplete = false;
+  let hydratedValue: { found: boolean; value: T | undefined } | undefined;
+  const controllerSlot = createAbortControllerSlot();
+  let updatePending = (_notifyObservers?: boolean) => {};
 
-  const computed = markRef({
-    get value(): T {
-      track(target, "value");
+  const isEqual = (next: T): boolean => {
+    if (!hasValue || options.equals === false) return false;
+    return (options.equals ?? Object.is)(value as T, next);
+  };
 
-      if (dirty) computation.run();
+  const computation = createComputation(() => {
+    dirty = false;
+    const current = ++version;
+    const controller = controllerSlot.start(getter.length > 0);
 
-      if (pendingError) {
-        const boundary = getAsyncBoundary();
-        boundary?.(pendingError.promise);
+    let result!: T | PromiseLike<T>;
+    try {
+      let usedHydrationProbe = false;
 
-        throw new NotReadyError(pendingError.promise, boundary ?? pendingError.boundary);
+      if (
+        current === 1 &&
+        !hydrationProbeComplete &&
+        !import.meta.env.SSR &&
+        !lazyGetter
+      ) {
+        hydrationProbeComplete = true;
+
+        const resourceOwner = executionOwner ?? owner;
+        if (hasAsyncResourceValue(resourceID, resourceOwner)) {
+          const hydrated = readAsyncResourceValue<T>(resourceID, resourceOwner);
+
+          if (hydrated.found) {
+            hydratedValue = hydrated;
+            const probeController = new AbortController();
+
+            try {
+              const probeResult = execute(computation, () =>
+                runWithOwner(executionOwner, () =>
+                  withAsyncResourceScope(resourceID, () =>
+                    withAsyncHydrationProbe(() => getter(probeController.signal)),
+                  ),
+                ),
+              );
+
+              if (isPromiseLike<T>(probeResult)) {
+                void Promise.resolve(probeResult).catch(() => {});
+              }
+            } catch {
+              // The serialized value remains authoritative for this hydration pass.
+            } finally {
+              probeController.abort();
+            }
+
+            result = hydrated.value as T;
+            usedHydrationProbe = true;
+          }
+        }
       }
 
-      return value;
+      if (!usedHydrationProbe) {
+        result = execute(computation, () =>
+          runWithOwner(executionOwner, () =>
+            withAsyncResourceScope(resourceID, () =>
+              getter(controller?.signal as AbortSignal),
+            ),
+          ),
+        );
+      }
+    } catch (cause) {
+      controllerSlot.abortRun(controller);
+      batch(() => {
+        let changed: boolean;
+
+        if (
+          cause instanceof PendingReadError &&
+          computation.dependencies.has(cause.source)
+        ) {
+          changed = !pending || pendingPromise !== cause.promise || hasError;
+          error = undefined;
+          hasError = false;
+          pending = true;
+          pendingPromise = cause.promise;
+        } else {
+          changed = !hasError || pending || !Object.is(error, cause);
+          error = cause;
+          hasError = true;
+          pending = false;
+          pendingPromise = undefined;
+        }
+
+        updatePending();
+        if (changed) notify(source);
+      });
+      return;
+    }
+
+    let asyncResult: boolean;
+    try {
+      asyncResult = isPromiseLike<T>(result);
+    } catch (cause) {
+      controllerSlot.abortRun(controller);
+      batch(() => {
+        const changed = !hasError || pending || !Object.is(error, cause);
+        error = cause;
+        hasError = true;
+        pending = false;
+        pendingPromise = undefined;
+        updatePending();
+        if (changed) notify(source);
+      });
+      return;
+    }
+
+    if (hydratedValue?.found) {
+      asyncComputeds.add(computed);
+      const next = hydratedValue.value as T;
+      hydratedValue = undefined;
+
+      if (asyncResult) {
+        void Promise.resolve(result as PromiseLike<T>).catch(() => {});
+        controllerSlot.abortRun(controller);
+      } else {
+        controllerSlot.finish(controller);
+      }
+
+      batch(() => {
+        const changed = pending || hasError || !isEqual(next);
+        value = next;
+        hasValue = true;
+        pendingPromise = undefined;
+        error = undefined;
+        hasError = false;
+        pending = false;
+        updatePending();
+        if (changed) notify(source);
+      });
+      return;
+    }
+
+    if (asyncResult) {
+      asyncComputeds.add(computed);
+      const promise = Promise.resolve(result as PromiseLike<T>);
+      if (lazyGetter) registerPromiseFromLazy(promise);
+      const changed = !pending || pendingPromise !== promise || hasError;
+
+      pendingPromise = promise;
+      error = undefined;
+      hasError = false;
+      pending = true;
+
+      void settleAsync({
+        promise,
+        isCurrent: () => current === version && !computation.disposed,
+        resolve: bindRuntimeContext(next => runWithOwner(executionOwner, () => batch(() => {
+          controllerSlot.finish(controller);
+          if (!lazyGetter) writeAsyncResourceValue(resourceID, next, executionOwner ?? owner);
+          const valueChanged = pending || hasError || !isEqual(next as T);
+          value = next as T;
+          hasValue = true;
+          pendingPromise = undefined;
+          error = undefined;
+          hasError = false;
+          pending = false;
+          updatePending();
+          if (valueChanged) notify(source);
+        }))),
+        reject: bindRuntimeContext(cause => runWithOwner(executionOwner, () => batch(() => {
+          controllerSlot.finish(controller);
+          let errorChanged: boolean;
+
+          if (
+            cause instanceof PendingReadError &&
+            computation.dependencies.has(cause.source)
+          ) {
+            errorChanged = !pending || pendingPromise !== cause.promise || hasError;
+            error = undefined;
+            hasError = false;
+            pending = true;
+            pendingPromise = cause.promise;
+          } else {
+            errorChanged = !hasError || pending || !Object.is(error, cause);
+            error = cause;
+            hasError = true;
+            pending = false;
+            pendingPromise = undefined;
+          }
+
+          updatePending();
+          if (errorChanged) notify(source);
+        }))),
+      });
+
+      batch(() => {
+        updatePending();
+        if (changed) notify(source);
+      });
+      return;
+    }
+
+    controllerSlot.finish(controller);
+    const wasPending = pending;
+
+    if (import.meta.env.SSR && wasPending && !lazyGetter) {
+      writeAsyncResourceValue(resourceID, result, executionOwner ?? owner);
+    }
+
+    batch(() => {
+      const changed = pending || hasError || !isEqual(result as T);
+      value = result as T;
+      hasValue = true;
+      pendingPromise = undefined;
+      error = undefined;
+      hasError = false;
+      pending = false;
+      updatePending();
+      if (changed) notify(source);
+    });
+  }, 0);
+
+  computation.invalidate = () => {
+    if (dirty || computation.disposed) return;
+    dirty = true;
+    computation.run();
+  };
+
+  const computed = markRef<{ readonly value: T }, T>({
+    get value() {
+      if (computation.disposed) {
+        if (!hasValue) {
+          throw new Error("[vynn]: Cannot read a computed value after its owner was disposed before initialization.");
+        }
+        return value as T;
+      }
+      if (computation.running) {
+        throw new Error("Circular computed dependency detected.");
+      }
+      track(source);
+      if (dirty) runComputation(computation);
+      if (hasError) throw error;
+      if (pending && pendingPromise) {
+        throw new PendingReadError(
+          pendingPromise,
+          source,
+          !(lazyGetter && import.meta.env.SSR),
+        );
+      }
+      if (!hasValue && pending) {
+        throw new Error("Async computation is pending without an associated Promise.");
+      }
+      return value as T;
     },
   }) as Computed<T>;
 
-  const computation = createReactiveEffect(
-    () => {
-      dirty = false;
-
-      try {
-        const nextValue = getter() as T;
-        if (isPromiseLikeValue(nextValue)) {
-          throw new TypeError(
-            "[vynn]: An asynchronous $computed() getter must be declared with the async keyword.",
-          );
-        }
-
-        pendingError = undefined;
-
-        if (!hasValue || !Object.is(value, nextValue)) {
-          value = nextValue;
-          hasValue = true;
-        }
-      } catch (error) {
-        if (error instanceof NotReadyError) {
-          pendingError = error;
-          return;
-        }
-
-        dirty = true;
-        throw error;
-      }
-    },
-    {
-      phase: "render",
-      scheduler: () => {
-        if (dirty) return;
-        dirty = true;
-        trigger(target, "value");
-      },
-    },
+  updatePending = registerPending(
+    computed,
+    () => pending,
+    () => pendingPromise,
+    !(lazyGetter && import.meta.env.SSR),
   );
 
-  registerPending(computed, () => {
-    // A synchronous computed can still be waiting on an async dependency.
-    // During SSR, force its first value read so the active Await boundary
-    // captures that dependency and retries after it settles.
-    if (import.meta.env.SSR && pendingError) {
-      void computed.value;
-    }
-
-    return pendingError !== undefined;
+  owner?.cleanups.push(() => {
+    version++;
+    controllerSlot.abort();
+    pending = false;
+    pendingPromise = undefined;
+    computation.dispose();
+    updatePending(false);
   });
+
+  if (!options.lazy) runComputation(computation);
 
   return computed;
 }
 
-function isPromiseLikeValue(value: unknown): value is PromiseLike<unknown> {
-  return (
-    value !== null &&
-    (typeof value === "object" || typeof value === "function") &&
-    typeof (value as { then?: unknown }).then === "function"
-  );
-}
+export { isPending } from "./async/pending";

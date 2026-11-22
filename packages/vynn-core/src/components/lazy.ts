@@ -7,12 +7,10 @@ import {
 } from "../client/hydration";
 import { LAZY_END_SSR_MARKER, LAZY_START_SSR_MARKER } from "../const";
 
-import {
-  getLazyID,
-  initializeLazyScope,
-  regsterAsyncGetterFromLazy,
-} from "../context/lazy-context";
-import { registerSsrModule } from "../context/ssr-module-context";
+import { getLazyID, initializeLazyScope } from "../context/lazy-context";
+import { regsterAsyncGetterFromLazy } from "../runtime/lazy";
+import { registerSsrModule } from "../context/ssr-modules";
+import { createRuntimeContext, runWithRuntimeContext } from "../runtime/context";
 import { $computed } from "../reactivity/computed";
 import { $cmpnt, $nodes } from "../render";
 import { createSSRComment } from "../render/resolve-node";
@@ -79,12 +77,14 @@ export function lazy<M extends Record<string, unknown>, K extends keyof M = "def
     props: Parameters<Component>[0],
   ): JSX.Element {
     const lazyID = getLazyID();
+    const runtimeContext = createRuntimeContext();
 
-    // Descendant lazy marker IDs use this scope. Async resources derive their
-    // hydration IDs from this component's owner.
-    initializeLazyScope(lazyID);
+    return runWithRuntimeContext(runtimeContext, () => {
+      // Descendant lazy marker IDs use this scope. Async resources derive their
+      // hydration IDs from this component's owner.
+      initializeLazyScope(lazyID);
 
-    if (import.meta.env.SSR) {
+      if (import.meta.env.SSR) {
       registerSsrModule(moduleId);
       regsterAsyncGetterFromLazy(loadComponent);
       const component = $computed(loadComponent);
@@ -113,13 +113,14 @@ export function lazy<M extends Record<string, unknown>, K extends keyof M = "def
     // every later retry must capture this lazy instance's independent queues.
     const component = $computed(loadComponent);
 
-    return withServerRenderedLazy(lazyID, () =>
-      $nodes(() => {
-        const rendered = component.value(props);
-        finishServerRenderedLazy(lazyID);
-        return rendered;
-      }, existingRange),
-    );
+      return withServerRenderedLazy(lazyID, () =>
+        $nodes(() => {
+          const rendered = component.value(props);
+          finishServerRenderedLazy(lazyID);
+          return rendered;
+        }, existingRange),
+      );
+    });
   });
 
   // Routers can wait for the module before committing a route transition.

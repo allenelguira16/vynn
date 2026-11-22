@@ -1,12 +1,11 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 
-import { initializeAsyncContext } from "../src/context/async-context";
 import { createOwner, disposeOwner, runWithOwner } from "../src/life-cycle/owner";
-import { $computed } from "../src/reactivity/$computed";
-import { $effect } from "../src/reactivity/$effect";
-import { $state } from "../src/reactivity/$state";
-import { $store } from "../src/reactivity/$store";
+import { $computed } from "../src/reactivity/computed";
+import { $effect } from "../src/reactivity/effect";
+import { $state } from "../src/reactivity/state";
+import { $store } from "../src/reactivity/store";
 
 async function flushEffects() {
   await new Promise<void>((resolve) => {
@@ -260,7 +259,6 @@ describe("$store Vue-style reactivity", () => {
 
     try {
       runWithOwner(owner, () => {
-        initializeAsyncContext();
 
         version = $state(0);
         store = $store(async () => {

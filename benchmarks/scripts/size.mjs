@@ -9,7 +9,7 @@ import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-const scenarios = ["minimal", "counter"];
+const scenarios = ["minimal", "counter", "async"];
 const apps = [
   { id: "vynn", label: "Vynn", packageName: "@vynn-bench/vynn" },
   { id: "solid", label: "Solid 2", packageName: "@vynn-bench/solid" },
@@ -172,6 +172,43 @@ function printTable(results, scenario) {
   for (const row of values) console.log(line(row));
 }
 
+function printAsyncDelta(results) {
+  const rows = results.flatMap((item) => {
+    if (item.scenario !== "async") return [];
+
+    const baseline = results.find(
+      (candidate) => candidate.id === item.id && candidate.scenario === "counter",
+    );
+    if (!baseline) return [];
+
+    return [[
+      item.framework,
+      formatDelta(item.initial.javascript.gzip - baseline.initial.javascript.gzip),
+      formatDelta(item.allEmitted.total.gzip - baseline.allEmitted.total.gzip),
+    ]];
+  });
+
+  if (rows.length === 0) return;
+
+  const headers = ["Framework", "Async initial JS delta", "Async all-emitted delta"];
+  const values = rows;
+  const widths = headers.map((header, index) =>
+    Math.max(header.length, ...values.map((row) => row[index].length)),
+  );
+  const line = (row) => row.map((value, index) => value.padEnd(widths[index])).join("  ");
+
+  console.log("");
+  console.log("ASYNC INCREMENT OVER COUNTER (gzip)");
+  console.log(line(headers));
+  console.log(widths.map((width) => "-".repeat(width)).join("  "));
+  for (const row of values) console.log(line(row));
+}
+
+function formatDelta(bytes) {
+  const sign = bytes > 0 ? "+" : "";
+  return `${sign}${(bytes / 1000).toFixed(2)} kB`;
+}
+
 async function main() {
   const selected = selectedScenarios(process.argv.slice(2));
   const results = [];
@@ -202,6 +239,7 @@ async function main() {
     }
 
     printTable(results, scenario);
+    if (scenario === "async") printAsyncDelta(results);
   }
 
   const report = {

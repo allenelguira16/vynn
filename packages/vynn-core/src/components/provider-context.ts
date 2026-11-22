@@ -1,4 +1,4 @@
-import { getContext, setContext } from "../life-cycle/owner";
+import { getOwnerContext, setOwnerContext } from "../context/owner-context";
 import { JSX } from "../types/jsx";
 
 /**
@@ -14,12 +14,12 @@ export function createContext<T>() {
   const id = Symbol();
 
   function Provider(props: { value: T; children: JSX.Element }) {
-    setContext(id, { value: props.value });
+    setOwnerContext(id, { value: props.value });
     return props.children;
   }
 
   function useContext() {
-    const entry = getContext<{ value: T }>(id);
+    const entry = getOwnerContext<{ value: T }>(id);
 
     if (entry === undefined) {
       throw new Error("Context used without wrapping it in its Provider");

@@ -3,11 +3,19 @@ import { defineConfig } from "vite";
 import vynn from "vite-plugin-vynn";
 
 export default defineConfig(({ mode }) => ({
+  logLevel: "silent",
   plugins: [vynn()],
   resolve: {
     alias: {
       "@benchmark-app": fileURLToPath(
-        new URL(mode === "counter" ? "./src/Counter.tsx" : "./src/Minimal.tsx", import.meta.url),
+        new URL(
+          mode === "counter"
+            ? "./src/Counter.tsx"
+            : mode === "async"
+              ? "./src/Async.tsx"
+              : "./src/Minimal.tsx",
+          import.meta.url,
+        ),
       ),
     },
   },

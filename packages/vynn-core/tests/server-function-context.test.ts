@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import * as serverApi from "../src/server/index.ts";
-import { runWithServerFunctionContext } from "../src/server/server-function-context.ts";
+import { runWithServerFunctionContext } from "../src/runtime/server/function-context.ts";
 
 function request(cookie: string): Request {
   return new Request("https://example.test/__vynn/server-function", {
@@ -60,7 +60,7 @@ describe("request context public API", () => {
       async () => {
         // A distinct Vite module URL simulates the RPC runtime and application
         // server entry loading the same package through separate module graphs.
-        const duplicate = await import("../src/server/server-function-context.ts?duplicate");
+        const duplicate = await import("../src/runtime/server/function-context.ts?duplicate");
 
         expect(duplicate.getRequestContext().request).toBe(currentRequest);
         expect(duplicate.getRequestContext().cookies.get("session")).toBe("shared");

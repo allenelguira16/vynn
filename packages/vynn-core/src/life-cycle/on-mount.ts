@@ -1,3 +1,4 @@
+import { bindRuntimeContext } from "../runtime/context";
 
 import { getOwner } from "./owner";
 
@@ -26,5 +27,5 @@ export function onMount(callback: () => void | (() => void)): void {
     throw new Error("onMount must be called within a component");
   }
 
-  owner.mount.push(callback);
+  owner.mount.push(bindRuntimeContext(callback));
 }

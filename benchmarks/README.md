@@ -2,10 +2,11 @@
 
 This workspace compares the minimum production client payload produced by Vynn, Solid 2, Svelte 5, and React 19.
 
-The first pass intentionally measures only two scenarios:
+The benchmark measures three scenarios:
 
 - **Minimal**: mount a component that renders the same small static markup.
-- **Counter**: render the same markup plus reactive state, a derived value, and an increment button.
+- **Counter**: render the same markup plus synchronous reactive state, a derived value, and an increment button.
+- **Async**: render the same markup plus an async derived value, a reactive input that invalidates it, and a loading boundary.
 
 These are standalone client-rendered Vite apps. They do not use routers, SSR adapters, CSS frameworks, icon libraries, or shared app utilities. Each framework uses its idiomatic public API.
 
@@ -34,7 +35,10 @@ Build only one scenario:
 ```sh
 pnpm bench:size -- --scenario minimal
 pnpm bench:size -- --scenario counter
+pnpm bench:size -- --scenario async
 ```
+
+The full run prints the async increment over the counter for both the initial JavaScript graph and all emitted assets. Run the full command when comparing the async delta; the single-scenario command is useful for a focused build but does not include the counter baseline.
 
 The script builds each framework in production mode with Vite 8.3.6, the Oxc minifier, and an ES2022 target. It then reads each Vite manifest to identify the initial entry's static import graph. Dynamic imports are excluded from the initial payload. All emitted JavaScript and CSS are measured separately as a second figure.
 
@@ -55,7 +59,7 @@ HTML documents, manifests, source maps, compression sidecars, and build tooling 
 
 ## Fairness and limitations
 
-The **minimal** scenario measures the cost of mounting and rendering a tiny application, not the unpacked size of a package on npm. It includes the framework and renderer code needed by that app. The **counter** scenario adds a small reactive workload.
+The **minimal** scenario measures the cost of mounting and rendering a tiny application, not the unpacked size of a package on npm. It includes the framework and renderer code needed by that app. The **counter** scenario adds a synchronous reactive workload. The **async** scenario adds an async derived value and a loading boundary. Each framework uses its native async-read pattern; the fallback is configured to show on both initial load and subsequent invalidations so the UI behavior is comparable.
 
 The applications use their frameworks' normal client entry points:
 

@@ -1,3 +1,4 @@
+import { bindRuntimeContext } from "../runtime/context";
 import type { JSX } from "../jsx-runtime";
 
 import { runAfterHydration } from "../client/hydration";
@@ -56,7 +57,7 @@ export function $cmpnt<P>(Component: ((props?: P) => JSX.Element) | (() => JSX.E
               const cleanup = mount();
 
               if (typeof cleanup === "function") {
-                owner.cleanups.push(cleanup);
+                owner.cleanups.push(bindRuntimeContext(cleanup));
               }
             }
           });
