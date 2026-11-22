@@ -7,6 +7,7 @@ import {
 } from "node:zlib";
 import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { printSsrChunkReport } from "./ssr-chunks.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const scenarios = ["minimal", "counter", "async"];
@@ -210,8 +211,15 @@ function formatDelta(bytes) {
 }
 
 async function main() {
-  const selected = selectedScenarios(process.argv.slice(2));
+  const args = process.argv.slice(2);
+  const ssrOnly = args.includes("--ssr");
+  const selected = ssrOnly ? [] : selectedScenarios(args);
   const results = [];
+
+  if (ssrOnly) {
+    await printSsrChunkReport(root);
+    return;
+  }
 
   for (const scenario of selected) {
     for (const app of apps) {
@@ -270,6 +278,7 @@ async function main() {
   await writeFile(output, JSON.stringify(report, null, 2) + String.fromCharCode(10));
   console.log("");
   console.log(`Wrote ${relative(root, output).replaceAll("\\", "/")}.`);
+  await printSsrChunkReport(root);
 }
 
 main().catch((error) => {

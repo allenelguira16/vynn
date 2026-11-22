@@ -1,6 +1,6 @@
 import { getOwner } from "../../life-cycle/owner";
 import { withFakeAsyncApis } from "../../utils/fake-async";
-import { deserializeServerFunctionValue } from "../../server-functions/serialization";
+import { deserializeAsyncHydrationValue } from "./serialization";
 import {
   initializeAsyncRuntime,
   setAsyncHydrationProbe,
@@ -12,6 +12,6 @@ export function initializeAsyncHydrationRuntime(): void {
   if (!getOwner()) return;
 
   initializeAsyncRuntime();
-  setAsyncValueDeserializer(deserializeServerFunctionValue);
+  setAsyncValueDeserializer(deserializeAsyncHydrationValue);
   setAsyncHydrationProbe(withFakeAsyncApis);
 }

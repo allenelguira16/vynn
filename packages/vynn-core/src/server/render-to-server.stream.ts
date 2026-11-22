@@ -22,10 +22,13 @@ import {
 } from "../render/resolve-node";
 import { renderHeadPatch, type SsrHeadManager } from "./head";
 import {
+  flattenSSRNodes,
   joinHTMLElements,
   renderAsyncUtilities,
+  renderComment,
+  renderElement,
+  renderErrorBoundaryAsync,
   renderErrorBoundaryRange,
-  renderNode,
   renderText,
 } from "./render-to-server.util";
 
@@ -189,37 +192,10 @@ export function resolveStream(
     return await resolve(node.children());
   }
 
-  async function renderErrorBoundary(node: SSR_ERROR_BOUNDARY): Promise<string> {
-    if (node.error) {
-      return renderErrorBoundaryRange(node.id, await resolve(node.fallback()));
-    }
-
-    try {
-      return renderErrorBoundaryRange(node.id, await resolve(node.children()));
-    } catch (error) {
-      if (!(error instanceof Error) || node.errorBoundary?.(error) !== node) {
-        throw error;
-      }
-
-      return renderErrorBoundaryRange(node.id, await resolve(node.fallback()));
-    }
-  }
-
-  async function renderElement(node: SSR_ELEMENT): Promise<string> {
-    const children = await resolve(node.children);
-
-    return renderNode({
-      type: node.type,
-      attributes: node.attributes,
-      innerHTML: node.innerHTML,
-      children,
-    });
-  }
-
   async function resolve(app: SSR_NODE[]): Promise<string> {
     const html: string[] = [];
 
-    for (const node of app.flat(Infinity).filter(Boolean)) {
+    for (const node of flattenSSRNodes(app)) {
       if (streamClosed) break;
 
       if (node instanceof SSR_ASYNC) {
@@ -233,7 +209,7 @@ export function resolveStream(
       }
 
       if (node instanceof SSR_ERROR_BOUNDARY) {
-        html.push(await renderErrorBoundary(node));
+        html.push(await renderErrorBoundaryAsync(node, resolve));
         continue;
       }
 
@@ -243,12 +219,12 @@ export function resolveStream(
       }
 
       if (node instanceof SSR_COMMENT) {
-        html.push(`<!--${node.value}-->`);
+        html.push(renderComment(node));
         continue;
       }
 
       if (node instanceof SSR_ELEMENT) {
-        html.push(await renderElement(node));
+        html.push(renderElement(node, await resolve(node.children)));
       }
     }
 
@@ -263,7 +239,7 @@ export function resolveStream(
       const html = await resolve(app);
       if (streamClosed) return;
 
-      enqueueChunk(renderPatchRuntime() + html);
+      enqueueChunk((nextBoundaryId > 0 ? renderPatchRuntime() : "") + html);
       flushQueuedPatches();
     } catch (error) {
       failStream(error);

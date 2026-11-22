@@ -51,7 +51,7 @@ export function $cmpnt<P>(Component: ((props?: P) => JSX.Element) | (() => JSX.E
 
         return [resolved, marker].flat();
       } finally {
-        if (owner.mount.length) {
+        if (!import.meta.env.SSR && owner.mount.length) {
           runAfterHydration(() => {
             for (const mount of owner.mount) {
               const cleanup = mount();

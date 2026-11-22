@@ -297,6 +297,26 @@ describe("renderToServer modes", () => {
     expect(chunks.join("")).toContain("Loaded lazy page");
   });
 
+  it("omits the patch runtime when streaming a page without async boundaries", async () => {
+    const rendered = renderToServer(
+      () => createSSRText("Static stream content") as unknown as JSX.Element,
+      "stream",
+    );
+    const reader = rendered.body.getReader();
+    const chunks: string[] = [];
+
+    while (true) {
+      const result = await reader.read();
+      if (result.done) break;
+      chunks.push(new TextDecoder().decode(result.value));
+    }
+
+    const html = chunks.join("");
+    expect(html).toContain("Static stream content");
+    expect(html).not.toContain("var q=[]");
+    expect(html).not.toContain("function patch(");
+  });
+
   it("does not fail a retry for a rejected resource the child no longer reads", async () => {
     const rendered = await renderToServer(
       () =>

@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   addBaseToRequestUrl,
+  createWebRequest,
   isHtmlNavigation,
   joinAssetBase,
   negotiateResponseEncoding,
@@ -112,6 +113,88 @@ describe("HTTP URL helpers", () => {
   it("adds the base path to incoming request URLs once", () => {
     expect(addBaseToRequestUrl("/base", "/users?active=true")).toBe("/base/users?active=true");
     expect(addBaseToRequestUrl("/base", "/base/users?active=true")).toBe("/base/users?active=true");
+  });
+});
+
+
+describe("Vite request adapter", () => {
+  it("uses the shared Node adapter with the Vite-resolved URL", async () => {
+    const server = createServer((incoming, outgoing) => {
+      void (async () => {
+        const request = createWebRequest(incoming, "/rewritten?from=vite");
+        const body = await request.text();
+
+        outgoing.setHeader("content-type", "application/json");
+        outgoing.end(
+          JSON.stringify({
+            url: request.url,
+            method: request.method,
+            body,
+            connectionHeader: request.headers.has("connection"),
+            nominatedHeader: request.headers.has("x-hop-by-hop"),
+            contentType: request.headers.get("content-type"),
+          }),
+        );
+      })().catch((error: unknown) => {
+        outgoing.destroy(error instanceof Error ? error : new Error(String(error)));
+      });
+    });
+
+    server.listen(0, "127.0.0.1");
+    await new Promise<void>((resolveListen) => server.once("listening", resolveListen));
+
+    try {
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        throw new Error("Test server did not bind a TCP port");
+      }
+
+      const responseBody = await new Promise<string>((resolveResponse, rejectResponse) => {
+        const outgoing = httpRequest(
+          {
+            host: "127.0.0.1",
+            port: address.port,
+            path: "/original",
+            method: "POST",
+            headers: {
+              connection: "x-hop-by-hop",
+              "x-hop-by-hop": "must-not-reach-fetch",
+              "content-type": "text/plain",
+            },
+          },
+          (response) => {
+            const chunks: Buffer[] = [];
+            response.on("data", (chunk: Buffer) => chunks.push(chunk));
+            response.on("end", () => resolveResponse(Buffer.concat(chunks).toString()));
+            response.on("error", rejectResponse);
+          },
+        );
+        outgoing.on("error", rejectResponse);
+        outgoing.end("request body");
+      });
+
+      const result = JSON.parse(responseBody) as {
+        url: string;
+        method: string;
+        body: string;
+        connectionHeader: boolean;
+        nominatedHeader: boolean;
+        contentType: string | null;
+      };
+
+      expect(result).toEqual({
+        url: `http://127.0.0.1:${address.port}/rewritten?from=vite`,
+        method: "POST",
+        body: "request body",
+        connectionHeader: false,
+        nominatedHeader: false,
+        contentType: "text/plain",
+      });
+    } finally {
+      await new Promise<void>((resolveClose, rejectClose) => {
+        server.close((error) => (error ? rejectClose(error) : resolveClose()));
+      });
+    }
   });
 });
 

@@ -57,6 +57,29 @@ Compressed totals are calculated by compressing each emitted resource independen
 
 HTML documents, manifests, source maps, compression sidecars, and build tooling are excluded. CSS is measured separately so the JavaScript comparison remains visible.
 
+## SSR chunk graph (sandbox comparison)
+
+The three fixture scenarios above remain a client-payload benchmark. The SSR graph is a separate diagnostic for the production sandbox apps used in the Vynn-versus-Solid SSR comparison.
+
+Both sandbox Vite configs include a build-only reporting plugin. During the server build it reads Rolldown's final chunk metadata and writes JSON reports under `benchmarks/results/`. It records each emitted server chunk's raw, gzip, and Brotli sizes; static and dynamic imports and importers; entry reachability; and the source modules contributing rendered bytes. The report is written outside `dist`, so it does not add assets to either app or change the compression configuration.
+
+Build the two sandbox apps:
+
+```sh
+pnpm --filter app build
+pnpm --filter solid-app build
+```
+
+Then print only the SSR graph:
+
+```sh
+pnpm bench:size -- --ssr
+```
+
+The normal `pnpm bench:size` command also prints the most recently captured SSR graph after its client fixture benchmark. Rebuild the sandbox apps whenever their source or build configuration changes so the graph reports represent the same revision.
+
+The report distinguishes the static entry graph from chunks reachable only through dynamic imports. Compressed values are calculated per emitted JavaScript chunk, matching the sidecar-based comparison used for the sandbox builds; they are not a concatenated archive size.
+
 ## Fairness and limitations
 
 The **minimal** scenario measures the cost of mounting and rendering a tiny application, not the unpacked size of a package on npm. It includes the framework and renderer code needed by that app. The **counter** scenario adds a synchronous reactive workload. The **async** scenario adds an async derived value and a loading boundary. Each framework uses its native async-read pattern; the fallback is configured to show on both initial load and subsequent invalidations so the UI behavior is comparable.

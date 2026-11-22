@@ -72,7 +72,7 @@ export function initializeAsyncRuntime(): void {
   });
 }
 
-/** Install the server-function-aware decoder only in SSR/hydration entry points. */
+/** Install the async hydration decoder in client hydration entry points. */
 export function setAsyncValueDeserializer(
   decoder: (value: unknown) => unknown,
 ): void {

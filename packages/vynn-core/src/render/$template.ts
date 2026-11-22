@@ -1053,6 +1053,8 @@ function resolveTemplateNavigationNode(node: TemplateRuntimeNode | null): Templa
     throw new Error("[vynn]: A compiled template node is missing from the DOM.");
   }
 
+  if (import.meta.env.SSR) return node;
+
   const instance = templateInstances.get(node as object);
   const descriptor = instance?.descriptors.get(node as object);
 
@@ -1132,15 +1134,12 @@ export function $claimTemplateAnchor(
     throw new Error("[vynn]: Missing compiled dynamic child slot " + JSON.stringify(id) + ".");
   }
 
-  if (instance.hydrating) {
-    claimTemplateThrough(instance, descriptor);
-  }
+  if (import.meta.env.SSR) {
+    const node = instance.nodes.get(descriptor);
+    if (node) return node as Node | SSR_NODE;
 
-  const node = instance.nodes.get(descriptor);
-  if (node) return node as Node | SSR_NODE;
-
-  if (parent instanceof SSR_ELEMENT) {
-    const anchor = parent.children.find(
+    const serverParent = parent as SSR_ELEMENT;
+    const anchor = serverParent.children.find(
       (child): child is SSR_COMMENT =>
         child instanceof SSR_COMMENT && getTemplateAnchorId(child.value) === id,
     );
@@ -1149,15 +1148,27 @@ export function $claimTemplateAnchor(
       registerTemplateNode(instance, descriptor, anchor);
       return anchor;
     }
-  } else {
-    return findHydrationAnchor(parent, descriptor);
+
+    throw new Error("[vynn]: Missing dynamic child anchor for slot " + JSON.stringify(id) + ".");
   }
 
-  throw new Error("[vynn]: Missing dynamic child anchor for slot " + JSON.stringify(id) + ".");
+  // Claim the static prefix before checking the instance map. Hydration may
+  // have pre-mapped this anchor, but the cursor still needs to advance through
+  // every preceding descriptor so subsequent claims stay aligned.
+  if (instance.hydrating) {
+    claimTemplateThrough(instance, descriptor);
+  }
+
+  const node = instance.nodes.get(descriptor);
+  if (node) return node as Node | SSR_NODE;
+
+  return findHydrationAnchor(parent as Element, descriptor);
 }
 
 /** Completes remaining static hydration claims after the template bindings. */
 export function $finishTemplate(root: Element | SSR_ELEMENT): void {
+  if (import.meta.env.SSR) return;
+
   const instance = templateInstances.get(root as object);
 
   if (!instance?.hydrating) return;

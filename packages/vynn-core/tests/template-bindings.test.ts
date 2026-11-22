@@ -171,6 +171,30 @@ describe("$template", () => {
     disposeOwner(owner);
   });
 
+  it("claims pre-mapped static nodes before returning a hydration anchor", () => {
+    const owner = createTestOwner();
+    const host = document.createElement("div");
+    host.innerHTML = "<main><span>server text</span><!--$v0--></main>";
+
+    const factory = $template("<main><span>client text</span><!--$v0--></main>");
+
+    let root!: Element;
+    let slot!: Comment;
+
+    runWithOwner(owner, () => {
+      withHydration(() => {
+        root = factory();
+        slot = $insert(root, "dynamic child", "0") as Comment;
+      }, host);
+    });
+
+    expect(root).toBe(host.firstElementChild);
+    expect(root.querySelector("span")?.textContent).toBe("client text");
+    expect(slot).toBe(root.lastChild);
+
+    disposeOwner(owner);
+  });
+
   it("navigates nested template children and then continues at a sibling", () => {
     const owner = createTestOwner();
     const host = document.createElement("div");

@@ -149,6 +149,11 @@ export function vynnAppPlugin({
               consumer: "server",
               build: {
                 outDir: "dist/server",
+                // The SSR handler consumes the client environment's manifest.
+                // Emitting another copy in dist/server only adds deployment weight.
+                ssrManifest: false,
+                // Public assets belong to the client output, not the SSR server bundle.
+                copyPublicDir: false,
                 minify: "oxc",
                 rolldownOptions: {
                   input: {

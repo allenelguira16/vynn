@@ -2,9 +2,10 @@ import type { IncomingMessage, OutgoingHttpHeaders, ServerResponse } from "node:
 
 import { once } from "node:events";
 import { isAbsolute, relative, sep } from "node:path";
-import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { constants as zlibConstants, createBrotliCompress, createGzip } from "node:zlib";
+
+import { toWebRequest } from "vynn/server/node";
 
 import { VYNN_SSR_CSS_URL } from "../ssr-css.ts";
 import { CLIENT_ENTRY_ID, type ResolvedEntries } from "./shared.ts";
@@ -110,23 +111,7 @@ export function isWebResponse(value: unknown): value is Response {
 }
 
 export function createWebRequest(req: IncomingMessage, requestUrl: string): Request {
-  const encrypted = Boolean((req.socket as { encrypted?: boolean }).encrypted);
-  const origin = `${encrypted ? "https" : "http"}://${req.headers.host ?? "localhost"}`;
-  const headers = new Headers();
-  for (const [key, value] of Object.entries(req.headers)) {
-    if (Array.isArray(value)) {
-      for (const item of value) headers.append(key, item);
-    } else if (value !== undefined) {
-      headers.set(key, value);
-    }
-  }
-  const method = req.method ?? "GET";
-  const init: RequestInit & { duplex?: "half" } = { method, headers };
-  if (method !== "GET" && method !== "HEAD") {
-    init.body = Readable.toWeb(req) as ReadableStream<Uint8Array>;
-    init.duplex = "half";
-  }
-  return new Request(new URL(requestUrl, origin), init);
+  return toWebRequest(req, { url: requestUrl });
 }
 
 export type ResponseCompressionEncoding = "br" | "gzip";
