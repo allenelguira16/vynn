@@ -19,8 +19,7 @@ import { resolveAsync } from "./render-to-server.async";
 import { resolveStream } from "./render-to-server.stream";
 import { resolveSync } from "./render-to-server.sync";
 import {
-  createServerFunctionContext,
-  runWithServerFunctionContext,
+  runWithRequestContext,
   type RequestContext,
 } from "../runtime/server/function-context";
 
@@ -56,66 +55,65 @@ export function renderToServer(
   | Promise<SsrRenderResult<string>>
   | SsrRenderResult<ReadableStream<Uint8Array>>;
 export function renderToServer(App: () => JSX.Element, mode: RenderMode, request?: Request) {
-  // Each render owns an independent root. The optional request is supplied
-  // explicitly by the HTTP adapter and is never inherited from another render.
+  // Each render owns an independent root. Reuse the enclosing request context
+  // when middleware has already established one for this Request.
   const owner = createOwner(null);
-  const requestContext = request ? createServerFunctionContext({ request }) : undefined;
-
-  const render = () =>
+  const render = (requestContext?: RequestContext) =>
     runWithRuntimeContext(
       createRuntimeContext(getRuntimeContextStore() ?? null),
-      () => runWithOwner(owner, () => {
-      let disposeOnExit = true;
+      () =>
+        runWithOwner(owner, () => {
+          let disposeOnExit = true;
 
-      try {
-        setRenderMode(mode);
+          try {
+            setRenderMode(mode);
 
-        const headContext = initializeHeadContext();
-        initializeSsrModuleContext();
-        initializeLazyContext();
-        initializeAsyncHydrationRuntime();
-        initializeErrorBoundaryContext();
+            const headContext = initializeHeadContext();
+            initializeSsrModuleContext();
+            initializeLazyContext();
+            initializeAsyncHydrationRuntime();
+            initializeErrorBoundaryContext();
 
-        const head = createSsrHeadManager(headContext);
-        const modules = getSsrModuleContext();
-        const createResult = <TBody>(body: TBody): SsrRenderResult<TBody> => ({
-          body,
-          head,
-          modules,
-          ...(requestContext ? { response: requestContext.response } : {}),
-        });
+            const head = createSsrHeadManager(headContext);
+            const modules = getSsrModuleContext();
+            const createResult = <TBody>(body: TBody): SsrRenderResult<TBody> => ({
+              body,
+              head,
+              modules,
+              ...(requestContext ? { response: requestContext.response } : {}),
+            });
 
-        switch (mode) {
-          case "sync": {
-            const body = resolveSync(App, owner);
-            return createResult(body);
+            switch (mode) {
+              case "sync": {
+                const body = resolveSync(App, owner);
+                return createResult(body);
+              }
+
+              case "async": {
+                const body = resolveAsync(App, owner);
+                disposeOnExit = false;
+
+                return body.then((html) => createResult(html)).finally(() => disposeOwner(owner));
+              }
+
+              case "stream": {
+                const body = resolveStream(App, head, () => disposeOwner(owner));
+                disposeOnExit = false;
+
+                return createResult(body);
+              }
+
+              default: {
+                throw new Error("[vynn]: Unsupported SSR render mode: " + String(mode));
+              }
+            }
+          } finally {
+            if (disposeOnExit) {
+              disposeOwner(owner);
+            }
           }
-
-          case "async": {
-            const body = resolveAsync(App, owner);
-            disposeOnExit = false;
-
-            return body.then((html) => createResult(html)).finally(() => disposeOwner(owner));
-          }
-
-          case "stream": {
-            const body = resolveStream(App, head, () => disposeOwner(owner));
-            disposeOnExit = false;
-
-            return createResult(body);
-          }
-
-          default: {
-            throw new Error("[vynn]: Unsupported SSR render mode: " + String(mode));
-          }
-        }
-      } finally {
-        if (disposeOnExit) {
-          disposeOwner(owner);
-        }
-      }
-    }),
+        }),
     );
 
-  return requestContext ? runWithServerFunctionContext(requestContext, render) : render();
+  return request ? runWithRequestContext(request, render) : render();
 }

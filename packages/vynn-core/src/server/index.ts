@@ -1,4 +1,9 @@
 export { renderToServer, type SsrRenderResult } from "./render-to-server";
+export {
+  createMiddlewareHandler,
+  type VynnMiddleware,
+  type VynnRequestHandler,
+} from "../runtime/server/middleware";
 export type { SsrHeadManager } from "./head";
 
 export {

@@ -311,6 +311,9 @@ export function vynnAppPlugin({
           serverFunctions: serverFunctions !== undefined && serverFunctions.enabled !== false,
           ssrManifest,
           devCssLinks,
+          middlewareSpecifier: entries.middlewareFile
+            ? toAbsoluteSpecifier(entries.middlewareFile)
+            : null,
         });
       }
 

@@ -1,5 +1,6 @@
 import {
   createServerFunctionContext,
+  getCurrentRequestContext,
   runWithServerFunctionContext,
   runWithServerFunctionInvocation,
 } from "./function-context.ts";
@@ -387,26 +388,32 @@ export function createServerFunctionHandler(
         });
       }
 
-      const context = createServerFunctionContext({
-        request: requestForContext,
-        functionId: id,
-        signal: request.signal,
-      });
+      const activeContext = getCurrentRequestContext();
+      const context =
+        activeContext?.request === request
+          ? activeContext
+          : createServerFunctionContext({
+              request: requestForContext,
+              functionId: id,
+              signal: request.signal,
+            });
 
       let value: unknown;
       try {
-        value = await runWithServerFunctionContext(context, () => {
-          if (options.resolve) {
-            return options.resolveWithCaptures
-              ? (implementation as unknown as CaptureAwareServerFunctionImplementation)(
-                  captures,
-                  ...args,
-                )
-              : (implementation as ServerFunctionImplementation)(...args);
-          }
+        value = await runWithServerFunctionContext(context, () =>
+          runWithServerFunctionInvocation(id, () => {
+            if (options.resolve) {
+              return options.resolveWithCaptures
+                ? (implementation as unknown as CaptureAwareServerFunctionImplementation)(
+                    captures,
+                    ...args,
+                  )
+                : (implementation as ServerFunctionImplementation)(...args);
+            }
 
-          return registered!.implementation(registered!.captureAware ? captures : [], ...args);
-        });
+            return registered!.implementation(registered!.captureAware ? captures : [], ...args);
+          }),
+        );
       } catch (error) {
         return createErrorResponse(error, version, exposeErrors, context.response.headers);
       }

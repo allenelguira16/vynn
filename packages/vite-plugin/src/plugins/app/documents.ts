@@ -139,6 +139,7 @@ export function createSsrHandlerCode(options: {
   serverFunctions: boolean;
   ssrManifest: ViteSsrManifest | null;
   devCssLinks?: VynnSsrCssLink[];
+  middlewareSpecifier?: string | null;
 }): string {
   const {
     clientEntryUrl,
@@ -148,11 +149,22 @@ export function createSsrHandlerCode(options: {
     serverFunctions,
     ssrManifest,
     devCssLinks = [],
+    middlewareSpecifier,
   } = options;
+  const serverImports = ["injectSsrPreloadLinks", "renderSsrPreloadLinks"];
+  if (middlewareSpecifier) serverImports.push("createMiddlewareHandler");
+
   return [
-    `import { injectSsrPreloadLinks, renderSsrPreloadLinks } from "vynn/server";`,
+    `import { ${serverImports.join(", ")} } from "vynn/server";`,
     `import { render } from ${JSON.stringify(SERVER_ENTRY_ID)};`,
     `const DEV_CSS_LINKS = ${JSON.stringify(devCssLinks)};`,
+    ...(middlewareSpecifier
+      ? [
+          `import * as middlewareModule from ${JSON.stringify(middlewareSpecifier)};`,
+          `const middleware = middlewareModule.default ?? middlewareModule.middleware;`,
+          `if (middleware === undefined) throw new TypeError("[Vynn] src/middleware.ts must default-export a middleware function or array.");`,
+        ]
+      : []),
     ...(serverFunctions
       ? [`import { handleServerFunctionRequest } from "virtual:vynn/server-functions";`]
       : []),
@@ -444,7 +456,7 @@ export function createSsrHandlerCode(options: {
     `    cancel(reason) { return reader.cancel(reason); },`,
     `  });`,
     `}`,
-    `export async function handleRequest(request, devCssLinks = DEV_CSS_LINKS) {`,
+    `async function handleRequestCore(request, devCssLinks = DEV_CSS_LINKS) {`,
     ...(serverFunctions
       ? [
           `  const serverFunctionResponse = await handleServerFunctionRequest(request);`,
@@ -486,6 +498,15 @@ export function createSsrHandlerCode(options: {
     `  const headHtml = rendered.head.render();`,
     `  return new Response(withDocument(body, devCssLinks, rendered.modules, headHtml), { status: responseStatus, headers: responseHeaders });`,
     `}`,
+    ...(middlewareSpecifier
+      ? [
+          `export function handleRequest(request, devCssLinks = DEV_CSS_LINKS) {`,
+          `  return createMiddlewareHandler(middleware, (nextRequest) => handleRequestCore(nextRequest, devCssLinks))(request);`,
+          `}`,
+        ]
+      : [
+          `export function handleRequest(request, devCssLinks = DEV_CSS_LINKS) { return handleRequestCore(request, devCssLinks); }`,
+        ]),
     `export default { fetch(request) { return handleRequest(request); } };`,
     "",
   ].join("\n");

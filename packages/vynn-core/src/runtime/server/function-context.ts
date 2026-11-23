@@ -37,10 +37,10 @@ type RequestContextCookies = {
 };
 
 /**
- * Request-scoped data available during SSR and server-function execution.
+ * Request-scoped data available during middleware, SSR, and server-function execution.
  *
  * The context is created by the Vynn server runtime. Application code should
- * only read the active context through getRequestContext().
+ * read the active context through getRequestContext().
  */
 export type RequestContext = {
   /** The incoming HTTP request for this SSR render or server-function call. */
@@ -75,6 +75,7 @@ type ServerFunctionContextInput = {
 
 const REQUEST_CONTEXT = Symbol.for("vynn.server-function-context");
 const createdContexts = new WeakSet<object>();
+const responseStatusOverrides = new WeakSet<object>();
 
 function validateServerFunctionResponseStatus(status: number): void {
   if (
@@ -178,6 +179,7 @@ export function createServerFunctionContext(input: ServerFunctionContextInput): 
     set status(value: number) {
       validateServerFunctionResponseStatus(value);
       status = value;
+      responseStatusOverrides.add(response);
     },
     headers: new Headers(input.response?.headers),
   };
@@ -255,8 +257,82 @@ export function getRequestContext(): RequestContext {
   const context = getContext<RequestContext>(REQUEST_CONTEXT);
   if (!context) {
     throw new Error(
-      "[Vynn] No request context is active. This API is only available during an SSR request or server-function invocation.",
+      "[Vynn] No request context is active. This API is only available during a Vynn server request or server-function invocation.",
     );
   }
   return context;
+}
+
+/** Returns the active request context without throwing when no request is active. */
+export function getCurrentRequestContext(): RequestContext | undefined {
+  return getContext<RequestContext>(REQUEST_CONTEXT);
+}
+
+/**
+ * Runs work inside a request context, reusing the active context when it
+ * already belongs to the same Request object.
+ */
+export function runWithRequestContext<T>(
+  request: Request,
+  callback: (context: RequestContext) => T,
+): T {
+  const current = getCurrentRequestContext();
+  if (current?.request === request) return callback(current);
+
+  const context = createServerFunctionContext({ request });
+  return runWithServerFunctionContext(context, () => callback(context));
+}
+
+function getSetCookieValues(headers: Headers): string[] {
+  const getSetCookie = (headers as Headers & { getSetCookie?: () => string[] }).getSetCookie;
+  if (typeof getSetCookie === "function") {
+    const values = getSetCookie.call(headers);
+    if (values.length > 0) return values;
+  }
+
+  const value = headers.get("set-cookie");
+  return value ? [value] : [];
+}
+
+/**
+ * Applies request-scoped response metadata to a response returned by
+ * middleware, SSR, or a server function.
+ */
+export function applyRequestContextResponse(
+  response: Response,
+  context: RequestContext,
+): Response {
+  const additionalHeaders: string[] = [];
+  context.response.headers.forEach((_value, name) => additionalHeaders.push(name));
+
+  const hasStatusOverride = responseStatusOverrides.has(context.response);
+  if (!hasStatusOverride && additionalHeaders.length === 0) return response;
+
+  const headers = new Headers(response.headers);
+  const contextCookies = getSetCookieValues(context.response.headers);
+
+  context.response.headers.forEach((value, name) => {
+    if (name.toLowerCase() !== "set-cookie") headers.set(name, value);
+  });
+
+  const existingCookies = getSetCookieValues(headers);
+  for (const cookie of contextCookies) {
+    if (!existingCookies.includes(cookie)) {
+      headers.append("set-cookie", cookie);
+      existingCookies.push(cookie);
+    }
+  }
+
+  const status = hasStatusOverride ? context.response.status : response.status;
+  const bodyless = status === 204 || status === 205 || status === 304;
+
+  if (bodyless && response.body) {
+    void response.body.cancel().catch(() => undefined);
+  }
+
+  return new Response(bodyless ? null : response.body, {
+    status,
+    statusText: response.statusText,
+    headers,
+  });
 }

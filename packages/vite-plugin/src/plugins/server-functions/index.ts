@@ -168,6 +168,7 @@ export function serverFunctionsPlugin(
   let isDevelopment = false;
   let isBuild = false;
   let projectRoot = process.cwd();
+  let middlewareFile: string | null = null;
   let resolvedEndpoint = endpoint;
   let resolvedConfig: ResolvedConfig | undefined;
   let isSsrBuild = false;
@@ -250,6 +251,10 @@ export function serverFunctionsPlugin(
     configResolved(config) {
       resolvedConfig = config;
       projectRoot = config.root;
+      const conventionalMiddleware = resolve(projectRoot, "src", "middleware.ts");
+      middlewareFile = existsSync(conventionalMiddleware)
+        ? conventionalMiddleware.replace(/\\/g, "/")
+        : null;
       isDevelopment = config.command === "serve";
       isBuild = config.command === "build";
       isSsrBuild = Boolean(config.build.ssr);
@@ -300,10 +305,32 @@ export function serverFunctionsPlugin(
           development: isDevelopment,
         });
       if (id === RESOLVED_SERVER_FUNCTIONS_API_ID) {
-        return [
+        const lines = [
           "import " + JSON.stringify(SERVER_FUNCTIONS_MANIFEST_ID) + ";",
-          "export { handleServerFunctionRequest } from " + JSON.stringify(SERVER_RUNTIME_ID) + ";",
-        ].join("\n");
+        ];
+
+        if (middlewareFile && !hasIntegratedSsrApp) {
+          lines.push(
+            "import { handleServerFunctionRequest as handleServerFunctionRequestCore } from " +
+              JSON.stringify(SERVER_RUNTIME_ID) +
+              ";",
+            "import * as middlewareModule from " + JSON.stringify(middlewareFile) + ";",
+            'import { createMiddlewareHandler } from "vynn/server";',
+            "const middleware = middlewareModule.default ?? middlewareModule.middleware;",
+            'if (middleware === undefined) throw new TypeError("[Vynn] src/middleware.ts must default-export a middleware function or array.");',
+            "const middlewareHandler = createMiddlewareHandler(middleware, handleServerFunctionRequestCore);",
+            "const middlewareEndpoint = " + JSON.stringify(resolvedEndpoint) + ";",
+            "export const handleServerFunctionRequest = (request) => new URL(request.url).pathname === middlewareEndpoint ? middlewareHandler(request) : handleServerFunctionRequestCore(request);",
+          );
+        } else {
+          lines.push(
+            "export { handleServerFunctionRequest } from " +
+              JSON.stringify(SERVER_RUNTIME_ID) +
+              ";",
+          );
+        }
+
+        return lines.join("\n");
       }
       if (id === RESOLVED_SERVER_FUNCTIONS_MANIFEST_ID) {
         if (!isBuild) return "export {};";
@@ -513,6 +540,7 @@ export function serverFunctionsPlugin(
         exposeErrors: options.exposeErrors,
         isDevelopment,
         refsById,
+        middlewareModuleId: middlewareFile,
       });
     },
 
