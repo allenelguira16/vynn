@@ -18,13 +18,13 @@ const pages = [
 export const ButtonPageList = () => {
   return (
     <ul class="menu bg-base-200 rounded-box gap-2 w-full">
-      {pages.map((page) => {
-        const activePath = page.activePath ?? page.path;
+      {pages.map(({ label, path, ...options }) => {
+        const activePath = options.activePath ?? path;
 
         return (
-          <li key={page.label}>
-            <Link href={page.path} class={`${isActiveRoute(activePath) && "menu-active"}`}>
-              {page.label}
+          <li key={label}>
+            <Link href={path} class={`${isActiveRoute(activePath) && "menu-active"}`}>
+              {label}
             </Link>
           </li>
         );

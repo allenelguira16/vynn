@@ -47,6 +47,15 @@ export function $for<T, K>(
   getKey: (item: T, index: number) => K,
 ): JSX.Element;
 
+export function $for<T, K>(
+  items: () => T[],
+  each:
+    | ((item: T, index: State<number>) => JSX.Element)
+    | ((item: State<T>, index: State<number>) => JSX.Element),
+  getKey: ((item: T, index: number) => K) | undefined,
+  warnMissingKey: true,
+): JSX.Element;
+
 export function $for<T>(
   items: () => T[],
   each:

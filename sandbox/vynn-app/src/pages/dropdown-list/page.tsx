@@ -103,7 +103,7 @@ type TDropdownListProps = {
   };
 };
 
-const DropdownList = (props: TDropdownListProps) => {
+const DropdownList = ({ dropdowns: { numbers } }: TDropdownListProps) => {
   console.log("DropdownList rerender"); // log twice
   // onMount(async () => {
   //   console.log("DropdownList onMount");
@@ -120,7 +120,7 @@ const DropdownList = (props: TDropdownListProps) => {
       {/* {loop(dropdowns.numbers).each((number) => (
         <Dropdown number={number} />
       ))} */}
-      {props.dropdowns.numbers.map((number) => (
+      {numbers.map((number) => (
         <Dropdown number={number} key={number} />
       ))}
       {/* {$for(

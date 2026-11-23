@@ -98,8 +98,8 @@ export default function PokeDexAwait() {
               }
             >
               <>
-                {pokeDex.results.map((props, index) => (
-                  <Row name={props.name} url={props.url} index={index} key={props.name} />
+                {pokeDex.results.map(({ name, url }, index) => (
+                  <Row name={name} url={url} index={index} key={name} />
                 ))}
                 <tr>
                   <td colSpan={3}>

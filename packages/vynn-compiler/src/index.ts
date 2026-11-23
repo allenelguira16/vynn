@@ -263,6 +263,7 @@ class TransformState {
    * Named .map() calls that must use a callback variant with a reactive index.
    */
   private readonly namedMapCallbacks = new WeakMap<object, Node>();
+  private readonly namedMapCallbackKeys = new WeakMap<object, Node>();
   private readonly namedMapCallbackSources = new WeakMap<object, Node>();
   /** Function nodes cloned specifically for a named Vynn list callback. */
   private readonly specializedForCallbacks = new WeakSet<object>();
@@ -481,23 +482,17 @@ class TransformState {
   }
 
   /**
-   * Resolve local named callbacks passed to JSX-producing .map() calls.
+   * Resolve named callbacks passed to JSX-producing .map() calls.
    *
-   * Example:
-   *   function renderItem(item, index) {
-   *     return <span>{index}</span>;
-   *   }
-   *   items.map(renderItem)
-   *
-   * The original callback keeps ordinary JavaScript semantics. A cloned
-   * variant is inserted next to its declaration, and only the relevant list
-   * expression points to that variant. The clone is later compiled with
-   * withForCallback(), so references to its second parameter read .value.
+   * Local callbacks get a specialized sibling beside their declaration.
+   * Exported callbacks also expose compiler-generated render and key-selector
+   * companions, allowing importing modules to consume the same metadata
+   * without inspecting another module's source AST.
    *
    * Resolution follows lexical scopes and stops when a parameter, import, or
-   * other local binding shadows a candidate function. This pass intentionally
-   * specializes local function declarations and direct function-valued
-   * variable initializers; unresolved callbacks retain normal .map() behavior.
+   * other local binding shadows a candidate function. Imported companion
+   * resolution is limited to local ESM module specifiers; unresolved callbacks
+   * retain normal .map() behavior.
    */
   private prepareNamedMapCallbacks(): void {
     type ImportedBinding = {
@@ -510,6 +505,7 @@ class TransformState {
       >;
       typeOnly: boolean;
       companionLocal?: Node;
+      companionKeyLocal?: Node;
     };
 
     type CallbackBinding = {
@@ -773,6 +769,7 @@ class TransformState {
       specifier.startsWith("~/");
 
     const companionName = (exportName: string): string => "__vynn_for_" + exportName;
+    const companionKeyName = (exportName: string): string => "__vynn_key_" + exportName;
 
     const createExportSpecifier = (localName: string, exportedName: string): Node =>
       generatedNode({
@@ -794,23 +791,53 @@ class TransformState {
         attributes: [],
       });
 
+    const createCompanionKeyExport = (localName: string, exportNames: string[]): Node =>
+      generatedNode({
+        type: "ExportNamedDeclaration",
+        declaration: null,
+        specifiers: exportNames.map((name) =>
+          createExportSpecifier(localName, companionKeyName(name)),
+        ),
+        source: null,
+        exportKind: "value",
+        attributes: [],
+      });
+
     const createVariant = (binding: CallbackBinding): string | null => {
       // A default-exported named component can expose its existing $cmpnt
       // wrapper as the default companion. Other components aren't list callbacks.
       if (isComponentName(binding.name)) {
-        if (binding.exportNames.includes("default") && binding.statement && binding.statementList) {
+        // Components already have a compiled $cmpnt wrapper. It can serve as
+        // the render callback directly; component-internal JSX keys are not
+        // keys for the parent array, so this companion remains unkeyed.
+        if (binding.variantName) return binding.variantName;
+
+        if (
+          binding.exportNames.length > 0 &&
+          binding.statement &&
+          binding.statementList
+        ) {
           let byAnchor = insertions.get(binding.statementList);
           if (!byAnchor) {
             byAnchor = new Map<Node, Node[]>();
             insertions.set(binding.statementList, byAnchor);
           }
           const added = byAnchor.get(binding.statement) ?? [];
-          if (!added.some((node) => isType(node, "ExportNamedDeclaration"))) {
-            added.push(createCompanionExport(binding.name, ["default"]));
-          }
+          const exportNames = [...new Set(binding.exportNames)];
+          const selectorId = this.generateUidIdentifier(binding.name + "Key");
+
+          added.push(
+            createCompanionExport(binding.name, exportNames),
+            variableDeclaration("const", [
+              variableDeclarator(cloneNode(selectorId), voidZero()),
+            ]),
+            createCompanionKeyExport(selectorId.name, exportNames),
+          );
           byAnchor.set(binding.statement, added);
         }
-        return null;
+
+        binding.variantName = binding.name;
+        return binding.variantName;
       }
 
       if (
@@ -831,7 +858,17 @@ class TransformState {
       const variantName = variantId.name;
       const clonedCallback = cloneNode(binding.callback);
       const listKey = this.getMapCallbackKey(clonedCallback);
+      let keySelectorStatement: Node | null = null;
+      let keySelectorName: string | null = null;
+
       if (listKey) {
+        const itemParameter = binding.callback.params[0];
+        if (!this.isSupportedForItemParameter(itemParameter)) {
+          throw new Error(
+            "[Vynn compiler] Keyed named callbacks support identifier and object-pattern item parameters.",
+          );
+        }
+
         this.jsxKeyAttributes.add(listKey.attribute);
         this.keyedForCallbacks.add(clonedCallback);
 
@@ -840,7 +877,30 @@ class TransformState {
         // the specialized sibling for reactive item/index parameters.
         const originalListKey = this.getMapCallbackKey(binding.callback);
         if (originalListKey) this.jsxKeyAttributes.add(originalListKey.attribute);
+
+        // Export a raw-item key selector beside the specialized render callback.
+        // The importing module cannot inspect this function's source AST, so the
+        // selector must cross the module boundary as compiler metadata.
+        if (binding.exportNames.length > 0) {
+          const selectorId = this.generateUidIdentifier(binding.name + "Key");
+          keySelectorName = selectorId.name;
+          const selector = this.createMapKeySelector(binding.callback, listKey.expression);
+
+          keySelectorStatement = variableDeclaration("const", [
+            variableDeclarator(cloneNode(selectorId), selector),
+          ]);
+        }
+      } else if (binding.exportNames.length > 0) {
+        // Every exported callback has a companion slot. An undefined selector
+        // lets the importing module keep the normal unkeyed behavior and still
+        // issue the missing-key warning in development.
+        const selectorId = this.generateUidIdentifier(binding.name + "Key");
+        keySelectorName = selectorId.name;
+        keySelectorStatement = variableDeclaration("const", [
+          variableDeclarator(cloneNode(selectorId), voidZero()),
+        ]);
       }
+
       let variantStatement: Node;
 
       if (isFunctionDeclaration(clonedCallback)) {
@@ -864,8 +924,13 @@ class TransformState {
 
       const added = byAnchor.get(binding.statement) ?? [];
       added.push(variantStatement);
+      if (keySelectorStatement) added.push(keySelectorStatement);
       if (binding.exportNames.length > 0) {
-        added.push(createCompanionExport(variantName, [...new Set(binding.exportNames)]));
+        const exportNames = [...new Set(binding.exportNames)];
+        added.push(createCompanionExport(variantName, exportNames));
+        if (keySelectorName) {
+          added.push(createCompanionKeyExport(keySelectorName, exportNames));
+        }
       }
       byAnchor.set(binding.statement, added);
 
@@ -879,49 +944,60 @@ class TransformState {
         imported.typeOnly ||
         imported.namespace ||
         !imported.importedName ||
-        isComponentName(imported.importedName) ||
         !isLocalModuleSource(imported.source)
       ) {
         return null;
       }
 
-      if (imported.companionLocal) {
-        return cloneNode(imported.companionLocal);
-      }
-
-      const local = this.generateUidIdentifier(binding.name + "For");
-      const addedSpecifier = generatedNode({
-        type: "ImportSpecifier",
-        imported: identifier(companionName(imported.importedName)),
-        local: cloneNode(local),
-        importKind: "value",
-      });
-
-      const hasNamespaceSpecifier = (imported.statement.specifiers ?? []).some((specifier: Node) =>
-        isType(specifier, "ImportNamespaceSpecifier"),
-      );
       const canAppend =
         imported.statement.importKind !== "type" &&
         getNodeProperty(imported.specifier, "importKind") !== "type" &&
-        !hasNamespaceSpecifier;
+        !(imported.statement.specifiers ?? []).some((specifier: Node) =>
+          isType(specifier, "ImportNamespaceSpecifier"),
+        );
 
-      if (canAppend) {
-        imported.statement.specifiers.push(addedSpecifier);
-      } else {
-        extraImports.push(
-          generatedNode({
-            type: "ImportDeclaration",
-            specifiers: [addedSpecifier],
-            source: stringLiteral(imported.source),
-            importKind: "value",
-            assertions: [],
-            attributes: [],
-          }),
+      const addCompanionImport = (exportedName: string, hint: string): Node => {
+        const local = this.generateUidIdentifier(hint);
+        const addedSpecifier = generatedNode({
+          type: "ImportSpecifier",
+          imported: identifier(exportedName),
+          local: cloneNode(local),
+          importKind: "value",
+        });
+
+        if (canAppend) {
+          imported.statement.specifiers.push(addedSpecifier);
+        } else {
+          extraImports.push(
+            generatedNode({
+              type: "ImportDeclaration",
+              specifiers: [addedSpecifier],
+              source: stringLiteral(imported.source),
+              importKind: "value",
+              assertions: [],
+              attributes: [],
+            }),
+          );
+        }
+
+        return local;
+      };
+
+      if (!imported.companionLocal) {
+        imported.companionLocal = addCompanionImport(
+          companionName(imported.importedName),
+          binding.name + "For",
         );
       }
 
-      imported.companionLocal = local;
-      return cloneNode(local);
+      if (!imported.companionKeyLocal) {
+        imported.companionKeyLocal = addCompanionImport(
+          companionKeyName(imported.importedName),
+          binding.name + "Key",
+        );
+      }
+
+      return cloneNode(imported.companionLocal);
     };
 
     const visitStatements = (statements: Node[], parent: Scope | null, isRoot = false): void => {
@@ -996,12 +1072,20 @@ class TransformState {
             const variantName = createVariant(binding);
             if (variantName) {
               this.namedMapCallbacks.set(node, identifier(variantName));
-              this.namedMapCallbackSources.set(node, binding.callback);
+              if (!isComponentName(binding.name)) {
+                this.namedMapCallbackSources.set(node, binding.callback);
+              }
             }
           } else if (renderChild && binding?.imported) {
             const importedCallback = getImportedCompanion(binding);
             if (importedCallback) {
               this.namedMapCallbacks.set(node, importedCallback);
+              if (binding.imported?.companionKeyLocal) {
+                this.namedMapCallbackKeys.set(
+                  node,
+                  cloneNode(binding.imported.companionKeyLocal),
+                );
+              }
             }
           }
         } else if (
@@ -1020,14 +1104,20 @@ class TransformState {
             namespace?.imported?.namespace &&
             namespace.imported.source &&
             isLocalModuleSource(namespace.imported.source) &&
-            propertyName &&
-            !isComponentName(propertyName)
+            propertyName
           ) {
             this.namedMapCallbacks.set(
               node,
               memberExpression(
                 identifier(callbackArgument.object.name),
                 identifier(companionName(propertyName)),
+              ),
+            );
+            this.namedMapCallbackKeys.set(
+              node,
+              memberExpression(
+                identifier(callbackArgument.object.name),
+                identifier(companionKeyName(propertyName)),
               ),
             );
           }
@@ -1171,7 +1261,13 @@ class TransformState {
         this.specializedForCallbacks.has(node)
           ? this.withForCallback(
               node.params ?? [],
-              () => this.transformBlockStatement(node.body, allocator),
+              () =>
+                this.transformBlockStatement(
+                  this.keyedForCallbacks.has(node)
+                    ? this.transformForCallbackItemParameter(node.params ?? [], node.body)
+                    : node.body,
+                  allocator,
+                ),
               this.keyedForCallbacks.has(node),
             )
           : this.transformBlockStatement(node.body, allocator),
@@ -1328,7 +1424,11 @@ class TransformState {
    * parameter. Lazy accessors are generated only where destructuring semantics
    * need state (defaults, computed keys, and object rest).
    */
-  private transformComponentPropsParameter(params: Node[], body: Node): Node {
+  private transformComponentPropsParameter(
+    params: Node[],
+    body: Node,
+    options: { allowAdditionalParameters?: boolean; stateItem?: boolean } = {},
+  ): Node {
     const parameter = params[0];
     if (!parameter) return body;
 
@@ -1339,7 +1439,7 @@ class TransformState {
     // Vynn components receive a single props object. If a function declares
     // later positional parameters, keep native destructuring so parameter
     // initializers can still reference the original parameter bindings.
-    if (params.length > 1) return body;
+    if (params.length > 1 && !options.allowAdditionalParameters) return body;
 
     const propsName = this.usedNames.has("props")
       ? this.generateUidIdentifier("props").name
@@ -1357,9 +1457,12 @@ class TransformState {
     }
 
     const props = identifier(propsName);
+    const propSource = options.stateItem
+      ? memberExpression(cloneNode(props), identifier("value"))
+      : props;
     const replacements = new Map<string, Node>();
     const prologue: NodeOfType<"VariableDeclaration">[] = [];
-    if (!this.collectComponentPropBindings(pattern, props, replacements, prologue)) return body;
+    if (!this.collectComponentPropBindings(pattern, propSource, replacements, prologue)) return body;
 
     const functionVars = new Set<string>();
     if (isBlockStatement(body)) this.collectFunctionVarBindings(body, functionVars);
@@ -2364,6 +2467,54 @@ class TransformState {
     return isIdentifier(parameter) ? parameter.name : null;
   }
 
+  private isSupportedForItemParameter(parameter: Node | null | undefined): boolean {
+    return (
+      isIdentifier(parameter) ||
+      (isObjectPattern(parameter) && this.isSupportedComponentPropPattern(parameter))
+    );
+  }
+
+  private createMapKeySelector(callback: Node, expression: ExpressionNode): Node {
+    if (!isFunctionLike(callback) || !callback.params[0]) {
+      throw new Error("[Vynn compiler] A keyed list callback must declare an item parameter.");
+    }
+
+    const parameters: Node[] = [cloneNode(callback.params[0])];
+    const indexName = this.getForIndexName(callback.params[1]);
+    if (
+      callback.params[1] &&
+      indexName &&
+      this.referencesIdentifier(expression, indexName)
+    ) {
+      parameters.push(cloneNode(callback.params[1]));
+    }
+
+    let body: Node = blockStatement([returnStatement(cloneNode(expression))]);
+    body = this.transformComponentPropsParameter(parameters, body, {
+      allowAdditionalParameters: true,
+    });
+
+    return isArrowFunctionExpression(callback)
+      ? arrowFunctionExpression(parameters, body)
+      : functionExpression(null, parameters, body);
+  }
+
+  private transformForCallbackItemParameter(parameters: Node[], body: Node): Node {
+    const pattern = parameters[0];
+    if (!isObjectPattern(pattern)) return body;
+
+    if (!this.isSupportedComponentPropPattern(pattern)) {
+      throw new Error(
+        "[Vynn compiler] Keyed list callbacks support identifier and object-pattern item parameters.",
+      );
+    }
+
+    return this.transformComponentPropsParameter(parameters, body, {
+      allowAdditionalParameters: true,
+      stateItem: true,
+    });
+  }
+
   /**
    * Extract a key only when the map callback directly returns one JSX element.
    * Conditional roots and fragments need a separate identity model, so they
@@ -2655,53 +2806,50 @@ class TransformState {
         "[Vynn compiler] A list key must be placed on the single JSX element directly returned by the .map() callback. Conditional and multiple roots are not supported yet.",
       );
     }
-    let keySelector: Node | undefined;
+    const importedKeySelector = this.namedMapCallbackKeys.get(expression);
+    let keySelector: Node | undefined = importedKeySelector
+      ? cloneNode(importedKeySelector)
+      : undefined;
 
     if (listKey) {
       if (
         !isFunctionLike(callbackSource) ||
-        !isIdentifier(callbackSource.params[0])
+        !this.isSupportedForItemParameter(callbackSource.params[0])
       ) {
         throw new Error(
-          "[Vynn compiler] Keyed list callbacks currently require a simple identifier as their first parameter.",
+          "[Vynn compiler] Keyed list callbacks support identifier and object-pattern item parameters.",
         );
       }
 
       this.jsxKeyAttributes.add(listKey.attribute);
-      const transformedKey = this.withShadowedForIndices(
-        callbackSource.params,
-        () => this.transformEmbeddedExpression(cloneNode(listKey.expression) as ExpressionNode, allocator),
-      );
-      const keyParameters: Node[] = [cloneNode(callbackSource.params[0])];
-      const indexName = this.getForIndexName(callbackSource.params[1]);
-      if (
-        callbackSource.params[1] &&
-        indexName &&
-        this.referencesIdentifier(listKey.expression, indexName)
-      ) {
-        keyParameters.push(cloneNode(callbackSource.params[1]));
-      }
+      keySelector = this.createMapKeySelector(callbackSource, listKey.expression);
       if (
         expression.arguments.length > 1 &&
-        isFunctionLike(callbackSource) &&
         !isType(callbackSource, "ArrowFunctionExpression") &&
         isExpression(expression.arguments[1])
       ) {
         // Array#map's thisArg applies to ordinary function callbacks, not
         // arrows. Preserve the same receiver for the generated key selector.
         keySelector = callExpression(
-          memberExpression(
-            functionExpression(
-              null,
-              keyParameters,
-              blockStatement([returnStatement(transformedKey)]),
-            ),
-            identifier("bind"),
-          ),
+          memberExpression(keySelector, identifier("bind")),
           [this.transformEmbeddedExpression(expression.arguments[1], allocator)],
         );
-      } else {
-        keySelector = arrowFunctionExpression(keyParameters, transformedKey);
+      }
+    } else if (keySelector && expression.arguments.length > 1) {
+      const thisArg = expression.arguments[1];
+      if (isExpression(thisArg)) {
+        const transformedThisArg = this.transformEmbeddedExpression(
+          cloneNode(thisArg) as ExpressionNode,
+          allocator,
+        );
+        keySelector = conditionalExpression(
+          binaryExpression("!==", cloneNode(keySelector), voidZero()),
+          callExpression(
+            memberExpression(cloneNode(keySelector), identifier("bind")),
+            [transformedThisArg],
+          ),
+          voidZero(),
+        );
       }
     }
 
@@ -2718,6 +2866,14 @@ class TransformState {
       }
 
       transformedCallback = this.withForCallback(callback.params, () => {
+        if (listKey) {
+          setNodeProperty(
+            callback,
+            "body",
+            this.transformForCallbackItemParameter(callback.params, callback.body),
+          );
+        }
+
         if (isArrowFunctionExpression(callback)) {
           const callbackBody = callback.body;
           if (isBlockStatement(callbackBody)) {
@@ -2754,13 +2910,11 @@ class TransformState {
       arrowFunctionExpression([], transformedSource),
       transformedCallback,
     ];
-    if (keySelector) {
-      args.push(keySelector);
-    } else {
-      // Mark compiler-generated JSX maps without a root key. The runtime
-      // emits a development warning only for this case, not for direct $for().
-      args.push(voidZero(), booleanLiteral(true));
-    }
+    args.push(keySelector ?? voidZero());
+    // The runtime decides whether the imported selector is defined. Keeping
+    // this enabled for every compiler-generated map makes imported callbacks
+    // participate in the same development-only missing-key warning.
+    args.push(booleanLiteral(true));
 
     const result = callExpression(this.getRuntimeHelper("$for"), args);
     this.generatedForExpressions.add(result);
@@ -4354,7 +4508,10 @@ class TransformState {
     }
     if (isArrowFunctionExpression(expression)) {
       const transformBody = () => {
-        const body = expression.body;
+        const body = this.specializedForCallbacks.has(expression) &&
+          this.keyedForCallbacks.has(expression)
+          ? this.transformForCallbackItemParameter(expression.params, expression.body)
+          : expression.body;
         if (isBlockStatement(body)) {
           setNodeProperty(expression, "body", this.transformBlockStatement(body, allocator));
         } else if (isExpression(body)) {
@@ -4373,11 +4530,11 @@ class TransformState {
     }
     if (isFunctionExpression(expression)) {
       const transformBody = () => {
-        setNodeProperty(
-          expression,
-          "body",
-          this.transformBlockStatement(expression.body, allocator),
-        );
+        const body = this.specializedForCallbacks.has(expression) &&
+          this.keyedForCallbacks.has(expression)
+          ? this.transformForCallbackItemParameter(expression.params, expression.body)
+          : expression.body;
+        setNodeProperty(expression, "body", this.transformBlockStatement(body, allocator));
         return expression;
       };
 
@@ -4668,7 +4825,16 @@ class TransformState {
         this.specializedForCallbacks.has(statement)
           ? this.withForCallback(
               statement.params ?? [],
-              () => this.transformBlockStatement(statement.body, nestedAllocator),
+              () =>
+                this.transformBlockStatement(
+                  this.keyedForCallbacks.has(statement)
+                    ? this.transformForCallbackItemParameter(
+                        statement.params ?? [],
+                        statement.body,
+                      )
+                    : statement.body,
+                  nestedAllocator,
+                ),
               this.keyedForCallbacks.has(statement),
             )
           : this.transformBlockStatement(statement.body, nestedAllocator),
