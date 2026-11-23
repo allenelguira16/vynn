@@ -3,62 +3,142 @@ import type { JSX } from "../types/jsx";
 
 import { $computed } from "../reactivity/computed";
 import { untrack } from "../reactivity/effect";
-import { $state, type State } from "../reactivity/state";
+import { $state, createStateValue, type State } from "../reactivity/state";
 import { $nodes } from "./$nodes";
 import { getCurrentDOMNamespace, withDOMNamespace } from "./namespace";
 
 type ForEntry<T> = {
-  item: T;
+  identity: unknown;
+  itemState?: State<T>;
   node: JSX.Element;
   index: State<number>;
 };
 
+type ForBucket<T> = {
+  entries: ForEntry<T>[];
+  nextIndex: number;
+};
+
+// Map uses SameValueZero, while the existing identity behavior uses Object.is.
+// Keep -0 and +0 distinct without penalizing the common object/string/number path.
+const negativeZeroIdentity = Symbol("vynn.negative-zero");
+
+function normalizeIdentity(identity: unknown): unknown {
+  return typeof identity === "number" && Object.is(identity, -0)
+    ? negativeZeroIdentity
+    : identity;
+}
+
 export function $for<T>(
   items: () => T[],
   each: (item: T, index: State<number>) => JSX.Element,
+  getKey: undefined,
+  warnMissingKey: true,
+): JSX.Element;
+
+export function $for<T>(
+  items: () => T[],
+  each: (item: T, index: State<number>) => JSX.Element,
+): JSX.Element;
+
+export function $for<T, K>(
+  items: () => T[],
+  each: (item: State<T>, index: State<number>) => JSX.Element,
+  getKey: (item: T, index: number) => K,
+): JSX.Element;
+
+export function $for<T>(
+  items: () => T[],
+  each:
+    | ((item: T, index: State<number>) => JSX.Element)
+    | ((item: State<T>, index: State<number>) => JSX.Element),
+  getKey?: (item: T, index: number) => unknown,
+  warnMissingKey = false,
 ): JSX.Element {
   const namespace = getCurrentDOMNamespace();
-  const renderEach = (item: T, index: State<number>): JSX.Element =>
-    withDOMNamespace(namespace, () => each(item, index));
+  const keyed = getKey !== undefined;
+  let warnedAboutMissingKey = false;
 
-  const createRowNode = (item: T, index: State<number>): JSX.Element =>
+  const warnAboutMissingKey = (length: number): void => {
+    if (!warnMissingKey || keyed || warnedAboutMissingKey || length === 0 || !import.meta.env.DEV) {
+      return;
+    }
+
+    warnedAboutMissingKey = true;
+    console.warn(
+      "[vynn] Each child in a list should have a unique `key` prop. " +
+        "Add `key` to the root JSX element returned by `.map()` to preserve row identity " +
+        "when items are reordered or replaced.",
+    );
+  };
+
+  const invokeEach = each as (
+    item: T | State<T>,
+    index: State<number>,
+  ) => JSX.Element;
+  const renderEach = (item: T | State<T>, index: State<number>): JSX.Element =>
+    withDOMNamespace(namespace, () => invokeEach(item, index));
+
+  const createRowNode = (item: T | State<T>, index: State<number>): JSX.Element =>
     $nodes(() => {
       // Keep each row associated with its matched item, not its current array
       // position. Reordering then moves the existing row without invoking its
       // component callback again or recreating component-local state.
       //
-      // Reactive reads performed by the callback remain tracked here. When an
-      // item is mutated in place (for example, by async-store reconciliation),
-      // only the row that reads the changed property is refreshed.
+      // Keyed callbacks receive a reactive item cell. Replacing an object with
+      // another object having the same key updates this cell while preserving
+      // the row's component owner and local state.
       return renderEach(item, index);
     });
 
   if (import.meta.env.SSR) {
-    return $nodes(() =>
-      items().map((item, i) =>
-        renderEach(
-          item,
-          $state(() => i),
-        ),
-      ),
-    );
+    return $nodes(() => {
+      const values = items();
+      warnAboutMissingKey(values.length);
+
+      return values.map((item, i) => {
+        const indexState = $state(() => i);
+        return keyed
+          ? renderEach(createStateValue(item), indexState)
+          : renderEach(item, indexState);
+      });
+    });
   }
 
-  // const result = $state<JSX.Element[]>([]);
   let result: JSX.Element[] = [];
   let oldEntries: ForEntry<T>[] = [];
   let initialized = false;
 
   const value = $computed(() => {
     const newItems = items();
+    warnAboutMissingKey(newItems.length);
 
-    // The diff below is intentionally untracked, but the list itself must
-    // subscribe to its array structure and slots. Otherwise in-place store
-    // reconciliation can invalidate individual rows without updating the
-    // parent list to remove rows whose indexes no longer exist.
+    // Subscribe to the array structure and slots so in-place store
+    // reconciliation can invalidate the list when items are inserted/removed.
     const newItemsLength = newItems.length;
     for (let i = 0; i < newItemsLength; i++) {
       void newItems[i];
+    }
+
+    // Evaluate selectors while tracking. A reactive key change must trigger a
+    // new reconciliation pass. The actual diff remains untracked.
+    const newIdentities = keyed
+      ? newItems.map((item, index) => getKey!(item, index))
+      : newItems;
+
+    if (keyed && import.meta.env.DEV) {
+      const seen = new Set<unknown>();
+
+      for (const identity of newIdentities) {
+        const normalized = normalizeIdentity(identity);
+        if (seen.has(normalized)) {
+          console.warn(
+            "[vynn] Duplicate key detected in a $for list. Keys should be unique among sibling rows.",
+          );
+        } else {
+          seen.add(normalized);
+        }
+      }
     }
 
     untrack(() => {
@@ -66,12 +146,15 @@ export function $for<T>(
        * First render.
        */
       if (!initialized) {
-        const entries = newItems.map((value, index) => {
+        const entries = newItems.map((item, index) => {
           const indexState = $state(() => index);
+          const itemState = keyed ? createStateValue(item) : undefined;
+          const renderedItem = itemState ?? item;
 
           return {
-            item: value,
-            node: createRowNode(value, indexState),
+            identity: newIdentities[index],
+            itemState,
+            node: createRowNode(renderedItem, indexState),
             index: indexState,
           };
         });
@@ -84,70 +167,60 @@ export function $for<T>(
       }
 
       /*
-       * Each old entry may only be reused once.
-       *
-       * This is what fixes:
-       *
-       *   [A, A] -> [A, A]
-       *
-       * from becoming:
-       *
-       *   [oldA, oldA]
+       * Index old entries by identity. Buckets preserve deterministic FIFO
+       * matching for duplicate values while ensuring an entry is reused once.
        */
-      const used = new Set<number>();
+      const oldByIdentity = new Map<unknown, ForBucket<T>>();
+
+      for (const entry of oldEntries) {
+        const identity = normalizeIdentity(entry.identity);
+        let bucket = oldByIdentity.get(identity);
+
+        if (!bucket) {
+          bucket = { entries: [], nextIndex: 0 };
+          oldByIdentity.set(identity, bucket);
+        }
+
+        bucket.entries.push(entry);
+      }
+
       const newEntries: ForEntry<T>[] = [];
 
       for (let i = 0; i < newItems.length; i++) {
         const newItem = newItems[i];
+        const identity = newIdentities[i];
+        const bucket = oldByIdentity.get(normalizeIdentity(identity));
+        const entry =
+          bucket && bucket.nextIndex < bucket.entries.length
+            ? bucket.entries[bucket.nextIndex++]
+            : undefined;
 
-        let oldIndex = -1;
+        if (entry) {
+          // Preserve the existing DOM and reactive subtree.
+          entry.identity = identity;
 
-        for (let j = 0; j < oldEntries.length; j++) {
-          if (used.has(j)) {
-            continue;
+          // Keyed rows read the current item through this stable reactive cell.
+          if (entry.itemState) {
+            entry.itemState.value = newItem;
           }
 
-          if (Object.is(newItem, oldEntries[j].item)) {
-            oldIndex = j;
-            break;
-          }
-        }
-
-        if (oldIndex >= 0) {
-          const entry = oldEntries[oldIndex];
-
-          used.add(oldIndex);
-
-          /*
-           * Preserve the existing DOM and reactive subtree.
-           */
-          entry.item = newItem;
-
-          /*
-           * Preserve the State object, but update its value.
-           */
           entry.index.value = i;
-
           newEntries.push(entry);
         } else {
-          /*
-           * Completely new item.
-           */
           const indexState = $state(() => i);
+          const itemState = keyed ? createStateValue(newItem) : undefined;
+          const renderedItem = itemState ?? newItem;
 
           newEntries.push({
-            item: newItem,
-            node: createRowNode(newItem, indexState),
+            identity,
+            itemState,
+            node: createRowNode(renderedItem, indexState),
             index: indexState,
           });
         }
       }
 
       oldEntries = newEntries;
-
-      /*
-       * Result now contains the exact existing nodes in the new order.
-       */
       result = newEntries.map((entry) => entry.node);
     });
 

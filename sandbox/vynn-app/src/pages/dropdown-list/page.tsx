@@ -121,7 +121,7 @@ const DropdownList = (props: TDropdownListProps) => {
         <Dropdown number={number} />
       ))} */}
       {props.dropdowns.numbers.map((number) => (
-        <Dropdown number={number} />
+        <Dropdown number={number} key={number} />
       ))}
       {/* {$for(
         () => dropdowns.numbers,

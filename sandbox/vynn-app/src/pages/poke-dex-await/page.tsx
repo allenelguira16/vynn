@@ -76,7 +76,7 @@ export default function PokeDexAwait() {
                   {Array.from({ length: 20 })
                     .map((_, i) => i + 1)
                     .map((number) => (
-                      <tr>
+                      <tr key={number}>
                         <td colSpan={3} class="h-6 text-center">
                           {number === 10 ? "loading..." : <>&nbsp;</>}
                         </td>
@@ -99,7 +99,7 @@ export default function PokeDexAwait() {
             >
               <>
                 {pokeDex.results.map((props, index) => (
-                  <Row name={props.name} url={props.url} index={index} />
+                  <Row name={props.name} url={props.url} index={index} key={props.name} />
                 ))}
                 <tr>
                   <td colSpan={3}>

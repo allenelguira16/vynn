@@ -95,6 +95,17 @@ function cell<T>(
   };
 }
 
+/**
+ * Creates a plain state cell for an already-evaluated value.
+ *
+ * Unlike $state(value), this does not interpret function values as
+ * initializers or promise values as asynchronous resources. It is intended
+ * for runtime internals that need to store arbitrary user values.
+ */
+export function createStateValue<T>(value: T): State<T> {
+  return cell(value).state;
+}
+
 export function $state<T>(initializer: StateInitializer<T>): State<T>;
 export function $state<T>(initializer: () => PromiseLike<T>): State<T>;
 export function $state<T>(initializer: () => T): State<T>;

@@ -256,13 +256,18 @@ class TransformState {
   private readonly generatedForExpressions = new WeakSet<object>();
   private readonly generatedIfExpressions = new WeakSet<object>();
   private readonly generatedForIndexReferences = new WeakSet<object>();
+  private readonly generatedForItemReferences = new WeakSet<object>();
+  private readonly jsxKeyAttributes = new WeakSet<object>();
+  private readonly keyedForCallbacks = new WeakSet<object>();
   /**
    * Named .map() calls that must use a callback variant with a reactive index.
    */
   private readonly namedMapCallbacks = new WeakMap<object, Node>();
+  private readonly namedMapCallbackSources = new WeakMap<object, Node>();
   /** Function nodes cloned specifically for a named Vynn list callback. */
   private readonly specializedForCallbacks = new WeakSet<object>();
   private activeForIndexNames: string[] = [];
+  private activeForItemNames: string[] = [];
   private readonly usedNames = new Set<string>();
   private readonly svgDescendants = new WeakSet<object>();
   private readonly documentHeadNodes = new WeakSet<object>();
@@ -274,6 +279,22 @@ class TransformState {
     this.collectUsedNames(program);
     this.collectSvgDescendants(program, false);
     this.collectDocumentHeadNodes(program);
+    this.collectJSXKeyAttributes(program);
+  }
+
+  private collectJSXKeyAttributes(node: Node): void {
+    if (isJSXElement(node)) {
+      for (const attribute of node.openingElement.attributes) {
+        if (
+          isJSXAttribute(attribute) &&
+          getJSXAttributeName(attribute.name) === "key"
+        ) {
+          this.jsxKeyAttributes.add(attribute);
+        }
+      }
+    }
+
+    forEachChild(node, (child) => this.collectJSXKeyAttributes(child));
   }
 
   private collectSvgDescendants(node: Node, insideSvg: boolean): void {
@@ -809,6 +830,17 @@ class TransformState {
       const variantId = this.generateUidIdentifier(binding.name + "For");
       const variantName = variantId.name;
       const clonedCallback = cloneNode(binding.callback);
+      const listKey = this.getMapCallbackKey(clonedCallback);
+      if (listKey) {
+        this.jsxKeyAttributes.add(listKey.attribute);
+        this.keyedForCallbacks.add(clonedCallback);
+
+        // The original callback remains an ordinary function in the module.
+        // Treat its key as compiler metadata too, even though the list uses
+        // the specialized sibling for reactive item/index parameters.
+        const originalListKey = this.getMapCallbackKey(binding.callback);
+        if (originalListKey) this.jsxKeyAttributes.add(originalListKey.attribute);
+      }
       let variantStatement: Node;
 
       if (isFunctionDeclaration(clonedCallback)) {
@@ -964,6 +996,7 @@ class TransformState {
             const variantName = createVariant(binding);
             if (variantName) {
               this.namedMapCallbacks.set(node, identifier(variantName));
+              this.namedMapCallbackSources.set(node, binding.callback);
             }
           } else if (renderChild && binding?.imported) {
             const importedCallback = getImportedCompanion(binding);
@@ -1136,8 +1169,10 @@ class TransformState {
         node,
         "body",
         this.specializedForCallbacks.has(node)
-          ? this.withForCallback(node.params ?? [], () =>
-              this.transformBlockStatement(node.body, allocator),
+          ? this.withForCallback(
+              node.params ?? [],
+              () => this.transformBlockStatement(node.body, allocator),
+              this.keyedForCallbacks.has(node),
             )
           : this.transformBlockStatement(node.body, allocator),
       );
@@ -2325,6 +2360,99 @@ class TransformState {
     return null;
   }
 
+  private getForItemName(parameter: Node | null | undefined): string | null {
+    return isIdentifier(parameter) ? parameter.name : null;
+  }
+
+  /**
+   * Extract a key only when the map callback directly returns one JSX element.
+   * Conditional roots and fragments need a separate identity model, so they
+   * are deliberately rejected rather than guessed.
+   */
+  private getMapCallbackKey(
+    callback: Node,
+  ): { expression: ExpressionNode; attribute: Node } | null {
+    if (!isFunctionLike(callback)) {
+      return null;
+    }
+
+    let root: NodeOfType<"JSXElement"> | null = null;
+    if (isBlockStatement(callback.body)) {
+      const returns = callback.body.body.filter(isReturnStatement);
+      if (returns.length === 1 && isJSXElement(returns[0].argument)) {
+        root = returns[0].argument;
+      }
+    } else if (isJSXElement(callback.body)) {
+      root = callback.body;
+    }
+
+    if (!root) return null;
+
+    let keyAttribute: Node | undefined;
+    for (const attribute of root.openingElement.attributes) {
+      if (!isJSXAttribute(attribute) || getJSXAttributeName(attribute.name) !== "key") {
+        continue;
+      }
+      if (keyAttribute) {
+        throw new Error("[Vynn compiler] A list row can only declare one key attribute.");
+      }
+      keyAttribute = attribute;
+    }
+
+    if (!keyAttribute || !isJSXAttribute(keyAttribute)) return null;
+
+    const value = keyAttribute.value;
+    if (isJSXExpressionContainer(value)) {
+      if (isJSXEmptyExpression(value.expression) || !isExpression(value.expression)) {
+        throw new Error("[Vynn compiler] A list row key must contain an expression.");
+      }
+      return {
+        expression: cloneNode(value.expression) as ExpressionNode,
+        attribute: keyAttribute,
+      };
+    }
+
+    if (isLiteralString(value)) {
+      return { expression: stringLiteral(value.value), attribute: keyAttribute };
+    }
+
+    throw new Error(
+      "[Vynn compiler] A list row key must be a string literal or a JSX expression.",
+    );
+  }
+
+  private referencesIdentifier(node: Node, name: string): boolean {
+    if (isIdentifier(node) && node.name === name) return true;
+
+    let found = false;
+    forEachChild(node, (child) => {
+      if (!found && this.referencesIdentifier(child, name)) found = true;
+    });
+    return found;
+  }
+
+  private containsJSXKey(node: Node): boolean {
+    let found = false;
+
+    const visit = (current: Node, isRoot = false): void => {
+      if (found || (!isRoot && isFunctionLike(current))) return;
+
+      if (isJSXElement(current)) {
+        for (const attribute of current.openingElement.attributes) {
+          if (isJSXAttribute(attribute) && getJSXAttributeName(attribute.name) === "key") {
+            found = true;
+            return;
+          }
+        }
+      }
+
+      forEachChild(current, (child) => visit(child));
+    };
+
+    visit(node, true);
+    return found;
+  }
+
   private collectBindingNames(
     node: Node | null | undefined,
     names = new Set<string>(),
@@ -2351,30 +2479,56 @@ class TransformState {
     return names;
   }
 
-  private withForCallback<T>(parameters: Node[], callback: () => T): T {
-    const previous = this.activeForIndexNames;
+  private withForCallback<T>(
+    parameters: Node[],
+    callback: () => T,
+    keyed = false,
+  ): T {
+    const previousIndices = this.activeForIndexNames;
+    const previousItems = this.activeForItemNames;
     const shadowed = new Set<string>();
     for (const parameter of parameters) this.collectBindingNames(parameter, shadowed);
-    const next = previous.filter((name) => !shadowed.has(name));
+
+    const nextIndices = previousIndices.filter((name) => !shadowed.has(name));
+    const nextItems = previousItems.filter((name) => !shadowed.has(name));
     const indexName = this.getForIndexName(parameters[1]);
-    this.activeForIndexNames = indexName ? [...next, indexName] : next;
+    const itemName = keyed ? this.getForItemName(parameters[0]) : null;
+
+    this.activeForIndexNames = indexName ? [...nextIndices, indexName] : nextIndices;
+    this.activeForItemNames = itemName ? [...nextItems, itemName] : nextItems;
+
     try {
       return callback();
     } finally {
-      this.activeForIndexNames = previous;
+      this.activeForIndexNames = previousIndices;
+      this.activeForItemNames = previousItems;
     }
   }
 
   private withShadowedForIndices<T>(parameters: Node[], callback: () => T): T {
-    const previous = this.activeForIndexNames;
+    const previousIndices = this.activeForIndexNames;
+    const previousItems = this.activeForItemNames;
     const shadowed = new Set<string>();
     for (const parameter of parameters) this.collectBindingNames(parameter, shadowed);
-    this.activeForIndexNames = previous.filter((name) => !shadowed.has(name));
+
+    this.activeForIndexNames = previousIndices.filter((name) => !shadowed.has(name));
+    this.activeForItemNames = previousItems.filter((name) => !shadowed.has(name));
+
     try {
       return callback();
     } finally {
-      this.activeForIndexNames = previous;
+      this.activeForIndexNames = previousIndices;
+      this.activeForItemNames = previousItems;
     }
+  }
+
+  private transformForItemReference(expression: ExpressionNode): ExpressionNode {
+    if (!isIdentifier(expression) || !this.activeForItemNames.includes(expression.name)) {
+      return expression;
+    }
+    const result = memberExpression(identifier(expression.name), identifier("value"));
+    this.generatedForItemReferences.add(result);
+    return result;
   }
 
   private transformForIndexReference(expression: ExpressionNode): ExpressionNode {
@@ -2492,6 +2646,65 @@ class TransformState {
 
     const transformedSource = this.transformEmbeddedExpression(source, allocator);
 
+    // Local named callbacks retain their source node so the selector can be
+    // generated even though the call site points at a specialized variant.
+    const callbackSource = this.namedMapCallbackSources.get(expression) ?? callback;
+    const listKey = this.getMapCallbackKey(callbackSource);
+    if (!listKey && isFunctionLike(callbackSource) && this.containsJSXKey(callbackSource)) {
+      throw new Error(
+        "[Vynn compiler] A list key must be placed on the single JSX element directly returned by the .map() callback. Conditional and multiple roots are not supported yet.",
+      );
+    }
+    let keySelector: Node | undefined;
+
+    if (listKey) {
+      if (
+        !isFunctionLike(callbackSource) ||
+        !isIdentifier(callbackSource.params[0])
+      ) {
+        throw new Error(
+          "[Vynn compiler] Keyed list callbacks currently require a simple identifier as their first parameter.",
+        );
+      }
+
+      this.jsxKeyAttributes.add(listKey.attribute);
+      const transformedKey = this.withShadowedForIndices(
+        callbackSource.params,
+        () => this.transformEmbeddedExpression(cloneNode(listKey.expression) as ExpressionNode, allocator),
+      );
+      const keyParameters: Node[] = [cloneNode(callbackSource.params[0])];
+      const indexName = this.getForIndexName(callbackSource.params[1]);
+      if (
+        callbackSource.params[1] &&
+        indexName &&
+        this.referencesIdentifier(listKey.expression, indexName)
+      ) {
+        keyParameters.push(cloneNode(callbackSource.params[1]));
+      }
+      if (
+        expression.arguments.length > 1 &&
+        isFunctionLike(callbackSource) &&
+        !isType(callbackSource, "ArrowFunctionExpression") &&
+        isExpression(expression.arguments[1])
+      ) {
+        // Array#map's thisArg applies to ordinary function callbacks, not
+        // arrows. Preserve the same receiver for the generated key selector.
+        keySelector = callExpression(
+          memberExpression(
+            functionExpression(
+              null,
+              keyParameters,
+              blockStatement([returnStatement(transformedKey)]),
+            ),
+            identifier("bind"),
+          ),
+          [this.transformEmbeddedExpression(expression.arguments[1], allocator)],
+        );
+      } else {
+        keySelector = arrowFunctionExpression(keyParameters, transformedKey);
+      }
+    }
+
     // Named callbacks use a specialized sibling so ordinary calls to the
     // original function continue receiving ordinary numeric map indices.
     const namedCallback = this.namedMapCallbacks.get(expression);
@@ -2524,7 +2737,7 @@ class TransformState {
           setNodeProperty(callback, "body", this.transformBlockStatement(callback.body, allocator));
         }
         return callback;
-      });
+      }, listKey !== null);
     }
 
     if (expression.arguments.length > 1) {
@@ -2537,10 +2750,19 @@ class TransformState {
       }
     }
 
-    const result = callExpression(this.getRuntimeHelper("$for"), [
+    const args = [
       arrowFunctionExpression([], transformedSource),
       transformedCallback,
-    ]);
+    ];
+    if (keySelector) {
+      args.push(keySelector);
+    } else {
+      // Mark compiler-generated JSX maps without a root key. The runtime
+      // emits a development warning only for this case, not for direct $for().
+      args.push(voidZero(), booleanLiteral(true));
+    }
+
+    const result = callExpression(this.getRuntimeHelper("$for"), args);
     this.generatedForExpressions.add(result);
     return result;
   }
@@ -3361,6 +3583,7 @@ class TransformState {
         }
 
         if (!isJSXAttribute(attribute)) return undefined;
+        if (this.jsxKeyAttributes.has(attribute)) continue;
 
         const sourceName = getJSXAttributeName(attribute.name);
         const lowerName = sourceName.toLowerCase();
@@ -3694,6 +3917,7 @@ class TransformState {
       }
 
       if (!isJSXAttribute(attribute)) continue;
+      if (this.jsxKeyAttributes.has(attribute)) continue;
 
       const name = getJSXAttributeName(attribute.name);
       if (name === "ref") continue;
@@ -4001,6 +4225,11 @@ class TransformState {
       return expression;
     if (isMemberExpression(expression) && this.generatedForIndexReferences.has(expression))
       return expression;
+    if (isMemberExpression(expression) && this.generatedForItemReferences.has(expression))
+      return expression;
+
+    const transformedForItem = this.transformForItemReference(expression);
+    if (transformedForItem !== expression) return transformedForItem;
 
     const transformedForIndex = this.transformForIndexReference(expression);
     if (transformedForIndex !== expression) return transformedForIndex;
@@ -4135,7 +4364,11 @@ class TransformState {
       };
 
       return this.specializedForCallbacks.has(expression)
-        ? this.withForCallback(expression.params, transformBody)
+        ? this.withForCallback(
+            expression.params,
+            transformBody,
+            this.keyedForCallbacks.has(expression),
+          )
         : this.withShadowedForIndices(expression.params, transformBody);
     }
     if (isFunctionExpression(expression)) {
@@ -4149,7 +4382,11 @@ class TransformState {
       };
 
       return this.specializedForCallbacks.has(expression)
-        ? this.withForCallback(expression.params, transformBody)
+        ? this.withForCallback(
+            expression.params,
+            transformBody,
+            this.keyedForCallbacks.has(expression),
+          )
         : this.withShadowedForIndices(expression.params, transformBody);
     }
     if (isArrayExpression(expression)) {
@@ -4429,8 +4666,10 @@ class TransformState {
         statement,
         "body",
         this.specializedForCallbacks.has(statement)
-          ? this.withForCallback(statement.params ?? [], () =>
-              this.transformBlockStatement(statement.body, nestedAllocator),
+          ? this.withForCallback(
+              statement.params ?? [],
+              () => this.transformBlockStatement(statement.body, nestedAllocator),
+              this.keyedForCallbacks.has(statement),
             )
           : this.transformBlockStatement(statement.body, nestedAllocator),
       );
@@ -4526,6 +4765,7 @@ class TransformState {
         continue;
       }
       if (!isJSXAttribute(attribute)) continue;
+      if (this.jsxKeyAttributes.has(attribute)) continue;
       const name = getJSXAttributeName(attribute.name);
 
       if (name === "ref") {
@@ -4743,6 +4983,7 @@ class TransformState {
         continue;
       }
       if (!isJSXAttribute(attribute)) continue;
+      if (this.jsxKeyAttributes.has(attribute)) continue;
       const name = getJSXAttributeName(attribute.name);
 
       if (name === "ref") {
