@@ -9,6 +9,7 @@ import { Await } from "../src/components/await";
 import { Catch } from "../src/components/catch";
 import { lazy } from "../src/components/lazy";
 import { getOwner } from "../src/life-cycle/owner";
+import { onDestroy } from "../src/life-cycle/on-destroy";
 import { $state } from "../src/reactivity/state";
 
 afterEach(() => {
@@ -31,8 +32,13 @@ async function flushUpdates() {
 function createRefreshScenario(suspense: boolean) {
   const source = $state(1);
   const requests = new Map<number, ReturnType<typeof deferred<string>>>();
+  let pageInstances = 0;
+  let pageDestroyed = 0;
 
   function Page(): JSX.Element {
+    pageInstances++;
+    onDestroy(() => pageDestroyed++);
+
     const data = $state(async () => {
       const id = source.value;
       const request = deferred<string>();
@@ -57,7 +63,18 @@ function createRefreshScenario(suspense: boolean) {
     host,
   );
 
-  return { host, requests, source, unmount };
+  return {
+    host,
+    requests,
+    source,
+    unmount,
+    get pageInstances() {
+      return pageInstances;
+    },
+    get pageDestroyed() {
+      return pageDestroyed;
+    },
+  };
 }
 
 describe("client-only boundary identity", () => {
@@ -178,7 +195,8 @@ describe("Await with lazy components", () => {
 
 describe("Await suspense mode", () => {
   it("shows the fallback again while an async child refreshes", async () => {
-    const { host, requests, source, unmount } = createRefreshScenario(true);
+    const scenario = createRefreshScenario(true);
+    const { host, requests, source, unmount } = scenario;
 
     try {
       expect(host.textContent).toBe("Loading page");
@@ -192,6 +210,8 @@ describe("Await suspense mode", () => {
       await flushUpdates();
 
       expect(host.textContent).toBe("Loading page");
+      expect(scenario.pageInstances).toBe(1);
+      expect(scenario.pageDestroyed).toBe(0);
 
       requests.get(2)!.resolve("Second result");
       await flushUpdates();

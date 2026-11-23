@@ -88,6 +88,7 @@ export const Await = $cmpnt(function Await(props: {
         () => isPending.value,
         () => fallback(),
         () => children(),
+        { keepAlive: true },
       );
     } finally {
       isResolved = true;
