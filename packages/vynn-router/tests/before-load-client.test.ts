@@ -193,6 +193,71 @@ describe("client router beforeLoad", () => {
     unmount();
   });
 
+  it("keeps a pending guard when params and search change on the same destination route", async () => {
+    let finishGuard!: () => void;
+    const signals: AbortSignal[] = [];
+    const guardSnapshots: string[] = [];
+
+    const routes: Route[] = [
+      {
+        path: "/",
+        component: (props) => <main>{props.children}</main>,
+        children: [
+          {
+            path: "/",
+            component: () => textNode("p", "home content"),
+          },
+          {
+            path: "users/:id",
+            beforeLoad: ({ location, params, signal }) => {
+              signals.push(signal);
+              guardSnapshots.push(
+                `${location.pathname}${location.search}:${params.id}`,
+              );
+
+              return new Promise<void>((resolve) => {
+                finishGuard = resolve;
+              });
+            },
+            component: () => textNode("p", "user page content"),
+          },
+        ],
+      },
+    ];
+
+    const host = document.createElement("div");
+    document.body.append(host);
+
+    const unmount = renderToDOM(
+      () => Router({ url: "/", routes }) as unknown as JSX.Element,
+      host,
+    );
+
+    navigate("/users/1?tab=old");
+    await Promise.resolve();
+
+    expect(signals).toHaveLength(1);
+    expect(guardSnapshots).toEqual(["/users/1?tab=old:1"]);
+
+    navigate("/users/2?tab=new");
+
+    expect(signals).toHaveLength(1);
+    expect(signals[0].aborted).toBe(false);
+    expect(host.textContent).toContain("home content");
+
+    finishGuard();
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    expect(window.location.pathname).toBe("/users/2");
+    expect(window.location.search).toBe("?tab=new");
+    expect(guardSnapshots).toEqual(["/users/1?tab=old:1"]);
+    expect(host.textContent).toContain("user page content");
+    expect(host.textContent).not.toContain("home content");
+
+    unmount();
+    expect(signals[0].aborted).toBe(true);
+  });
+
   it("keeps the current route visible until a pending destination guard redirects", async () => {
     let finishGuard!: () => void;
     const scheduledFrames: FrameRequestCallback[] = [];
