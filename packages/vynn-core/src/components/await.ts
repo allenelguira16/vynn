@@ -90,7 +90,12 @@ export const Await = $cmpnt(function Await(props: {
         () => isPending.value,
         () => fallback(),
         () => children(),
-        { keepAlive: props.keepAlive ?? true },
+        {
+          // Pending children must survive the fallback switch so their async
+          // resources can settle and render without constructing the subtree twice.
+          keepAlive: true,
+          disposeOnResolve: props.keepAlive === false,
+        },
       );
     } finally {
       isResolved = true;
