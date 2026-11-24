@@ -187,12 +187,10 @@ function findBestDescendant(
   return best;
 }
 
-/** Finds the highest-specificity route at the current outlet level. */
-export function findCompiledMatch<TContext = undefined>(
+function findCompiledMatchSegments<TContext = undefined>(
   routes: readonly CompiledRoute[],
-  location: Location,
+  pathnameSegments: readonly string[],
 ): MatchedRoute<TContext> | undefined {
-  const pathnameSegments = toSegments(location.pathname);
   let best: MatchCandidate | undefined;
 
   for (const node of routes) {
@@ -238,6 +236,14 @@ export function findCompiledMatch<TContext = undefined>(
   };
 }
 
+/** Finds the highest-specificity route at the current outlet level. */
+export function findCompiledMatch<TContext = undefined>(
+  routes: readonly CompiledRoute[],
+  location: Location,
+): MatchedRoute<TContext> | undefined {
+  return findCompiledMatchSegments<TContext>(routes, toSegments(location.pathname));
+}
+
 /** Matches an uncompiled route array, primarily for direct matcher consumers. */
 export function findMatch<TContext = undefined>(
   routes: Route<TContext>[],
@@ -257,10 +263,11 @@ export function findRouteBranch<TContext = undefined>(
   location: Location,
 ): MatchedRoute<TContext>[] {
   const branch: MatchedRoute<TContext>[] = [];
+  const pathnameSegments = toSegments(location.pathname);
   let currentRoutes = routes;
 
   while (currentRoutes.length > 0) {
-    const match = findCompiledMatch<TContext>(currentRoutes, location);
+    const match = findCompiledMatchSegments<TContext>(currentRoutes, pathnameSegments);
     if (!match) break;
 
     branch.push(match);
