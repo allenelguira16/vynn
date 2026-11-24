@@ -176,13 +176,51 @@ type PreloadableRouteComponent = Route["component"] & {
   preload?: () => Promise<unknown>;
 };
 
-/**
- * Preloads every lazy component in the selected route branch.
- *
- * A folder route can be only an outlet while its page is several levels below
- * it, so preloading only the immediate match would still allow the layout to
- * lose its old children while the descendant page module loads.
- */
+type PreparedRouteGuard<TContext = undefined> = {
+  fullPath: string;
+  result: CompletedRouteGuardResult;
+  controller: AbortController;
+};
+
+type PreparedRouteGuards<TContext = undefined> = Map<
+  Route<TContext>,
+  PreparedRouteGuard<TContext>
+>;
+
+type PreparedRouteBranchResult<TContext> =
+  | { type: "ready"; guards: PreparedRouteGuards<TContext> }
+  | { type: "redirect"; signal: unknown }
+  | { type: "cancelled" };
+
+/** Finds every selected route from this outlet down to the terminal page. */
+function findMatchedRouteBranch<TContext>(
+  match: MatchedRoute<TContext>,
+  location: Location,
+): MatchedRoute<TContext>[] {
+  const branch = [match];
+  const childMatch = findMatch(match.route.children ?? [], location, match.fullPath);
+
+  if (childMatch) {
+    branch.push(...findMatchedRouteBranch(childMatch, location));
+  }
+
+  return branch;
+}
+
+function sameMatchedBranch<TContext>(
+  left: MatchedRoute<TContext>[],
+  right: MatchedRoute<TContext>[],
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every(
+      (match, index) =>
+        match.route === right[index]?.route && match.fullPath === right[index]?.fullPath,
+    )
+  );
+}
+
+/** Preloads every lazy component in the selected route branch. */
 function preloadRouteBranch<TContext>(
   match: MatchedRoute<TContext>,
   location: Location,
@@ -255,6 +293,66 @@ async function runBeforeLoad<TContext>(
 }
 
 /**
+ * Validates the entire selected destination branch, from layouts to page.
+ * Each RouteView receives its own controller/result so nested outlets do not
+ * execute a guard a second time when their components are eventually mounted.
+ */
+async function prepareRouteBranch<TContext>(
+  branch: MatchedRoute<TContext>[],
+  context: TContext,
+  location: Location,
+  revision: number,
+  controllers: AbortController[],
+): Promise<PreparedRouteBranchResult<TContext>> {
+  const guards: PreparedRouteGuards<TContext> = new Map();
+
+  for (const match of branch) {
+    if (!match.route.beforeLoad) continue;
+
+    const controller = new AbortController();
+    controllers.push(controller);
+
+    const result = await runBeforeLoad(
+      match.route,
+      match.fullPath,
+      context,
+      location,
+      controller.signal,
+      revision,
+      true,
+    );
+
+    if (controller.signal.aborted) {
+      return { type: "cancelled" };
+    }
+
+    if (result.type === "redirect") {
+      return {
+        type: "redirect",
+        signal: result.signal,
+      };
+    }
+
+    guards.set(match.route, {
+      fullPath: match.fullPath,
+      result,
+      controller,
+    });
+
+    // An error on a parent route prevents its descendants from becoming active.
+    if (result.type === "error") break;
+  }
+
+  return { type: "ready", guards };
+}
+
+function abortControllers(controllers: AbortController[] | undefined): void {
+  for (const controller of controllers ?? []) {
+    controller.abort();
+  }
+}
+
+/**
  * Runs the guard for an initial/SSR RouteView that was not prevalidated by its
  * RouteOutlet during client navigation.
  *
@@ -266,7 +364,9 @@ function RouteView<TContext>(
   props: MatchedRoute<TContext> & {
     context: TContext;
     notFound?: Route<TContext>["component"];
-    guardResult?: CompletedRouteGuardResult;
+    preparedGuard?: PreparedRouteGuard<TContext>;
+    preparedGuards?: PreparedRouteGuards<TContext>;
+    preparedBranchControllers?: AbortController[];
   },
 ) {
   const RenderRoute = () => {
@@ -283,23 +383,30 @@ function RouteView<TContext>(
             parentPath={fullPath}
             context={props.context}
             notFound={props.notFound}
+            preparedGuards={props.preparedGuards}
           />
         )}
       </Component>
     );
   };
 
-  if (!props.route.beforeLoad) {
+  // A committed branch owns all guard signals prepared for its descendants.
+  // Individual guarded RouteViews also abort their own signal when disposed.
+  if (props.preparedBranchControllers?.length) {
+    onDestroy(() => abortControllers(props.preparedBranchControllers));
+  }
+
+  if (props.preparedGuard) {
+    onDestroy(() => props.preparedGuard?.controller.abort());
+
+    if (props.preparedGuard.result.type === "error") {
+      throw props.preparedGuard.result.error;
+    }
+
     return <RenderRoute />;
   }
 
-  // Client navigations run beforeLoad in the outlet before replacing the
-  // previous view. A supplied result prevents the guard from running twice.
-  if (props.guardResult) {
-    if (props.guardResult.type === "error") {
-      throw props.guardResult.error;
-    }
-
+  if (!props.route.beforeLoad) {
     return <RenderRoute />;
   }
 
@@ -382,26 +489,21 @@ function RouteView<TContext>(
 /**
  * Renders one reactive routing level.
  *
- * Match changes are observed by a render effect, but the rendered subtree is
- * published only when the selected route changes. A params/search update must
- * not rerun this outlet's outer $nodes reconciliation: its cached DOM-node
- * array cannot include nodes later inserted by nested $nodes regions, and
- * reconciling that stale array would remove those live nested nodes.
- *
- * Descendant route content tracks pathname/search itself through $params and
- * $search. A RouteView's beforeLoad uses the location snapshot from its creation
- * and does not revalidate when those values change.
+ * The outlet validates all guards in a destination's selected branch before
+ * publishing its first route view. This matters for file routes, where a folder
+ * outlet can sit between the current page and a guarded descendant page.
  */
 export function RouteOutlet<TContext = undefined>(props: {
   routes: Route<TContext>[];
   parentPath?: string;
   context: TContext;
   notFound?: Route<TContext>["component"];
+  preparedGuards?: PreparedRouteGuards<TContext>;
 }) {
   let previousMatch: MatchedRoute<TContext> | undefined;
-  let pendingMatch: MatchedRoute<TContext> | undefined;
-  let displayedGuardController: AbortController | undefined;
-  let pendingGuardController: AbortController | undefined;
+  let pendingBranch: MatchedRoute<TContext>[] | undefined;
+  let pendingBranchControllers: AbortController[] | undefined;
+  let inheritedPreparedGuards = props.preparedGuards;
   let hasRendered = false;
   let navigationRevision = 0;
   let disposed = false;
@@ -416,55 +518,72 @@ export function RouteOutlet<TContext = undefined>(props: {
   onDestroy(() => {
     disposed = true;
     navigationRevision++;
-    pendingGuardController?.abort();
-    displayedGuardController?.abort();
+    abortControllers(pendingBranchControllers);
   });
 
   $renderEffect(() => {
-    // Track the complete URL at the routing boundary. The effect only updates
-    // the view state when the selected route changes.
+    // Track the complete URL at the routing boundary.
     const activeLocation = currentLocation();
     const location: Location = {
       pathname: activeLocation.pathname,
       search: activeLocation.search,
     };
     const next = findMatch(props.routes, location, props.parentPath ?? "");
+    const branch = next ? findMatchedRouteBranch(next, location) : [];
 
-    // Keep an in-flight destination guard/preload when only params or search
-    // change within that same matched route. beforeLoad receives its original
-    // entry snapshot, just as it does after the RouteView has been committed.
-    if (pendingMatch && sameMatch(pendingMatch, next)) {
+    // A newly mounted nested outlet consumes the prepared results passed down
+    // from its parent outlet. The map is one-shot and is not reused on later
+    // navigations from this outlet.
+    if (inheritedPreparedGuards) {
+      const preparedGuards = inheritedPreparedGuards;
+      inheritedPreparedGuards = undefined;
+      commitView(preparedGuards);
+      return;
+    }
+
+    // Keep an in-flight destination branch when only params/search change.
+    // A deeper route change produces a different branch and supersedes it.
+    if (pendingBranch && sameMatchedBranch(pendingBranch, branch)) {
       return;
     }
 
     const revision = ++navigationRevision;
 
-    // A new destination supersedes only pending work. The currently displayed
-    // route and its guard signal remain alive until another view is committed.
-    pendingGuardController?.abort();
-    pendingGuardController = undefined;
-    pendingMatch = undefined;
+    // Cancel all guards associated with the previous pending destination.
+    abortControllers(pendingBranchControllers);
+    pendingBranchControllers = undefined;
+    pendingBranch = undefined;
 
     if (hasRendered && sameMatch(previousMatch, next)) {
+      // The nested outlet owns changes below a route that remains selected here.
       return;
     }
 
     const commitView = (
-      guardResult?: CompletedRouteGuardResult,
-      guardController?: AbortController,
+      preparedGuards?: PreparedRouteGuards<TContext>,
+      preparedBranchControllers?: AbortController[],
     ) => {
       if (disposed || navigationRevision !== revision) return;
 
       const latestLocation = currentLocation();
       const latestMatch = findMatch(props.routes, latestLocation, props.parentPath ?? "");
+      const latestBranch = latestMatch
+        ? findMatchedRouteBranch(latestMatch, latestLocation)
+        : [];
 
-      // A params/search update can keep the same match alive while the guard is
-      // pending. Reject only when the latest URL selects a different route.
-      if (!sameMatch(next, latestMatch)) {
+      if (!sameMatchedBranch(branch, latestBranch)) {
         return;
       }
 
       runWithOwner(owner, () => {
+        const preparedGuard = next && preparedGuards
+          ? preparedGuards.get(next.route)
+          : undefined;
+
+        if (preparedGuard?.fullPath === next?.fullPath) {
+          preparedGuards!.delete(next!.route);
+        }
+
         const nextView = next
           ? untrack(() => (
               <RoutePathProvider value={next.fullPath}>
@@ -473,7 +592,9 @@ export function RouteOutlet<TContext = undefined>(props: {
                   fullPath={next.fullPath}
                   context={props.context}
                   notFound={props.notFound}
-                  guardResult={guardResult}
+                  preparedGuard={preparedGuard?.fullPath === next.fullPath ? preparedGuard : undefined}
+                  preparedGuards={preparedGuards}
+                  preparedBranchControllers={preparedBranchControllers}
                 />
               </RoutePathProvider>
             ))
@@ -484,88 +605,83 @@ export function RouteOutlet<TContext = undefined>(props: {
               })
             : null;
 
-        // A guard started by this outlet owns its signal for the lifetime of
-        // the committed route. Retire the previous route's signal only now,
-        // after the destination is ready to replace it.
-        if (displayedGuardController !== guardController) {
-          displayedGuardController?.abort();
-        }
-        displayedGuardController = guardController;
-
-        if (pendingGuardController === guardController) {
-          pendingGuardController = undefined;
-        }
-        pendingMatch = undefined;
+        pendingBranch = undefined;
+        pendingBranchControllers = undefined;
         hasRendered = true;
         previousMatch = next;
         view.value = nextView;
       });
     };
 
-    // On client navigations, run beforeLoad before committing the destination.
-    // This keeps the currently displayed page mounted while route validation
-    // is pending and avoids running the guard again in the new RouteView.
-    if (!isServer && hasRendered && next?.route.beforeLoad) {
-      const controller = new AbortController();
-      pendingGuardController = controller;
-      pendingMatch = next;
+    // A prepared branch came from an ancestor outlet. Consume the current
+    // route's entry and pass the remaining results to its nested outlet.
+    if (props.preparedGuards) {
+      commitView(props.preparedGuards);
+      return;
+    }
 
-      void runBeforeLoad(
-        next.route,
-        next.fullPath,
+    // Validate every guard in the destination branch before replacing the
+    // current view. This includes guards on file-router page modules nested
+    // under guard-free folder outlet routes.
+    const hasDestinationGuard = branch.some((match) => !!match.route.beforeLoad);
+
+    if (!isServer && hasRendered && next && hasDestinationGuard) {
+      const controllers: AbortController[] = [];
+      pendingBranch = branch;
+      pendingBranchControllers = controllers;
+
+      void prepareRouteBranch(
+        branch,
         props.context,
         location,
-        controller.signal,
         revision,
-        true,
-      ).then((guardResult) => {
-        if (disposed || navigationRevision !== revision || controller.signal.aborted) {
+        controllers,
+      ).then((prepared) => {
+        if (disposed || navigationRevision !== revision) {
+          abortControllers(controllers);
           return;
         }
 
-        if (guardResult.type === "redirect") {
+        if (prepared.type === "cancelled") {
+          abortControllers(controllers);
+          return;
+        }
+
+        if (prepared.type === "redirect") {
           commitClientRedirect(
-            guardResult.signal,
+            prepared.signal,
             () =>
               !disposed &&
               navigationRevision === revision &&
-              pendingGuardController === controller &&
-              !controller.signal.aborted,
+              pendingBranchControllers === controllers &&
+              !controllers.some((controller) => controller.signal.aborted),
             currentLocation(),
           );
-          return;
-        }
-
-        // A failed guard is committed as an error in the destination RouteView
-        // so the existing route error-boundary behavior remains in effect.
-        if (guardResult.type === "error") {
-          commitView(guardResult, controller);
           return;
         }
 
         const preload = preloadRouteBranch(next, currentLocation());
         if (preload) {
           void preload.then(
-            () => commitView(guardResult, controller),
-            () => commitView(guardResult, controller),
+            () => commitView(prepared.guards, controllers),
+            () => commitView(prepared.guards, controllers),
           );
           return;
         }
 
-        commitView(guardResult, controller);
+        commitView(prepared.guards, controllers);
       });
 
       return;
     }
 
-    // Keep the current route visible while a lazy destination branch loads.
-    // Initial rendering still uses the normal lazy/Await behavior because
-    // there is no previous view to preserve.
+    // Preserve the current route while any lazy component in the destination
+    // branch loads, even when no route guard is present.
     const preload =
       !isServer && hasRendered && next ? preloadRouteBranch(next, location) : undefined;
 
     if (preload) {
-      pendingMatch = next;
+      pendingBranch = branch;
       void preload.then(commitView, commitView);
       return;
     }
