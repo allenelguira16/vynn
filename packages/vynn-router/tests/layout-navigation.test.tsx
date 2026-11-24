@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
-import { $computed, lazy, type JSX } from "vynn";
+import { $computed, lazy, onDestroy, type JSX } from "vynn";
 import { renderToDOM } from "vynn/client";
 
 import { navigate, Router, type Route } from "../src";
@@ -35,7 +35,7 @@ describe("client router layout navigation", () => {
         children: [
           {
             path: "/",
-            component: () => <p>home content</p>,
+            component: HomePage,
           },
           {
             path: "other-page",
@@ -73,14 +73,27 @@ describe("client router layout navigation", () => {
     expect(host.querySelector("main")).toBe(layout);
     expect(host.textContent).toContain("other-page content");
     expect(host.textContent).not.toContain("home content");
+    expect(destinationComponentCalls).toBe(1);
+    expect(homeDisposed).toBe(true);
 
     unmount();
   });
 
   it("keeps the current page visible while a navigate() destination has pending async content", async () => {
     let resolveDestination!: () => void;
+    let destinationComponentCalls = 0;
+    let homeDisposed = false;
+
+    function HomePage() {
+      onDestroy(() => {
+        homeDisposed = true;
+      });
+
+      return <p>home content</p>;
+    }
 
     function DestinationPage() {
+      destinationComponentCalls++;
       const content = $computed(async () => {
         await new Promise<void>((resolve) => {
           resolveDestination = resolve;
@@ -132,6 +145,7 @@ describe("client router layout navigation", () => {
     navigate("/other-page");
 
     expect(typeof resolveDestination).toBe("function");
+    expect(destinationComponentCalls).toBe(1);
     expect(host.querySelector("main")).toBe(layout);
     expect(host.textContent).toContain("home content");
     expect(host.textContent).not.toContain("other-page content");
