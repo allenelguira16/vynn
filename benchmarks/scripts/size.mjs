@@ -17,6 +17,7 @@ const apps = [
   { id: "solid", label: "Solid 2", packageName: "@vynn-bench/solid" },
   { id: "svelte", label: "Svelte 5", packageName: "@vynn-bench/svelte" },
   { id: "react", label: "React 19", packageName: "@vynn-bench/react" },
+  { id: "preact", label: "Preact 11", packageName: "@vynn-bench/preact" },
 ];
 
 function selectedScenarios(args) {
@@ -297,6 +298,7 @@ async function main() {
         solid: "2.0.0-rc.18",
         svelte: "5.59.1",
         react: "19.3.1",
+        preact: "11.2.0",
       },
       minifier: "oxc",
       target: "es2022",

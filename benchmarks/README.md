@@ -1,6 +1,6 @@
 # Framework size benchmarks
 
-This workspace compares the minimum production client payload produced by Vynn, Solid 2, Svelte 5, and React 19.
+This workspace compares the minimum production client payload produced by Vynn, Solid 2, Svelte 5, React 19, and Preact 11.
 
 The benchmark measures three scenarios:
 
@@ -8,16 +8,17 @@ The benchmark measures three scenarios:
 - **Counter**: render the same markup plus synchronous reactive state, a derived value, and an increment button.
 - **Async**: render the same markup plus an async derived value, a reactive input that invalidates it, and a loading boundary.
 
-These are standalone client-rendered Vite apps. They do not use routers, SSR adapters, CSS frameworks, icon libraries, or shared app utilities. Each framework uses its idiomatic public API.
+These are standalone client-rendered Vite apps. They do not use routers, SSR adapters, CSS frameworks, icon libraries, or shared app utilities. Each framework uses its idiomatic public API. Preact uses Vite's built-in Oxc automatic JSX runtime, without a separate JSX preset.
 
 ## Versions
 
-The benchmark pins Vite 8.3.6 across all four apps and uses the framework versions already present in the repository's sandbox lockfile:
+The benchmark pins Vite 8.3.6 across all five apps and uses the framework versions already present in the repository's sandbox lockfile:
 
 - Vynn: workspace source from the checked-out revision.
 - Solid 2: `solid-js` and `@solidjs/web` 2.0.0-rc.18 (matching the existing Solid sandbox).
 - Svelte: 5.59.1.
 - React: 19.3.1.
+- Preact: 11.2.0.
 
 The Solid version is deliberately aligned with the existing sandbox so both measurements use the same release. Update the pin when benchmarking a newer Solid release, and retain the version in the report.
 
@@ -59,15 +60,16 @@ HTML documents, manifests, source maps, compression sidecars, and build tooling 
 
 ## SSR chunk graph (sandbox comparison)
 
-The three fixture scenarios above remain a client-payload benchmark. The SSR graph is a separate diagnostic for the production sandbox apps used in the Vynn-versus-Solid SSR comparison.
+The three fixture scenarios above remain a client-payload benchmark. The SSR graph is a separate diagnostic for the production sandbox apps used in the Vynn, Solid 2, and Preact 11 SSR comparison.
 
-Both sandbox Vite configs include a build-only reporting plugin. During the server build it reads Rolldown's final chunk metadata and writes JSON reports under `benchmarks/results/`. It records each emitted server chunk's raw, gzip, and Brotli sizes; static and dynamic imports and importers; entry reachability; and the source modules contributing rendered bytes. The report is written outside `dist`, so it does not add assets to either app or change the compression configuration.
+The Vynn, Solid, and Preact sandbox Vite configs include a build-only reporting plugin. During the server build it reads Rolldown's final chunk metadata and writes JSON reports under `benchmarks/results/`. It records each emitted server chunk's raw, gzip, and Brotli sizes; static and dynamic imports and importers; entry reachability; and the source modules contributing rendered bytes. The report is written outside `dist`, so it does not add assets to any app or change the compression configuration.
 
-Build the two sandbox apps:
+Build the three sandbox apps:
 
 ```sh
 pnpm --filter app build
 pnpm --filter solid-app build
+pnpm --filter preact-app build
 ```
 
 Then print only the SSR graph:
@@ -90,6 +92,7 @@ The applications use their frameworks' normal client entry points:
 - Solid's `@solidjs/web` `render`.
 - Svelte 5's `mount`.
 - React's `createRoot`.
+- Preact's `render`.
 
 All framework and bundler versions are pinned in the app manifests and workspace lockfile. The source is intentionally tiny and contains no CSS. The same bundler, target, minifier, and output settings are used for each app.
 

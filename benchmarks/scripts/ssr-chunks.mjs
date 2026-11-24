@@ -7,6 +7,7 @@ const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..")
 const frameworks = [
   { id: "vynn", label: "Vynn" },
   { id: "solid", label: "Solid 2" },
+  { id: "preact", label: "Preact 11" },
 ];
 
 function normalizePath(value) {
@@ -313,9 +314,10 @@ export async function printSsrChunkReport(root = repositoryRoot) {
   console.log("SSR CHUNK GRAPH (sandbox production server builds)");
   if (available.length === 0) {
     console.log("  No SSR chunk reports found.");
-    console.log("  Build both sandbox apps first:");
+    console.log("  Build all three sandbox apps first:");
     console.log("    pnpm --filter app build");
     console.log("    pnpm --filter solid-app build");
+    console.log("    pnpm --filter preact-app build");
     console.log("  Then run: pnpm bench:size -- --ssr");
     return;
   }
@@ -337,5 +339,12 @@ export async function printSsrChunkReport(root = repositoryRoot) {
 
   console.log("");
   console.log("Gzip/Brotli totals are sums of individually compressed JS chunks, not a single archive.");
-  console.log("Graph reports: " + normalizePath(relative(root, reportFileName("vynn", root))) + " and " + normalizePath(relative(root, reportFileName("solid", root))));
+  console.log(
+    "Graph reports: " +
+      frameworks
+        .map((framework) =>
+          normalizePath(relative(root, reportFileName(framework.id, root))),
+        )
+        .join(", "),
+  );
 }
