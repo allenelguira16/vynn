@@ -85,15 +85,23 @@ describe("client router beforeLoad", () => {
             component: () => textNode("p", "home content"),
           },
           {
+            // Mirrors toFileRouter(".../poke-dex/page.tsx"): the directory
+            // contributes an outlet and the actual page is a nested "/" route.
             path: "poke-dex",
-            beforeLoad: ({ signal }) => {
-              signals.push(signal);
+            component: (props) => props.children ?? null,
+            children: [
+              {
+                path: "/",
+                beforeLoad: ({ signal }) => {
+                  signals.push(signal);
 
-              return new Promise<void>((resolve) => {
-                finishGuard = resolve;
-              });
-            },
-            component: () => textNode("p", "poke dex content"),
+                  return new Promise<void>((resolve) => {
+                    finishGuard = resolve;
+                  });
+                },
+                component: () => textNode("p", "poke dex content"),
+              },
+            ],
           },
         ],
       },
@@ -146,14 +154,20 @@ describe("client router beforeLoad", () => {
           },
           {
             path: "poke-dex",
-            beforeLoad: ({ signal }) => {
-              signals.push(signal);
+            component: (props) => props.children ?? null,
+            children: [
+              {
+                path: "/",
+                beforeLoad: ({ signal }) => {
+                  signals.push(signal);
 
-              return new Promise<void>((resolve) => {
-                finishGuard = resolve;
-              });
-            },
-            component: () => textNode("p", "stale poke dex content"),
+                  return new Promise<void>((resolve) => {
+                    finishGuard = resolve;
+                  });
+                },
+                component: () => textNode("p", "stale poke dex content"),
+              },
+            ],
           },
           {
             path: "settings",
