@@ -91,7 +91,11 @@ export function $if(
     // During hydration, the initial branch can contain SSR nodes that must
     // stay in their original DOM positions. A fresh CSR branch still starts
     // in a fragment, preserving the normal branch lifecycle.
-    if (parkInFragment) {
+    // A one-time fallback may be an already-mounted route subtree. Leave
+    // those nodes in place while the parent adopts the range markers; moving
+    // only the originally tracked nodes would strand siblings inserted later
+    // by nested $nodes regions.
+    if (parkInFragment && !(options.disposeOnResolve && key)) {
       fragment.append(...nodes);
     }
 
