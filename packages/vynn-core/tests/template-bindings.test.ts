@@ -7,7 +7,7 @@ import { initializeHeadContext } from "../src/context/head-context";
 import { createOwner, disposeOwner, runWithOwner } from "../src/life-cycle/owner";
 import { $attr } from "../src/render/$attr";
 import { $insert } from "../src/render/$insert";
-import { $child, $finishTemplate, $sibling, $template } from "../src/render/$template";
+import { $child, $finishTemplate, $sibling, $staticTemplate, $template } from "../src/render/$template";
 import { SVG_NAMESPACE, withDOMNamespace } from "../src/render/namespace";
 import { $state } from "../src/reactivity/state";
 import { renderToServer } from "../src/server/render-to-server";
@@ -23,9 +23,9 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
-describe("$template static fast path", () => {
+describe("$staticTemplate", () => {
   it("clones static markup into independent DOM trees", () => {
-    const factory = $template("<section><h1>Static heading</h1><p>Static content</p></section>", true);
+    const factory = $staticTemplate("<section><h1>Static heading</h1><p>Static content</p></section>");
     const first = factory();
     const second = factory();
 
@@ -39,7 +39,7 @@ describe("$template static fast path", () => {
     host.innerHTML = "<main><h1>Static heading</h1><p>Static content</p></main>";
     document.body.append(host);
     const serverRoot = host.firstElementChild;
-    const factory = $template("<main><h1>Static heading</h1><p>Static content</p></main>", true);
+    const factory = $staticTemplate("<main><h1>Static heading</h1><p>Static content</p></main>");
 
     const unmount = hydrateToDOM(
       () => factory() as unknown as JSX.Element,
@@ -58,7 +58,7 @@ describe("$template static fast path", () => {
     host.innerHTML = "<main><h2>Wrong heading</h2><p>Static content</p></main>";
     document.body.append(host);
     const serverRoot = host.firstElementChild;
-    const factory = $template("<main><h1>Static heading</h1><p>Static content</p></main>", true);
+    const factory = $staticTemplate("<main><h1>Static heading</h1><p>Static content</p></main>");
 
     const unmount = hydrateToDOM(
       () => factory() as unknown as JSX.Element,
@@ -73,7 +73,7 @@ describe("$template static fast path", () => {
   });
 
   it("clones static templates in the active SVG namespace", () => {
-    const factory = $template('<path d="M0 0L10 10"></path>', true);
+    const factory = $staticTemplate('<path d="M0 0L10 10"></path>');
     const path = withDOMNamespace(SVG_NAMESPACE, () => factory());
 
     expect(path.localName).toBe("path");
@@ -82,9 +82,8 @@ describe("$template static fast path", () => {
   });
 
   it("creates complete static document roots", () => {
-    const factory = $template(
+    const factory = $staticTemplate(
       '<html lang="en"><head><title>Static document</title></head><body><main>Content</main></body></html>',
-      true,
     );
     const root = factory();
 
@@ -94,7 +93,7 @@ describe("$template static fast path", () => {
   });
 
   it("builds static SSR nodes directly from the markup", () => {
-    const factory = $template("<main><h1>Static heading</h1><p>Static content</p></main>", true);
+    const factory = $staticTemplate("<main><h1>Static heading</h1><p>Static content</p></main>");
     const result = renderToServer(() => factory() as unknown as JSX.Element, "sync");
 
     expect(result.body).toBe("<main><h1>Static heading</h1><p>Static content</p></main>");

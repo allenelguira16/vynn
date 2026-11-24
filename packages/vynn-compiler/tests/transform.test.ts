@@ -34,8 +34,10 @@ describe("Vynn Oxc JSX compiler", () => {
       "page.tsx",
     );
 
-    expect(code).toMatch(/_\$template\("[^"]+", true\)/);
-    expect(code).toMatch(/const _tmpl\d* = _\$template\("[^"]+", true\)/);
+    expect(code).toContain("_$staticTemplate(");
+    expect(code).toContain("$staticTemplate as _$staticTemplate");
+    expect(code).not.toContain("$template as _$template");
+    expect(code).toMatch(/const _tmpl\d* = _\$staticTemplate\(/);
     expect(code).not.toContain("TemplateDescriptor");
     expect(code).not.toContain("_$child(");
     expect(code.indexOf("const _tmpl")).toBeLessThan(code.indexOf("function Page"));
@@ -102,7 +104,7 @@ describe("Vynn Oxc JSX compiler", () => {
     );
 
     expect(code).toContain(
-      '_$template("<table><tbody><tr><td>First row</td></tr><tr><td>Second row</td></tr></tbody></table>", true)',
+      '_$staticTemplate("<table><tbody><tr><td>First row</td></tr><tr><td>Second row</td></tr></tbody></table>")',
     );
     expect(code).not.toContain("$txt");
   });
@@ -115,7 +117,7 @@ describe("Vynn Oxc JSX compiler", () => {
       "repeated.tsx",
     );
 
-    expect(code.match(/_\$template\("[^"]+", true\)/g)).toHaveLength(1);
+    expect(code.match(/_\$staticTemplate\(/g)).toHaveLength(1);
     expect(code.match(/_tmpl\d*\(/g)).toHaveLength(2);
   });
 
@@ -213,7 +215,7 @@ describe("Vynn Oxc JSX compiler", () => {
     );
 
     expect(code).toContain("_$template(");
-    expect(code).not.toMatch(/_\$template\("[^"]+", true\)/);
+    expect(code).not.toContain("_$staticTemplate(");
   });
 
   it("keeps static and dynamic template factories separate when their markup matches", () => {
@@ -224,7 +226,7 @@ describe("Vynn Oxc JSX compiler", () => {
       "buttons.tsx",
     );
 
-    expect(code).toContain('_$template("<button></button>", true)');
+    expect(code).toContain('_$staticTemplate("<button></button>")');
     expect(code).toContain('_$template("<button></button>")');
   });
 
@@ -478,8 +480,8 @@ describe("Vynn Oxc JSX compiler", () => {
     );
 
     expect(code).toContain("_$cmpnt(function Status");
-    expect(code).toContain('_$template("<div");
-    expect(code).toContain('_$template("<section");
+    expect(code).toContain('_$staticTemplate("<div");
+    expect(code).toContain('_$staticTemplate("<section");
   });
 
   it("wraps function components whose returns are nested in switch cases", () => {
@@ -496,8 +498,8 @@ describe("Vynn Oxc JSX compiler", () => {
     );
 
     expect(code).toContain("_$cmpnt(function Status");
-    expect(code).toContain('_$template("<strong");
-    expect(code).toContain('_$template("<em");
+    expect(code).toContain('_$staticTemplate("<strong");
+    expect(code).toContain('_$staticTemplate("<em");
   });
 
   it("wraps PascalCase function-expression component variables", () => {
@@ -510,7 +512,7 @@ describe("Vynn Oxc JSX compiler", () => {
     );
 
     expect(code).toContain("const Button = _$cmpnt(function Button");
-    expect(code).toContain('_$template("<span");
+    expect(code).toContain('_$staticTemplate("<span");
     expect(code).toContain('_$template("<button");
   });
 
@@ -523,14 +525,14 @@ describe("Vynn Oxc JSX compiler", () => {
     );
 
     expect(code).toMatch(/export default _$cmpnt\(function\s*\(/);
-    expect(code).toContain('_$template("<main");
+    expect(code).toContain('_$staticTemplate("<main");
   });
 
   it("wraps anonymous default arrow components", () => {
     const code = transformVynnOxc(`export default () => <main>Anonymous</main>;`, "app.tsx");
 
     expect(code).toMatch(/export default _$cmpnt\(function\s*\(/);
-    expect(code).toContain('_$template("<main");
+    expect(code).toContain('_$staticTemplate("<main");
   });
 
   it("lowers JSX returned from nested named map callbacks", () => {
@@ -652,7 +654,7 @@ describe("Vynn compiler output", () => {
       "page.tsx",
     );
 
-    expect(result.code).toMatch(/_\$template\("[^"]+", true\)/);
+    expect(result.code).toMatch(/_\$staticTemplate\(/);
     expect(result.map).toMatchObject({
       version: expect.any(Number),
       sources: expect.any(Array),

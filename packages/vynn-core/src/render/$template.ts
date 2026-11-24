@@ -992,7 +992,7 @@ function createSSRStaticTemplateNode(
  * Creates a reusable factory for JSX subtrees with no dynamic bindings.
  *
  * This path avoids hydration descriptors, node maps, and per-instance
- * template state. It is selected internally by $template().
+ * template state. The compiler selects this path through $staticTemplate().
  */
 function createStaticTemplateFactory<T extends Element = Element>(
   markup: string,
@@ -1136,20 +1136,14 @@ function createDynamicTemplateFactory<T extends Element = Element>(
   };
 }
 
-/**
- * Creates a reusable JSX template factory.
- *
- * The compiler passes the static flag only when the subtree has no runtime
- * bindings. Keeping that choice here leaves one helper in the runtime API
- * while preserving separate optimized implementations.
- */
-export function $template<T extends Element = Element>(
-  markup: string,
-  isStatic = false,
-): () => T {
-  return isStatic
-    ? createStaticTemplateFactory<T>(markup)
-    : createDynamicTemplateFactory<T>(markup);
+/** Creates a reusable factory for a JSX subtree with no runtime bindings. */
+export function $staticTemplate<T extends Element = Element>(markup: string): () => T {
+  return createStaticTemplateFactory<T>(markup);
+}
+
+/** Creates a reusable factory for a JSX template with runtime bindings. */
+export function $template<T extends Element = Element>(markup: string): () => T {
+  return createDynamicTemplateFactory<T>(markup);
 }
 
 /**

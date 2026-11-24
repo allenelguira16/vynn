@@ -111,6 +111,7 @@ type RuntimeHelperName =
   | "$nodes"
   | "$text"
   | "$template"
+  | "$staticTemplate"
   | "$child"
   | "$sibling"
   | "$finishTemplate"
@@ -3145,15 +3146,14 @@ class TransformState {
     const templateKey = (useStaticTemplate ? "static:" : "dynamic:") + markup;
     const existingTemplate = this.templateFactories.get(templateKey);
     const templateName = existingTemplate ?? this.generateUidIdentifier("tmpl");
+    const templateHelper = useStaticTemplate ? "$staticTemplate" : "$template";
 
     if (!existingTemplate) {
-      const templateArgs: Node[] = [stringLiteral(markup)];
-      if (useStaticTemplate) templateArgs.push(booleanLiteral(true));
       this.templateStatements.push(
         variableDeclaration("const", [
           variableDeclarator(
             templateName,
-            callExpression(this.getRuntimeHelper("$template"), templateArgs),
+            callExpression(this.getRuntimeHelper(templateHelper), [stringLiteral(markup)]),
           ),
         ]),
       );
