@@ -250,6 +250,79 @@ describe("SSR response compression", () => {
     expect(negotiateResponseEncoding(undefined)).toBeNull();
   });
 
+
+  it.each(["gzip", "br"] as const)(
+    "treats a client disconnect during %s compression as a normal abort",
+    async (encoding) => {
+      let finishWriter!: (error: unknown) => void;
+      const writerFinished = new Promise<unknown>((resolveWriter) => {
+        finishWriter = resolveWriter;
+      });
+      let bodyCancelled = false;
+      let receivedCompressedChunk = false;
+
+      const server = createServer((_req, res) => {
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            // Keep the response open after the first chunk so the client can
+            // disconnect while the compression pipeline is still active.
+            controller.enqueue(Buffer.from("Vynn SSR content ".repeat(4096)));
+          },
+          cancel() {
+            bodyCancelled = true;
+          },
+        });
+
+        void writeResponse(
+          res,
+          new Response(body, {
+            headers: { "content-type": "text/html; charset=utf-8" },
+          }),
+          { acceptEncoding: encoding },
+        ).then(
+          () => finishWriter(null),
+          (error: unknown) => finishWriter(error),
+        );
+      });
+
+      server.listen(0, "127.0.0.1");
+      await new Promise<void>((resolveListen) => server.once("listening", resolveListen));
+
+      try {
+        const address = server.address();
+        if (!address || typeof address === "string") {
+          throw new Error("Test server did not bind a TCP port");
+        }
+
+        const client = httpRequest({
+          host: "127.0.0.1",
+          port: address.port,
+          path: "/",
+          headers: { "accept-encoding": encoding },
+        });
+        client.on("error", () => undefined);
+        client.on("response", (response) => {
+          response.on("error", () => undefined);
+          response.once("data", () => {
+            receivedCompressedChunk = true;
+            response.destroy();
+          });
+        });
+        client.end();
+
+        const writerError = await writerFinished;
+        expect(writerError).toBeNull();
+        expect(receivedCompressedChunk).toBe(true);
+        expect(bodyCancelled).toBe(true);
+      } finally {
+        await new Promise<void>((resolveClose, rejectClose) => {
+          server.close((error) => (error ? rejectClose(error) : resolveClose()));
+          server.closeAllConnections();
+        });
+      }
+    },
+  );
+
   it.each([
     ["gzip", "gzip"],
     ["br", "br"],

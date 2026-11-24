@@ -14,6 +14,7 @@ import {
   synchronizeHydrationText,
 } from "./hydration-diagnostics";
 import { installHydrationRuntime } from "./hydration-runtime";
+import { installDynamicTemplateHydration } from "../render/$template";
 
 import { removeInternalRangeMarkers } from "../dom/internal-range";
 import { getOwnerContext, setOwnerContext } from "../context/owner-context";
@@ -53,6 +54,7 @@ const afterHydrationTasks = new Set<AfterHydrationTask>();
 let hydrationCheckScheduled = false;
 
 export function withHydration(callback: () => void, root: Node) {
+  installDynamicTemplateHydration();
   [serverRenderedElements, serverRenderedTexts, serverRenderedLazy] = getServerRenderedNodes(root);
 
   hydrationElementIndex = 0;

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { withHydration } from "../src/client/hydration";
 import { hydrateToDOM } from "../src/client/hydrate-to-dom";
@@ -304,6 +304,47 @@ describe("$template", () => {
     expect(footer).toBe(root.lastElementChild);
 
     disposeOwner(owner);
+  });
+
+  it("resolves authored head children when injected stylesheet links precede them", () => {
+    document.documentElement.innerHTML = [
+      "<head>",
+      '<link rel="stylesheet" href="/assets/main.css">',
+      "<title>Server title</title>",
+      '<meta name="description" content="Server description">',
+      "</head>",
+      "<body><p>Application text</p></body>",
+    ].join("");
+
+    const stylesheet = document.head.querySelector('link[rel="stylesheet"]');
+    const owner = createTestOwner();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    let title!: Element;
+
+    try {
+      runWithOwner(owner, () => {
+        withHydration(() => {
+          const html = $template(
+            '<html><head><title></title><meta name="description" content="Server description"></head><body><p>Application text</p></body></html>',
+          )();
+          const head = $child(html);
+          title = $child(head);
+
+          $insert(title, () => ["Vynn SSR Sandbox ", "0"]);
+          $finishTemplate(html);
+        }, document);
+      });
+
+      expect(title.localName).toBe("title");
+      expect(title.textContent).toBe("Vynn SSR Sandbox 0");
+      expect(document.head.querySelector('link[rel="stylesheet"]')).toBe(stylesheet);
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+      disposeOwner(owner);
+      document.head.innerHTML = "";
+      document.body.innerHTML = "";
+    }
   });
 
   it("builds the SSR node tree from markup and inserts dynamic content at its slot", () => {

@@ -8,9 +8,10 @@ import {
 import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { printSsrChunkReport } from "./ssr-chunks.mjs";
+import { printClientChunkComparison } from "./client-chunks.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-const scenarios = ["minimal", "counter", "async"];
+const scenarios = ["minimal", "state", "counter", "async"];
 const apps = [
   { id: "vynn", label: "Vynn", packageName: "@vynn-bench/vynn" },
   { id: "solid", label: "Solid 2", packageName: "@vynn-bench/solid" },
@@ -173,6 +174,38 @@ function printTable(results, scenario) {
   for (const row of values) console.log(line(row));
 }
 
+
+function printStateDelta(results) {
+  const rows = results.flatMap((item) => {
+    if (item.scenario !== "state") return [];
+
+    const baseline = results.find(
+      (candidate) => candidate.id === item.id && candidate.scenario === "minimal",
+    );
+    if (!baseline) return [];
+
+    return [[
+      item.framework,
+      formatDelta(item.initial.javascript.gzip - baseline.initial.javascript.gzip),
+      formatDelta(item.allEmitted.total.gzip - baseline.allEmitted.total.gzip),
+    ]];
+  });
+
+  if (rows.length === 0) return;
+
+  const headers = ["Framework", "State initial JS delta", "State all-emitted delta"];
+  const widths = headers.map((header, index) =>
+    Math.max(header.length, ...rows.map((row) => row[index].length)),
+  );
+  const line = (row) => row.map((value, index) => value.padEnd(widths[index])).join("  ");
+
+  console.log("");
+  console.log("STATE INCREMENT OVER MINIMAL (gzip)");
+  console.log(line(headers));
+  console.log(widths.map((width) => "-".repeat(width)).join("  "));
+  for (const row of rows) console.log(line(row));
+}
+
 function printAsyncDelta(results) {
   const rows = results.flatMap((item) => {
     if (item.scenario !== "async") return [];
@@ -247,6 +280,7 @@ async function main() {
     }
 
     printTable(results, scenario);
+    if (scenario === "state") printStateDelta(results);
     if (scenario === "async") printAsyncDelta(results);
   }
 
@@ -278,6 +312,7 @@ async function main() {
   await writeFile(output, JSON.stringify(report, null, 2) + String.fromCharCode(10));
   console.log("");
   console.log(`Wrote ${relative(root, output).replaceAll("\\", "/")}.`);
+  await printClientChunkComparison(root);
   await printSsrChunkReport(root);
 }
 

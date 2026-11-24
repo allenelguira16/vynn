@@ -420,6 +420,7 @@ export function vynnAppPlugin({
               headers: server.config.server.headers,
             });
           })().catch((error: unknown) => {
+            if (res.destroyed || res.writableEnded) return;
             if (res.headersSent) {
               res.destroy(error instanceof Error ? error : undefined);
               return;
@@ -476,6 +477,7 @@ export function vynnAppPlugin({
               headers: server.config.preview.headers,
             });
           })().catch((error: unknown) => {
+            if (res.destroyed || res.writableEnded) return;
             if (res.headersSent) {
               res.destroy(error instanceof Error ? error : undefined);
               return;
