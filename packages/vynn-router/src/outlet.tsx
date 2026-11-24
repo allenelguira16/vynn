@@ -5,226 +5,77 @@ import type { Location, Route } from "./types";
 import { RoutePathProvider } from "./context";
 import { isServer } from "./environment";
 import { currentLocation } from "./location";
-import { getRouteParams, joinPaths, matchRoute, toSegments } from "./path";
+import { getRouteParams } from "./path";
 import { commitClientRedirect, isClientRedirect } from "./redirect";
-import { PATHLESS_ROUTE, REQUIRE_CHILD_MATCH, type InternalRoute } from "./route-meta";
+import {
+  compileRoutes,
+  findCompiledMatch,
+  type CompiledRoute,
+  type MatchedRoute,
+} from "./matcher";
 
-type MatchedRoute<TContext = undefined> = {
-  route: Route<TContext>;
-  fullPath: string;
-};
+export { findMatch } from "./matcher";
 
 type RouteGuardResult =
   | { type: "allowed" }
   | { type: "redirect"; signal: unknown; revision: number };
 
-/** Assigns a lexicographic specificity score to a route pattern. */
-function getRouteSpecificity(path: string): number[] {
-  return toSegments(path).map((segment) => {
-    if (segment === "*" || segment === "*?") return 0;
-    if (segment.startsWith(":")) return 1;
-    return 2;
-  });
-}
-
-function compareSpecificity(left: string, right: string): number {
-  const a = getRouteSpecificity(left);
-  const b = getRouteSpecificity(right);
-  const length = Math.max(a.length, b.length);
-
-  for (let index = 0; index < length; index++) {
-    const difference = (a[index] ?? -1) - (b[index] ?? -1);
-    if (difference !== 0) return difference;
-  }
-
-  return 0;
-}
-
-/** Finds the most specific URL path reachable inside a pathless route branch. */
-function findPathlessMatchPath<TContext = undefined>(
-  routes: Route<TContext>[],
-  location: ReturnType<typeof currentLocation>,
-  parentPath: string,
-): string | undefined {
-  let bestPath: string | undefined;
-
-  for (const route of routes) {
-    const internalRoute = route as InternalRoute<TContext>;
-    const isPathless = internalRoute[PATHLESS_ROUTE] === true;
-    const requiresChildMatch = internalRoute[REQUIRE_CHILD_MATCH] === true;
-    const fullPath = isPathless ? parentPath : joinPaths(parentPath, route.path);
-    const children = route.children ?? [];
-    const hasChildren = children.length > 0;
-
-    if (isPathless) {
-      const nestedPath = findPathlessMatchPath(children, location, fullPath);
-      if (nestedPath && (!bestPath || compareSpecificity(nestedPath, bestPath) > 0)) {
-        bestPath = nestedPath;
-      }
-      continue;
-    }
-
-    if (!matchRoute(fullPath, !hasChildren, location)) continue;
-
-    const nestedPath = hasChildren
-      ? findPathlessMatchPath(children, location, fullPath)
-      : undefined;
-    if (requiresChildMatch && !nestedPath) continue;
-
-    const candidatePath = nestedPath ?? fullPath;
-
-    if (!bestPath || compareSpecificity(candidatePath, bestPath) > 0) {
-      bestPath = candidatePath;
-    }
-  }
-
-  return bestPath;
-}
-
-/** Returns whether a catch-all route matches without consuming a path segment. */
-function isEmptyCatchAllMatch(path: string, pathname: string): boolean {
-  const routeSegments = toSegments(path);
-  return (
-    routeSegments[routeSegments.length - 1] === "*?" &&
-    toSegments(pathname).length === routeSegments.length - 1
-  );
-}
-
-/** Finds the most specific route selected by the current outlet. */
-export function findMatch<TContext = undefined>(
-  routes: Route<TContext>[],
-  location: ReturnType<typeof currentLocation>,
-  parentPath = "",
-): MatchedRoute<TContext> | undefined {
-  let bestMatch: MatchedRoute<TContext> | undefined;
-  let bestScorePath: string | undefined;
-
-  for (const route of routes) {
-    const internalRoute = route as InternalRoute<TContext>;
-    const isPathless = internalRoute[PATHLESS_ROUTE] === true;
-    const requiresChildMatch = internalRoute[REQUIRE_CHILD_MATCH] === true;
-    const fullPath = isPathless ? parentPath : joinPaths(parentPath, route.path);
-    const hasChildren = !!route.children?.length;
-
-    if (isPathless || requiresChildMatch) {
-      // A route group has no URL segment of its own. A folder with no page
-      // must also resolve through a descendant so its layout does not create
-      // a public route by itself.
-      if (!isPathless && !matchRoute(fullPath, false, location)) {
-        continue;
-      }
-
-      const descendantPath = findPathlessMatchPath(route.children ?? [], location, fullPath);
-      if (!descendantPath) continue;
-
-      const nextIsEmptyCatchAll = isEmptyCatchAllMatch(descendantPath, location.pathname);
-      const bestIsEmptyCatchAll = bestScorePath
-        ? isEmptyCatchAllMatch(bestScorePath, location.pathname)
-        : false;
-
-      if (bestScorePath && nextIsEmptyCatchAll !== bestIsEmptyCatchAll) {
-        if (nextIsEmptyCatchAll) continue;
-        bestMatch = { route, fullPath };
-        bestScorePath = descendantPath;
-        continue;
-      }
-
-      if (!bestScorePath || compareSpecificity(descendantPath, bestScorePath) > 0) {
-        bestMatch = { route, fullPath };
-        bestScorePath = descendantPath;
-      }
-
-      continue;
-    }
-
-    if (!matchRoute(fullPath, !hasChildren, location)) {
-      continue;
-    }
-
-    if (bestMatch) {
-      const nextIsEmptyCatchAll = isEmptyCatchAllMatch(fullPath, location.pathname);
-      const bestIsEmptyCatchAll = bestScorePath
-        ? isEmptyCatchAllMatch(bestScorePath, location.pathname)
-        : isEmptyCatchAllMatch(bestMatch.fullPath, location.pathname);
-
-      // A terminal wildcard may match without capturing any segments. In that
-      // case it is only a fallback and must not shadow an exact route such as
-      // "/" when visiting the home page.
-      if (nextIsEmptyCatchAll !== bestIsEmptyCatchAll) {
-        if (nextIsEmptyCatchAll) {
-          continue;
-        }
-
-        bestMatch = { route, fullPath };
-        bestScorePath = fullPath;
-        continue;
-      }
-    }
-
-    if (!bestScorePath || compareSpecificity(fullPath, bestScorePath) > 0) {
-      bestMatch = { route, fullPath };
-      bestScorePath = fullPath;
-    }
-  }
-  return bestMatch;
-}
-
-type PreloadableRouteComponent = Route["component"] & {
+type PreloadableComponent = Route["component"] & {
   preload?: () => Promise<unknown>;
 };
 
+function snapshotLocation(location: Location): Location {
+  return {
+    pathname: location.pathname,
+    search: location.search,
+  };
+}
+
 /**
- * Preloads every lazy component in the selected route branch.
- *
- * A folder route can be only an outlet while its page is several levels below
- * it, so preloading only the immediate match would still allow the layout to
- * lose its old children while the descendant page module loads.
+ * Loads the lazy modules selected by one route branch before that branch is
+ * mounted. Nested outlets keep their own current view, so each transition
+ * resolves only the branch below that outlet.
  */
-function preloadRouteBranch<TContext>(
-  match: MatchedRoute<TContext>,
+function preloadRouteBranch(
+  match: MatchedRoute,
   location: Location,
 ): Promise<void> | undefined {
-  const component = match.route.component as PreloadableRouteComponent;
   const pending: Promise<unknown>[] = [];
+  const component = match.route.component as PreloadableComponent;
 
   if (typeof component.preload === "function") {
     pending.push(component.preload());
   }
 
-  const childMatch = findMatch(match.route.children ?? [], location, match.fullPath);
+  const childMatch = findCompiledMatch(match.node.children, location);
   if (childMatch) {
     const childPreload = preloadRouteBranch(childMatch, location);
     if (childPreload) pending.push(childPreload);
   }
 
-  return pending.length > 0 ? Promise.all(pending).then(() => undefined) : undefined;
+  return pending.length > 0
+    ? Promise.all(pending).then(() => undefined)
+    : undefined;
 }
 
 /**
- * Runs the route guard once when its matched RouteView is created.
- *
- * The route component remains mounted when only its params or search string
- * change, so the guard uses the location snapshot from route entry and does
- * not revalidate for those in-place URL updates.
+ * Owns one matched route component. Its nested outlet is an independent
+ * transition boundary, which lets parent layouts survive child navigation.
  */
-function RouteView<TContext>(
-  props: MatchedRoute<TContext> & {
-    context: TContext;
-    notFound?: Route<TContext>["component"];
-  },
-) {
+function RouteView<TContext>(props: {
+  match: MatchedRoute<TContext>;
+  context: TContext;
+  notFound?: Route<TContext>["component"];
+}) {
   const RenderRoute = () => {
-    const route = props.route;
-    const fullPath = props.fullPath;
-    const Component = route.component;
-    const childRoutes = route.children ?? [];
+    const Component = props.match.route.component;
+    const children = props.match.node.children;
 
     return (
       <Component>
-        {!!childRoutes.length && (
+        {children.length > 0 && (
           <RouteOutlet
-            routes={childRoutes}
-            parentPath={fullPath}
+            compiledRoutes={children}
             context={props.context}
             notFound={props.notFound}
           />
@@ -233,46 +84,26 @@ function RouteView<TContext>(
     );
   };
 
-  if (!props.route.beforeLoad) {
-    return <RenderRoute />;
-  }
+  const beforeLoad = props.match.route.beforeLoad;
+  if (!beforeLoad) return <RenderRoute />;
 
   let guardRevision = 0;
-  let activeGuardController: AbortController | undefined;
+  let activeController: AbortController | undefined;
+  let scheduledRedirect: unknown;
 
-  // The route component owns the guard's lifetime. Disposing it aborts any
-  // unfinished beforeLoad operation without reaching into Vynn's owner internals.
-  onDestroy(() => activeGuardController?.abort());
+  onDestroy(() => activeController?.abort());
 
   const allowed = $computed<RouteGuardResult>(async () => {
     const revision = ++guardRevision;
+    activeController?.abort();
 
-    // This resource represents the one-time guard for this RouteView.
-    // Ensure any earlier invocation is no longer active if it is restarted.
-    activeGuardController?.abort();
-
-    const { route, fullPath } = untrack(() => ({
-      route: props.route,
-      fullPath: props.fullPath,
-    }));
-
-    // Capture the location from when this RouteView was created.
-    // Later params or search changes must not rerun this route-entry check.
-    const location: Location = untrack(() => {
-      const activeLocation = currentLocation();
-
-      return {
-        pathname: activeLocation.pathname,
-        search: activeLocation.search,
-      };
-    });
-
+    const location = untrack(() => snapshotLocation(currentLocation()));
     const controller = new AbortController();
-    activeGuardController = controller;
+    activeController = controller;
 
     try {
-      // Keep the actual guard outside the async resource's initial synchronous
-      // tracking pass, including when the user callback reads reactive state.
+      // Run guards outside the resource's synchronous tracking pass. Reactive
+      // reads inside a guard are not navigation dependencies.
       await Promise.resolve();
 
       if (controller.signal.aborted) {
@@ -280,10 +111,10 @@ function RouteView<TContext>(
       }
 
       await untrack(() =>
-        route.beforeLoad!({
+        beforeLoad({
           context: props.context,
           location,
-          params: getRouteParams(fullPath, location),
+          params: getRouteParams(props.match.fullPath, location),
           search: new URLSearchParams(location.search),
           signal: controller.signal,
         }),
@@ -303,95 +134,77 @@ function RouteView<TContext>(
     }
   });
 
-  let scheduledRedirect: unknown;
-
-  const canRender = () => {
-    // Read outside the ambient owner so an enclosing Await cannot claim this
-    // router-level decision as part of its page fallback. The async resource
-    // itself is still bound to this RouteView's owner.
+  const render = () => {
+    // Keep the guard decision out of an enclosing page Await boundary.
     const result = runWithOwner(null, () => allowed.value);
 
     if (result.type === "redirect" && isClientRedirect(result.signal)) {
       if (scheduledRedirect !== result.signal) {
         scheduledRedirect = result.signal;
-
         commitClientRedirect(
           result.signal,
-          () => guardRevision === result.revision && !activeGuardController?.signal.aborted,
+          () => guardRevision === result.revision && !activeController?.signal.aborted,
           currentLocation(),
         );
       }
 
-      return false;
+      return null;
     }
 
     scheduledRedirect = undefined;
-    return result.type === "allowed";
+    return result.type === "allowed" ? <RenderRoute /> : null;
   };
 
-  return <>{canRender() && <RenderRoute />}</>;
+  return <>{render()}</>;
 }
 
 /**
- * Renders one reactive routing level.
+ * Renders one level of the compiled route tree.
  *
- * Match changes are observed by a render effect, but the rendered subtree is
- * published only when the selected route changes. A params/search update must
- * not rerun this outlet's outer $nodes reconciliation: its cached DOM-node
- * array cannot include nodes later inserted by nested $nodes regions, and
- * reconciling that stale array would remove those live nested nodes.
- *
- * Descendant route content tracks pathname/search itself through $params and
- * $search. A RouteView's beforeLoad uses the location snapshot from its creation
- * and does not revalidate when those values change.
+ * The outlet is intentionally stateful: while a destination's lazy modules
+ * load, its current view remains mounted. Child outlets own child transitions,
+ * preserving parent layouts and their component owners.
  */
 export function RouteOutlet<TContext = undefined>(props: {
-  routes: Route<TContext>[];
+  routes?: Route<TContext>[];
+  compiledRoutes?: readonly CompiledRoute[];
   parentPath?: string;
   context: TContext;
   notFound?: Route<TContext>["component"];
 }) {
-  let previousMatch: MatchedRoute<TContext> | undefined;
-  let hasRendered = false;
-  let navigationRevision = 0;
-  let disposed = false;
+  const routes = props.compiledRoutes ?? compileRoutes(props.routes ?? []);
   const owner = getOwner();
-  const view = $state<ReturnType<typeof RouteView> | null>(null);
+  const view = $state<ReturnType<typeof RouteView<TContext>> | null>(null);
+
+  let previousNode: CompiledRoute | undefined;
+  let revision = 0;
+  let disposed = false;
+  let hasCommitted = false;
 
   onDestroy(() => {
     disposed = true;
-    navigationRevision++;
+    revision++;
   });
 
   $renderEffect(() => {
-    // Track the complete URL at the routing boundary. The effect only updates
-    // the view state when the route identity or its resolved path changes.
-    const activeLocation = currentLocation();
-    const location: Location = {
-      pathname: activeLocation.pathname,
-      search: activeLocation.search,
-    };
-    const next = findMatch(props.routes, location, props.parentPath ?? "");
-    const revision = ++navigationRevision;
+    const location = snapshotLocation(currentLocation());
+    const next = findCompiledMatch<TContext>(routes, location);
+    const currentRevision = ++revision;
 
-    if (
-      hasRendered &&
-      previousMatch?.route === next?.route &&
-      previousMatch?.fullPath === next?.fullPath
-    ) {
-      // A newer navigation back to the currently displayed route also
-      // invalidates any destination that is still being preloaded.
+    // Query-only and parameter-only updates are handled by the reactive
+    // location, $params, and $search readers without replacing route owners.
+    if (hasCommitted && previousNode === next?.node) {
       return;
     }
 
-    const commitView = () => {
-      if (disposed || navigationRevision !== revision) return;
+    const commit = () => {
+      if (disposed || currentRevision !== revision) return;
 
       runWithOwner(owner, () => {
-        const latestLocation = currentLocation();
+        const latest = currentLocation();
         if (
-          latestLocation.pathname !== location.pathname ||
-          latestLocation.search !== location.search
+          latest.pathname !== location.pathname ||
+          latest.search !== location.search
         ) {
           return;
         }
@@ -400,8 +213,7 @@ export function RouteOutlet<TContext = undefined>(props: {
           ? untrack(() => (
               <RoutePathProvider value={next.fullPath}>
                 <RouteView
-                  route={next.route}
-                  fullPath={next.fullPath}
+                  match={next}
                   context={props.context}
                   notFound={props.notFound}
                 />
@@ -414,24 +226,26 @@ export function RouteOutlet<TContext = undefined>(props: {
               })
             : null;
 
-        hasRendered = true;
-        previousMatch = next;
+        previousNode = next?.node;
+        hasCommitted = true;
         view.value = nextView;
       });
     };
 
-    // Keep the current route visible while a lazy destination branch loads.
-    // Initial rendering still uses the normal lazy/Await behavior because
-    // there is no previous view to preserve.
+    // The initial route follows normal lazy/Await semantics. Later navigations
+    // preload the complete selected branch before inserting any new route
+    // owner, preventing a newly mounted parent outlet from appearing empty.
     const preload =
-      !isServer && hasRendered && next ? preloadRouteBranch(next, location) : undefined;
+      !isServer && hasCommitted && next
+        ? preloadRouteBranch(next, location)
+        : undefined;
 
     if (preload) {
-      void preload.then(commitView, commitView);
+      void preload.then(commit, commit);
       return;
     }
 
-    commitView();
+    commit();
   });
 
   return <>{view.value}</>;
