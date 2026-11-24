@@ -25,6 +25,8 @@ import { memo } from "../utils/memo";
 export const Await = $cmpnt(function Await(props: {
   fallback?: JSX.Element;
   suspense?: boolean;
+  /** Keep inactive branches mounted when switching between fallback and children. */
+  keepAlive?: boolean;
   children: JSX.Element;
 }): JSX.Element {
   const owner = getOwner()!;
@@ -88,7 +90,7 @@ export const Await = $cmpnt(function Await(props: {
         () => isPending.value,
         () => fallback(),
         () => children(),
-        { keepAlive: true },
+        { keepAlive: props.keepAlive ?? true },
       );
     } finally {
       isResolved = true;
