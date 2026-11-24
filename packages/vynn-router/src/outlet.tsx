@@ -1,18 +1,12 @@
 import { $computed, $renderEffect, $state, getOwner, onDestroy, runWithOwner, untrack } from "vynn";
 
-import type { Location, Route } from "./types";
+import type { Route, RouterInstance } from "./types";
 
 import { RoutePathProvider } from "./context";
-import { isServer } from "./environment";
-import { currentLocation } from "./location";
+import { getRouterMatchState } from "./router-state";
 import { getRouteParams } from "./path";
 import { commitClientRedirect, isClientRedirect } from "./redirect";
-import {
-  compileRoutes,
-  findCompiledMatch,
-  type CompiledRoute,
-  type MatchedRoute,
-} from "./matcher";
+import type { MatchedRoute } from "./matcher";
 
 export { findMatch } from "./matcher";
 
@@ -20,64 +14,26 @@ type RouteGuardResult =
   | { type: "allowed" }
   | { type: "redirect"; signal: unknown; revision: number };
 
-type PreloadableComponent = Route["component"] & {
-  preload?: () => Promise<unknown>;
-};
-
-function snapshotLocation(location: Location): Location {
-  return {
-    pathname: location.pathname,
-    search: location.search,
-  };
-}
-
 /**
- * Loads the lazy modules selected by one route branch before that branch is
- * mounted. Nested outlets keep their own current view, so each transition
- * resolves only the branch below that outlet.
- */
-function preloadRouteBranch<TContext>(
-  match: MatchedRoute<TContext>,
-  location: Location,
-): Promise<void> | undefined {
-  const pending: Promise<unknown>[] = [];
-  const component = match.route.component as PreloadableComponent;
-
-  if (typeof component.preload === "function") {
-    pending.push(component.preload());
-  }
-
-  const childMatch = findCompiledMatch(match.node.children, location);
-  if (childMatch) {
-    const childPreload = preloadRouteBranch(childMatch, location);
-    if (childPreload) pending.push(childPreload);
-  }
-
-  return pending.length > 0
-    ? Promise.all(pending).then(() => undefined)
-    : undefined;
-}
-
-/**
- * Owns one matched route component. Its nested outlet is an independent
- * transition boundary, which lets parent layouts survive child navigation.
+ * Owns one committed route component. Child outlets read the router's already
+ * resolved branch at the next depth, so this route owner survives child
+ * navigation and no outlet performs its own route matching.
  */
 function RouteView<TContext>(props: {
+  router: RouterInstance<TContext>;
   match: MatchedRoute<TContext>;
-  context: TContext;
-  notFound?: Route<TContext>["component"];
+  depth: number;
 }) {
   const RenderRoute = () => {
     const Component = props.match.route.component;
-    const children = props.match.node.children;
+    const hasChildren = props.match.node.children.length > 0;
 
     return (
       <Component>
-        {children.length > 0 && (
+        {hasChildren && (
           <RouteOutlet
-            compiledRoutes={children}
-            context={props.context}
-            notFound={props.notFound}
+            router={props.router}
+            depth={props.depth + 1}
           />
         )}
       </Component>
@@ -97,13 +53,17 @@ function RouteView<TContext>(props: {
     const revision = ++guardRevision;
     activeController?.abort();
 
-    const location = untrack(() => snapshotLocation(currentLocation()));
+    const activeLocation = props.router.state.location;
+    const location = untrack(() => ({
+      pathname: activeLocation.pathname,
+      search: activeLocation.search,
+    }));
     const controller = new AbortController();
     activeController = controller;
 
     try {
-      // Run guards outside the resource's synchronous tracking pass. Reactive
-      // reads inside a guard are not navigation dependencies.
+      // Guards run outside the resource's synchronous tracking pass. Reactive
+      // reads inside a guard do not become navigation dependencies.
       await Promise.resolve();
 
       if (controller.signal.aborted) {
@@ -112,7 +72,7 @@ function RouteView<TContext>(props: {
 
       await untrack(() =>
         beforeLoad({
-          context: props.context,
+          context: props.router.context,
           location,
           params: getRouteParams(props.match.fullPath, location),
           search: new URLSearchParams(location.search),
@@ -144,7 +104,7 @@ function RouteView<TContext>(props: {
         commitClientRedirect(
           result.signal,
           () => guardRevision === result.revision && !activeController?.signal.aborted,
-          currentLocation(),
+          props.router.state.location,
         );
       }
 
@@ -159,93 +119,60 @@ function RouteView<TContext>(props: {
 }
 
 /**
- * Renders one level of the compiled route tree.
+ * Renders one depth of the router's committed match branch.
  *
- * The outlet is intentionally stateful: while a destination's lazy modules
- * load, its current view remains mounted. Child outlets own child transitions,
- * preserving parent layouts and their component owners.
+ * The router owns matching, cancellation, and lazy preloading. This component
+ * only reconciles the route at its depth and preserves its owner when deeper
+ * matches change.
  */
 export function RouteOutlet<TContext = undefined>(props: {
-  routes?: Route<TContext>[];
-  compiledRoutes?: readonly CompiledRoute[];
-  parentPath?: string;
-  context: TContext;
-  notFound?: Route<TContext>["component"];
+  router: RouterInstance<TContext>;
+  depth?: number;
 }) {
-  const routes = props.compiledRoutes ?? compileRoutes(props.routes ?? []);
+  const depth = props.depth ?? 0;
+  const matchState = getRouterMatchState<TContext>(props.router);
   const owner = getOwner();
   const view = $state<ReturnType<typeof RouteView> | null>(null);
 
-  let previousNode: CompiledRoute | undefined;
-  let revision = 0;
-  let disposed = false;
+  let previousNode: MatchedRoute<TContext>["node"] | undefined;
   let hasCommitted = false;
+  let disposed = false;
 
   onDestroy(() => {
     disposed = true;
-    revision++;
   });
 
   $renderEffect(() => {
-    const location = snapshotLocation(currentLocation());
-    const next = findCompiledMatch<TContext>(routes, location);
-    const currentRevision = ++revision;
+    const next = matchState.value[depth];
 
-    // Query-only and parameter-only updates are handled by the reactive
-    // location, $params, and $search readers without replacing route owners.
     if (hasCommitted && previousNode === next?.node) {
       return;
     }
 
-    const commit = () => {
-      if (disposed || currentRevision !== revision) return;
+    runWithOwner(owner, () => {
+      if (disposed) return;
 
-      runWithOwner(owner, () => {
-        const latest = currentLocation();
-        if (
-          latest.pathname !== location.pathname ||
-          latest.search !== location.search
-        ) {
-          return;
-        }
+      const nextView = next
+        ? untrack(() => (
+            <RoutePathProvider value={next.fullPath}>
+              <RouteView
+                router={props.router}
+                match={next}
+                depth={depth}
+              />
+            </RoutePathProvider>
+          ))
+        : props.router.notFound
+          ? untrack(() => {
+              const NotFound = props.router.notFound!;
+              return <NotFound />;
+            })
+          : null;
 
-        const nextView = next
-          ? untrack(() => (
-              <RoutePathProvider value={next.fullPath}>
-                <RouteView
-                  match={next}
-                  context={props.context}
-                  notFound={props.notFound}
-                />
-              </RoutePathProvider>
-            ))
-          : props.notFound
-            ? untrack(() => {
-                const NotFound = props.notFound!;
-                return <NotFound />;
-              })
-            : null;
-
-        previousNode = next?.node;
-        hasCommitted = true;
-        view.value = nextView;
-      });
-    };
-
-    // The initial route follows normal lazy/Await semantics. Later navigations
-    // preload the complete selected branch before inserting any new route
-    // owner, preventing a newly mounted parent outlet from appearing empty.
-    const preload =
-      !isServer && hasCommitted && next
-        ? preloadRouteBranch(next, location)
-        : undefined;
-
-    if (preload) {
-      void preload.then(commit, commit);
-      return;
-    }
-
-    commit();
+      previousNode = next?.node;
+      hasCommitted = true;
+      view.value = nextView;
+    });
   });
 
   return <>{view.value}</>;
