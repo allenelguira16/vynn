@@ -35,7 +35,7 @@ describe("client router layout navigation", () => {
         children: [
           {
             path: "/",
-            component: HomePage,
+            component: () => <p>home content</p>,
           },
           {
             path: "other-page",
@@ -73,8 +73,6 @@ describe("client router layout navigation", () => {
     expect(host.querySelector("main")).toBe(layout);
     expect(host.textContent).toContain("other-page content");
     expect(host.textContent).not.toContain("home content");
-    expect(destinationComponentCalls).toBe(1);
-    expect(homeDisposed).toBe(true);
 
     unmount();
   });
@@ -113,7 +111,7 @@ describe("client router layout navigation", () => {
         children: [
           {
             path: "/",
-            component: () => <p>home content</p>,
+            component: HomePage,
           },
           {
             path: "other-page",
@@ -156,6 +154,8 @@ describe("client router layout navigation", () => {
     expect(host.querySelector("main")).toBe(layout);
     expect(host.textContent).toContain("other-page content");
     expect(host.textContent).not.toContain("home content");
+    expect(destinationComponentCalls).toBe(1);
+    expect(homeDisposed).toBe(true);
 
     unmount();
   });
