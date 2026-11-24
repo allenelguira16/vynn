@@ -16,7 +16,10 @@ type MatchedRoute<TContext = undefined> = {
 
 type RouteGuardResult =
   | { type: "allowed" }
-  | { type: "redirect"; signal: unknown; revision: number };
+  | { type: "redirect"; signal: unknown; revision: number }
+  | { type: "error"; error: unknown };
+
+type CompletedRouteGuardResult = Exclude<RouteGuardResult, { type: "redirect" }>;
 
 /** Assigns a lexicographic specificity score to a route pattern. */
 function getRouteSpecificity(path: string): number[] {
@@ -201,6 +204,52 @@ function preloadRouteBranch<TContext>(
 }
 
 /**
+ * Runs a route guard against the location snapshot for this navigation.
+ *
+ * The initial microtask keeps the user's callback outside the synchronous
+ * render/effect pass. Reads inside the callback are untracked, and the signal
+ * lets a superseding navigation cancel work that is no longer relevant.
+ */
+async function runBeforeLoad<TContext>(
+  route: Route<TContext>,
+  fullPath: string,
+  context: TContext,
+  location: Location,
+  signal: AbortSignal,
+  revision: number,
+): Promise<RouteGuardResult> {
+  await Promise.resolve();
+
+  if (signal.aborted) {
+    return { type: "allowed" };
+  }
+
+  try {
+    await untrack(() =>
+      route.beforeLoad!({
+        context,
+        location,
+        params: getRouteParams(fullPath, location),
+        search: new URLSearchParams(location.search),
+        signal,
+      }),
+    );
+
+    return { type: "allowed" };
+  } catch (error) {
+    if (isClientRedirect(error)) {
+      return {
+        type: "redirect",
+        signal: error,
+        revision,
+      };
+    }
+
+    return { type: "error", error };
+  }
+}
+
+/**
  * Runs the route guard once when its matched RouteView is created.
  *
  * The route component remains mounted when only its params or search string
@@ -211,6 +260,7 @@ function RouteView<TContext>(
   props: MatchedRoute<TContext> & {
     context: TContext;
     notFound?: Route<TContext>["component"];
+    guardResult?: CompletedRouteGuardResult;
   },
 ) {
   const RenderRoute = () => {
@@ -234,6 +284,16 @@ function RouteView<TContext>(
   };
 
   if (!props.route.beforeLoad) {
+    return <RenderRoute />;
+  }
+
+  // Client navigations run beforeLoad in the outlet before replacing the
+  // previous view. A supplied result prevents the guard from running twice.
+  if (props.guardResult) {
+    if (props.guardResult.type === "error") {
+      throw props.guardResult.error;
+    }
+
     return <RenderRoute />;
   }
 
@@ -270,37 +330,14 @@ function RouteView<TContext>(
     const controller = new AbortController();
     activeGuardController = controller;
 
-    try {
-      // Keep the actual guard outside the async resource's initial synchronous
-      // tracking pass, including when the user callback reads reactive state.
-      await Promise.resolve();
-
-      if (controller.signal.aborted) {
-        return { type: "allowed" };
-      }
-
-      await untrack(() =>
-        route.beforeLoad!({
-          context: props.context,
-          location,
-          params: getRouteParams(fullPath, location),
-          search: new URLSearchParams(location.search),
-          signal: controller.signal,
-        }),
-      );
-
-      return { type: "allowed" };
-    } catch (error) {
-      if (isClientRedirect(error)) {
-        return {
-          type: "redirect",
-          signal: error,
-          revision,
-        };
-      }
-
-      throw error;
-    }
+    return runBeforeLoad(
+      route,
+      fullPath,
+      props.context,
+      location,
+      controller.signal,
+      revision,
+    );
   });
 
   let scheduledRedirect: unknown;
@@ -310,6 +347,10 @@ function RouteView<TContext>(
     // router-level decision as part of its page fallback. The async resource
     // itself is still bound to this RouteView's owner.
     const result = runWithOwner(null, () => allowed.value);
+
+    if (result.type === "error") {
+      throw result.error;
+    }
 
     if (result.type === "redirect" && isClientRedirect(result.signal)) {
       if (scheduledRedirect !== result.signal) {
@@ -352,50 +393,72 @@ export function RouteOutlet<TContext = undefined>(props: {
   notFound?: Route<TContext>["component"];
 }) {
   let previousMatch: MatchedRoute<TContext> | undefined;
+  let pendingMatch: MatchedRoute<TContext> | undefined;
+  let displayedGuardController: AbortController | undefined;
+  let pendingGuardController: AbortController | undefined;
   let hasRendered = false;
   let navigationRevision = 0;
   let disposed = false;
   const owner = getOwner();
   const view = $state<ReturnType<typeof RouteView> | null>(null);
 
+  const sameMatch = (
+    left: MatchedRoute<TContext> | undefined,
+    right: MatchedRoute<TContext> | undefined,
+  ) => left?.route === right?.route && left?.fullPath === right?.fullPath;
+
   onDestroy(() => {
     disposed = true;
     navigationRevision++;
+    pendingGuardController?.abort();
+    displayedGuardController?.abort();
   });
 
   $renderEffect(() => {
     // Track the complete URL at the routing boundary. The effect only updates
-    // the view state when the route identity or its resolved path changes.
+    // the view state when the selected route changes.
     const activeLocation = currentLocation();
     const location: Location = {
       pathname: activeLocation.pathname,
       search: activeLocation.search,
     };
     const next = findMatch(props.routes, location, props.parentPath ?? "");
-    const revision = ++navigationRevision;
 
-    if (
-      hasRendered &&
-      previousMatch?.route === next?.route &&
-      previousMatch?.fullPath === next?.fullPath
-    ) {
-      // A newer navigation back to the currently displayed route also
-      // invalidates any destination that is still being preloaded.
+    // Keep an in-flight destination guard/preload when only params or search
+    // change within that same matched route. beforeLoad receives its original
+    // entry snapshot, just as it does after the RouteView has been committed.
+    if (pendingMatch && sameMatch(pendingMatch, next)) {
       return;
     }
 
-    const commitView = () => {
+    const revision = ++navigationRevision;
+
+    // A new destination supersedes only pending work. The currently displayed
+    // route and its guard signal remain alive until another view is committed.
+    pendingGuardController?.abort();
+    pendingGuardController = undefined;
+    pendingMatch = undefined;
+
+    if (hasRendered && sameMatch(previousMatch, next)) {
+      return;
+    }
+
+    const commitView = (
+      guardResult?: CompletedRouteGuardResult,
+      guardController?: AbortController,
+    ) => {
       if (disposed || navigationRevision !== revision) return;
 
-      runWithOwner(owner, () => {
-        const latestLocation = currentLocation();
-        if (
-          latestLocation.pathname !== location.pathname ||
-          latestLocation.search !== location.search
-        ) {
-          return;
-        }
+      const latestLocation = currentLocation();
+      const latestMatch = findMatch(props.routes, latestLocation, props.parentPath ?? "");
 
+      // A params/search update can keep the same match alive while the guard is
+      // pending. Reject only when the latest URL selects a different route.
+      if (!sameMatch(next, latestMatch)) {
+        return;
+      }
+
+      runWithOwner(owner, () => {
         const nextView = next
           ? untrack(() => (
               <RoutePathProvider value={next.fullPath}>
@@ -404,6 +467,7 @@ export function RouteOutlet<TContext = undefined>(props: {
                   fullPath={next.fullPath}
                   context={props.context}
                   notFound={props.notFound}
+                  guardResult={guardResult}
                 />
               </RoutePathProvider>
             ))
@@ -414,11 +478,78 @@ export function RouteOutlet<TContext = undefined>(props: {
               })
             : null;
 
+        // A guard started by this outlet owns its signal for the lifetime of
+        // the committed route. Retire the previous route's signal only now,
+        // after the destination is ready to replace it.
+        if (displayedGuardController !== guardController) {
+          displayedGuardController?.abort();
+        }
+        displayedGuardController = guardController;
+
+        if (pendingGuardController === guardController) {
+          pendingGuardController = undefined;
+        }
+        pendingMatch = undefined;
         hasRendered = true;
         previousMatch = next;
         view.value = nextView;
       });
     };
+
+    // On client navigations, run beforeLoad before committing the destination.
+    // This keeps the currently displayed page mounted while route validation
+    // is pending and avoids running the guard again in the new RouteView.
+    if (!isServer && hasRendered && next?.route.beforeLoad) {
+      const controller = new AbortController();
+      pendingGuardController = controller;
+      pendingMatch = next;
+
+      void runBeforeLoad(
+        next.route,
+        next.fullPath,
+        props.context,
+        location,
+        controller.signal,
+        revision,
+      ).then((guardResult) => {
+        if (disposed || navigationRevision !== revision || controller.signal.aborted) {
+          return;
+        }
+
+        if (guardResult.type === "redirect") {
+          commitClientRedirect(
+            guardResult.signal,
+            () =>
+              !disposed &&
+              navigationRevision === revision &&
+              pendingGuardController === controller &&
+              !controller.signal.aborted,
+            currentLocation(),
+          );
+          return;
+        }
+
+        // A failed guard is committed as an error in the destination RouteView
+        // so the existing route error-boundary behavior remains in effect.
+        if (guardResult.type === "error") {
+          commitView(guardResult, controller);
+          return;
+        }
+
+        const preload = preloadRouteBranch(next, currentLocation());
+        if (preload) {
+          void preload.then(
+            () => commitView(guardResult, controller),
+            () => commitView(guardResult, controller),
+          );
+          return;
+        }
+
+        commitView(guardResult, controller);
+      });
+
+      return;
+    }
 
     // Keep the current route visible while a lazy destination branch loads.
     // Initial rendering still uses the normal lazy/Await behavior because
@@ -427,6 +558,7 @@ export function RouteOutlet<TContext = undefined>(props: {
       !isServer && hasRendered && next ? preloadRouteBranch(next, location) : undefined;
 
     if (preload) {
+      pendingMatch = next;
       void preload.then(commitView, commitView);
       return;
     }
