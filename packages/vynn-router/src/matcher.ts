@@ -49,11 +49,12 @@ function compileRoute(
  * rendering, preloading, and matching for the lifetime of the route array.
  */
 export function compileRoutes<TContext = undefined>(routes: Route<TContext>[]): readonly CompiledRoute[] {
-  const cached = compiledRouteTrees.get(routes);
+  const key = routes as unknown as Route[];
+  const cached = compiledRouteTrees.get(key);
   if (cached) return cached;
 
   const compiled = routes.map((route) => compileRoute(route as unknown as Route<unknown>, ""));
-  compiledRouteTrees.set(routes, compiled);
+  compiledRouteTrees.set(key, compiled);
   return compiled;
 }
 
