@@ -249,3 +249,23 @@ export function findMatch<TContext = undefined>(
   );
   return findCompiledMatch<TContext>(compiled, location);
 }
+
+
+/** Resolves the complete matched branch with one compiled route tree. */
+export function findRouteBranch<TContext = undefined>(
+  routes: readonly CompiledRoute[],
+  location: Location,
+): MatchedRoute<TContext>[] {
+  const branch: MatchedRoute<TContext>[] = [];
+  let currentRoutes = routes;
+
+  while (currentRoutes.length > 0) {
+    const match = findCompiledMatch<TContext>(currentRoutes, location);
+    if (!match) break;
+
+    branch.push(match);
+    currentRoutes = match.node.children;
+  }
+
+  return branch;
+}
