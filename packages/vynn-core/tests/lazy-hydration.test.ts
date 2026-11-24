@@ -11,7 +11,11 @@ import {
   withServerRenderedLazy,
 } from "../src/client/hydration";
 import { getOwnerContext, setOwnerContext } from "../src/context/owner-context";
-import { getLazyID, initializeLazyContext, initializeLazyScope } from "../src/context/lazy-context";
+import {
+  getLazyID,
+  initializeLazyContext,
+  initializeLazyScope,
+} from "../src/context/lazy-context";
 import { createOwner, disposeOwner, getOwner, runWithOwner } from "../src/life-cycle/owner";
 
 afterEach(() => {
