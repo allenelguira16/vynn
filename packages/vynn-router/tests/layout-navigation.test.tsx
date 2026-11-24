@@ -176,6 +176,15 @@ describe("client router layout navigation", () => {
     expect(host.textContent).toContain("flat destination content");
     expect(host.textContent).not.toContain("flat home content");
 
+    // Once the destination module is warm, navigating back to it is synchronous.
+    navigate("/");
+    expect(host.textContent).toContain("flat home content");
+
+    navigate("/other-page");
+    expect(destinationLoads).toBe(1);
+    expect(host.textContent).toContain("flat destination content");
+    expect(host.textContent).not.toContain("flat home content");
+
     unmount();
   });
 
