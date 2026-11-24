@@ -8,9 +8,6 @@ import { navigate, Router, toFileRouter, type Route } from "../src";
 afterEach(() => {
   document.body.innerHTML = "";
   history.replaceState(null, "", "/");
-
-
-
 });
 
 describe("client router layout navigation", () => {
