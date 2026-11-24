@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import type { Route } from "../src/types";
 
-import { compileRoutes, findMatch, findRouteBranch } from "../src/matcher";
+import { compileRoutes, findRouteBranch } from "../src/matcher";
+import { findMatch } from "../src/outlet";
 
 function route(path: string): Route {
   return {
