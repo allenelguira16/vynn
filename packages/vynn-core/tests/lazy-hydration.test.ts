@@ -66,6 +66,7 @@ describe("lazy hydration owner scope", () => {
     const owner = createOwner(null);
     const routePathKey = Symbol("route-path");
     const routePath = "/poke-dex";
+    let lazyOwnerDisposed = false;
 
     runWithOwner(owner, () => {
       initializeLazyContext();
@@ -83,6 +84,9 @@ describe("lazy hydration owner scope", () => {
         expect(lazyOwner.parent).toBe(owner);
         expect(lazyOwner.identityOwner).toBe(owner.identityOwner);
         expect(getOwnerContext(routePathKey)).toBe(routePath);
+        lazyOwner.cleanups.push(() => {
+          lazyOwnerDisposed = true;
+        });
 
         // A nested lazy component must continue the parent's ID sequence.
         // Resetting to a parentless owner would allocate "0" again here.
@@ -93,6 +97,7 @@ describe("lazy hydration owner scope", () => {
     expect(owner.children).toHaveLength(1);
     disposeOwner(owner);
     expect(owner.children).toHaveLength(0);
+    expect(lazyOwnerDisposed).toBe(true);
   });
 });
 
