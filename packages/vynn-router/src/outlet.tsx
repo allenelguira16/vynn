@@ -217,6 +217,7 @@ async function runBeforeLoad<TContext>(
   location: Location,
   signal: AbortSignal,
   revision: number,
+  captureErrors = false,
 ): Promise<RouteGuardResult> {
   await Promise.resolve();
 
@@ -245,7 +246,11 @@ async function runBeforeLoad<TContext>(
       };
     }
 
-    return { type: "error", error };
+    if (captureErrors) {
+      return { type: "error", error };
+    }
+
+    throw error;
   }
 }
 
@@ -511,6 +516,7 @@ export function RouteOutlet<TContext = undefined>(props: {
         location,
         controller.signal,
         revision,
+        true,
       ).then((guardResult) => {
         if (disposed || navigationRevision !== revision || controller.signal.aborted) {
           return;
