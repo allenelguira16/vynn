@@ -674,7 +674,10 @@ export function RouteOutlet<TContext = undefined>(props: {
 
     if (preload) {
       pendingBranch = branch;
-      void preload.then(commitView, commitView);
+      void preload.then(
+        () => commitView(),
+        () => commitView(),
+      );
       return;
     }
 
