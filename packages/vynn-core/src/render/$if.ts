@@ -24,7 +24,7 @@ export function $if(
   condition: () => unknown,
   consequent: () => JSX.Element,
   alternate?: () => JSX.Element,
-  options: { keepAlive?: boolean } = {},
+  options: { keepAlive?: boolean; disposeOnResolve?: boolean } = {},
 ): JSX.Element {
   const namespace = getCurrentDOMNamespace();
   const renderInNamespace = <T>(callback: () => T): T => withDOMNamespace(namespace, callback);
@@ -145,7 +145,7 @@ export function $if(
     }
   }
 
-  function park(branch: IfBranch): void {
+  function park(branch: IfBranch, preserve = keepAlive): void {
     const parent = branch.start.parentNode;
 
     // The branch is already parked or hasn't been inserted yet.
@@ -160,7 +160,7 @@ export function $if(
     while (node) {
       const next: Node | null = node.nextSibling;
 
-      if (keepAlive) markParked(node);
+      if (preserve) markParked(node);
 
       branch.fragment.appendChild(node);
 
@@ -235,7 +235,17 @@ export function $if(
       updateShortCircuitValue(nextBranch, nextValue);
     }
 
-    park(activeBranch);
+    // Await can retain the pending children branch but dispose a one-time
+    // navigation fallback once the destination resolves. Without this, the
+    // previous route's owners would remain parked until the new route unmounts.
+    const disposePrevious =
+      options.disposeOnResolve === true && activeKey && !nextKey;
+
+    park(activeBranch, !disposePrevious);
+
+    if (disposePrevious) {
+      branches?.delete(activeKey);
+    }
 
     activeKey = nextKey;
     activeBranch = nextBranch;
