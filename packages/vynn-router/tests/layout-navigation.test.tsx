@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { lazy, type JSX } from "vynn";
 import { renderToDOM } from "vynn/client";
 
-import { navigate, Router, type Route } from "../src";
+import { $search, navigate, Router, type Route } from "../src";
 
 afterEach(() => {
   document.body.innerHTML = "";
@@ -72,6 +72,59 @@ describe("client router layout navigation", () => {
 
     expect(host.querySelector("main")).toBe(layout);
     expect(host.textContent).toContain("other-page content");
+    expect(host.textContent).not.toContain("home content");
+
+    unmount();
+  });
+
+  it("preserves route context inside lazy descendants after navigating into a nested route", async () => {
+    const NestedContent = lazy(async () => ({
+      default: () => <p>{`tab:${$search.tab ?? "missing"}`}</p>,
+    }));
+    const DestinationPage = lazy(async () => ({
+      default: () => <NestedContent />,
+    }));
+
+    const Outlet: Route["component"] = (props) => props.children ?? null;
+    const routes: Route[] = [
+      {
+        path: "/",
+        component: (props) => <main>{props.children}</main>,
+        children: [
+          {
+            path: "/",
+            component: () => <p>home content</p>,
+          },
+          {
+            path: "poke-dex",
+            component: Outlet,
+            children: [
+              {
+                path: "/",
+                component: DestinationPage,
+              },
+            ],
+          },
+        ],
+      },
+    ];
+
+    const host = document.createElement("div");
+    document.body.append(host);
+
+    const unmount = renderToDOM(() => Router({ url: "/", routes }) as unknown as JSX.Element, host);
+
+    expect(host.textContent).toContain("home content");
+
+    // The route page is preloaded by the outlet; its nested lazy child resolves
+    // later and must still inherit the router's route and location contexts.
+    navigate("/poke-dex?tab=all");
+
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    expect(host.querySelector("main")).not.toBeNull();
+    expect(host.textContent).toContain("tab:all");
     expect(host.textContent).not.toContain("home content");
 
     unmount();
