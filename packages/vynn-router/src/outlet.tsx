@@ -1,6 +1,6 @@
 import { $computed, $renderEffect, $state, getOwner, onDestroy, runWithOwner, untrack } from "vynn";
 
-import type { Route, RouterInstance } from "./types";
+import type { RouterInstance } from "./types";
 
 import { RoutePathProvider } from "./context";
 import { getRouterMatchState } from "./router-state";
