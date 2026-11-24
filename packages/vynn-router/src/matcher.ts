@@ -225,7 +225,7 @@ export function findCompiledMatch<TContext = undefined>(
 
     const candidate = {
       node,
-      scoreNode: descendant?.scoreNode ?? node,
+      scoreNode: node,
     };
 
     if (isBetterCandidate(candidate, best, pathnameSegments)) {
