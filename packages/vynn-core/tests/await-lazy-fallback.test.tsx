@@ -132,6 +132,26 @@ describe("client-only boundary identity", () => {
 });
 
 describe("Await with lazy components", () => {
+  it("does not schedule another preload after the lazy module is resolved", async () => {
+    let loads = 0;
+    const LazyPage = lazy(async () => {
+      loads++;
+      return { Page: () => <p>Loaded page</p> };
+    });
+    const preloadable = LazyPage as typeof LazyPage & {
+      preload?: () => Promise<unknown> | undefined;
+    };
+
+    const pending = preloadable.preload?.();
+    expect(pending).toBeInstanceOf(Promise);
+
+    await pending;
+
+    expect(loads).toBe(1);
+    expect(preloadable.preload?.()).toBeUndefined();
+    expect(loads).toBe(1);
+  });
+
   it("shows the fallback while a lazy component loads during client-side rendering", async () => {
     const module = deferred<{ Page: () => JSX.Element }>();
     const LazyPage = lazy(() => module.promise, "Page");
