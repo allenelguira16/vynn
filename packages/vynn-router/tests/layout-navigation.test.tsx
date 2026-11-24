@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
-import { lazy, type JSX } from "vynn";
+import { $computed, lazy, type JSX } from "vynn";
 import { renderToDOM } from "vynn/client";
 
 import { navigate, Router, type Route } from "../src";
@@ -63,6 +63,75 @@ describe("client router layout navigation", () => {
     navigate("/other-page");
 
     expect(destinationLoads).toBe(1);
+    expect(host.querySelector("main")).toBe(layout);
+    expect(host.textContent).toContain("home content");
+    expect(host.textContent).not.toContain("other-page content");
+
+    resolveDestination();
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    expect(host.querySelector("main")).toBe(layout);
+    expect(host.textContent).toContain("other-page content");
+    expect(host.textContent).not.toContain("home content");
+
+    unmount();
+  });
+
+  it("keeps the current page visible while a navigate() destination has pending async content", async () => {
+    let resolveDestination!: () => void;
+
+    function DestinationPage() {
+      const content = $computed(async () => {
+        await new Promise<void>((resolve) => {
+          resolveDestination = resolve;
+        });
+
+        return "other-page content";
+      });
+
+      return <p>{content.value}</p>;
+    }
+
+    const Outlet: Route["component"] = (props) => props.children ?? null;
+    const routes: Route[] = [
+      {
+        path: "/",
+        component: (props) => <main>{props.children}</main>,
+        children: [
+          {
+            path: "/",
+            component: () => <p>home content</p>,
+          },
+          {
+            path: "other-page",
+            component: Outlet,
+            children: [
+              {
+                path: "/",
+                component: DestinationPage,
+              },
+            ],
+          },
+        ],
+      },
+    ];
+
+    const host = document.createElement("div");
+    document.body.append(host);
+
+    const unmount = renderToDOM(
+      () => Router({ url: "/", routes }) as unknown as JSX.Element,
+      host,
+    );
+
+    const layout = host.querySelector("main");
+    expect(layout).not.toBeNull();
+    expect(host.textContent).toContain("home content");
+
+    // This is a normal client navigation. No beforeLoad or redirect is involved.
+    navigate("/other-page");
+
+    expect(typeof resolveDestination).toBe("function");
     expect(host.querySelector("main")).toBe(layout);
     expect(host.textContent).toContain("home content");
     expect(host.textContent).not.toContain("other-page content");
