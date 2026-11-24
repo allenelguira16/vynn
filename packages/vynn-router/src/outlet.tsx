@@ -1,4 +1,14 @@
-import { Await, $computed, $renderEffect, $state, getOwner, onDestroy, runWithOwner, untrack, type JSX } from "vynn";
+import {
+  Await,
+  $computed,
+  $renderEffect,
+  $state,
+  getOwner,
+  onDestroy,
+  runWithOwner,
+  untrack,
+  type JSX,
+} from "vynn";
 
 import type { Location, Route } from "./types";
 
