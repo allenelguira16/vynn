@@ -2,6 +2,7 @@ import { $store } from "vynn";
 
 import type { Location, RouterInstance, RouterOptions, RouterState } from "./types";
 
+import { compileRoutes } from "./matcher";
 import { isServer } from "./environment";
 import { createBrowserHistory, createMemoryHistory } from "./history";
 import {
@@ -21,6 +22,10 @@ import {
 export function createRouter<TContext = undefined>(
   options: RouterOptions<TContext>,
 ): RouterInstance<TContext> {
+  // Route definitions are treated as immutable after router creation. Compile
+  // their path patterns once so every outlet shares the same matcher metadata.
+  compileRoutes(options.routes);
+
   const ownsHistory = options.history === undefined;
   const history =
     options.history ??
