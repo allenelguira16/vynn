@@ -255,7 +255,8 @@ async function runBeforeLoad<TContext>(
 }
 
 /**
- * Runs the route guard once when its matched RouteView is created.
+ * Runs the guard for an initial/SSR RouteView that was not prevalidated by its
+ * RouteOutlet during client navigation.
  *
  * The route component remains mounted when only its params or search string
  * change, so the guard uses the location snapshot from route entry and does
@@ -305,8 +306,8 @@ function RouteView<TContext>(
   let guardRevision = 0;
   let activeGuardController: AbortController | undefined;
 
-  // The route component owns the guard's lifetime. Disposing it aborts any
-  // unfinished beforeLoad operation without reaching into Vynn's owner internals.
+  // Initial/SSR views own their guard here. Client navigations preflight guards
+  // in RouteOutlet, which owns their controller until the committed view is replaced.
   onDestroy(() => activeGuardController?.abort());
 
   const allowed = $computed<RouteGuardResult>(async () => {
