@@ -1,13 +1,16 @@
 import type { Location, Route } from "./types";
 
-import { joinPaths, matchRoute, normalizePath, toSegments } from "./path";
+import { joinPaths, normalizePath, toSegments } from "./path";
 import { PATHLESS_ROUTE, REQUIRE_CHILD_MATCH, type InternalRoute } from "./route-meta";
+
+type SegmentKind = "static" | "parameter" | "required-wildcard" | "optional-wildcard";
 
 export type CompiledRoute = {
   readonly route: Route<unknown>;
   readonly fullPath: string;
   readonly children: readonly CompiledRoute[];
   readonly pathSegments: readonly string[];
+  readonly segmentKinds: readonly SegmentKind[];
   readonly isPathless: boolean;
   readonly requiresChildMatch: boolean;
 };
@@ -20,10 +23,16 @@ export type MatchedRoute<TContext = undefined> = {
 
 type MatchCandidate = {
   node: CompiledRoute;
-  scorePath: string;
+  scoreNode: CompiledRoute;
 };
 
 const compiledRouteTrees = new WeakMap<Route[], readonly CompiledRoute[]>();
+
+function getSegmentKind(segment: string): SegmentKind {
+  if (segment === "*") return "required-wildcard";
+  if (segment === "*?") return "optional-wildcard";
+  return segment.startsWith(":") ? "parameter" : "static";
+}
 
 function compileRoute(
   route: Route<unknown>,
@@ -32,98 +41,145 @@ function compileRoute(
   const internalRoute = route as InternalRoute<unknown>;
   const isPathless = internalRoute[PATHLESS_ROUTE] === true;
   const fullPath = isPathless ? parentPath : joinPaths(parentPath, route.path);
-  const children = (route.children ?? []).map((child) => compileRoute(child, fullPath));
+  const pathSegments = toSegments(fullPath);
+  const children = (route.children ?? []).map((child) =>
+    compileRoute(child as unknown as Route<unknown>, fullPath),
+  );
 
   return {
     route,
     fullPath,
     children,
-    pathSegments: toSegments(fullPath),
+    pathSegments,
+    segmentKinds: pathSegments.map(getSegmentKind),
     isPathless,
     requiresChildMatch: internalRoute[REQUIRE_CHILD_MATCH] === true,
   };
 }
 
 /**
- * Compiles route definitions once. The same compiled tree is shared by
- * rendering, preloading, and matching for the lifetime of the route array.
+ * Compiles route definitions once. Matching and preloading share this tree,
+ * avoiding repeated path normalization and route-pattern parsing on navigation.
  */
-export function compileRoutes<TContext = undefined>(routes: Route<TContext>[]): readonly CompiledRoute[] {
+export function compileRoutes<TContext = undefined>(
+  routes: Route<TContext>[],
+): readonly CompiledRoute[] {
   const key = routes as unknown as Route[];
   const cached = compiledRouteTrees.get(key);
   if (cached) return cached;
 
-  const compiled = routes.map((route) => compileRoute(route as unknown as Route<unknown>, ""));
+  const compiled = routes.map((route) =>
+    compileRoute(route as unknown as Route<unknown>, ""),
+  );
   compiledRouteTrees.set(key, compiled);
   return compiled;
 }
 
-function compareSpecificity(left: string, right: string): number {
-  const a = toSegments(left);
-  const b = toSegments(right);
+function matchesPath(
+  route: CompiledRoute,
+  pathnameSegments: readonly string[],
+  exact: boolean,
+): boolean {
+  const pattern = route.pathSegments;
+  const kinds = route.segmentKinds;
+  const lastKind = kinds.at(-1);
+  const hasWildcard =
+    lastKind === "required-wildcard" || lastKind === "optional-wildcard";
+  const requiresWildcardSegment = lastKind === "required-wildcard";
+  const matchedSegmentCount = pattern.length - (hasWildcard ? 1 : 0);
+
+  if (pathnameSegments.length < matchedSegmentCount) return false;
+  if (requiresWildcardSegment && pathnameSegments.length === matchedSegmentCount) {
+    return false;
+  }
+
+  if (exact && !hasWildcard && pathnameSegments.length !== matchedSegmentCount) {
+    return false;
+  }
+
+  for (let index = 0; index < matchedSegmentCount; index++) {
+    if (kinds[index] === "static" && pattern[index] !== pathnameSegments[index]) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function isEmptyOptionalCatchAll(
+  route: CompiledRoute,
+  pathnameSegments: readonly string[],
+): boolean {
+  return (
+    route.segmentKinds.at(-1) === "optional-wildcard" &&
+    pathnameSegments.length === route.pathSegments.length - 1
+  );
+}
+
+function compareSpecificity(left: CompiledRoute, right: CompiledRoute): number {
+  const a = left.segmentKinds;
+  const b = right.segmentKinds;
   const length = Math.max(a.length, b.length);
 
-  for (let index = 0; index < length; index++) {
-    const leftSegment = a[index];
-    const rightSegment = b[index];
-    const leftRank = leftSegment === undefined ? -1 : leftSegment === "*" || leftSegment === "*?" ? 0 : leftSegment.startsWith(":") ? 1 : 2;
-    const rightRank = rightSegment === undefined ? -1 : rightSegment === "*" || rightSegment === "*?" ? 0 : rightSegment.startsWith(":") ? 1 : 2;
+  const rank = (kind: SegmentKind | undefined): number => {
+    if (kind === undefined) return -1;
+    if (kind === "static") return 2;
+    if (kind === "parameter") return 1;
+    return 0;
+  };
 
-    if (leftRank !== rightRank) return leftRank - rightRank;
+  for (let index = 0; index < length; index++) {
+    const difference = rank(a[index]) - rank(b[index]);
+    if (difference !== 0) return difference;
   }
 
   return 0;
 }
 
-function isEmptyOptionalCatchAll(path: string, pathname: string): boolean {
-  const segments = toSegments(path);
-  return segments.at(-1) === "*?" && toSegments(pathname).length === segments.length - 1;
-}
-
 function isBetterCandidate(
   next: MatchCandidate,
   previous: MatchCandidate | undefined,
-  location: Location,
+  pathnameSegments: readonly string[],
 ): boolean {
   if (!previous) return true;
 
-  const nextEmpty = isEmptyOptionalCatchAll(next.scorePath, location.pathname);
-  const previousEmpty = isEmptyOptionalCatchAll(previous.scorePath, location.pathname);
+  const nextEmpty = isEmptyOptionalCatchAll(next.scoreNode, pathnameSegments);
+  const previousEmpty = isEmptyOptionalCatchAll(previous.scoreNode, pathnameSegments);
 
   if (nextEmpty !== previousEmpty) return !nextEmpty;
-  return compareSpecificity(next.scorePath, previous.scorePath) > 0;
+  return compareSpecificity(next.scoreNode, previous.scoreNode) > 0;
 }
 
 function findBestDescendant(
   routes: readonly CompiledRoute[],
-  location: Location,
+  pathnameSegments: readonly string[],
 ): MatchCandidate | undefined {
   let best: MatchCandidate | undefined;
 
   for (const node of routes) {
     if (node.isPathless) {
-      const descendant = findBestDescendant(node.children, location);
-      if (descendant && isBetterCandidate(descendant, best, location)) {
+      const descendant = findBestDescendant(node.children, pathnameSegments);
+      if (descendant && isBetterCandidate(descendant, best, pathnameSegments)) {
         best = descendant;
       }
       continue;
     }
 
     const hasChildren = node.children.length > 0;
-    if (!matchRoute(node.fullPath, !hasChildren, location)) continue;
+    if (!matchesPath(node, pathnameSegments, !hasChildren)) continue;
 
     const descendant = hasChildren
-      ? findBestDescendant(node.children, location)
+      ? findBestDescendant(node.children, pathnameSegments)
       : undefined;
 
     if (node.requiresChildMatch && !descendant) continue;
 
     const candidate = {
       node,
-      scorePath: descendant?.scorePath ?? node.fullPath,
+      scoreNode: descendant?.scoreNode ?? node,
     };
 
-    if (isBetterCandidate(candidate, best, location)) {
+    if (isBetterCandidate(candidate, best, pathnameSegments)) {
       best = candidate;
     }
   }
@@ -136,23 +192,24 @@ export function findCompiledMatch<TContext = undefined>(
   routes: readonly CompiledRoute[],
   location: Location,
 ): MatchedRoute<TContext> | undefined {
+  const pathnameSegments = toSegments(location.pathname);
   let best: MatchCandidate | undefined;
 
   for (const node of routes) {
     if (node.isPathless || node.requiresChildMatch) {
-      if (!node.isPathless && !matchRoute(node.fullPath, false, location)) {
+      if (!node.isPathless && !matchesPath(node, pathnameSegments, false)) {
         continue;
       }
 
-      const descendant = findBestDescendant(node.children, location);
+      const descendant = findBestDescendant(node.children, pathnameSegments);
       if (!descendant) continue;
 
       const candidate = {
         node,
-        scorePath: descendant.scorePath,
+        scoreNode: descendant.scoreNode,
       };
 
-      if (isBetterCandidate(candidate, best, location)) {
+      if (isBetterCandidate(candidate, best, pathnameSegments)) {
         best = candidate;
       }
 
@@ -160,18 +217,18 @@ export function findCompiledMatch<TContext = undefined>(
     }
 
     const hasChildren = node.children.length > 0;
-    if (!matchRoute(node.fullPath, !hasChildren, location)) continue;
+    if (!matchesPath(node, pathnameSegments, !hasChildren)) continue;
 
     const descendant = hasChildren
-      ? findBestDescendant(node.children, location)
+      ? findBestDescendant(node.children, pathnameSegments)
       : undefined;
 
     const candidate = {
       node,
-      scorePath: descendant?.scorePath ?? node.fullPath,
+      scoreNode: descendant?.scoreNode ?? node,
     };
 
-    if (isBetterCandidate(candidate, best, location)) {
+    if (isBetterCandidate(candidate, best, pathnameSegments)) {
       best = candidate;
     }
   }
@@ -185,14 +242,14 @@ export function findCompiledMatch<TContext = undefined>(
   };
 }
 
-/** Matches against an uncompiled route array for public/internal test compatibility. */
+/** Matches an uncompiled route array, primarily for direct matcher consumers. */
 export function findMatch<TContext = undefined>(
   routes: Route<TContext>[],
   location: Location,
   parentPath = "",
 ): MatchedRoute<TContext> | undefined {
-  const compiled = routes.map((route) => compileRoute(route as Route<unknown>, parentPath));
+  const compiled = routes.map((route) =>
+    compileRoute(route as unknown as Route<unknown>, parentPath),
+  );
   return findCompiledMatch<TContext>(compiled, location);
 }
-
-export type { MatchCandidate };
