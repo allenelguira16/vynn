@@ -4,7 +4,7 @@ import type { Location, Route, RouterInstance, RouterOptions, RouterState } from
 
 import { isServer } from "./environment";
 import { createBrowserHistory, createMemoryHistory } from "./history";
-import { findRouteBranch, compileRoutes, type MatchedRoute } from "./matcher";
+import { compileRoutes, findRouteBranch, type MatchedRoute } from "./matcher";
 import {
   parseLocation,
   registerLocationNavigation,
