@@ -1,26 +1,79 @@
-import { $store } from "vynn";
+import { $renderEffect, $store, batch } from "vynn";
 
-import type { Location, RouterInstance, RouterOptions, RouterState } from "./types";
+import type { Location, Route, RouterInstance, RouterOptions, RouterState } from "./types";
 
 import { isServer } from "./environment";
 import { createBrowserHistory, createMemoryHistory } from "./history";
+import { compileRoutes, findRouteBranch, type MatchedRoute } from "./matcher";
 import {
   parseLocation,
   registerLocationNavigation,
   updateDefaultLocation,
   updateLocation,
 } from "./location";
+import {
+  getRouterMatchState,
+  publishRouterMatchState,
+  setRouterMatchState,
+} from "./router-state";
+
+type PreloadableComponent = Route["component"] & {
+  preload?: () => Promise<unknown> | undefined;
+};
+
+function snapshotLocation(location: Location): Location {
+  return {
+    pathname: location.pathname,
+    search: location.search,
+  };
+}
+
+function sameBranch<TContext>(
+  current: readonly MatchedRoute<TContext>[],
+  next: readonly MatchedRoute<TContext>[],
+): boolean {
+  return (
+    current.length === next.length &&
+    current.every((match, index) => match.node === next[index]?.node)
+  );
+}
+
+/**
+ * Starts loading all lazy modules selected by a resolved route branch.
+ * Already-loaded lazy components do not create promises, keeping warm
+ * navigations synchronous.
+ */
+function preloadBranch<TContext>(
+  branch: readonly MatchedRoute<TContext>[],
+): Promise<void> | undefined {
+  const pending: Promise<unknown>[] = [];
+
+  for (const match of branch) {
+    const component = match.route.component as PreloadableComponent;
+    const preload = component.preload;
+    if (typeof preload !== "function") continue;
+
+    const result = preload();
+    if (result) pending.push(result);
+  }
+
+  return pending.length > 0
+    ? Promise.allSettled(pending).then(() => undefined)
+    : undefined;
+}
 
 /**
  * Creates an independent router instance.
  *
- * Create one instance per application in the browser and one per request
- * during SSR. The returned state is reactive and can be read outside the
- * rendered Router component.
+ * The router compiles route patterns once, resolves the destination branch
+ * reactively when its location changes, and preloads that branch before
+ * publishing it to the renderer. Route outlets only render the committed
+ * branch.
  */
 export function createRouter<TContext = undefined>(
   options: RouterOptions<TContext>,
 ): RouterInstance<TContext> {
+  const compiledRoutes = compileRoutes(options.routes);
   const ownsHistory = options.history === undefined;
   const history =
     options.history ??
@@ -30,20 +83,14 @@ export function createRouter<TContext = undefined>(
 
   const location = $store<Location>(parseLocation(history.location));
   const state: RouterState = { location };
-
-  const syncLocation = (url: string) => {
-    const next = parseLocation(url);
-    updateLocation(location, next);
-
-    if (!isServer) {
-      updateDefaultLocation(next);
-    }
+  const matchState = {
+    value: findRouteBranch<TContext>(compiledRoutes, snapshotLocation(location)),
   };
 
-  // The router instance owns its history subscription, not the rendered
-  // Router component. It remains usable before, during, and after rendering.
-  const stopListening = history.listen(syncLocation);
   let disposed = false;
+  let navigationRevision = 0;
+  let stopNavigationEffect = () => {};
+  let stopListening = () => {};
   let unregisterLocationNavigation = () => {};
 
   const router: RouterInstance<TContext> = {
@@ -65,6 +112,8 @@ export function createRouter<TContext = undefined>(
       if (disposed) return;
 
       disposed = true;
+      navigationRevision++;
+      stopNavigationEffect();
       stopListening();
       unregisterLocationNavigation();
 
@@ -74,7 +123,71 @@ export function createRouter<TContext = undefined>(
     },
   };
 
+  setRouterMatchState(router, matchState);
   unregisterLocationNavigation = registerLocationNavigation(location, router);
+
+  /**
+   * Resolves and optionally commits a history location.
+   *
+   * For history-driven navigation, outlets are notified before either location
+   * store changes. Their view updates are therefore queued before effects in
+   * the outgoing route that depend on $location, $params, or $search.
+   *
+   * The reactive location effect calls this without syncing the location store
+   * so direct writes to router.state.location remain supported.
+   */
+  const resolveNavigation = (nextLocation: Location, syncLocation: boolean) => {
+    const revision = ++navigationRevision;
+    const nextBranch = findRouteBranch<TContext>(compiledRoutes, nextLocation);
+    const branchChanged = !sameBranch(
+      getRouterMatchState<TContext>(router).value,
+      nextBranch,
+    );
+
+    const commit = () => {
+      if (disposed || revision !== navigationRevision) return;
+
+      batch(() => {
+        if (branchChanged) {
+          publishRouterMatchState(router, nextBranch);
+        }
+
+        if (syncLocation) {
+          updateLocation(location, nextLocation);
+          if (!isServer) {
+            updateDefaultLocation(nextLocation);
+          }
+        }
+      });
+    };
+
+    // Same-branch updates only change params/search and do not need module
+    // loading. Empty branches also have nothing to preload.
+    if (!branchChanged || isServer || nextBranch.length === 0) {
+      commit();
+      return;
+    }
+
+    const preload = preloadBranch(nextBranch);
+    if (preload) {
+      void preload.then(commit);
+    } else {
+      commit();
+    }
+  };
+
+  // Keep direct reactive writes to router.state.location supported. Normal
+  // history navigation is resolved synchronously in syncLocation below, ahead
+  // of location notifications, to avoid an extra render of the outgoing page.
+  stopNavigationEffect = $renderEffect(() => {
+    resolveNavigation(snapshotLocation(location), false);
+  });
+
+  const syncLocation = (url: string) => {
+    resolveNavigation(parseLocation(url), true);
+  };
+
+  stopListening = history.listen(syncLocation);
 
   if (!isServer) {
     updateDefaultLocation(location);
