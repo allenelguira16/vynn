@@ -1,4 +1,4 @@
-import { $store, Store } from "vynn";
+import { $store, batch, Store } from "vynn";
 
 import type { Location, RouterInstance } from "./types";
 
@@ -118,13 +118,15 @@ export function parseLocation(url?: string): Location {
 
 /** Updates a location store from a parsed URL. */
 export function updateLocation(target: Location, next: Location): void {
-  if (target.pathname !== next.pathname) {
-    target.pathname = next.pathname;
-  }
+  batch(() => {
+    if (target.pathname !== next.pathname) {
+      target.pathname = next.pathname;
+    }
 
-  if (target.search !== next.search) {
-    target.search = next.search;
-  }
+    if (target.search !== next.search) {
+      target.search = next.search;
+    }
+  });
 }
 
 /** Synchronizes the fallback store without resolving the Router context. */
