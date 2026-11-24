@@ -36,8 +36,8 @@ function snapshotLocation(location: Location): Location {
  * mounted. Nested outlets keep their own current view, so each transition
  * resolves only the branch below that outlet.
  */
-function preloadRouteBranch(
-  match: MatchedRoute,
+function preloadRouteBranch<TContext>(
+  match: MatchedRoute<TContext>,
   location: Location,
 ): Promise<void> | undefined {
   const pending: Promise<unknown>[] = [];
