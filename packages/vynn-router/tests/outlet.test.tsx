@@ -44,14 +44,17 @@ describe("route matching", () => {
 
   it("does not let an empty catch-all match shadow an exact route", () => {
     const home = route("/");
-    const wildcard = route("/*");
+    const optionalWildcard = route("/*?");
 
-    expect(findMatch([wildcard], { pathname: "/", search: "" })?.route).toBe(wildcard);
-    expect(findMatch([home, wildcard], { pathname: "/", search: "" })?.route).toBe(home);
-    expect(findMatch([wildcard, home], { pathname: "/", search: "" })?.route).toBe(home);
+    expect(findMatch([optionalWildcard], { pathname: "/", search: "" })?.route).toBe(
+      optionalWildcard,
+    );
+    expect(findMatch([home, optionalWildcard], { pathname: "/", search: "" })?.route).toBe(home);
+    expect(findMatch([optionalWildcard, home], { pathname: "/", search: "" })?.route).toBe(home);
+    expect(findMatch([route("/*")], { pathname: "/", search: "" })).toBeUndefined();
 
     const users = route("/users");
-    const usersWildcard = route("/users/*");
+    const usersWildcard = route("/users/*?");
 
     expect(findMatch([users, usersWildcard], { pathname: "/users", search: "" })?.route).toBe(
       users,
