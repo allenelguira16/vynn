@@ -125,6 +125,7 @@ describe("client router beforeLoad", () => {
     expect(host.querySelector("main")).toBe(layout);
     expect(host.textContent).toContain("poke dex content");
     expect(host.textContent).not.toContain("home content");
+    expect(signals).toHaveLength(1);
 
     unmount();
     expect(signals[0].aborted).toBe(true);
