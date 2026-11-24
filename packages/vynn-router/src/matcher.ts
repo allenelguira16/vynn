@@ -219,10 +219,6 @@ export function findCompiledMatch<TContext = undefined>(
     const hasChildren = node.children.length > 0;
     if (!matchesPath(node, pathnameSegments, !hasChildren)) continue;
 
-    const descendant = hasChildren
-      ? findBestDescendant(node.children, pathnameSegments)
-      : undefined;
-
     const candidate = {
       node,
       scoreNode: node,
