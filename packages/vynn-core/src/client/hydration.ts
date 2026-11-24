@@ -240,9 +240,10 @@ export function withServerRenderedLazy<T>(lazyID: string | number, callback: () 
     serverRenderedLazy.set(id, scope);
   }
 
-  // Keep this scope on a dedicated owner. Writing it to the caller's owner
-  // would leak the lazy boundary into sibling route renders created later.
-  const owner = createOwner(undefined, { identity: false });
+  // Keep the hydration scope isolated on its own owner while retaining the
+  // caller as its parent. This preserves route/context values, hydration identity
+  // allocation, and lifecycle disposal without writing the scope to siblings.
+  const owner = createOwner(getOwner(), { identity: false });
 
   return runWithOwner(owner, () => {
     setOwnerContext(LAZY_HYDRATION, scope);
