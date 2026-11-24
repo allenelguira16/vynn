@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { Route } from "../src/types";
 
-import { findMatch } from "../src/outlet";
+import { compileRoutes, findMatch, findRouteBranch } from "../src/matcher";
 
 function route(path: string): Route {
   return {
@@ -75,4 +75,23 @@ describe("route matching", () => {
     );
     expect(findMatch([wildcard], { pathname: "/anything/here", search: "" })?.route).toBe(wildcard);
   });
+
+  it("resolves a complete branch from one compiled tree and preserves route identity", () => {
+    const userRoute = route("/users/:id");
+    const rootRoute = {
+      ...route("/"),
+      children: [userRoute],
+    };
+    const compiled = compileRoutes([rootRoute]);
+
+    const first = findRouteBranch(compiled, { pathname: "/users/1", search: "" });
+    const second = findRouteBranch(compiled, { pathname: "/users/2", search: "" });
+
+    expect(first).toHaveLength(2);
+    expect(second).toHaveLength(2);
+    expect(first[0]?.node).toBe(second[0]?.node);
+    expect(first[1]?.node).toBe(second[1]?.node);
+    expect(first[1]?.fullPath).toBe("/users/:id");
+  });
+
 });
