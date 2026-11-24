@@ -10,7 +10,9 @@ import {
   withHydration,
   withServerRenderedLazy,
 } from "../src/client/hydration";
-import { createOwner, disposeOwner, runWithOwner } from "../src/life-cycle/owner";
+import { getOwnerContext, setOwnerContext } from "../src/context/owner-context";
+import { getLazyID, initializeLazyContext, initializeLazyScope } from "../src/context/lazy-context";
+import { createOwner, disposeOwner, getOwner, runWithOwner } from "../src/life-cycle/owner";
 
 afterEach(() => {
   document.body.innerHTML = "";
@@ -56,6 +58,41 @@ describe("lazy hydration text anchors", () => {
       expect(claimHydrationElement()).toBe(rootElement);
     });
     disposeOwner(rootOwner);
+  });
+});
+
+describe("lazy hydration owner scope", () => {
+  it("keeps parent context, identity scope, and lifecycle ancestry on the dedicated owner", () => {
+    const owner = createOwner(null);
+    const routePathKey = Symbol("route-path");
+    const routePath = "/poke-dex";
+
+    runWithOwner(owner, () => {
+      initializeLazyContext();
+
+      const lazyID = getLazyID();
+      expect(lazyID).toBe("0");
+
+      initializeLazyScope(lazyID);
+      setOwnerContext(routePathKey, routePath);
+
+      withServerRenderedLazy(lazyID, () => {
+        const lazyOwner = getOwner()!;
+
+        expect(lazyOwner).not.toBe(owner);
+        expect(lazyOwner.parent).toBe(owner);
+        expect(lazyOwner.identityOwner).toBe(owner.identityOwner);
+        expect(getOwnerContext(routePathKey)).toBe(routePath);
+
+        // A nested lazy component must continue the parent's ID sequence.
+        // Resetting to a parentless owner would allocate "0" again here.
+        expect(getLazyID()).toBe("0.0");
+      });
+    });
+
+    expect(owner.children).toHaveLength(1);
+    disposeOwner(owner);
+    expect(owner.children).toHaveLength(0);
   });
 });
 
