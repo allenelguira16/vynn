@@ -1,31 +1,74 @@
-import { $store } from "vynn";
+import { $state, $store } from "vynn";
 
-import type { Location, RouterInstance, RouterOptions, RouterState } from "./types";
+import type { Location, Route, RouterInstance, RouterOptions, RouterState } from "./types";
 
-import { compileRoutes } from "./matcher";
 import { isServer } from "./environment";
 import { createBrowserHistory, createMemoryHistory } from "./history";
+import { findRouteBranch, compileRoutes, type MatchedRoute } from "./matcher";
 import {
   parseLocation,
   registerLocationNavigation,
   updateDefaultLocation,
   updateLocation,
 } from "./location";
+import { setRouterMatchState } from "./router-state";
+
+type PreloadableComponent = Route["component"] & {
+  preload?: () => Promise<unknown> | undefined;
+};
+
+function snapshotLocation(location: Location): Location {
+  return {
+    pathname: location.pathname,
+    search: location.search,
+  };
+}
+
+function sameBranch<TContext>(
+  current: readonly MatchedRoute<TContext>[],
+  next: readonly MatchedRoute<TContext>[],
+): boolean {
+  return (
+    current.length === next.length &&
+    current.every((match, index) => match.node === next[index]?.node)
+  );
+}
+
+/**
+ * Starts loading all lazy modules selected by a resolved route branch.
+ * Already-loaded lazy components do not create promises, keeping warm
+ * navigations synchronous.
+ */
+function preloadBranch<TContext>(
+  branch: readonly MatchedRoute<TContext>[],
+): Promise<void> | undefined {
+  const pending: Promise<unknown>[] = [];
+
+  for (const match of branch) {
+    const component = match.route.component as PreloadableComponent;
+    const preload = component.preload;
+    if (typeof preload !== "function") continue;
+
+    const result = preload();
+    if (result) pending.push(result);
+  }
+
+  return pending.length > 0
+    ? Promise.all(pending).then(() => undefined)
+    : undefined;
+}
 
 /**
  * Creates an independent router instance.
  *
- * Create one instance per application in the browser and one per request
- * during SSR. The returned state is reactive and can be read outside the
- * rendered Router component.
+ * The router compiles route patterns once, resolves the destination branch
+ * once per navigation, and preloads that branch before publishing it to the
+ * renderer. Route outlets only render the committed branch.
  */
 export function createRouter<TContext = undefined>(
   options: RouterOptions<TContext>,
 ): RouterInstance<TContext> {
-  // Route definitions are treated as immutable after router creation. Compile
-  // their path patterns once so every outlet shares the same matcher metadata.
-  compileRoutes(options.routes);
-
+  const compiledRoutes = compileRoutes(options.routes);
   const ownsHistory = options.history === undefined;
   const history =
     options.history ??
@@ -35,21 +78,57 @@ export function createRouter<TContext = undefined>(
 
   const location = $store<Location>(parseLocation(history.location));
   const state: RouterState = { location };
+  const matchState = $state<readonly MatchedRoute<TContext>[]>(
+    findRouteBranch<TContext>(compiledRoutes, snapshotLocation(location)),
+  );
+
+  let disposed = false;
+  let navigationRevision = 0;
+  let unregisterLocationNavigation = () => {};
 
   const syncLocation = (url: string) => {
-    const next = parseLocation(url);
-    updateLocation(location, next);
+    const nextLocation = parseLocation(url);
+    updateLocation(location, nextLocation);
 
     if (!isServer) {
-      updateDefaultLocation(next);
+      updateDefaultLocation(nextLocation);
+    }
+
+    const revision = ++navigationRevision;
+    const nextBranch = findRouteBranch<TContext>(compiledRoutes, nextLocation);
+
+    // The route branch is unchanged for parameter- and query-only updates.
+    // Location remains reactive, but component owners are kept intact.
+    if (sameBranch(matchState.value, nextBranch)) return;
+
+    const commit = () => {
+      if (disposed || revision !== navigationRevision) return;
+
+      const latest = snapshotLocation(location);
+      if (
+        latest.pathname !== nextLocation.pathname ||
+        latest.search !== nextLocation.search
+      ) {
+        return;
+      }
+
+      matchState.value = nextBranch;
+    };
+
+    if (isServer || nextBranch.length === 0) {
+      commit();
+      return;
+    }
+
+    const preload = preloadBranch(nextBranch);
+    if (preload) {
+      void preload.then(commit, commit);
+    } else {
+      commit();
     }
   };
 
-  // The router instance owns its history subscription, not the rendered
-  // Router component. It remains usable before, during, and after rendering.
   const stopListening = history.listen(syncLocation);
-  let disposed = false;
-  let unregisterLocationNavigation = () => {};
 
   const router: RouterInstance<TContext> = {
     routes: options.routes,
@@ -70,6 +149,7 @@ export function createRouter<TContext = undefined>(
       if (disposed) return;
 
       disposed = true;
+      navigationRevision++;
       stopListening();
       unregisterLocationNavigation();
 
@@ -79,6 +159,7 @@ export function createRouter<TContext = undefined>(
     },
   };
 
+  setRouterMatchState(router, matchState);
   unregisterLocationNavigation = registerLocationNavigation(location, router);
 
   if (!isServer) {
