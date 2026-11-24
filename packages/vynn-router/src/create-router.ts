@@ -54,7 +54,7 @@ function preloadBranch<TContext>(
   }
 
   return pending.length > 0
-    ? Promise.all(pending).then(() => undefined)
+    ? Promise.allSettled(pending).then(() => undefined)
     : undefined;
 }
 
