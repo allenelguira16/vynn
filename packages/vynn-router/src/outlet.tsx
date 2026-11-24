@@ -531,16 +531,6 @@ export function RouteOutlet<TContext = undefined>(props: {
     const next = findMatch(props.routes, location, props.parentPath ?? "");
     const branch = next ? findMatchedRouteBranch(next, location) : [];
 
-    // A newly mounted nested outlet consumes the prepared results passed down
-    // from its parent outlet. The map is one-shot and is not reused on later
-    // navigations from this outlet.
-    if (inheritedPreparedGuards) {
-      const preparedGuards = inheritedPreparedGuards;
-      inheritedPreparedGuards = undefined;
-      commitView(preparedGuards);
-      return;
-    }
-
     // Keep an in-flight destination branch when only params/search change.
     // A deeper route change produces a different branch and supersedes it.
     if (pendingBranch && sameMatchedBranch(pendingBranch, branch)) {
@@ -580,8 +570,8 @@ export function RouteOutlet<TContext = undefined>(props: {
           ? preparedGuards.get(next.route)
           : undefined;
 
-        if (preparedGuard?.fullPath === next?.fullPath) {
-          preparedGuards!.delete(next!.route);
+        if (next && preparedGuard?.fullPath === next.fullPath) {
+          preparedGuards!.delete(next.route);
         }
 
         const nextView = next
@@ -613,10 +603,12 @@ export function RouteOutlet<TContext = undefined>(props: {
       });
     };
 
-    // A prepared branch came from an ancestor outlet. Consume the current
-    // route's entry and pass the remaining results to its nested outlet.
-    if (props.preparedGuards) {
-      commitView(props.preparedGuards);
+    // A newly mounted nested outlet consumes prepared results passed down
+    // from its parent. The map is one-shot and is not reused on later navigations.
+    if (inheritedPreparedGuards) {
+      const preparedGuards = inheritedPreparedGuards;
+      inheritedPreparedGuards = undefined;
+      commitView(preparedGuards);
       return;
     }
 
