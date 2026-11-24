@@ -48,11 +48,11 @@ function compileRoute(
  * Compiles route definitions once. The same compiled tree is shared by
  * rendering, preloading, and matching for the lifetime of the route array.
  */
-export function compileRoutes(routes: Route[]): readonly CompiledRoute[] {
+export function compileRoutes<TContext = undefined>(routes: Route<TContext>[]): readonly CompiledRoute[] {
   const cached = compiledRouteTrees.get(routes);
   if (cached) return cached;
 
-  const compiled = routes.map((route) => compileRoute(route, ""));
+  const compiled = routes.map((route) => compileRoute(route as unknown as Route<unknown>, ""));
   compiledRouteTrees.set(routes, compiled);
   return compiled;
 }
