@@ -84,9 +84,9 @@ export function withServerRenderedLazy<T>(
     return hydrationRuntime.withServerRenderedLazy(lazyID, callback);
   }
 
-  // Preserve the lazy component's dedicated owner even when there are no
-  // server-rendered nodes to claim.
-  const owner = createOwner(undefined, { identity: false });
+  // Preserve a dedicated lazy owner without disconnecting it from the
+  // component tree when hydration services are not installed.
+  const owner = createOwner(getOwner(), { identity: false });
   return runWithOwner(owner, callback);
 }
 
