@@ -176,7 +176,7 @@ type PreloadableRouteComponent = Route["component"] & {
   preload?: () => Promise<unknown>;
 };
 
-type PreparedRouteGuard<TContext = undefined> = {
+type PreparedRouteGuard = {
   fullPath: string;
   result: CompletedRouteGuardResult;
   controller: AbortController;
@@ -184,7 +184,7 @@ type PreparedRouteGuard<TContext = undefined> = {
 
 type PreparedRouteGuards<TContext = undefined> = Map<
   Route<TContext>,
-  PreparedRouteGuard<TContext>
+  PreparedRouteGuard
 >;
 
 type PreparedRouteBranchResult<TContext> =
@@ -364,7 +364,7 @@ function RouteView<TContext>(
   props: MatchedRoute<TContext> & {
     context: TContext;
     notFound?: Route<TContext>["component"];
-    preparedGuard?: PreparedRouteGuard<TContext>;
+    preparedGuard?: PreparedRouteGuard;
     preparedGuards?: PreparedRouteGuards<TContext>;
     preparedBranchControllers?: AbortController[];
   },
