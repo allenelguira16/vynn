@@ -174,7 +174,7 @@ export function RouteOutlet<TContext = undefined>(props: {
 }) {
   const routes = props.compiledRoutes ?? compileRoutes(props.routes ?? []);
   const owner = getOwner();
-  const view = $state<ReturnType<typeof RouteView<TContext>> | null>(null);
+  const view = $state<ReturnType<typeof RouteView> | null>(null);
 
   let previousNode: CompiledRoute | undefined;
   let revision = 0;
