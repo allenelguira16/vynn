@@ -126,7 +126,10 @@ export function lazy<M extends Record<string, unknown>, K extends keyof M = "def
   // Routers can wait for the module before committing a route transition.
   // Keep this out of the public component type; it is an internal capability.
   Object.defineProperty(LazyComponent, "preload", {
-    value: loadComponent,
+    // Avoid scheduling an asynchronous transition when this module is already
+    // available. Warm route navigation can then publish its match branch
+    // synchronously.
+    value: () => (resolvedComponent ? undefined : loadComponent()),
   });
 
   return LazyComponent as Component;
