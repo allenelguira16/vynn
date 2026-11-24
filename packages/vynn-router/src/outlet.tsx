@@ -1,4 +1,4 @@
-import { $computed, $renderEffect, $state, getOwner, onDestroy, runWithOwner, untrack } from "vynn";
+import { Await, $computed, $renderEffect, $state, getOwner, onDestroy, runWithOwner, untrack, type JSX } from "vynn";
 
 import type { Location, Route } from "./types";
 
@@ -396,23 +396,40 @@ export function RouteOutlet<TContext = undefined>(props: {
           return;
         }
 
-        const nextView = next
-          ? untrack(() => (
-              <RoutePathProvider value={next.fullPath}>
-                <RouteView
-                  route={next.route}
-                  fullPath={next.fullPath}
-                  context={props.context}
-                  notFound={props.notFound}
-                />
-              </RoutePathProvider>
-            ))
-          : props.notFound
-            ? untrack(() => {
-                const NotFound = props.notFound!;
-                return <NotFound />;
+        // Defer creating the destination subtree until it is evaluated inside
+        // Await's async boundary. Async $state/$computed/$store reads in the new
+        // page can then register their pending promises with this navigation.
+        const renderNextView = () =>
+          next
+            ? untrack(() => (
+                <RoutePathProvider value={next.fullPath}>
+                  <RouteView
+                    route={next.route}
+                    fullPath={next.fullPath}
+                    context={props.context}
+                    notFound={props.notFound}
+                  />
+                </RoutePathProvider>
+              ))
+            : props.notFound
+              ? untrack(() => {
+                  const NotFound = props.notFound!;
+                  return <NotFound />;
+                })
+              : null;
+
+        const previousView = view.value;
+        const nextView =
+          !isServer && hasRendered && previousView !== null
+            ? Await({
+                fallback: previousView,
+                // The previous page is a temporary navigation fallback, not a
+                // keep-alive cache. Dispose its owners as soon as the destination
+                // has finished its initial async render.
+                keepAlive: false,
+                children: renderNextView as unknown as JSX.Element,
               })
-            : null;
+            : renderNextView();
 
         hasRendered = true;
         previousMatch = next;
