@@ -1,4 +1,4 @@
-import { $state, $store } from "vynn";
+import { $renderEffect, $state, $store, untrack } from "vynn";
 
 import type { Location, Route, RouterInstance, RouterOptions, RouterState } from "./types";
 
@@ -62,8 +62,9 @@ function preloadBranch<TContext>(
  * Creates an independent router instance.
  *
  * The router compiles route patterns once, resolves the destination branch
- * once per navigation, and preloads that branch before publishing it to the
- * renderer. Route outlets only render the committed branch.
+ * reactively when its location changes, and preloads that branch before
+ * publishing it to the renderer. Route outlets only render the committed
+ * branch.
  */
 export function createRouter<TContext = undefined>(
   options: RouterOptions<TContext>,
@@ -84,22 +85,19 @@ export function createRouter<TContext = undefined>(
 
   let disposed = false;
   let navigationRevision = 0;
+  let stopNavigationEffect = () => {};
   let unregisterLocationNavigation = () => {};
 
-  const syncLocation = (url: string) => {
-    const nextLocation = parseLocation(url);
-    updateLocation(location, nextLocation);
-
-    if (!isServer) {
-      updateDefaultLocation(nextLocation);
-    }
-
+  // Location is the only reactive navigation input. Direct updates through
+  // router.state.location and $location therefore follow the same resolver
+  // as history.push(), history.replace(), and browser popstate.
+  stopNavigationEffect = $renderEffect(() => {
+    const nextLocation = snapshotLocation(location);
     const revision = ++navigationRevision;
     const nextBranch = findRouteBranch<TContext>(compiledRoutes, nextLocation);
 
-    // The route branch is unchanged for parameter- and query-only updates.
-    // Location remains reactive, but component owners are kept intact.
-    if (sameBranch(matchState.value, nextBranch)) return;
+    // Parameter- and query-only changes preserve all route component owners.
+    if (sameBranch(untrack(() => matchState.value), nextBranch)) return;
 
     const commit = () => {
       if (disposed || revision !== navigationRevision) return;
@@ -122,9 +120,18 @@ export function createRouter<TContext = undefined>(
 
     const preload = preloadBranch(nextBranch);
     if (preload) {
-      void preload.then(commit, commit);
+      void preload.then(commit);
     } else {
       commit();
+    }
+  });
+
+  const syncLocation = (url: string) => {
+    const next = parseLocation(url);
+    updateLocation(location, next);
+
+    if (!isServer) {
+      updateDefaultLocation(next);
     }
   };
 
@@ -150,6 +157,7 @@ export function createRouter<TContext = undefined>(
 
       disposed = true;
       navigationRevision++;
+      stopNavigationEffect();
       stopListening();
       unregisterLocationNavigation();
 
