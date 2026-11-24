@@ -423,10 +423,9 @@ export function RouteOutlet<TContext = undefined>(props: {
           !isServer && hasRendered && previousView !== null
             ? Await({
                 fallback: previousView,
-                // The previous page is a temporary navigation fallback, not a
-                // keep-alive cache. Dispose its owners as soon as the destination
-                // has finished its initial async render.
-                keepAlive: false,
+                // The previous page is a temporary navigation fallback. Dispose
+                // its owners as soon as the destination finishes its initial async render.
+                disposeFallbackOnResolve: true,
                 children: renderNextView as unknown as JSX.Element,
               })
             : renderNextView();
