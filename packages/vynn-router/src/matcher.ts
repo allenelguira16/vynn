@@ -256,7 +256,6 @@ export function findMatch<TContext = undefined>(
   return findCompiledMatch<TContext>(compiled, location);
 }
 
-
 /** Resolves the complete matched branch with one compiled route tree. */
 export function findRouteBranch<TContext = undefined>(
   routes: readonly CompiledRoute[],
