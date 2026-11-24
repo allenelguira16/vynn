@@ -1,14 +1,88 @@
 import { runWithRuntimeContextRoot } from "../runtime/context";
+import { EMPTY_TEXT_SSR_MARKER } from "../const";
 import { initializeAsyncHydrationRuntime } from "../runtime/async/hydration";
-import { initializeErrorBoundaryContext } from "../context/error-boundary";
-import { initializeHeadContext } from "../context/head-context";
-import { initializeLazyContext } from "../context/lazy-context";
 import { JSX } from "../jsx-runtime";
 import { createOwner, disposeOwner, runWithOwner } from "../life-cycle/owner";
 import { addUnmountListener } from "../render/$cmpnt";
+import { setStaticTemplateHydrator } from "../render/$template";
 import { HTML_NAMESPACE, getChildDOMNamespace, withDOMNamespace } from "../render/namespace";
 import { resolveNode } from "../render/resolve-node";
-import { withHydration } from "./hydration";
+import {
+  claimHydrationElement,
+  claimHydrationText,
+  isHydrationClaimActive,
+  withHydration,
+} from "./hydration";
+import {
+  isHydrationElementCompatible,
+  synchronizeHydrationText,
+} from "./hydration-diagnostics";
+
+function hydrateStaticTemplate(root: Element): Element {
+  if (!isHydrationClaimActive()) return root;
+
+  const claimedRoot = claimHydrationElement<Element>();
+  if (!claimedRoot) return root;
+
+  const parent = claimedRoot.parentNode;
+  const nextSibling = claimedRoot.nextSibling;
+  let compatible = isHydrationElementCompatible(
+    claimedRoot,
+    root.localName,
+    root.namespaceURI,
+  );
+
+  const claimChildren = (expectedParent: Node): void => {
+    for (const child of Array.from(expectedParent.childNodes)) {
+      if (child.nodeType === Node.ELEMENT_NODE) {
+        const expected = child as Element;
+        const claimed = claimHydrationElement<Element>();
+
+        if (
+          !isHydrationElementCompatible(
+            claimed,
+            expected.localName,
+            expected.namespaceURI,
+          )
+        ) {
+          compatible = false;
+        }
+
+        claimChildren(expected);
+      } else if (child.nodeType === Node.TEXT_NODE) {
+        if (!synchronizeHydrationText(claimHydrationText(), child.nodeValue ?? "")) {
+          compatible = false;
+        }
+      } else if (
+        child.nodeType === Node.COMMENT_NODE &&
+        (child as Comment).data === EMPTY_TEXT_SSR_MARKER
+      ) {
+        if (!claimHydrationText()) compatible = false;
+      }
+    }
+  };
+
+  claimChildren(root);
+
+  if (compatible && claimedRoot) return claimedRoot;
+
+  if (parent) {
+    if (claimedRoot.parentNode === parent) {
+      parent.replaceChild(root, claimedRoot);
+    } else {
+      parent.insertBefore(
+        root,
+        nextSibling?.parentNode === parent ? nextSibling : null,
+      );
+    }
+  }
+
+  return root;
+}
+
+// Installed only in client bundles that include hydrateToDOM. It remains
+// inert outside an active root or lazy-boundary hydration pass.
+setStaticTemplateHydrator(hydrateStaticTemplate);
 
 /**
  * Render the app to the dom
@@ -38,10 +112,7 @@ export function hydrateToDOM(
     const owner = createOwner();
 
     runWithRuntimeContextRoot(() => runWithOwner(owner, () => {
-      initializeHeadContext();
       initializeAsyncHydrationRuntime();
-      initializeLazyContext();
-      initializeErrorBoundaryContext();
 
       withHydration(() => {
         mountedNodes = withDOMNamespace(

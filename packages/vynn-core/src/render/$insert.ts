@@ -1,8 +1,8 @@
 import type { JSX } from "../jsx-runtime";
 
-import { isHydrating } from "../client/hydration";
+import { isHydrating } from "../client/hydration-runtime";
 import { $claimTemplateAnchor } from "./$template";
-import { withHeadElementCreation } from "./head-runtime";
+import { withHeadElementCreation } from "./head-element-context";
 
 import { $renderEffect } from "../reactivity/effect";
 import { hasRawHTMLContent } from "./$attr";

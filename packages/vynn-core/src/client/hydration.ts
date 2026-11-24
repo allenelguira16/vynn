@@ -8,6 +8,13 @@ import {
   TEXT_SSR_SEPARATOR,
 } from "../const";
 
+import {
+  diagnoseHydrationAttribute,
+  isHydrationElementCompatible,
+  synchronizeHydrationText,
+} from "./hydration-diagnostics";
+import { installHydrationRuntime } from "./hydration-runtime";
+
 import { removeInternalRangeMarkers } from "../dom/internal-range";
 import { getOwnerContext, setOwnerContext } from "../context/owner-context";
 import {
@@ -543,3 +550,19 @@ function getServerRenderedNodes(root: Node) {
 
   return [doms.filter(isElement), doms.filter(isTextNode), lazy] as const;
 }
+
+// Make the real implementation available only to bundles that include the
+// hydration entrypoint. Ordinary client rendering imports the lightweight bridge.
+installHydrationRuntime({
+  isClaimActive: isHydrationClaimActive,
+  isHydrating,
+  claimElement: <T extends Element>() => claimHydrationElement<T>(),
+  claimText: claimHydrationText,
+  isElementCompatible: isHydrationElementCompatible,
+  synchronizeText: synchronizeHydrationText,
+  diagnoseAttribute: diagnoseHydrationAttribute,
+  withServerRenderedLazy,
+  getServerRenderedLazyRange,
+  finishServerRenderedLazy,
+  runAfterHydration,
+});

@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import { withHydration } from "../src/client/hydration";
+import { hydrateToDOM } from "../src/client/hydrate-to-dom";
 import { initializeHeadContext } from "../src/context/head-context";
 import { createOwner, disposeOwner, runWithOwner } from "../src/life-cycle/owner";
 import { $attr } from "../src/render/$attr";
@@ -20,6 +21,84 @@ function createTestOwner() {
 
 afterEach(() => {
   document.body.innerHTML = "";
+});
+
+describe("$template static fast path", () => {
+  it("clones static markup into independent DOM trees", () => {
+    const factory = $template("<section><h1>Static heading</h1><p>Static content</p></section>", true);
+    const first = factory();
+    const second = factory();
+
+    expect(first).not.toBe(second);
+    expect(first.innerHTML).toBe("<h1>Static heading</h1><p>Static content</p>");
+    expect(second.innerHTML).toBe(first.innerHTML);
+  });
+
+  it("hydrates an existing server-rendered static subtree", () => {
+    const host = document.createElement("div");
+    host.innerHTML = "<main><h1>Static heading</h1><p>Static content</p></main>";
+    document.body.append(host);
+    const serverRoot = host.firstElementChild;
+    const factory = $template("<main><h1>Static heading</h1><p>Static content</p></main>", true);
+
+    const unmount = hydrateToDOM(
+      () => factory() as unknown as JSX.Element,
+      host,
+    );
+
+    expect(host.firstElementChild).toBe(serverRoot);
+    expect(host.textContent).toBe("Static headingStatic content");
+
+    unmount();
+    host.remove();
+  });
+
+  it("replaces a static subtree when a nested server element is incompatible", () => {
+    const host = document.createElement("div");
+    host.innerHTML = "<main><h2>Wrong heading</h2><p>Static content</p></main>";
+    document.body.append(host);
+    const serverRoot = host.firstElementChild;
+    const factory = $template("<main><h1>Static heading</h1><p>Static content</p></main>", true);
+
+    const unmount = hydrateToDOM(
+      () => factory() as unknown as JSX.Element,
+      host,
+    );
+
+    expect(host.firstElementChild).not.toBe(serverRoot);
+    expect(host.innerHTML).toBe("<main><h1>Static heading</h1><p>Static content</p></main>");
+
+    unmount();
+    host.remove();
+  });
+
+  it("clones static templates in the active SVG namespace", () => {
+    const factory = $template('<path d="M0 0L10 10"></path>', true);
+    const path = withDOMNamespace(SVG_NAMESPACE, () => factory());
+
+    expect(path.localName).toBe("path");
+    expect(path.namespaceURI).toBe(SVG_NAMESPACE);
+    expect(path.getAttribute("d")).toBe("M0 0L10 10");
+  });
+
+  it("creates complete static document roots", () => {
+    const factory = $template(
+      '<html lang="en"><head><title>Static document</title></head><body><main>Content</main></body></html>',
+      true,
+    );
+    const root = factory();
+
+    expect(root.localName).toBe("html");
+    expect(root.querySelector("title")?.textContent).toBe("Static document");
+    expect(root.querySelector("main")?.textContent).toBe("Content");
+  });
+
+  it("builds static SSR nodes directly from the markup", () => {
+    const factory = $template("<main><h1>Static heading</h1><p>Static content</p></main>", true);
+    const result = renderToServer(() => factory() as unknown as JSX.Element, "sync");
+
+    expect(result.body).toBe("<main><h1>Static heading</h1><p>Static content</p></main>");
+  });
 });
 
 describe("$template", () => {

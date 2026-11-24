@@ -1,8 +1,5 @@
 import { runWithRuntimeContextRoot } from "../runtime/context";
-import { initializeErrorBoundaryContext } from "../context/error-boundary";
-import { initializeHeadContext, refreshHeadCandidates } from "../context/head-context";
-import { synchronizeHeadContext } from "../render/head-runtime";
-import { initializeLazyContext } from "../context/lazy-context";
+import { captureHeadDocumentLifecycle } from "../render/head-document-lifecycle";
 import { JSX } from "../jsx-runtime";
 import { createOwner, disposeOwner, runWithOwner } from "../life-cycle/owner";
 import { addUnmountListener, isRootNode } from "../render/$cmpnt";
@@ -108,7 +105,7 @@ export function renderToDOM(
   let mountedNodes: Node[] = [];
   let restoreDocument: (() => void) | undefined;
   let releaseUnmountListener: (() => void) | undefined;
-  let headContext: ReturnType<typeof initializeHeadContext> | undefined;
+  let headDocumentLifecycle: ReturnType<typeof captureHeadDocumentLifecycle> = undefined;
 
   let node: Document | DocumentFragment | Element | null;
 
@@ -124,10 +121,10 @@ export function renderToDOM(
     const owner = createOwner();
 
     runWithRuntimeContextRoot(() => runWithOwner(owner, () => {
-      const currentHeadContext = initializeHeadContext();
-      headContext = currentHeadContext;
-      initializeLazyContext();
-      initializeErrorBoundaryContext();
+      // Snapshot the original shell before head declarations can reconcile it.
+      // Ordinary element mounts do not need a document-head snapshot.
+      const initialDocumentHeadNodes =
+        node instanceof Document ? Array.from(node.head?.childNodes ?? []) : undefined;
 
       const app = withDOMNamespace(
         node instanceof Element
@@ -135,8 +132,10 @@ export function renderToDOM(
           : HTML_NAMESPACE,
         () => resolveNode(App),
       );
-      const nodes = app.map((element) => element);
+      const nodes = app;
       mountedNodes = nodes;
+      headDocumentLifecycle =
+        node instanceof Document ? captureHeadDocumentLifecycle() : undefined;
 
       if (node instanceof Document) {
         const documentNode = node;
@@ -156,6 +155,7 @@ export function renderToDOM(
         const previousRoot = documentNode.documentElement;
         const previousHead = previousRoot?.querySelector("head");
         const previousBody = previousRoot?.querySelector("body");
+        const initialHeadNodes = previousHead ? (initialDocumentHeadNodes ?? []) : [];
         const preservedBodyNodes = previousBody ? Array.from(previousBody.childNodes) : [];
         const nextHead = root.querySelector("head");
         const nextBody = root.querySelector("body");
@@ -182,13 +182,12 @@ export function renderToDOM(
         // App-level and route-level head declarations may have been rendered
         // while the previous document was still active. Re-target their
         // candidates at the newly installed document and reconcile them there.
-        refreshHeadCandidates(currentHeadContext);
-        synchronizeHeadContext(currentHeadContext);
+        headDocumentLifecycle?.afterDocumentRootMounted();
 
         restoreDocument = () => {
           for (const marker of markers) marker.parentNode?.removeChild(marker);
           if (previousRoot && documentNode.documentElement === root) {
-            if (previousHead) previousHead.replaceChildren(...currentHeadContext.initialNodes);
+            if (previousHead) previousHead.replaceChildren(...initialHeadNodes);
             if (previousBody) previousBody.append(...preservedBodyNodes);
             documentNode.replaceChild(previousRoot, root);
           } else if (!previousRoot && documentNode.documentElement === root) {
@@ -204,7 +203,7 @@ export function renderToDOM(
 
     cleanup = () => {
       try {
-        if (restoreDocument && headContext) headContext.preserveInitialDocument = true;
+        if (restoreDocument) headDocumentLifecycle?.beforeDocumentRootUnmount();
         disposeOwner(owner);
       } finally {
         try {

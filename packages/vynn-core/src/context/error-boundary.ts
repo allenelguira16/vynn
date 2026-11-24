@@ -1,6 +1,11 @@
 import { ERROR_BOUNDARY_DATA_SSR_KEY } from "../const";
 import { getOwner } from "../life-cycle/owner";
-import { getOwnerContext, modifyOwnerContext, setOwnerContext } from "./owner-context";
+import {
+  getOwnerContext,
+  modifyOwnerContext,
+  setOwnerContext,
+  setRootOwnerContext,
+} from "./owner-context";
 
 export type ErrorBoundary = (error: Error) => void;
 
@@ -31,8 +36,8 @@ export function initializeErrorBoundaryContext() {
     throw new Error("[vynn]: initializeErrorBoundaryID must be inside owner context");
   }
 
-  setOwnerContext(ERROR_BOUNDARY_ID, 0);
-  setOwnerContext(ERROR_BOUNDARY_VALUES, []);
+  setRootOwnerContext(ERROR_BOUNDARY_ID, 0);
+  setRootOwnerContext(ERROR_BOUNDARY_VALUES, []);
 }
 
 export function getErrorBoundaryValues() {
@@ -40,10 +45,16 @@ export function getErrorBoundaryValues() {
 }
 
 export function getErrorBoundaryID(): number {
-  const id = getOwnerContext<number>(ERROR_BOUNDARY_ID);
+  let id = getOwnerContext<number>(ERROR_BOUNDARY_ID);
+
+  // Keep the boundary counter out of the startup path when no Catch is used.
+  if (id == null) {
+    initializeErrorBoundaryContext();
+    id = getOwnerContext<number>(ERROR_BOUNDARY_ID);
+  }
 
   if (id == null) {
-    throw new Error("[vynn]: initializeErrorBoundaryContext must be called first");
+    throw new Error("[vynn]: Catch requires an active owner.");
   }
 
   modifyOwnerContext<number>(ERROR_BOUNDARY_ID, (current) => current + 1);

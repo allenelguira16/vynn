@@ -20,6 +20,25 @@ async function flushUpdates() {
 }
 
 describe("$if branch lifecycle", () => {
+  it("mounts nested fragment results from component wrappers without losing the marker", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+
+    const first = document.createTextNode("first");
+    const second = document.createTextNode("second");
+    const Fragment = $cmpnt(() => [first, [second]] as unknown as JSX.Element);
+    const unmount = renderToDOM(() => Fragment() as unknown as JSX.Element, host);
+
+    try {
+      expect(host.textContent).toBe("firstsecond");
+      expect(host.childNodes).toHaveLength(3);
+      expect(host.childNodes[0]).toBe(first);
+      expect(host.childNodes[1]).toBe(second);
+    } finally {
+      unmount();
+    }
+  });
+
   it("disposes an inactive component branch and mounts a fresh instance when shown again", async () => {
     const host = document.createElement("div");
     document.body.append(host);

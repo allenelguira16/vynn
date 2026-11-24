@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { withHydration } from "../src/client/hydration";
 import { initializeHeadContext } from "../src/context/head-context";
@@ -51,6 +51,30 @@ describe("$text", () => {
     expect(children[2]).toBe(suffix);
 
     disposeOwner(owner);
+  });
+
+  it("reuses claimed static text without allocating a replacement node", () => {
+    const owner = createTestOwner();
+    const host = document.createElement("div");
+    const existing = document.createTextNode("Already rendered");
+    host.append(existing);
+
+    let claimed!: JSX.Element;
+    const createTextNode = vi.spyOn(document, "createTextNode");
+
+    try {
+      runWithOwner(owner, () => {
+        withHydration(() => {
+          claimed = $text("Already rendered");
+        }, host);
+      });
+
+      expect(claimed).toBe(existing);
+      expect(createTextNode).not.toHaveBeenCalled();
+    } finally {
+      createTextNode.mockRestore();
+      disposeOwner(owner);
+    }
   });
 
   it("does not claim body text while creating head metadata", () => {

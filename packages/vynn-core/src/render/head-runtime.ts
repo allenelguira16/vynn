@@ -9,6 +9,8 @@ import {
   getHeadWinners,
   getReplacedHeadCollections,
   notifyHeadContext,
+  getOptionalHeadContext,
+  refreshHeadCandidates,
 } from "../context/head-context";
 
 import {
@@ -18,38 +20,13 @@ import {
   runWithOwner,
 } from "../life-cycle/owner";
 import { getOwnerContext, setOwnerContext } from "../context/owner-context";
-import {
-  getContext,
-  runWithRuntimeContextScope,
-  setContext,
-} from "../runtime/context";
+import { runWithRuntimeContextScope } from "../runtime/context";
+import { withHeadElementCreation } from "./head-element-context";
+import { registerHeadDocumentLifecycle } from "./head-document-lifecycle";
 import { $renderEffect } from "../reactivity/effect";
 import { assertSafeAttributeName } from "./attribute-name";
 
 const HEAD_GROUP_CONTEXT = Symbol.for("vynn.head-group-context");
-const HEAD_ELEMENT_CREATION_CONTEXT = Symbol.for("vynn.head-element-creation");
-
-/**
- * Returns whether the current render is producing text for document metadata.
- * Such text is serialized into the head registry, not claimed from body HTML.
- */
-export function isCreatingHeadElement(): boolean {
-  return getContext<boolean>(HEAD_ELEMENT_CREATION_CONTEXT) === true;
-}
-
-/**
- * Temporarily marks synchronous child evaluation as head metadata creation.
- * The marker lives in a child runtime-context frame inherited by nested renders.
- */
-export function withHeadElementCreation<T>(callback: () => T): T {
-  if (!getOwner()) return callback();
-
-  return runWithRuntimeContextScope(() => {
-    setContext(HEAD_ELEMENT_CREATION_CONTEXT, true);
-    return callback();
-  });
-}
-
 export type HeadProps = Record<string, unknown>;
 export type HeadPropsInput = HeadProps | (() => HeadProps);
 
@@ -481,3 +458,19 @@ export function $registerHeadGroup(render: () => unknown): [] {
 
   return [];
 }
+
+// Install document-root hooks only in bundles that actually use head JSX.
+registerHeadDocumentLifecycle(() => {
+  const context = getOptionalHeadContext();
+  if (!context) return undefined;
+
+  return {
+    afterDocumentRootMounted() {
+      refreshHeadCandidates(context);
+      synchronizeHeadContext(context);
+    },
+    beforeDocumentRootUnmount() {
+      context.preserveInitialDocument = true;
+    },
+  };
+});

@@ -1,5 +1,6 @@
+import { getOwner } from "../life-cycle/owner";
 import { isWithinInternalRange } from "../dom/internal-range";
-import { getOwnerContext, setOwnerContext } from "./owner-context";
+import { getOwnerContext, setRootOwnerContext } from "./owner-context";
 
 export type HeadTag = "title" | "meta" | "link";
 
@@ -88,12 +89,13 @@ export function getOptionalHeadContext(): HeadContext | undefined {
 /** Returns the head registry associated with the current render root. */
 export function getHeadContext(): HeadContext {
   const context = getOptionalHeadContext();
+  if (context) return context;
 
-  if (!context) {
-    throw new Error("[vynn]: Head rendering requires an initialized document context.");
+  if (!getOwner()) {
+    throw new Error("[vynn]: Head rendering requires an active owner.");
   }
 
-  return context;
+  return initializeHeadContext();
 }
 
 /**
@@ -102,7 +104,7 @@ export function getHeadContext(): HeadContext {
  */
 export function initializeHeadContext(): HeadContext {
   const context = createHeadContext();
-  setOwnerContext<HeadContext>(HEAD_CONTEXT, context);
+  setRootOwnerContext<HeadContext>(HEAD_CONTEXT, context);
   return context;
 }
 

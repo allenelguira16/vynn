@@ -1,7 +1,7 @@
 import { bindRuntimeContext } from "../runtime/context";
 import type { JSX } from "../jsx-runtime";
 
-import { runAfterHydration } from "../client/hydration";
+import { runAfterHydration } from "../client/hydration-runtime";
 
 import { createOwner, runWithOwner } from "../life-cycle/owner";
 import { untrack } from "../reactivity/effect";
@@ -46,10 +46,11 @@ export function $cmpnt<P>(Component: ((props?: P) => JSX.Element) | (() => JSX.E
     return runWithOwner(owner, () => {
       try {
         const resolved = untrack(() => Component(props));
+        const nodes = Array.isArray(resolved) ? resolved.flat() : [resolved];
 
-        if (import.meta.env.SSR) return [resolved].flat();
+        if (!import.meta.env.SSR) nodes.push(marker!);
 
-        return [resolved, marker].flat();
+        return nodes;
       } finally {
         if (!import.meta.env.SSR && owner.mount.length) {
           runAfterHydration(() => {

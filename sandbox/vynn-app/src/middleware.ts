@@ -1,7 +1,6 @@
 import type { VynnMiddleware } from "vynn/server";
 
-const requestLogger: VynnMiddleware = async (context, next) => {
-  console.log(context);
+const requestLogger: VynnMiddleware = async (_context, next) => {
   return next();
 };
 

@@ -1255,6 +1255,11 @@ class TransformState {
       // transformBlockStatement lowers return expressions, callbacks,
       // variable initializers, and nested JSX expressions.
       const allocator = this.createIdentifierAllocator();
+      const body = node.body;
+      if (!isBlockStatement(body)) {
+        throw new Error("[Vynn compiler] Expected a function declaration body to be a block statement.");
+      }
+
       setNodeProperty(
         node,
         "body",
@@ -1264,13 +1269,13 @@ class TransformState {
               () =>
                 this.transformBlockStatement(
                   this.keyedForCallbacks.has(node)
-                    ? this.transformForCallbackItemParameter(node.params ?? [], node.body)
-                    : node.body,
+                    ? this.transformForCallbackItemParameter(node.params ?? [], body)
+                    : body,
                   allocator,
                 ),
               this.keyedForCallbacks.has(node),
             )
-          : this.transformBlockStatement(node.body, allocator),
+          : this.transformBlockStatement(body, allocator),
       );
 
       return node;
@@ -2499,6 +2504,11 @@ class TransformState {
       : functionExpression(null, parameters, body);
   }
 
+  private transformForCallbackItemParameter(
+    parameters: Node[],
+    body: NodeOfType<"BlockStatement">,
+  ): NodeOfType<"BlockStatement">;
+  private transformForCallbackItemParameter(parameters: Node[], body: Node): Node;
   private transformForCallbackItemParameter(parameters: Node[], body: Node): Node {
     const pattern = parameters[0];
     if (!isObjectPattern(pattern)) return body;
@@ -3130,19 +3140,24 @@ class TransformState {
     if (!serialized) return null;
 
     const { markup, bindings } = serialized;
-    const existingTemplate = this.templateFactories.get(markup);
+    const isDocumentTemplate = /^<(?:html|head|body|title|meta|link)(?:\s|>)/i.test(markup);
+    const useStaticTemplate = bindings.length === 0 && !isDocumentTemplate;
+    const templateKey = (useStaticTemplate ? "static:" : "dynamic:") + markup;
+    const existingTemplate = this.templateFactories.get(templateKey);
     const templateName = existingTemplate ?? this.generateUidIdentifier("tmpl");
 
     if (!existingTemplate) {
+      const templateArgs: Node[] = [stringLiteral(markup)];
+      if (useStaticTemplate) templateArgs.push(booleanLiteral(true));
       this.templateStatements.push(
         variableDeclaration("const", [
           variableDeclarator(
             templateName,
-            callExpression(this.getRuntimeHelper("$template"), [stringLiteral(markup)]),
+            callExpression(this.getRuntimeHelper("$template"), templateArgs),
           ),
         ]),
       );
-      this.templateFactories.set(markup, templateName);
+      this.templateFactories.set(templateKey, templateName);
     }
 
     if (bindings.length === 0) {
@@ -4534,6 +4549,10 @@ class TransformState {
           this.keyedForCallbacks.has(expression)
           ? this.transformForCallbackItemParameter(expression.params, expression.body)
           : expression.body;
+        if (!isBlockStatement(body)) {
+          throw new Error("[Vynn compiler] Expected a function expression body to be a block statement.");
+        }
+
         setNodeProperty(expression, "body", this.transformBlockStatement(body, allocator));
         return expression;
       };
@@ -4819,6 +4838,11 @@ class TransformState {
       }
 
       const nestedAllocator = this.createIdentifierAllocator();
+      const body = statement.body;
+      if (!isBlockStatement(body)) {
+        throw new Error("[Vynn compiler] Expected a function declaration body to be a block statement.");
+      }
+
       setNodeProperty(
         statement,
         "body",
@@ -4830,14 +4854,14 @@ class TransformState {
                   this.keyedForCallbacks.has(statement)
                     ? this.transformForCallbackItemParameter(
                         statement.params ?? [],
-                        statement.body,
+                        body,
                       )
-                    : statement.body,
+                    : body,
                   nestedAllocator,
                 ),
               this.keyedForCallbacks.has(statement),
             )
-          : this.transformBlockStatement(statement.body, nestedAllocator),
+          : this.transformBlockStatement(body, nestedAllocator),
       );
       return statement;
     }

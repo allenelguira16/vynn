@@ -70,13 +70,13 @@ export function createServerReference<T extends (...args: never[]) => unknown>(
     throw new TypeError("[Vynn] Invalid server-function implementation or ID.");
   }
 
-  const invoke = implementation as (...args: unknown[]) => unknown;
+  const invoke = implementation as unknown as (...args: unknown[]) => unknown;
 
   if (!getCaptures) {
     implementations.set(id, {
       implementation: (_captures, ...args) => invoke(...args),
       captureAware: false,
-      originalImplementation: implementation,
+      originalImplementation: invoke,
     });
     return implementation;
   }

@@ -1,6 +1,6 @@
 import type { JSX } from "../jsx-runtime";
 
-import { isHydrating } from "../client/hydration";
+import { isHydrating } from "../client/hydration-runtime";
 import { NotReadyError } from "../reactivity/async/not-ready-error";
 import { $renderEffect } from "../reactivity/effect";
 import { untrack } from "../reactivity/effect";

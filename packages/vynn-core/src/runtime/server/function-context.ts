@@ -60,7 +60,6 @@ export type RequestContext = {
   readonly locals: RequestContextLocals;
 };
 
-type ServerFunctionContext = RequestContext;
 
 type ServerFunctionContextInput = {
   request: Request;

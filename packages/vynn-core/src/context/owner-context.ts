@@ -23,6 +23,15 @@ export function setOwnerContext<T>(key: string | symbol, value: T): void {
   getOwner()?.context.set(key, value);
 }
 
+/** Writes a feature context on the root owner so sibling components share it. */
+export function setRootOwnerContext<T>(key: string | symbol, value: T): void {
+  let owner = getOwner();
+  if (!owner) return;
+
+  while (owner.parent) owner = owner.parent;
+  owner.context.set(key, value);
+}
+
 /** Updates the nearest existing value without shadowing it on a descendant. */
 export function modifyOwnerContext<T>(
   key: string | symbol,

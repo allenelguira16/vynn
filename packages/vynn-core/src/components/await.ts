@@ -1,6 +1,6 @@
 import type { JSX } from "../types/jsx";
 
-import { isHydrationClaimActive } from "../client/hydration";
+import { isHydrationClaimActive } from "../client/hydration-runtime";
 import { bindRuntimeContext, createRuntimeContext, runWithRuntimeContext } from "../runtime/context";
 import { enterAsyncBoundary } from "../context/async-boundary";
 import { isPromiseFromLazy } from "../runtime/lazy";

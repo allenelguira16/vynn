@@ -160,8 +160,7 @@ export function createSsrHandlerCode(options: {
     `const DEV_CSS_LINKS = ${JSON.stringify(devCssLinks)};`,
     ...(middlewareSpecifier
       ? [
-          `import * as middlewareModule from ${JSON.stringify(middlewareSpecifier)};`,
-          `const middleware = middlewareModule.default ?? middlewareModule.middleware;`,
+          `import middleware from ${JSON.stringify(middlewareSpecifier)};`,
           `if (middleware === undefined) throw new TypeError("[Vynn] src/middleware.ts must default-export a middleware function or array.");`,
         ]
       : []),

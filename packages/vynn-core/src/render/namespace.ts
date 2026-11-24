@@ -11,6 +11,8 @@ let currentNamespace = HTML_NAMESPACE;
  * component boundaries.
  */
 export function withDOMNamespace<T>(namespace: string, callback: () => T): T {
+  if (namespace === currentNamespace) return callback();
+
   const previous = currentNamespace;
   currentNamespace = namespace;
 

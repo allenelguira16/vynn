@@ -1,5 +1,8 @@
-import { claimHydrationText, isHydrationClaimActive } from "../client/hydration";
-import { synchronizeHydrationText } from "../client/hydration-diagnostics";
+import {
+  claimHydrationText,
+  isHydrationClaimActive,
+  synchronizeHydrationText,
+} from "../client/hydration-runtime";
 import { getErrorBoundary } from "../context/error-boundary";
 import { getRuntimeContext, runWithRuntimeContext } from "../runtime/context";
 

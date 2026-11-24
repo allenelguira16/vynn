@@ -1,7 +1,9 @@
 import type { SSR_ELEMENT } from "./resolve-node";
 
-import { isHydrationClaimActive } from "../client/hydration";
-import { diagnoseHydrationAttribute } from "../client/hydration-diagnostics";
+import {
+  isHydrationClaimActive,
+  diagnoseHydrationAttribute,
+} from "../client/hydration-runtime";
 
 import { $renderEffect } from "../reactivity/effect";
 import { assertSafeAttributeName } from "./attribute-name";

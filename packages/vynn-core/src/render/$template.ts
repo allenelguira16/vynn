@@ -1,14 +1,11 @@
-import { EMPTY_TEXT_SSR_MARKER } from "../const";
 import {
   claimHydrationElement,
   claimHydrationText,
   isHydrationClaimActive,
-} from "../client/hydration";
-import {
   isHydrationElementCompatible,
   synchronizeHydrationText,
-} from "../client/hydration-diagnostics";
-
+} from "../client/hydration-runtime";
+import { EMPTY_TEXT_SSR_MARKER } from "../const";
 import {
   getChildDOMNamespace,
   getElementNamespace,
@@ -70,13 +67,26 @@ type TemplateData = {
   simpleTag?: string;
 };
 
+type StaticTemplateData = {
+  descriptor?: TemplateElementDescriptor;
+  template?: HTMLTemplateElement;
+  documentRoot?: Element;
+  simpleTag?: string;
+};
+
 const templateInstances = new WeakMap<object, TemplateInstance>();
 const templateDataCache = new Map<string, TemplateData>();
+const staticTemplateDataCache = new Map<string, StaticTemplateData>();
+
+type StaticTemplateHydrator = (root: Element) => Element;
+let staticTemplateHydrator: StaticTemplateHydrator | undefined;
+
+export function setStaticTemplateHydrator(hydrator: StaticTemplateHydrator): void {
+  staticTemplateHydrator = hydrator;
+}
 
 function getTemplateAnchorMarker(id: string): string {
-  return id.startsWith("start-")
-    ? "$vs" + id.slice("start-".length)
-    : "$v" + id;
+  return id.startsWith("start-") ? "$vs" + id.slice("start-".length) : "$v" + id;
 }
 
 function getTemplateAnchorId(value: string): string | undefined {
@@ -129,9 +139,7 @@ function normalizeTemplateTextAnchors(root: Node): void {
       found = true;
 
       if (match.index > offset) {
-        replacement.appendChild(
-          ownerDocument.createTextNode(value.slice(offset, match.index)),
-        );
+        replacement.appendChild(ownerDocument.createTextNode(value.slice(offset, match.index)));
       }
 
       replacement.appendChild(ownerDocument.createComment(match[1]));
@@ -193,10 +201,7 @@ function findHydrationHeadElement(
   let current = start;
 
   while (current) {
-    if (
-      current.nodeType === 1 &&
-      matchesHydrationHeadElement(descriptor, current as Element)
-    ) {
+    if (current.nodeType === 1 && matchesHydrationHeadElement(descriptor, current as Element)) {
       return current as Element;
     }
 
@@ -206,10 +211,7 @@ function findHydrationHeadElement(
   return undefined;
 }
 
-function ensureTitleHydrationSlots(
-  descriptor: TemplateElementDescriptor,
-  element: Element,
-): void {
+function ensureTitleHydrationSlots(descriptor: TemplateElementDescriptor, element: Element): void {
   const start = descriptor.children.find(
     (child): child is TemplateAnchorDescriptor =>
       child.kind === "anchor" && child.id.startsWith("start-"),
@@ -218,14 +220,10 @@ function ensureTitleHydrationSlots(
 
   const endId = start.id.slice("start-".length);
   const hasStart = Array.from(element.childNodes).some(
-    (child) =>
-      child.nodeType === 8 &&
-      getTemplateAnchorId((child as Comment).data) === start.id,
+    (child) => child.nodeType === 8 && getTemplateAnchorId((child as Comment).data) === start.id,
   );
   const hasEnd = Array.from(element.childNodes).some(
-    (child) =>
-      child.nodeType === 8 &&
-      getTemplateAnchorId((child as Comment).data) === endId,
+    (child) => child.nodeType === 8 && getTemplateAnchorId((child as Comment).data) === endId,
   );
   if (hasStart && hasEnd) return;
 
@@ -400,10 +398,10 @@ function describeDOMNode(node: Node): TemplateNodeDescriptor {
   return {
     kind: "element",
     tag: element.localName,
-    attributes: Array.from(
-      element.attributes,
-      (attribute): [string, string] => [attribute.name, attribute.value],
-    ),
+    attributes: Array.from(element.attributes, (attribute): [string, string] => [
+      attribute.name,
+      attribute.value,
+    ]),
     children: Array.from(element.childNodes, describeDOMNode),
   };
 }
@@ -684,10 +682,7 @@ function insertHydratedNode(
   parent.insertBefore(node, parent.firstChild);
 }
 
-function claimTemplateNode(
-  descriptor: TemplateNodeDescriptor,
-  instance: TemplateInstance,
-): void {
+function claimTemplateNode(descriptor: TemplateNodeDescriptor, instance: TemplateInstance): void {
   const parentDescriptor = instance.parents.get(descriptor);
   const parent = parentDescriptor
     ? (instance.nodes.get(parentDescriptor) as Element | undefined)
@@ -724,11 +719,7 @@ function claimTemplateNode(
 
     const claimed = claimHydrationElement<Element>();
 
-    if (
-      !claimed &&
-      existing instanceof Element &&
-      (!parent || existing.parentNode === parent)
-    ) {
+    if (!claimed && existing instanceof Element && (!parent || existing.parentNode === parent)) {
       registerTemplateNode(instance, descriptor, existing);
       return;
     }
@@ -737,11 +728,7 @@ function claimTemplateNode(
     const claimedNext = claimed?.nextSibling ?? null;
     let element: Element;
 
-    const claimedCompatible = isHydrationElementCompatible(
-      claimed,
-      descriptor.tag,
-      namespace,
-    );
+    const claimedCompatible = isHydrationElementCompatible(claimed, descriptor.tag, namespace);
 
     if (claimed && claimedCompatible) {
       element = claimed;
@@ -795,11 +782,7 @@ function claimTemplateNode(
   const claimedNext = claimed?.nextSibling ?? null;
   let text: Text;
 
-  if (
-    !claimed &&
-    existing instanceof Text &&
-    (!parent || existing.parentNode === parent)
-  ) {
+  if (!claimed && existing instanceof Text && (!parent || existing.parentNode === parent)) {
     synchronizeHydrationText(existing, descriptor.value);
     registerTemplateNode(instance, descriptor, existing);
     return;
@@ -833,10 +816,7 @@ function claimTemplateNode(
   registerTemplateNode(instance, descriptor, text);
 }
 
-function claimTemplateThrough(
-  instance: TemplateInstance,
-  target: TemplateNodeDescriptor,
-): void {
+function claimTemplateThrough(instance: TemplateInstance, target: TemplateNodeDescriptor): void {
   const targetIndex = instance.indices.get(target);
 
   if (targetIndex === undefined) {
@@ -860,7 +840,9 @@ function getTemplateData(markup: string, namespace: string): TemplateData {
   // <body>, and <option>, while still using the single $template API.
   const simpleVoid = /^<([A-Za-z][A-Za-z0-9:._-]*)\s*>$/.exec(markup);
   const simplePair = /^<([A-Za-z][A-Za-z0-9:._-]*)>\s*<\/\1\s*>$/.exec(markup);
-  const simpleTag = simplePair?.[1] ?? (simpleVoid && voidElements.has(simpleVoid[1].toLowerCase()) ? simpleVoid[1] : undefined);
+  const simpleTag =
+    simplePair?.[1] ??
+    (simpleVoid && voidElements.has(simpleVoid[1].toLowerCase()) ? simpleVoid[1] : undefined);
 
   if (import.meta.env.SSR) {
     const descriptor: TemplateElementDescriptor = simpleTag
@@ -913,8 +895,7 @@ function getTemplateData(markup: string, namespace: string): TemplateData {
   }
 
   const template = document.createElement("template");
-  template.innerHTML =
-    namespace === SVG_NAMESPACE ? "<svg>" + markup + "</svg>" : markup;
+  template.innerHTML = namespace === SVG_NAMESPACE ? "<svg>" + markup + "</svg>" : markup;
 
   const root =
     namespace === SVG_NAMESPACE
@@ -936,12 +917,130 @@ function getTemplateData(markup: string, namespace: string): TemplateData {
   return data;
 }
 
+function getStaticTemplateData(markup: string, namespace: string): StaticTemplateData {
+  const key =
+    (import.meta.env.SSR ? "server-static:" : "client-static:") + namespace + ":" + markup;
+  const cached = staticTemplateDataCache.get(key);
+  if (cached) return cached;
+
+  const simpleVoid = /^<([A-Za-z][A-Za-z0-9:._-]*)\s*>$/.exec(markup);
+  const simplePair = /^<([A-Za-z][A-Za-z0-9:._-]*)>\s*<\/\1\s*>$/.exec(markup);
+  const simpleTag =
+    simplePair?.[1] ??
+    (simpleVoid && voidElements.has(simpleVoid[1].toLowerCase()) ? simpleVoid[1] : undefined);
+
+  if (import.meta.env.SSR) {
+    const descriptor: TemplateElementDescriptor = simpleTag
+      ? { kind: "element", tag: simpleTag, attributes: [], children: [] }
+      : parseServerTemplate(markup);
+    const data: StaticTemplateData = { descriptor };
+    if (simpleTag) data.simpleTag = simpleTag;
+    staticTemplateDataCache.set(key, data);
+    return data;
+  }
+
+  if (simpleTag) {
+    const data = { simpleTag };
+    staticTemplateDataCache.set(key, data);
+    return data;
+  }
+
+  if (/^<html(?:\s|>)/i.test(markup)) {
+    const parsed = new DOMParser().parseFromString(markup, "text/html");
+    const documentRoot = parsed.documentElement;
+
+    if (!documentRoot || documentRoot.localName !== "html") {
+      throw new Error("[vynn]: A document template must have an <html> root.");
+    }
+
+    normalizeTemplateTextAnchors(documentRoot);
+    const data = { documentRoot };
+    staticTemplateDataCache.set(key, data);
+    return data;
+  }
+
+  const template = document.createElement("template");
+  template.innerHTML = namespace === SVG_NAMESPACE ? "<svg>" + markup + "</svg>" : markup;
+  const data = { template };
+  staticTemplateDataCache.set(key, data);
+  return data;
+}
+
+function createSSRStaticTemplateNode(
+  descriptor: TemplateNodeDescriptor,
+  namespace: string,
+): SSR_NODE {
+  if (descriptor.kind === "text") return createSSRText(descriptor.value);
+  if (descriptor.kind === "anchor") {
+    return createSSRComment(getTemplateAnchorMarker(descriptor.id));
+  }
+
+  const element = withDOMNamespace(namespace, () => createSSRNode(descriptor.tag));
+  for (const [name, value] of descriptor.attributes) {
+    element.attributes[name] = value;
+  }
+
+  const childNamespace = getChildDOMNamespace(element.namespaceURI, descriptor.tag);
+  for (const child of descriptor.children) {
+    element.appendChild(createSSRStaticTemplateNode(child, childNamespace));
+  }
+
+  return element;
+}
+
 /**
- * Creates a reusable template factory from static markup. The runtime derives
- * its private SSR and hydration blueprint from the markup. The compiler passes
- * neither a descriptor nor a node-binding callback.
+ * Creates a reusable factory for JSX subtrees with no dynamic bindings.
+ *
+ * This path avoids hydration descriptors, node maps, and per-instance
+ * template state. It is selected internally by $template().
  */
-export function $template<T extends Element = Element>(markup: string): () => T {
+function createStaticTemplateFactory<T extends Element = Element>(
+  markup: string,
+): () => T {
+  const rootTag = /^<([A-Za-z][A-Za-z0-9:._-]*)/.exec(markup)?.[1] ?? "div";
+
+  return function staticTemplate(): T {
+    const namespace = getElementNamespace(rootTag);
+    const data = getStaticTemplateData(markup, namespace);
+
+    if (import.meta.env.SSR) {
+      return createSSRStaticTemplateNode(data.descriptor!, namespace) as unknown as T;
+    }
+
+    if (data.documentRoot) {
+      return data.documentRoot.cloneNode(true) as T;
+    }
+
+    let root: Element;
+
+    if (data.simpleTag) {
+      root = createDOMElement(data.simpleTag, namespace);
+    } else {
+      const fragment = data.template!.content.cloneNode(true) as DocumentFragment;
+      const templateRoot =
+        namespace === SVG_NAMESPACE
+          ? fragment.firstElementChild?.firstElementChild
+          : fragment.firstElementChild;
+
+      if (!templateRoot) {
+        throw new Error("[vynn]: A compiled template must contain exactly one root element.");
+      }
+
+      normalizeTemplateTextAnchors(templateRoot);
+      root = templateRoot;
+    }
+
+    return (staticTemplateHydrator?.(root) ?? root) as T;
+  };
+}
+
+/**
+ * Creates a reusable template factory for markup with runtime bindings.
+ * The runtime derives its private SSR and hydration blueprint from the markup.
+ */
+function createDynamicTemplateFactory<T extends Element = Element>(
+  markup: string,
+): () => T {
   const rootTag = /^<([A-Za-z][A-Za-z0-9:._-]*)/.exec(markup)?.[1] ?? "div";
 
   return function template(): T {
@@ -967,11 +1066,7 @@ export function $template<T extends Element = Element>(markup: string): () => T 
       const claimedNext = claimed?.nextSibling ?? null;
       let root: Element;
 
-      const claimedCompatible = isHydrationElementCompatible(
-        claimed,
-        descriptor.tag,
-        namespace,
-      );
+      const claimedCompatible = isHydrationElementCompatible(claimed, descriptor.tag, namespace);
 
       if (claimed && claimedCompatible) {
         root = claimed;
@@ -1001,7 +1096,7 @@ export function $template<T extends Element = Element>(markup: string): () => T 
         }
 
         if (claimedParent instanceof Document) {
-          claimedParent.replaceChild(root, claimed);
+          claimedParent.replaceChild(root, claimed as Node);
         } else if (claimedParent) {
           claimedParent.insertBefore(
             root,
@@ -1039,6 +1134,22 @@ export function $template<T extends Element = Element>(markup: string): () => T 
     mapDOMTemplateNode(descriptor, root, instance);
     return root as T;
   };
+}
+
+/**
+ * Creates a reusable JSX template factory.
+ *
+ * The compiler passes the static flag only when the subtree has no runtime
+ * bindings. Keeping that choice here leaves one helper in the runtime API
+ * while preserving separate optimized implementations.
+ */
+export function $template<T extends Element = Element>(
+  markup: string,
+  isStatic = false,
+): () => T {
+  return isStatic
+    ? createStaticTemplateFactory<T>(markup)
+    : createDynamicTemplateFactory<T>(markup);
 }
 
 /**
@@ -1081,10 +1192,7 @@ export function $child<E extends Element = Element>(parent: Element | SSR_ELEMEN
 }
 
 /** Gets a following sibling in the template's authored child sequence. */
-export function $sibling<E extends Element = Element>(
-  node: Node | SSR_NODE,
-  count = 1,
-): E {
+export function $sibling<E extends Element = Element>(node: Node | SSR_NODE, count = 1): E {
   if (!Number.isInteger(count) || count < 0) {
     throw new RangeError("[vynn]: $sibling() expects a non-negative integer count.");
   }
@@ -1115,10 +1223,7 @@ export function $sibling<E extends Element = Element>(
  * the marker lets generated sibling walks continue from marker.nextSibling,
  * after any server-rendered dynamic children that precede it.
  */
-export function $claimTemplateAnchor(
-  parent: Element | SSR_ELEMENT,
-  id: string,
-): Node | SSR_NODE {
+export function $claimTemplateAnchor(parent: Element | SSR_ELEMENT, id: string): Node | SSR_NODE {
   const instance = templateInstances.get(parent as object);
   const parentDescriptor = instance?.descriptors.get(parent as object);
 

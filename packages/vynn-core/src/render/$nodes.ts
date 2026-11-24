@@ -1,4 +1,4 @@
-import type { ServerRenderedLazyRange } from "../client/hydration";
+import type { ServerRenderedLazyRange } from "../client/hydration-runtime";
 import type { JSX } from "../jsx-runtime";
 
 

@@ -1,4 +1,9 @@
-import { getOwnerContext, modifyOwnerContext, setOwnerContext } from "./owner-context";
+import {
+  getOwnerContext,
+  modifyOwnerContext,
+  setOwnerContext,
+  setRootOwnerContext,
+} from "./owner-context";
 
 const LAZY_ID = Symbol("vynn.lazy-id");
 const LAZY_ID_RESERVATIONS = Symbol("vynn.lazy-id-reservations");
@@ -13,11 +18,11 @@ type LazyIDReservationRegistry = Map<string, number>;
 export type LazyIDReservations = Record<string, number>;
 
 export function initializeLazyContext() {
-  setOwnerContext<LazyIdScope>(LAZY_ID, {
+  setRootOwnerContext<LazyIdScope>(LAZY_ID, {
     prefix: "",
     next: 0,
   });
-  setOwnerContext<LazyIDReservationRegistry>(LAZY_ID_RESERVATIONS, new Map([["", 0]]));
+  setRootOwnerContext<LazyIDReservationRegistry>(LAZY_ID_RESERVATIONS, new Map([["", 0]]));
 }
 
 /**
@@ -29,12 +34,16 @@ export function initializeLazyContext() {
  * it skips during hydration.
  */
 export function getLazyID(): string {
-  const scope = getOwnerContext<LazyIdScope>(LAZY_ID);
+  let scope = getOwnerContext<LazyIdScope>(LAZY_ID);
+
+  // Lazy identity state is allocated only when the first lazy component is used.
+  if (!scope) {
+    initializeLazyContext();
+    scope = getOwnerContext<LazyIdScope>(LAZY_ID);
+  }
 
   if (!scope) {
-    throw new Error(
-      "[vynn]: initializeLazyContext is not yet initialized, run it first before using getLazyID",
-    );
+    throw new Error("[vynn]: lazy() requires an active owner.");
   }
 
   const next = scope.next + 1;

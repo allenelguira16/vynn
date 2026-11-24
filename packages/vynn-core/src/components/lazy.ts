@@ -4,7 +4,7 @@ import {
   finishServerRenderedLazy,
   getServerRenderedLazyRange,
   withServerRenderedLazy,
-} from "../client/hydration";
+} from "../client/hydration-runtime";
 import { LAZY_END_SSR_MARKER, LAZY_START_SSR_MARKER } from "../const";
 
 import { getLazyID, initializeLazyScope } from "../context/lazy-context";

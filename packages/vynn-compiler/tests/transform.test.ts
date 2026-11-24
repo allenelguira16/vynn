@@ -34,8 +34,8 @@ describe("Vynn Oxc JSX compiler", () => {
       "page.tsx",
     );
 
-    expect(code).toContain("_$template(");
-    expect(code).toMatch(/const _tmpl\d* = _\$template\(/);
+    expect(code).toMatch(/_\$template\("[^"]+", true\)/);
+    expect(code).toMatch(/const _tmpl\d* = _\$template\("[^"]+", true\)/);
     expect(code).not.toContain("TemplateDescriptor");
     expect(code).not.toContain("_$child(");
     expect(code.indexOf("const _tmpl")).toBeLessThan(code.indexOf("function Page"));
@@ -102,7 +102,7 @@ describe("Vynn Oxc JSX compiler", () => {
     );
 
     expect(code).toContain(
-      '_$template("<table><tbody><tr><td>First row</td></tr><tr><td>Second row</td></tr></tbody></table>")',
+      '_$template("<table><tbody><tr><td>First row</td></tr><tr><td>Second row</td></tr></tbody></table>", true)',
     );
     expect(code).not.toContain("$txt");
   });
@@ -115,7 +115,7 @@ describe("Vynn Oxc JSX compiler", () => {
       "repeated.tsx",
     );
 
-    expect(code.match(/_\$template\(/g)).toHaveLength(1);
+    expect(code.match(/_\$template\("[^"]+", true\)/g)).toHaveLength(1);
     expect(code.match(/_tmpl\d*\(/g)).toHaveLength(2);
   });
 
@@ -204,6 +204,28 @@ describe("Vynn Oxc JSX compiler", () => {
 
     expect(code).toMatch(/aria-hidden=\\?"true\\?"/);
     expect(code).not.toContain('disabled=""');
+  });
+
+  it("keeps full-document templates on the hydration-aware path", () => {
+    const code = transformVynnOxc(
+      "function DocumentPage() { return <html><head><title>Page</title></head><body><main>Content</main></body></html>; }",
+      "document.tsx",
+    );
+
+    expect(code).toContain("_$template(");
+    expect(code).not.toMatch(/_\$template\("[^"]+", true\)/);
+  });
+
+  it("keeps static and dynamic template factories separate when their markup matches", () => {
+    const code = transformVynnOxc(
+      `function Buttons(props: { title: string }) {
+        return <><button /><button title={props.title} /></>;
+      }`,
+      "buttons.tsx",
+    );
+
+    expect(code).toContain('_$template("<button></button>", true)');
+    expect(code).toContain('_$template("<button></button>")');
   });
 
   it("uses one mixed template for reactive attributes, events, and children", () => {
@@ -630,7 +652,7 @@ describe("Vynn compiler output", () => {
       "page.tsx",
     );
 
-    expect(result.code).toContain("_$template");
+    expect(result.code).toMatch(/_\$template\("[^"]+", true\)/);
     expect(result.map).toMatchObject({
       version: expect.any(Number),
       sources: expect.any(Array),
