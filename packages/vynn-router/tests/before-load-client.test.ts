@@ -71,6 +71,202 @@ describe("client router beforeLoad", () => {
     unmount();
   });
 
+  it("keeps the current route visible while a destination beforeLoad is pending", async () => {
+    let finishGuard!: () => void;
+    const signals: AbortSignal[] = [];
+
+    const routes: Route[] = [
+      {
+        path: "/",
+        component: (props) => <main>{props.children}</main>,
+        children: [
+          {
+            path: "/",
+            component: () => textNode("p", "home content"),
+          },
+          {
+            path: "poke-dex",
+            beforeLoad: ({ signal }) => {
+              signals.push(signal);
+
+              return new Promise<void>((resolve) => {
+                finishGuard = resolve;
+              });
+            },
+            component: () => textNode("p", "poke dex content"),
+          },
+        ],
+      },
+    ];
+
+    const host = document.createElement("div");
+    document.body.append(host);
+
+    const unmount = renderToDOM(
+      () => Router({ url: "/", routes }) as unknown as JSX.Element,
+      host,
+    );
+
+    const layout = host.querySelector("main");
+    expect(layout).not.toBeNull();
+    expect(host.textContent).toContain("home content");
+
+    navigate("/poke-dex");
+    await Promise.resolve();
+
+    expect(signals).toHaveLength(1);
+    expect(host.querySelector("main")).toBe(layout);
+    expect(host.textContent).toContain("home content");
+    expect(host.textContent).not.toContain("poke dex content");
+
+    finishGuard();
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    expect(host.querySelector("main")).toBe(layout);
+    expect(host.textContent).toContain("poke dex content");
+    expect(host.textContent).not.toContain("home content");
+
+    unmount();
+    expect(signals[0].aborted).toBe(true);
+  });
+
+  it("aborts a pending destination guard when a newer navigation supersedes it", async () => {
+    let finishGuard!: () => void;
+    const signals: AbortSignal[] = [];
+
+    const routes: Route[] = [
+      {
+        path: "/",
+        component: (props) => <main>{props.children}</main>,
+        children: [
+          {
+            path: "/",
+            component: () => textNode("p", "home content"),
+          },
+          {
+            path: "poke-dex",
+            beforeLoad: ({ signal }) => {
+              signals.push(signal);
+
+              return new Promise<void>((resolve) => {
+                finishGuard = resolve;
+              });
+            },
+            component: () => textNode("p", "stale poke dex content"),
+          },
+          {
+            path: "settings",
+            component: () => textNode("p", "settings content"),
+          },
+        ],
+      },
+    ];
+
+    const host = document.createElement("div");
+    document.body.append(host);
+
+    const unmount = renderToDOM(
+      () => Router({ url: "/", routes }) as unknown as JSX.Element,
+      host,
+    );
+
+    navigate("/poke-dex");
+    await Promise.resolve();
+
+    expect(signals).toHaveLength(1);
+    expect(signals[0].aborted).toBe(false);
+    expect(host.textContent).toContain("home content");
+
+    navigate("/settings");
+
+    expect(signals[0].aborted).toBe(true);
+    expect(host.textContent).toContain("settings content");
+    expect(host.textContent).not.toContain("stale poke dex content");
+
+    finishGuard();
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    expect(window.location.pathname).toBe("/settings");
+    expect(host.textContent).toContain("settings content");
+    expect(host.textContent).not.toContain("stale poke dex content");
+
+    unmount();
+  });
+
+  it("keeps the current route visible until a pending destination guard redirects", async () => {
+    let finishGuard!: () => void;
+    const scheduledFrames: FrameRequestCallback[] = [];
+    requestAnimationFrameDescriptor = Object.getOwnPropertyDescriptor(
+      window,
+      "requestAnimationFrame",
+    );
+    Object.defineProperty(window, "requestAnimationFrame", {
+      configurable: true,
+      value: (callback: FrameRequestCallback) => {
+        scheduledFrames.push(callback);
+        return scheduledFrames.length;
+      },
+    });
+
+    const routes: Route[] = [
+      {
+        path: "/",
+        component: (props) => <main>{props.children}</main>,
+        children: [
+          {
+            path: "/",
+            component: () => textNode("p", "home content"),
+          },
+          {
+            path: "redirect",
+            beforeLoad: async () => {
+              await new Promise<void>((resolve) => {
+                finishGuard = resolve;
+              });
+              redirect("/target?id=1");
+            },
+            component: () => textNode("p", "redirect page must not render"),
+          },
+          {
+            path: "target",
+            component: () => textNode("p", "target page content"),
+          },
+        ],
+      },
+    ];
+
+    const host = document.createElement("div");
+    document.body.append(host);
+
+    const unmount = renderToDOM(
+      () => Router({ url: "/", routes }) as unknown as JSX.Element,
+      host,
+    );
+
+    navigate("/redirect");
+    await Promise.resolve();
+
+    expect(host.textContent).toContain("home content");
+    expect(host.textContent).not.toContain("redirect page must not render");
+
+    finishGuard();
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    expect(host.textContent).toContain("home content");
+    expect(host.textContent).not.toContain("redirect page must not render");
+    expect(scheduledFrames).toHaveLength(1);
+
+    scheduledFrames.shift()?.(0);
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    expect(window.location.pathname).toBe("/target");
+    expect(window.location.search).toBe("?id=1");
+    expect(host.textContent).toContain("target page content");
+    expect(host.textContent).not.toContain("home content");
+
+    unmount();
+  });
+
   it("commits the destination route after an asynchronous beforeLoad redirect", async () => {
     history.replaceState(null, "", "/redirect");
 
