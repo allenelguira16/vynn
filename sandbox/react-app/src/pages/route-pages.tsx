@@ -9,6 +9,7 @@ export const NonAsyncSuspensePage = lazy(() => import("./non-async-suspense"));
 export const StackedSuspensePage = lazy(() => import("./stacked-suspense"));
 export const PokeDexPage = lazy(() => import("./poke-dex"));
 export const PokeDexAwaitPage = lazy(() => import("./poke-dex-await"));
+export const RowsPage = lazy(() => import("./rows"));
 export const RedirectPage = lazy(() => import("./redirect"));
 export const ParamsPage = lazy(() => import("./params"));
 export const NotFoundPage = lazy(() => import("./not-found"));

@@ -18,6 +18,7 @@ import {
   PokeDexAwaitPage,
   PokeDexPage,
   RedirectPage,
+  RowsPage,
   StackedSuspensePage,
 } from "./pages/route-pages";
 import HomePage from "./pages/home";
@@ -75,6 +76,7 @@ export default function App() {
           <Route path="stacked-suspense" element={<PageBoundary><StackedSuspensePage /></PageBoundary>} />
           <Route path="poke-dex" element={<PageBoundary><PokeDexPage /></PageBoundary>} />
           <Route path="poke-dex-await" element={<PageBoundary><PokeDexAwaitPage /></PageBoundary>} />
+          <Route path="rows" element={<PageBoundary><RowsPage /></PageBoundary>} />
           <Route path="redirect" element={<PageBoundary><RedirectPage /></PageBoundary>} />
           <Route path="params/:id" element={<PageBoundary><ParamsPage /></PageBoundary>} />
           <Route path="*" element={<PageBoundary><NotFoundPage /></PageBoundary>} />

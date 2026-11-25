@@ -15,6 +15,7 @@ const NonAsyncSuspensePage = lazy(() => import("./pages/non-async-suspense/page"
 const StackedSuspensePage = lazy(() => import("./pages/stacked-suspense/page"));
 const PokeDexPage = lazy(() => import("./pages/poke-dex/page"));
 const PokeDexAwaitPage = lazy(() => import("./pages/poke-dex-await/page"));
+const RowsPage = lazy(() => import("./pages/rows/page"));
 const RedirectPage = lazy(() => import("./pages/redirect/page"));
 const ParamsPage = lazy(() => import("./pages/params/page"));
 
@@ -38,6 +39,7 @@ export default function App() {
             <Route path="/stacked-suspense" component={() => <LayoutPage><StackedSuspensePage /></LayoutPage>} />
             <Route path="/poke-dex" component={() => <LayoutPage><PokeDexPage /></LayoutPage>} />
             <Route path="/poke-dex-await" component={() => <LayoutPage><PokeDexAwaitPage /></LayoutPage>} />
+            <Route path="/rows" component={() => <LayoutPage><RowsPage /></LayoutPage>} />
             <Route path="/redirect" component={RedirectPage} />
             <Route path="/params/:id" component={() => <LayoutPage><ParamsPage /></LayoutPage>} />
             <Route default component={() => <LayoutPage><NotFoundPage /></LayoutPage>} />
