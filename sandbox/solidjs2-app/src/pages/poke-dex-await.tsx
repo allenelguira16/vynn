@@ -1,13 +1,4 @@
-import {
-  For,
-  Loading,
-  Show,
-  createMemo,
-  createSignal,
-  isPending,
-  onCleanup,
-  onSettled,
-} from "solid-js";
+import { For, Loading, createMemo, createSignal, isPending, onCleanup, onSettled } from "solid-js";
 
 import { Template } from "../components/template";
 import { getPokedex, name, sleep, type PokeDexData } from "../utils";
@@ -103,46 +94,35 @@ export default function PokeDexAwait() {
 
           <tbody>
             <Loading fallback={<LoadingRows />}>
-              <Show
-                when={isPending(pokeDex)}
-                fallback={
-                  <>
-                    <For each={sortedPokeDex().results}>
-                      {(pokemon, index) => (
-                        <Row name={pokemon.name} url={pokemon.url} index={index()} />
-                      )}
-                    </For>
+              <For each={sortedPokeDex().results}>
+                {(pokemon, index) => <Row name={pokemon.name} url={pokemon.url} index={index()} />}
+              </For>
 
-                    <tr>
-                      <td colspan={3}>
-                        <div class="flex gap-4 justify-center">
-                          <button
-                            class="btn"
-                            onClick={() => {
-                              changeUrl(sortedPokeDex().previous);
-                            }}
-                            disabled={isPending(pokeDex) || !sortedPokeDex().previous}
-                          >
-                            Previous
-                          </button>
+              <tr>
+                <td colspan={3}>
+                  <div class="flex gap-4 justify-center">
+                    <button
+                      class="btn"
+                      onClick={() => {
+                        changeUrl(sortedPokeDex().previous);
+                      }}
+                      disabled={isPending(pokeDex) || !sortedPokeDex().previous}
+                    >
+                      Previous
+                    </button>
 
-                          <button
-                            class="btn"
-                            onClick={() => {
-                              changeUrl(sortedPokeDex().next);
-                            }}
-                            disabled={isPending(pokeDex) || !sortedPokeDex().next}
-                          >
-                            Next
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  </>
-                }
-              >
-                <LoadingRows />
-              </Show>
+                    <button
+                      class="btn"
+                      onClick={() => {
+                        changeUrl(sortedPokeDex().next);
+                      }}
+                      disabled={isPending(pokeDex) || !sortedPokeDex().next}
+                    >
+                      Next
+                    </button>
+                  </div>
+                </td>
+              </tr>
             </Loading>
           </tbody>
         </table>
