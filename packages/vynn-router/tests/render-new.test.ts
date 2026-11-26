@@ -155,7 +155,10 @@ describe("render_new router adapter", () => {
     const clientScope = createScope(null);
     const clientRouter = runWithScope(
       clientScope,
-      () => createRouter({ routes, url: "/" }),
+      () => createRouter({
+        routes,
+        history: createMemoryHistory({ initialEntries: ["/"] }),
+      }),
     );
     const clientApp = runWithScope(
       clientScope,
