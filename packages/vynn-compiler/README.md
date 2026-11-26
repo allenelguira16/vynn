@@ -59,9 +59,12 @@ props are emitted as lazy getters so reactive values remain live. Component
 children are available through a `children` getter.
 
 Dynamic slots accept nullish/boolean values, strings, numbers, bigints, DOM
-nodes on the client, arrays, and nested component template programs. Array
-updates currently replace the contents of the slot; keyed identity and
-incremental list reconciliation are not implemented. The compiler still
+nodes on the client, arrays, and nested component template programs. Host
+template programs returned from arrays can carry an explicit `key` attribute:
+compatible keyed items retain their DOM nodes across reorder, and their binding
+accessors update in place. Unkeyed arrays still replace their contents.
+Keyed component entries are not supported yet, and keyed server-rendered items
+are recreated during initial hydration rather than adopted individually. The compiler still
 rejects JSX spreads, refs, raw-HTML bindings, dynamic style objects,
 member-expression component tags, and parser-sensitive contexts such as
 tables, selects, and textareas. JSX must occur in a named component's direct
