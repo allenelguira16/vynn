@@ -15,6 +15,10 @@
     "./jsx-runtime": {
       "import": "./src/jsx-runtime.ts"
     },
+    "./render_new": {
+      "types": "./src/render_new/index.ts",
+      "import": "./src/render_new/index.ts"
+    },
     "./render": {
       "import": "./src/render/index.ts"
     },
