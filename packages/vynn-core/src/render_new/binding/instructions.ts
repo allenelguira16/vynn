@@ -1,5 +1,7 @@
 import type { TemplateInstance } from "../template/types";
 import { bindAttribute, type AttributeName } from "./attribute";
+import { bindChild } from "./child";
+import type { DOMTemplateAdapter } from "../dom/adapter";
 import { bindEvent, type EventHandlerValue } from "./event";
 import { bindProperty } from "./property";
 import { bindText } from "./text";
@@ -37,12 +39,20 @@ export interface EventBindingInstruction {
   readonly options?: boolean | AddEventListenerOptions;
 }
 
+/** A dynamic child insertion instruction targeting a comment anchor. */
+export interface ChildBindingInstruction {
+  readonly kind: "child";
+  readonly reference: number;
+  readonly read: Accessor<unknown>;
+}
+
 /** The complete set of reactive operations that can be attached to a template. */
 export type TemplateBindingInstruction =
   | TextBindingInstruction
   | AttributeBindingInstruction
   | PropertyBindingInstruction
-  | EventBindingInstruction;
+  | EventBindingInstruction
+  | ChildBindingInstruction;
 
 /** A set of binding instructions applied to one template instance. */
 export interface TemplateBindingSet extends Disposable {
@@ -145,6 +155,12 @@ function prepareInstructions(
         }
         break;
 
+      case "child":
+        if (target.nodeType !== 8) {
+          throw new TypeError("[vynn]: A child binding must target a comment anchor reference.");
+        }
+        break;
+
       case "event":
         if (
           typeof target.addEventListener !== "function" ||
@@ -208,6 +224,7 @@ export function applyTemplateBindings(
   scope: RenderScope,
   instance: TemplateInstance<Node>,
   instructions: readonly TemplateBindingInstruction[],
+  adapter?: DOMTemplateAdapter,
 ): TemplateBindingSet {
   const prepared = prepareInstructions(instance, instructions);
   const bindings: Disposable[] = [];
@@ -239,6 +256,13 @@ export function applyTemplateBindings(
               instruction.read,
             ),
           );
+          break;
+
+        case "child":
+          if (!adapter) {
+            throw new TypeError("[vynn]: A dynamic child binding requires a DOM template adapter.");
+          }
+          bindings.push(bindChild(scope, target as Comment, adapter, instruction.read));
           break;
 
         case "event":
