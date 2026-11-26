@@ -126,6 +126,26 @@ describe("hydration cursor release", () => {
     disposeOwner(owner);
   });
 
+  it("keeps client-only lazy claims isolated from the root cursor", () => {
+    const root = document.createElement("div");
+    root.innerHTML = '<main id="root">root</main>';
+    const rootElement = root.querySelector("#root");
+    withHydration(() => {}, root);
+
+    const owner = createOwner(null);
+    runWithOwner(owner, () => {
+      withServerRenderedLazy("missing", () => {
+        expect(claimHydrationElement()).toBeUndefined();
+        finishServerRenderedLazy("missing");
+      });
+
+      expect(claimHydrationElement()).toBe(rootElement);
+    });
+
+    expect(isHydrating(false)).toBe(false);
+    disposeOwner(owner);
+  });
+
   it("releases a completed lazy scope and its retained node references", () => {
     const root = document.createElement("div");
     root.innerHTML = '<!--l:9--><article id="lazy">ready</article><!--/l:9-->';
