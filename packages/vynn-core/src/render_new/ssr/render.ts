@@ -215,38 +215,46 @@ function renderKeyedProgramArray(value: readonly unknown[]): string | null {
   if (!hasKeyedEntry) return null;
 
   const keys = new Set<unknown>();
-  const keyedPrograms: Array<{ key: string | number | bigint; program: DOMTemplateProgram }> = [];
+  const keyedChildren: Array<{
+    key: string | number | bigint;
+    value: DOMTemplateProgram | RenderNewComponent;
+  }> = [];
 
-  // Validate the full list before evaluating any program binding. A duplicate
-  // or malformed key should not partially execute earlier items during SSR.
+  // Validate the full list before evaluating any component or template. A
+  // duplicate or malformed key must not partially render earlier entries.
   for (const item of value) {
-    if (!isTemplateProgram(item) || !Object.prototype.hasOwnProperty.call(item, "key")) {
+    const isProgram = isTemplateProgram(item);
+    const isComponent = isRenderNewComponent(item);
+    if (
+      (!isProgram && !isComponent) ||
+      !Object.prototype.hasOwnProperty.call(item, "key")
+    ) {
       throw new TypeError(
-        "[vynn render_new]: A keyed server child list must contain only keyed template programs.",
+        "[vynn render_new]: A keyed server child list must contain only keyed template programs or component descriptors.",
       );
     }
 
-    const key = item.key;
+    const key = (item as DOMTemplateProgram | RenderNewComponent).key;
     if (
       typeof key !== "string" &&
       typeof key !== "number" &&
       typeof key !== "bigint"
     ) {
       throw new TypeError(
-        "[vynn render_new]: Every keyed server child program requires a string, number, or bigint key.",
+        "[vynn render_new]: Every keyed server child requires a string, number, or bigint key.",
       );
     }
     if (keys.has(key)) {
       throw new TypeError("[vynn render_new]: Duplicate key in a render_new server child list.");
     }
     keys.add(key);
-    keyedPrograms.push({ key, program: item });
+    keyedChildren.push({ key, value: item as DOMTemplateProgram | RenderNewComponent });
   }
 
-  return keyedPrograms.map(({ key, program }) => {
+  return keyedChildren.map(({ key, value: child }) => {
     const start = createDOMTemplateKeyMarkerData(key, "start");
     const end = createDOMTemplateKeyMarkerData(key, "end");
-    return "<!--" + start + "-->" + renderProgram(program) + "<!--" + end + "-->";
+    return "<!--" + start + "-->" + renderChildValue(child) + "<!--" + end + "-->";
   }).join("");
 }
 
