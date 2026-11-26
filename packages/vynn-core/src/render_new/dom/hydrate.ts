@@ -19,25 +19,31 @@ function getChildRangeEnd(start: Node, nodes: readonly Node[], startIndex: numbe
   if (start.nodeType !== 8) return startIndex;
 
   const data = (start as Comment).data;
-  const match = /^__vynn_render_new_child_(\d+)_start__$/.exec(data);
+  const match = /^__vynn_render_new_child_(\\d+)_start__$/.exec(data);
   if (!match) return startIndex;
 
   const expectedEnd = "__vynn_render_new_child_" + match[1] + "_end__";
-  let nestedRanges = 0;
+  const nested: string[] = [];
 
   for (let index = startIndex + 1; index < nodes.length; index++) {
     const candidate = nodes[index]!;
     if (candidate.nodeType !== 8) continue;
 
     const comment = (candidate as Comment).data;
-    if (/^__vynn_render_new_child_\d+_start__$/.test(comment)) {
-      nestedRanges++;
+    const nestedStart = /^__vynn_render_new_child_(\\d+)_start__$/.exec(comment);
+    if (nestedStart) {
+      nested.push(nestedStart[1]!);
       continue;
     }
 
-    if (comment === expectedEnd) {
-      if (nestedRanges === 0) return index;
-      nestedRanges--;
+    const nestedEnd = /^__vynn_render_new_child_(\\d+)_end__$/.exec(comment);
+    if (nestedEnd) {
+      if (nested.length > 0) {
+        if (nested[nested.length - 1] !== nestedEnd[1]) throw new HydrationMismatch();
+        nested.pop();
+        continue;
+      }
+      if (comment === expectedEnd) return index;
     }
   }
 
