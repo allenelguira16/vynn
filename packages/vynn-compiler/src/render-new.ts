@@ -538,7 +538,8 @@ function serializeComponentChild(
     kind: "dynamic-child",
     expression: null,
     expressionSource: name + "({ " + properties.join(", ") + " })",
-    placeholder: "<!--__vynn_render_new_child_" + index + "__-->",
+    placeholder: "<!--__vynn_render_new_child_" + index + "_start__-->" +
+      "<!--__vynn_render_new_child_" + index + "_end__-->",
   };
 }
 
