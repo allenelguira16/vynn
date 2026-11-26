@@ -153,14 +153,14 @@ describe("render_new DOM insertion and movement", () => {
     const document = createDocument();
     const fragment = createDOMFragment(document);
     const section = document.createElement("section");
-    const main = document.createElement("main");
+    const topLevelComment = document.createComment("before-document-element");
 
     insertDOMNode(fragment, section);
-    insertDOMNode(document, main);
+    insertDOMNode(document, topLevelComment, document.documentElement);
 
     expect(fragment.firstChild).toBe(section);
-    expect(document.documentElement.parentNode).toBe(document);
-    expect(main.parentNode).toBe(document);
+    expect(topLevelComment.parentNode).toBe(document);
+    expect(document.firstChild).toBe(topLevelComment);
   });
 });
 
@@ -288,7 +288,7 @@ describe("render_new DOM node ranges", () => {
 
     expect(removeDOMRange(range)).toBe(4);
     expect(parent.childNodes).toHaveLength(0);
-    expect(removeDOMRange(range)).toBe(2);
+    expect(removeDOMRange(range)).toBe(0);
   });
 
   it("rejects malformed ranges and boundaries that do not share a parent", () => {
