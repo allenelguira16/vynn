@@ -1,0 +1,17 @@
+export type {
+  Accessor,
+  Cleanup,
+  Disposable,
+  RenderScope,
+  RenderScopeState,
+} from "./types";
+
+export {
+  createScope,
+  disposeScope,
+  getCurrentScope,
+  onScopeDispose,
+  runWithScope,
+} from "./lifecycle/scope";
+
+export * from "./template";
