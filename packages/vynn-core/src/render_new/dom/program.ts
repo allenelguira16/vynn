@@ -31,7 +31,11 @@ export function isDocumentRootProgram(program: DOMTemplateProgram): boolean {
     /^<html(?:\s|>)/i.test(program.template.markup.trim());
 }
 
-function moveInternalDOMRanges(source: Element | null, target: Element | null): void {
+function moveInternalDOMRanges(
+  source: Element | null,
+  target: Element | null,
+  shouldMove: (start: Comment, end: Comment) => boolean = () => true,
+): void {
   if (!source || !target) return;
 
   let current: Node | null = source.firstChild;
@@ -71,6 +75,11 @@ function moveInternalDOMRanges(source: Element | null, target: Element | null): 
     }
 
     const after = end.nextSibling;
+    if (!shouldMove(current as Comment, end as Comment)) {
+      current = after;
+      continue;
+    }
+
     let moving: Node | null = current;
     while (moving && moving !== after) {
       const following = moving.nextSibling;
@@ -96,7 +105,23 @@ function preserveInternalDocumentRanges(
   const currentBody = getDirectChildElement(currentRoot, "body");
   const nextBody = getDirectChildElement(nextRoot, "body");
 
-  moveInternalDOMRanges(currentHead, nextHead);
+  const targetDeclaresCharset = !!nextHead?.querySelector("meta[charset]");
+  moveInternalDOMRanges(currentHead, nextHead, (start, end) => {
+    if (!targetDeclaresCharset) return true;
+
+    let current: Node | null = start;
+    while (current) {
+      if (
+        current.nodeType === 1 &&
+        (current as Element).matches("meta[charset]")
+      ) {
+        return false;
+      }
+      if (current === end) break;
+      current = current.nextSibling;
+    }
+    return true;
+  });
   moveInternalDOMRanges(currentBody, nextBody);
 
   // Vite's dev CSS client inserts style elements directly into document.head.
