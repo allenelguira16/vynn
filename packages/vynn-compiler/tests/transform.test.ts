@@ -216,6 +216,7 @@ describe("Vynn Oxc JSX compiler", () => {
 
     expect(code).toContain("_$template(");
     expect(code).not.toContain("_$staticTemplate(");
+    expect(code).toContain("_$finishTemplate(");
   });
 
   it("keeps static and dynamic template factories separate when their markup matches", () => {

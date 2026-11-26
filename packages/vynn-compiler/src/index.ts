@@ -3212,7 +3212,35 @@ class TransformState {
     }
 
     if (bindings.length === 0) {
-      return inheritSourceLocation(callExpression(cloneNode(templateName), []), node);
+      if (useStaticTemplate) {
+        return inheritSourceLocation(callExpression(cloneNode(templateName), []), node);
+      }
+
+      // Full-document templates remain hydration-aware even when all of
+      // their markup is static. They still need to release the hydration
+      // descriptor map after the initial document nodes have been claimed.
+      const statements = outerStatements ?? [];
+      const root = this.generateUidIdentifier("root");
+
+      statements.push(
+        variableDeclaration("const", [
+          variableDeclarator(root, callExpression(cloneNode(templateName), [])),
+        ]),
+        expressionStatement(
+          callExpression(this.getRuntimeHelper("$finishTemplate"), [cloneNode(root)]),
+        ),
+      );
+
+      if (outerStatements) {
+        return inheritSourceLocation(cloneNode(root), node);
+      }
+
+      statements.push(returnStatement(cloneNode(root)));
+
+      return inheritSourceLocation(
+        callExpression(arrowFunctionExpression([], blockStatement(statements)), []),
+        node,
+      );
     }
 
     const statements = outerStatements ?? [];
