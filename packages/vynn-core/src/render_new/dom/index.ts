@@ -52,7 +52,9 @@ export {
 
 export {
   mountTemplateProgram,
+  type DOMTemplateKey,
   type DOMTemplateProgram,
+  type MountedTemplateProgram,
 } from "./program";
 
 export {
