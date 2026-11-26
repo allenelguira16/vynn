@@ -33,7 +33,7 @@ export function createDOMElement(
     throw new TypeError("[vynn]: DOM element creation expects a non-empty tag name.");
   }
 
-  if (!(namespace in NAMESPACE_URIS)) {
+  if (namespace !== "html" && namespace !== "svg" && namespace !== "mathml") {
     throw new TypeError("[vynn]: DOM element creation received an unsupported namespace.");
   }
 
