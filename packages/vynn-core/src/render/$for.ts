@@ -1,7 +1,13 @@
 import type { JSX } from "../types/jsx";
 
 
-import { createOwner, disposeOwner, getOwner, runWithOwner, type Owner } from "../life-cycle/owner";
+import {
+  createOwner,
+  disposeOwner,
+  getOwner,
+  runWithOwner,
+  type Owner,
+} from "../life-cycle/owner";
 import { $computed } from "../reactivity/computed";
 import { untrack } from "../reactivity/effect";
 import { createStateValue, type State } from "../reactivity/state";
@@ -273,7 +279,10 @@ export function $for<T>(
 
       if (cleanupErrors.length === 1) throw cleanupErrors[0];
       if (cleanupErrors.length > 1) {
-        throw new AggregateError(cleanupErrors, "[Vynn] Multiple removed list entry cleanups failed.");
+        throw new AggregateError(
+          cleanupErrors,
+          "[Vynn] Multiple removed list entry cleanups failed.",
+        );
       }
     });
 
