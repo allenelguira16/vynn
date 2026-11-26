@@ -1,3 +1,7 @@
+import {
+  resolveTemplateReferences,
+  type TemplateNodeResolver,
+} from "./resolve";
 import type {
   TemplateDefinition,
   TemplateFactory,
@@ -5,7 +9,6 @@ import type {
   TemplateNamespace,
   TemplateNodePath,
   TemplateReference,
-  TemplateReferenceKind,
 } from "./types";
 
 /**
@@ -15,18 +18,14 @@ import type {
  * An SSR host can parse the same definition into its own immutable blueprint
  * and clone that representation. The factory itself knows neither host.
  */
-export interface TemplateAdapter<TBlueprint, TNode> {
+export interface TemplateAdapter<TBlueprint, TNode>
+  extends TemplateNodeResolver<TNode> {
   /** Parse static markup into a reusable host-specific blueprint. */
   parse(markup: string, namespace: TemplateNamespace): TBlueprint;
 
   /** Clone a blueprint into a fresh, ordered list of root nodes. */
   clone(blueprint: TBlueprint): readonly TNode[];
 
-  /** Read a child by its childNodes position. */
-  getChild(node: TNode, index: number): TNode | null | undefined;
-
-  /** Report the semantic node kind for reference validation. */
-  getKind(node: TNode): TemplateReferenceKind;
 }
 
 interface FactoryCacheEntry<TNode> {
@@ -147,44 +146,6 @@ function getDefinitionSignature(definition: TemplateDefinition): string {
   ]);
 }
 
-function resolveReference<TBlueprint, TNode>(
-  roots: readonly TNode[],
-  reference: TemplateReference,
-  adapter: TemplateAdapter<TBlueprint, TNode>,
-): TNode {
-  let node: TNode | null | undefined = roots[reference.path[0]];
-
-  for (let index = 1; index < reference.path.length; index++) {
-    if (node === null || node === undefined) break;
-    node = adapter.getChild(node, reference.path[index]);
-  }
-
-  if (node === null || node === undefined) {
-    throw new Error(
-      "[vynn]: Template reference " +
-        reference.id +
-        " points to a missing node at path [" +
-        reference.path.join(", ") +
-        "].",
-    );
-  }
-
-  const actualKind = adapter.getKind(node);
-
-  if (actualKind !== reference.kind) {
-    throw new Error(
-      "[vynn]: Template reference " +
-        reference.id +
-        " expected a " +
-        reference.kind +
-        " node but resolved to " +
-        actualKind +
-        ".",
-    );
-  }
-
-  return node;
-}
 
 function createFactory<TBlueprint, TNode>(
   definition: TemplateDefinition,
@@ -202,11 +163,11 @@ function createFactory<TBlueprint, TNode>(
       }
 
       const roots = Object.freeze([...clonedRoots]);
-      const references = new Map<number, TNode>();
-
-      for (const reference of definition.references) {
-        references.set(reference.id, resolveReference(roots, reference, adapter));
-      }
+      const references = resolveTemplateReferences(
+        roots,
+        definition.references,
+        adapter,
+      );
 
       return Object.freeze({
         roots,
