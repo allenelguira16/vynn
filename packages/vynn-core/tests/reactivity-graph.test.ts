@@ -6,7 +6,7 @@ import { allocateAsyncResourceID, withAsyncResourceScope } from "../src/runtime/
 import { $effect, $renderEffect } from "../src/reactivity/effect";
 import { batch, supportsAsyncTracking, transaction, untrack } from "../src/reactivity/graph";
 import { isPending } from "../src/reactivity/async/pending";
-import { $state } from "../src/reactivity/state";
+import { $state, createStateValue } from "../src/reactivity/state";
 import { $store } from "../src/reactivity/store";
 import { PendingReadError } from "../src/reactivity/async/pending-error";
 import { NotReadyError } from "../src/reactivity/async/not-ready-error";
@@ -41,7 +41,7 @@ describe("new reactive graph", () => {
     expect(nested).toBe("0:0:0");
     expect(child).toBe("00:0");
     expect(owner.children).toHaveLength(1);
-    expect(owner.children[0]?.id).toBe("00");
+    expect(owner.children?.[0]?.id).toBe("00");
     expect(owner.nodeCount).toBe(1);
 
     disposeOwner(owner);
@@ -95,6 +95,23 @@ describe("new reactive graph", () => {
     expect(resolve).toHaveBeenCalledTimes(1);
     expect(resolve).toHaveBeenCalledWith(7);
     expect(reject).not.toHaveBeenCalled();
+  });
+
+  it("stores functions and promises as plain synchronous state values", () => {
+    const initializer = () => 42;
+    const promise = Promise.resolve(7);
+    const value = createStateValue<unknown>(initializer);
+    const snapshots: unknown[] = [];
+    const stop = $renderEffect(() => snapshots.push(value.value));
+
+    expect(value.value).toBe(initializer);
+    value.value = promise;
+    expect(value.value).toBe(promise);
+    value.value = 42;
+    expect(value.value).toBe(42);
+    expect(snapshots).toEqual([initializer, promise, 42]);
+
+    stop();
   });
 
   it("evaluates synchronous computed values and propagates changes", () => {
@@ -843,7 +860,7 @@ describe("new reactive graph", () => {
       $computed(() => Promise.resolve(2));
     });
 
-    expect(owner.children).toEqual([]);
+    expect(owner.children).toBeUndefined();
     expect(owner.nodeCount).toBe(0);
     disposeOwner(owner);
   });

@@ -17,6 +17,7 @@ import {
   createOwner,
   disposeOwner,
   getOwner,
+  getOwnerCleanups,
   runWithOwner,
 } from "../life-cycle/owner";
 import { getOwnerContext, setOwnerContext } from "../context/owner-context";
@@ -401,7 +402,8 @@ export function $registerHead<T extends HeadTag>(
   // SSR registrations must survive render-owner disposal until the document
   // adapter has serialized the final head snapshot.
   if (!import.meta.env.SSR) {
-    getOwner()?.cleanups.push(() => removeHeadEntry(context, entry));
+    const owner = getOwner();
+    if (owner) getOwnerCleanups(owner).push(() => removeHeadEntry(context, entry));
   }
 
   return entry;
@@ -445,7 +447,7 @@ export function $registerHeadGroup(render: () => unknown): [] {
   // reactive branches, then disposes their declarations as one lifecycle unit.
   // SSR entries intentionally remain in the snapshot after owner disposal.
   if (!import.meta.env.SSR) {
-    groupOwner.cleanups.push(() => {
+    getOwnerCleanups(groupOwner).push(() => {
       const index = context.groups.indexOf(group);
       if (index !== -1) context.groups.splice(index, 1);
 

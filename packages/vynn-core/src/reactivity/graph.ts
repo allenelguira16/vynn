@@ -1,9 +1,15 @@
 import { getRuntimeContext, runWithRuntimeContext } from "../runtime/context";
 
-export type Source = { observers: Set<Computation> };
+export type Source = {
+  firstObserver: Computation | null;
+  secondObserver: Computation | null;
+  observers?: Set<Computation>;
+};
 
 export type Computation = {
-  dependencies: Set<Source>;
+  dependencies: Source | Set<Source> | undefined;
+  callback: () => void;
+  runtimeContext: ReturnType<typeof getRuntimeContext>;
   run: () => void;
   invalidate: () => void;
   dispose: () => void;
@@ -45,7 +51,7 @@ const renderQueue = new Set<Computation>();
 const effectQueue = new Set<Computation>();
 
 export function node(): Source {
-  return { observers: new Set() };
+  return { firstObserver: null, secondObserver: null };
 }
 
 function getActiveExecution(): ExecutionContext | undefined {
@@ -75,9 +81,26 @@ export function track(source: Source): void {
   }
 
   const computation = execution.computation;
-  if (source.observers.has(computation)) return;
-  source.observers.add(computation);
-  computation.dependencies.add(source);
+  const dependencies = computation.dependencies;
+
+  if (
+    dependencies === source ||
+    (dependencies instanceof Set && dependencies.has(source))
+  ) {
+    return;
+  }
+
+  // Most render computations read one source. Keep that edge inline and
+  // allocate a Set only when a computation actually depends on multiple sources.
+  if (dependencies === undefined) {
+    computation.dependencies = source;
+  } else if (dependencies instanceof Set) {
+    dependencies.add(source);
+  } else {
+    computation.dependencies = new Set([dependencies, source]);
+  }
+
+  addObserver(source, computation);
 }
 
 function queueFor(computation: Computation): Set<Computation> {
@@ -182,10 +205,72 @@ function flush(): void {
   flushSynchronous();
 }
 
-export function notify(source: Source): void {
-  for (const observer of source.observers) {
-    queueFor(observer).add(observer);
+function addObserver(source: Source, computation: Computation): void {
+  const observers = source.observers;
+  if (observers) {
+    observers.add(computation);
+    return;
   }
+
+  if (source.firstObserver === computation || source.secondObserver === computation) {
+    return;
+  }
+
+  if (!source.firstObserver) {
+    source.firstObserver = computation;
+    return;
+  }
+
+  if (!source.secondObserver) {
+    source.secondObserver = computation;
+    return;
+  }
+
+  source.observers = new Set([
+    source.firstObserver,
+    source.secondObserver,
+    computation,
+  ]);
+  source.firstObserver = null;
+  source.secondObserver = null;
+}
+
+function removeObserver(source: Source, computation: Computation): void {
+  const observers = source.observers;
+  if (observers) {
+    observers.delete(computation);
+
+    // Collapse the uncommon multi-subscriber Set back to the inline form
+    // as soon as at most two computations remain.
+    if (observers.size <= 2) {
+      const remaining = [...observers];
+      source.observers = undefined;
+      source.firstObserver = remaining[0] ?? null;
+      source.secondObserver = remaining[1] ?? null;
+    }
+    return;
+  }
+
+  if (source.firstObserver === computation) {
+    source.firstObserver = source.secondObserver;
+    source.secondObserver = null;
+  } else if (source.secondObserver === computation) {
+    source.secondObserver = null;
+  }
+}
+
+export function notify(source: Source): void {
+  if (source.observers) {
+    for (const observer of source.observers) {
+      queueFor(observer).add(observer);
+    }
+  } else {
+    const first = source.firstObserver;
+    const second = source.secondObserver;
+    if (first) queueFor(first).add(first);
+    if (second) queueFor(second).add(second);
+  }
+
   flush();
 }
 
@@ -229,10 +314,17 @@ export function untrack<T>(callback: () => T): T {
 }
 
 export function cleanup(computation: Computation): void {
-  for (const source of computation.dependencies) {
-    source.observers.delete(computation);
+  const dependencies = computation.dependencies;
+  if (!dependencies) return;
+
+  if (dependencies instanceof Set) {
+    for (const source of dependencies) removeObserver(source, computation);
+    dependencies.clear();
+  } else {
+    removeObserver(dependencies, computation);
   }
-  computation.dependencies.clear();
+
+  computation.dependencies = undefined;
 }
 
 export function execute<T>(computation: Computation, fn: () => T): T {
@@ -286,30 +378,35 @@ export function runComputation(computation: Computation): void {
   }
 }
 
+function runComputationInContext(this: Computation): void {
+  runWithRuntimeContext(this.runtimeContext, this.callback);
+}
+
+function disposeComputation(this: Computation): void {
+  if (this.disposed) return;
+  this.disposed = true;
+  this.runID++;
+  derivedQueue.delete(this);
+  renderQueue.delete(this);
+  effectQueue.delete(this);
+  cleanup(this);
+}
+
 export function createComputation(
-  run: () => void,
+  callback: () => void,
   priority: 0 | 1 | 2 = 2,
 ): Computation {
-  const runtimeContext = getRuntimeContext();
-  const runInContext = () => runWithRuntimeContext(runtimeContext, run);
-
   return {
-    dependencies: new Set(),
-    run: runInContext,
-    invalidate: runInContext,
+    dependencies: undefined,
+    callback,
+    runtimeContext: getRuntimeContext(),
+    run: runComputationInContext,
+    invalidate: runComputationInContext,
     disposed: false,
     running: false,
     runID: 0,
     priority,
-    dispose() {
-      if (this.disposed) return;
-      this.disposed = true;
-      this.runID++;
-      derivedQueue.delete(this);
-      renderQueue.delete(this);
-      effectQueue.delete(this);
-      cleanup(this);
-    },
+    dispose: disposeComputation,
   };
 }
 
@@ -317,4 +414,12 @@ export function isPromiseLike<T>(value: unknown): value is PromiseLike<T> {
   return !!value &&
     (typeof value === "object" || typeof value === "function") &&
     typeof (value as { then?: unknown }).then === "function";
+}
+
+
+/** Returns whether a computation currently tracks a source. */
+export function hasDependency(computation: Computation, source: Source): boolean {
+  const dependencies = computation.dependencies;
+  return dependencies === source ||
+    (dependencies instanceof Set && dependencies.has(source));
 }

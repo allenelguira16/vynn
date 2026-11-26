@@ -1,6 +1,6 @@
 import { bindRuntimeContext } from "../runtime/context";
 
-import { getOwner, runWithOwner } from "../life-cycle/owner";
+import { getOwner, getOwnerCleanups, runWithOwner } from "../life-cycle/owner";
 import { $renderEffect } from "../reactivity/effect";
 import { $attr, setDOMAttributeValue, type AttributeValue } from "./$attr";
 
@@ -125,7 +125,7 @@ export function $spread<E extends Element, P extends Record<string, any>>(
     clearRef();
   };
 
-  owner?.cleanups.push(disposeSpread);
+  if (owner) getOwnerCleanups(owner).push(disposeSpread);
 
   $renderEffect(() => {
     const next = props() ?? ({} as P);

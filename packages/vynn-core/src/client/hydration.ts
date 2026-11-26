@@ -396,8 +396,6 @@ function getServerRenderedNodes(root: Node) {
   const doms: Node[] = [];
   const lazy = new Map<string, LazyHydrationNodes>();
   const boundaryStack: string[] = [];
-  const internalRangeNodes = new WeakSet<Node>();
-
   function getOrCreateLazyNodes(id: string): LazyHydrationNodes {
     let nodes = lazy.get(id);
 
@@ -426,8 +424,8 @@ function getServerRenderedNodes(root: Node) {
     }
   }
 
-  function flattenNode(node: Node) {
-    if (internalRangeNodes.has(node)) return;
+  function flattenNode(node: Node): Node | null {
+    const nextSibling = node.nextSibling;
 
     if (isCommentNode(node) && node.data === INTERNAL_RANGE_START_MARKER) {
       const end = findInternalRangeEnd(node);
@@ -436,11 +434,13 @@ function getServerRenderedNodes(root: Node) {
         throw new Error("[vynn] Unclosed internal SSR range during hydration.");
       }
 
+      // Consume the internal range as one unit. Preserve the sibling after
+      // its end before removing range markers and their managed contents.
+      const afterRange = end.nextSibling;
       let current: Node | null = node.nextSibling;
 
       while (current) {
-        const next = current.nextSibling;
-        internalRangeNodes.add(current);
+        const next: Node | null = current.nextSibling;
 
         if (
           isCommentNode(current) &&
@@ -458,13 +458,13 @@ function getServerRenderedNodes(root: Node) {
 
       node.parentNode?.removeChild(node);
       end.parentNode?.removeChild(end);
-      return;
+      return afterRange;
     }
 
     if (isCommentNode(node) && node.data === INTERNAL_RANGE_END_MARKER) {
       node.parentNode?.removeChild(node);
       console.warn("[vynn] Unmatched internal SSR range end marker.");
-      return;
+      return nextSibling;
     }
 
     if (isElement(node) && node.hasAttribute(RAW_HTML_SSR_ATTRIBUTE)) {
@@ -472,7 +472,7 @@ function getServerRenderedNodes(root: Node) {
       // of its unmanaged descendants to the hydration queues.
       node.removeAttribute(RAW_HTML_SSR_ATTRIBUTE);
       addNode(node);
-      return;
+      return nextSibling;
     }
 
     if (isElement(node)) {
@@ -483,7 +483,7 @@ function getServerRenderedNodes(root: Node) {
           (node.localName === "title" || node.localName === "meta" || node.localName === "link")) ||
         (node.localName === "template" && node.hasAttribute("data-vynn-head-fallback"))
       ) {
-        return;
+        return nextSibling;
       }
     }
 
@@ -499,7 +499,7 @@ function getServerRenderedNodes(root: Node) {
 
         getOrCreateLazyNodes(id).start = anchor;
         boundaryStack.push(id);
-        return;
+        return nextSibling;
       }
 
       const end = LAZY_END_REGEX.exec(value);
@@ -520,7 +520,7 @@ function getServerRenderedNodes(root: Node) {
           console.warn(`[vynn] Unmatched lazy boundary end marker: ${value}`);
         }
 
-        return;
+        return nextSibling;
       }
 
       if (value === EMPTY_TEXT_SSR_MARKER) {
@@ -528,12 +528,12 @@ function getServerRenderedNodes(root: Node) {
 
         node.parentNode?.replaceChild(empty, node);
         addNode(empty);
-        return;
+        return nextSibling;
       }
 
       if (value === TEXT_SSR_SEPARATOR) {
         node.parentNode?.removeChild(node);
-        return;
+        return nextSibling;
       }
     }
 
@@ -541,13 +541,19 @@ function getServerRenderedNodes(root: Node) {
       addNode(node);
     }
 
-    for (const child of [...node.childNodes]) {
-      flattenNode(child);
+    // Walk sibling links directly. Reading childNodes creates and caches a
+    // live NodeList for every node visited by this scanner in Chromium.
+    let child = node.firstChild;
+    while (child) {
+      child = flattenNode(child);
     }
+
+    return nextSibling;
   }
 
-  for (const child of [...root.childNodes]) {
-    flattenNode(child);
+  let child = root.firstChild;
+  while (child) {
+    child = flattenNode(child);
   }
 
   return [doms.filter(isElement), doms.filter(isTextNode), lazy] as const;

@@ -1,26 +1,46 @@
 import {
   createRuntimeContext,
-  getContext,
   getRuntimeContext,
+  getRuntimeOwner,
   runWithRuntimeContext,
   runWithRuntimeContextScope,
-  setContext,
+  setRuntimeOwner,
   type RuntimeContext,
 } from "../runtime/context";
 
 export interface Owner {
   parent: Owner | null;
-  children: Owner[];
-  cleanups: (() => void)[];
-  mount: (() => void | (() => void))[];
+  children?: Owner[];
+  cleanups?: (() => void)[];
+  mount?: (() => void | (() => void))[];
   disposed?: boolean;
-  context: Map<string | symbol, unknown>;
+  context?: Map<string | symbol, unknown>;
   /** Stable hydration identity for this owner, when it owns an identity slot. */
   id: string | undefined;
   /** Nearest ancestor (or self) that owns the hydration ID sequence. */
   identityOwner: Owner | null;
   /** Number of identity slots allocated by this owner. */
   nodeCount: number;
+}
+
+/** Lazily creates a child list only for owners that actually acquire children. */
+export function getOwnerChildren(owner: Owner): Owner[] {
+  return (owner.children ??= []);
+}
+
+/** Lazily creates a cleanup list only for owners that register cleanup work. */
+export function getOwnerCleanups(owner: Owner): (() => void)[] {
+  return (owner.cleanups ??= []);
+}
+
+/** Lazily creates mount callbacks only for owners that register onMount work. */
+export function getOwnerMounts(owner: Owner): (() => void | (() => void))[] {
+  return (owner.mount ??= []);
+}
+
+/** Lazily creates a context map only for owners that actually provide context. */
+export function getOwnerContextMap(owner: Owner): Map<string | symbol, unknown> {
+  return (owner.context ??= new Map<string | symbol, unknown>());
 }
 
 export type OwnerOptions = {
@@ -35,7 +55,6 @@ type OwnerIDReservations = Map<string, number>;
 type OwnerIDTracker = Map<string, number>;
 
 const ROOT_OWNER_ID = "0";
-const CURRENT_OWNER = Symbol.for("vynn.current-owner.v1");
 
 const ownerIDReservations = new WeakMap<Owner, OwnerIDReservations>();
 const ownerIDTrackers = new WeakMap<Owner, OwnerIDTracker[]>();
@@ -203,7 +222,7 @@ export function reserveOwnerIDReservations(reservations?: Record<string, number>
  * @returns The owner, or null when no owner is active.
  */
 export function getOwner(): Owner | null {
-  return getContext<Owner | null>(CURRENT_OWNER) ?? null;
+  return getRuntimeOwner<Owner | null>() ?? null;
 }
 
 /**
@@ -238,10 +257,6 @@ export function createOwner(parent = getOwner(), options: OwnerOptions = {}): Ow
 
   const owner: Owner = {
     parent,
-    children: [],
-    cleanups: [],
-    mount: [],
-    context: new Map<string | symbol, unknown>(),
     id,
     identityOwner: null,
     nodeCount: id ? (reservations?.get(id) ?? 0) : 0,
@@ -263,7 +278,7 @@ export function createOwner(parent = getOwner(), options: OwnerOptions = {}): Ow
     ownerRuntimeContexts.set(owner, createRuntimeContext(inheritedContext));
   }
 
-  parent?.children.push(owner);
+  if (parent) getOwnerChildren(parent).push(owner);
 
   return owner;
 }
@@ -281,7 +296,7 @@ export function createOwner(parent = getOwner(), options: OwnerOptions = {}): Ow
 export function runWithOwner<T>(owner: Owner | null, fn: () => T): T {
   if (!owner) {
     return runWithRuntimeContextScope(() => {
-      setContext(CURRENT_OWNER, null);
+      setRuntimeOwner(null);
       return fn();
     });
   }
@@ -295,7 +310,7 @@ export function runWithOwner<T>(owner: Owner | null, fn: () => T): T {
     initializedOwnerRuntimeContexts.add(owner);
 
     return runWithRuntimeContext(ownerContext, () => {
-      setContext(CURRENT_OWNER, owner);
+      setRuntimeOwner(owner);
       return fn();
     });
   }
@@ -307,7 +322,7 @@ export function runWithOwner<T>(owner: Owner | null, fn: () => T): T {
 
   return runWithRuntimeContext(parentContext, () =>
     runWithRuntimeContextScope(() => {
-      setContext(CURRENT_OWNER, owner);
+      setRuntimeOwner(owner);
       return fn();
     }),
   );
@@ -328,30 +343,38 @@ export function disposeOwner(owner: Owner): void {
   owner.disposed = true;
   const errors: unknown[] = [];
 
-  for (const child of [...owner.children]) {
-    try {
-      disposeOwner(child);
-    } catch (error) {
-      errors.push(error);
+  // Child disposal unlinks each child from this array. Walking from the end
+  // avoids allocating a copy of the whole child list.
+  const children = owner.children;
+  if (children) {
+    while (children.length > 0) {
+      const child = children[children.length - 1];
+      try {
+        disposeOwner(child);
+      } catch (error) {
+        errors.push(error);
+      }
     }
   }
 
-  owner.children.length = 0;
-
-  for (const cleanup of owner.cleanups.splice(0)) {
-    try {
-      cleanup();
-    } catch (error) {
-      errors.push(error);
+  // Detach the list before running callbacks, matching splice(0)'s behavior:
+  // cleanup work registered by a cleanup is not part of this disposal pass.
+  const cleanups = owner.cleanups;
+  owner.cleanups = undefined;
+  if (cleanups) {
+    for (const cleanup of cleanups) {
+      try {
+        cleanup();
+      } catch (error) {
+        errors.push(error);
+      }
     }
   }
 
-  if (owner.parent) {
-    const index = owner.parent.children.indexOf(owner);
-
-    if (index !== -1) {
-      owner.parent.children.splice(index, 1);
-    }
+  const parent = owner.parent;
+  if (parent?.children) {
+    const index = parent.children.indexOf(owner);
+    if (index !== -1) parent.children.splice(index, 1);
   }
 
   owner.parent = null;

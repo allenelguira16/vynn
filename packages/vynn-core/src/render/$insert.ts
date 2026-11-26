@@ -1,6 +1,11 @@
 import type { JSX } from "../jsx-runtime";
 
-import { isHydrating } from "../client/hydration-runtime";
+import {
+  claimHydrationText,
+  isHydrationClaimActive,
+  isHydrating,
+  synchronizeHydrationText,
+} from "../client/hydration-runtime";
 import { $claimTemplateAnchor } from "./$template";
 import { withHeadElementCreation } from "./head-element-context";
 
@@ -133,23 +138,23 @@ export function $insert<E extends Element>(
     typeof before === "string"
       ? ($claimTemplateAnchor(element, before) as Node)
       : before;
-  let oldNodes: Node[] = [];
+  // Primitive text bindings use a single retained Text reference. The
+  // generic Node[] path is created only when a child actually renders a
+  // fragment, element, or component.
+  let oldNodes: Node[] | undefined;
+  let oldText: Text | undefined;
+  let rendered = false;
 
   const dispose = $renderEffect(() => {
-    // Capture this before resolving children, since resolution claims the SSR
-    // nodes and can make the hydration queues appear empty.
-    const initialHydration = oldNodes.length === 0 && isHydrating();
+    const initialHydration = !rendered && isHydrating();
     const childNamespace = getChildDOMNamespace(element.namespaceURI, element.localName);
     const renderChild = typeof child === "function" ? child : () => child;
-    const resolveChildren = () =>
-      resolveNode(renderChild, element.localName !== "title");
-    const newNodes = withDOMNamespace(childNamespace, () =>
-      element.localName === "title"
-        ? withHeadElementCreation(resolveChildren)
-        : resolveChildren(),
-    );
 
     if (element.localName === "title") {
+      const newNodes = withDOMNamespace(childNamespace, () =>
+        withHeadElementCreation(() => resolveNode(renderChild, false)),
+      );
+
       // Keep the complete title as one text node. HTML parses <title> as
       // RCDATA, so compiler comment markers would become visible characters.
       const initialTitleNodes: Node[] = [];
@@ -165,13 +170,19 @@ export function $insert<E extends Element>(
             current = current.nextSibling;
           }
         } else {
-          initialTitleNodes.push(...Array.from(element.childNodes));
+          let current = element.firstChild;
+
+          while (current) {
+            initialTitleNodes.push(current);
+            current = current.nextSibling;
+          }
         }
       }
 
       const textValue = newNodes.map((node) => node.textContent ?? "").join("");
       const existingText =
-        oldNodes.find((node): node is Text => node.nodeType === Node.TEXT_NODE) ??
+        oldText ??
+        oldNodes?.find((node): node is Text => node.nodeType === Node.TEXT_NODE) ??
         initialTitleNodes.find((node): node is Text => node.nodeType === Node.TEXT_NODE);
       const retained: Node[] = [];
 
@@ -190,17 +201,83 @@ export function $insert<E extends Element>(
       }
 
       const retainedSet = new Set(retained);
-      for (const node of [...oldNodes, ...initialTitleNodes]) {
+      for (const node of [...(oldNodes ?? []), ...initialTitleNodes]) {
         if (!retainedSet.has(node) && node.parentNode === element) {
           element.removeChild(node);
         }
       }
 
+      oldText = retained[0] instanceof Text ? retained[0] : undefined;
       oldNodes = retained;
+      rendered = true;
       return;
     }
 
-    if (oldNodes.length === 0) {
+    const resolved = withDOMNamespace(childNamespace, () => {
+      const value = renderChild();
+
+      // Match resolveElement's primitive semantics, but avoid creating a
+      // temporary Text node and singleton Node[] for the common text case.
+      if (
+        value === null ||
+        value === undefined ||
+        value === false ||
+        typeof value === "string" ||
+        typeof value === "number"
+      ) {
+        return {
+          kind: "text" as const,
+          textValue:
+            typeof value === "string" || typeof value === "number"
+              ? String(value)
+              : "",
+          claimText: typeof value === "string" || typeof value === "number",
+        };
+      }
+
+      return { kind: "nodes" as const, nodes: resolveNode(() => value) };
+    });
+
+    if (resolved.kind === "text") {
+      let text = oldText;
+
+      if (!text) {
+        if (resolved.claimText) {
+          const hydrating = isHydrationClaimActive();
+          const claimed = claimHydrationText();
+
+          if (claimed && (!hydrating || synchronizeHydrationText(claimed, resolved.textValue))) {
+            text = claimed;
+          }
+        }
+
+        text ??= document.createTextNode(resolved.textValue);
+      }
+
+      text.data = resolved.textValue;
+
+      // Retire a previous non-scalar child before switching to this Text node.
+      for (const node of oldNodes ?? []) {
+        if (node !== text && node.parentNode === element) {
+          element.removeChild(node);
+        }
+      }
+      oldNodes = undefined;
+
+      if (text.parentNode !== element) {
+        const reference = slotAnchor?.parentNode === element ? slotAnchor : null;
+        element.insertBefore(text, reference);
+      }
+
+      oldText = text;
+      rendered = true;
+      return;
+    }
+
+    const newNodes = resolved.nodes;
+    const previousNodes = oldNodes ?? (oldText ? [oldText] : []);
+
+    if (previousNodes.length === 0) {
       if (initialHydration) {
         insertInitialNodes(element, newNodes, slotAnchor);
       } else {
@@ -212,12 +289,12 @@ export function $insert<E extends Element>(
         }
       }
     } else {
-      const length = Math.min(oldNodes.length, newNodes.length);
+      const length = Math.min(previousNodes.length, newNodes.length);
 
       // Replace existing nodes.
       for (let i = 0; i < length; i++) {
-        if (oldNodes[i] !== newNodes[i]) {
-          element.replaceChild(newNodes[i], oldNodes[i]);
+        if (previousNodes[i] !== newNodes[i]) {
+          element.replaceChild(newNodes[i], previousNodes[i]);
         }
       }
 
@@ -229,14 +306,16 @@ export function $insert<E extends Element>(
       }
 
       // Remove nodes that no longer exist.
-      for (let i = newNodes.length; i < oldNodes.length; i++) {
-        if (oldNodes[i].parentNode === element) {
-          element.removeChild(oldNodes[i]);
+      for (let i = newNodes.length; i < previousNodes.length; i++) {
+        if (previousNodes[i].parentNode === element) {
+          element.removeChild(previousNodes[i]);
         }
       }
     }
 
     oldNodes = newNodes;
+    oldText = undefined;
+    rendered = true;
   });
 
   return typeof before === "string" ? slotAnchor! : dispose;

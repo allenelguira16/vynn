@@ -3,7 +3,7 @@ import type { JSX } from "../jsx-runtime";
 
 import { runAfterHydration } from "../client/hydration-runtime";
 
-import { createOwner, runWithOwner } from "../life-cycle/owner";
+import { createOwner, getOwnerCleanups, runWithOwner } from "../life-cycle/owner";
 import { untrack } from "../reactivity/effect";
 import {
   addUnmountListener,
@@ -52,13 +52,14 @@ export function $cmpnt<P>(Component: ((props?: P) => JSX.Element) | (() => JSX.E
 
         return nodes;
       } finally {
-        if (!import.meta.env.SSR && owner.mount.length) {
+        const mounts = owner.mount;
+        if (!import.meta.env.SSR && mounts?.length) {
           runAfterHydration(() => {
-            for (const mount of owner.mount) {
+            for (const mount of mounts) {
               const cleanup = mount();
 
               if (typeof cleanup === "function") {
-                owner.cleanups.push(bindRuntimeContext(cleanup));
+                getOwnerCleanups(owner).push(bindRuntimeContext(cleanup));
               }
             }
           });

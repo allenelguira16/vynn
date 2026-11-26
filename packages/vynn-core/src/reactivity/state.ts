@@ -1,4 +1,4 @@
-import { getOwner, runWithOwner } from "../life-cycle/owner";
+import { getOwner, getOwnerCleanups, runWithOwner } from "../life-cycle/owner";
 import { bindRuntimeContext } from "../runtime/context";
 import {
   allocateAsyncResourceID,
@@ -103,7 +103,25 @@ function cell<T>(
  * for runtime internals that need to store arbitrary user values.
  */
 export function createStateValue<T>(value: T): State<T> {
-  return cell(value).state;
+  // List item/index cells are always synchronous values. Avoid constructing
+  // the async-capable cell state machine and its pending/error closures.
+  const source = node();
+  let current = value;
+
+  return markRef<{ value: T }, T>(
+    {
+      get value() {
+        track(source);
+        return current;
+      },
+      set value(next: T) {
+        if (Object.is(current, next)) return;
+        current = next;
+        notify(source);
+      },
+    },
+    true,
+  ) as State<T>;
 }
 
 export function $state<T>(initializer: StateInitializer<T>): State<T>;
@@ -130,8 +148,11 @@ export function $state<T>(
 
   const releaseOwnerCleanup = () => {
     if (!owner || !ownerCleanup) return;
-    const index = owner.cleanups.indexOf(ownerCleanup);
-    if (index !== -1) owner.cleanups.splice(index, 1);
+    const cleanups = owner.cleanups;
+    if (cleanups) {
+      const index = cleanups.indexOf(ownerCleanup);
+      if (index !== -1) cleanups.splice(index, 1);
+    }
     ownerCleanup = undefined;
   };
 
@@ -145,7 +166,7 @@ export function $state<T>(
       updatePending(false);
       ownerCleanup = undefined;
     };
-    owner.cleanups.push(ownerCleanup);
+    getOwnerCleanups(owner).push(ownerCleanup);
   };
 
   const { state, fail, setPending, getPendingPromise, resolve } = cell<T>(

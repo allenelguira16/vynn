@@ -1,6 +1,6 @@
 import { bindRuntimeContext } from "../runtime/context";
 
-import { getOwner, runWithOwner } from "../life-cycle/owner";
+import { getOwner, getOwnerCleanups, runWithOwner } from "../life-cycle/owner";
 
 type VynnEvent<E extends Element, K extends keyof HTMLElementEventMap> = HTMLElementEventMap[K] & {
   readonly currentTarget: E;
@@ -47,7 +47,7 @@ export function $on<E extends Element, K extends keyof HTMLElementEventMap>(
 
   element.addEventListener(event, handle, capture);
 
-  owner.cleanups.push(() => {
+  getOwnerCleanups(owner).push(() => {
     element.removeEventListener(event, handle, capture);
   });
 }

@@ -1,4 +1,4 @@
-import { getOwner, type Owner } from "../life-cycle/owner";
+import { getOwner, getOwnerContextMap, type Owner } from "../life-cycle/owner";
 
 /**
  * Reads a value from the nearest Owner that defines the key.
@@ -11,7 +11,8 @@ export function getOwnerContext<T>(key: string | symbol): T | undefined {
   let owner = getOwner();
 
   while (owner) {
-    if (owner.context.has(key)) return owner.context.get(key) as T;
+    const context = owner.context;
+    if (context?.has(key)) return context.get(key) as T;
     owner = owner.parent;
   }
 
@@ -20,7 +21,8 @@ export function getOwnerContext<T>(key: string | symbol): T | undefined {
 
 /** Writes a value on the currently executing Owner. */
 export function setOwnerContext<T>(key: string | symbol, value: T): void {
-  getOwner()?.context.set(key, value);
+  const owner = getOwner();
+  if (owner) getOwnerContextMap(owner).set(key, value);
 }
 
 /** Writes a feature context on the root owner so sibling components share it. */
@@ -29,7 +31,7 @@ export function setRootOwnerContext<T>(key: string | symbol, value: T): void {
   if (!owner) return;
 
   while (owner.parent) owner = owner.parent;
-  owner.context.set(key, value);
+  getOwnerContextMap(owner).set(key, value);
 }
 
 /** Updates the nearest existing value without shadowing it on a descendant. */
@@ -40,8 +42,9 @@ export function modifyOwnerContext<T>(
   let owner: Owner | null = getOwner();
 
   while (owner) {
-    if (owner.context.has(key)) {
-      owner.context.set(key, updater(owner.context.get(key) as T));
+    const context = owner.context;
+    if (context?.has(key)) {
+      getOwnerContextMap(owner).set(key, updater(context.get(key) as T));
       return true;
     }
     owner = owner.parent;

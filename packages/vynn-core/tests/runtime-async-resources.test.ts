@@ -42,7 +42,7 @@ describe("runtime-owned async resources", () => {
       expect(second).toBe("01");
       expect(nestedFirst).toBe("000");
       expect(nestedSecond).toBe("000");
-      expect(owner.children).toEqual([]);
+      expect(owner.children).toBeUndefined();
       expect(owner.nodeCount).toBe(2);
     } finally {
       disposeOwner(owner);
@@ -121,7 +121,7 @@ describe("runtime-owned async resources", () => {
         expect(isPending(child)).toBe(false);
         expect(parentRuns).toBe(1);
         expect(childRuns).toBe(1);
-        expect(owner.children).toEqual([]);
+        expect(owner.children).toBeUndefined();
       });
     } finally {
       disposeOwner(owner);

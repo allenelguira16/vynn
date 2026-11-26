@@ -1,6 +1,6 @@
 import { getRuntimeContext, runWithRuntimeContext } from "../runtime/context";
 import { getErrorBoundary } from "../context/error-boundary";
-import { getOwner, runWithOwner } from "../life-cycle/owner";
+import { getOwner, getOwnerCleanups, runWithOwner } from "../life-cycle/owner";
 import { NotReadyError } from "../reactivity/async/not-ready-error";
 import { batch, createComputation, execute, runComputation, untrack } from "./graph";
 
@@ -56,8 +56,11 @@ function createEffect(callback: EffectCallback, priority: 1 | 2): () => void {
     stopped = true;
 
     if (owner) {
-      const index = owner.cleanups.indexOf(stop);
-      if (index !== -1) owner.cleanups.splice(index, 1);
+      const cleanups = owner.cleanups;
+      if (cleanups) {
+        const index = cleanups.indexOf(stop);
+        if (index !== -1) cleanups.splice(index, 1);
+      }
     }
 
     const finalCleanup = cleanup;
@@ -75,7 +78,7 @@ function createEffect(callback: EffectCallback, priority: 1 | 2): () => void {
     }
   };
 
-  owner?.cleanups.push(stop);
+  if (owner) getOwnerCleanups(owner).push(stop);
 
   try {
     runComputation(computation);

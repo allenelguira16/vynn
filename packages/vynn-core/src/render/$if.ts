@@ -187,8 +187,12 @@ export function $if(
     }
 
     if (keepAlive) {
-      for (const node of [...branch.fragment.childNodes]) {
+      let node = branch.fragment.firstChild;
+
+      while (node) {
+        const next = node.nextSibling;
         unmarkParked(node);
+        node = next;
       }
     }
 

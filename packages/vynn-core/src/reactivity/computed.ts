@@ -3,6 +3,7 @@ import {
   createComputation,
   execute,
   isPromiseLike,
+  hasDependency,
   node,
   notify,
   runComputation,
@@ -12,6 +13,7 @@ import {
 import {
   createOwner,
   getOwner,
+  getOwnerCleanups,
   runWithOwner,
   type Owner,
 } from "../life-cycle/owner";
@@ -160,7 +162,7 @@ export function $computed<T>(
 
         if (
           cause instanceof PendingReadError &&
-          computation.dependencies.has(cause.source)
+          hasDependency(computation, cause.source)
         ) {
           changed = !pending || pendingPromise !== cause.promise || hasError;
           error = undefined;
@@ -257,7 +259,7 @@ export function $computed<T>(
 
           if (
             cause instanceof PendingReadError &&
-            computation.dependencies.has(cause.source)
+            hasDependency(computation, cause.source)
           ) {
             errorChanged = !pending || pendingPromise !== cause.promise || hasError;
             error = undefined;
@@ -345,7 +347,7 @@ export function $computed<T>(
     !(lazyGetter && import.meta.env.SSR),
   );
 
-  owner?.cleanups.push(() => {
+  if (owner) getOwnerCleanups(owner).push(() => {
     version++;
     controllerSlot.abort();
     pending = false;

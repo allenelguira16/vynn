@@ -1,6 +1,8 @@
 export interface RuntimeContext {
   parent: RuntimeContext | null;
-  values: Map<string | symbol, unknown>;
+  values?: Map<string | symbol, unknown>;
+  /** The owner active in this frame. Kept outside the general context Map. */
+  currentOwner?: unknown;
 }
 
 export interface RuntimeContextStorage {
@@ -20,7 +22,7 @@ function getGlobalRuntimeContext(): RuntimeContext {
   let context = globalContext[RUNTIME_CONTEXT_KEY] as RuntimeContext | undefined;
 
   if (!context) {
-    context = { parent: null, values: new Map() };
+    context = { parent: null };
     globalContext[RUNTIME_CONTEXT_KEY] = context;
   }
 
@@ -31,7 +33,7 @@ function getGlobalRuntimeContext(): RuntimeContext {
 export function createRuntimeContext(
   parent: RuntimeContext | null = getRuntimeContextStore() ?? null,
 ): RuntimeContext {
-  return { parent, values: new Map() };
+  return { parent };
 }
 
 /** Installs the shared server-side AsyncLocalStorage adapter. */
@@ -55,7 +57,7 @@ export function installRuntimeContextStorage(storage: RuntimeContextStorage): vo
 /** Returns the active runtime context, using AsyncLocalStorage during SSR. */
 export function getRuntimeContext(): RuntimeContext {
   const storage = getRuntimeStorage();
-  return storage?.getStore() ?? (storage ? { parent: null, values: new Map() } : getGlobalRuntimeContext());
+  return storage?.getStore() ?? (storage ? { parent: null } : getGlobalRuntimeContext());
 }
 
 /**
@@ -106,7 +108,8 @@ export function getContext<T>(key: string | symbol): T | undefined {
   let context: RuntimeContext | null = getRuntimeContext();
 
   while (context) {
-    if (context.values.has(key)) return context.values.get(key) as T;
+    const values = context.values;
+    if (values?.has(key)) return values.get(key) as T;
     context = context.parent;
   }
 
@@ -115,7 +118,8 @@ export function getContext<T>(key: string | symbol): T | undefined {
 
 /** Writes a value into the active runtime-context frame. */
 export function setContext<T>(key: string | symbol, value: T): void {
-  getRuntimeContext().values.set(key, value);
+  const context = getRuntimeContext();
+  (context.values ??= new Map()).set(key, value);
 }
 
 /** Updates the nearest existing value without shadowing it in the active frame. */
@@ -123,8 +127,9 @@ export function updateContext<T>(key: string | symbol, value: T): boolean {
   let context: RuntimeContext | null = getRuntimeContext();
 
   while (context) {
-    if (context.values.has(key)) {
-      context.values.set(key, value);
+    const values = context.values;
+    if (values?.has(key)) {
+      values.set(key, value);
       return true;
     }
     context = context.parent;
@@ -138,12 +143,33 @@ export function modifyContext<T>(key: string | symbol, updater: (current: T) => 
   let context: RuntimeContext | null = getRuntimeContext();
 
   while (context) {
-    if (context.values.has(key)) {
-      context.values.set(key, updater(context.values.get(key) as T));
+    const values = context.values;
+    if (values?.has(key)) {
+      values.set(key, updater(values.get(key) as T));
       return true;
     }
     context = context.parent;
   }
 
   return false;
+}
+
+
+/** Reads the nearest active owner without allocating a general context Map. */
+export function getRuntimeOwner<T>(): T | undefined {
+  let context: RuntimeContext | null = getRuntimeContext();
+
+  while (context) {
+    if (Object.prototype.hasOwnProperty.call(context, "currentOwner")) {
+      return context.currentOwner as T;
+    }
+    context = context.parent;
+  }
+
+  return undefined;
+}
+
+/** Sets the active owner in the current runtime frame. */
+export function setRuntimeOwner(owner: unknown): void {
+  getRuntimeContext().currentOwner = owner;
 }

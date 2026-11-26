@@ -27,8 +27,10 @@ function visitNodeTree(node: Node, callback: (node: Node) => void): void {
 
     callback(current);
 
-    for (const child of current.childNodes) {
+    let child = current.firstChild;
+    while (child) {
       stack.push(child);
+      child = child.nextSibling;
     }
   }
 }

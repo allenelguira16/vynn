@@ -22,19 +22,24 @@ import {
   type SSR_NODE,
 } from "./resolve-node";
 
-type TemplateElementDescriptor = {
+type TemplateDescriptorPosition = {
+  index?: number;
+  parent?: TemplateElementDescriptor;
+};
+
+type TemplateElementDescriptor = TemplateDescriptorPosition & {
   kind: "element";
   tag: string;
   attributes: Array<[string, string]>;
   children: TemplateNodeDescriptor[];
 };
 
-type TemplateTextDescriptor = {
+type TemplateTextDescriptor = TemplateDescriptorPosition & {
   kind: "text";
   value: string;
 };
 
-type TemplateAnchorDescriptor = {
+type TemplateAnchorDescriptor = TemplateDescriptorPosition & {
   kind: "anchor";
   id: string;
 };
@@ -48,13 +53,10 @@ type TemplateRuntimeNode = Node | SSR_NODE;
 
 type TemplateBlueprint = {
   readonly steps: TemplateNodeDescriptor[];
-  readonly indices: Map<TemplateNodeDescriptor, number>;
-  readonly parents: Map<TemplateNodeDescriptor, TemplateElementDescriptor>;
 };
 
 type TemplateInstance = TemplateBlueprint & {
-  readonly nodes: Map<TemplateNodeDescriptor, TemplateRuntimeNode>;
-  readonly descriptors: WeakMap<object, TemplateNodeDescriptor>;
+  readonly nodes: Array<TemplateRuntimeNode | undefined>;
   cursor: number;
   hydrating: boolean;
 };
@@ -75,11 +77,16 @@ type StaticTemplateData = {
 };
 
 const templateInstances = new WeakMap<object, TemplateInstance>();
+const templateDescriptors = new WeakMap<object, TemplateNodeDescriptor>();
 const templateDataCache = new Map<string, TemplateData>();
 const staticTemplateDataCache = new Map<string, StaticTemplateData>();
 
 type StaticTemplateHydrator = (root: Element) => Element;
-type DynamicTemplateHydrator = (root: Element, namespace: string) => Element;
+type DynamicTemplateHydrator = (
+  root: Element,
+  namespace: string,
+  data: TemplateData,
+) => Element;
 
 let staticTemplateHydrator: StaticTemplateHydrator | undefined;
 let dynamicTemplateHydrator: DynamicTemplateHydrator | undefined;
@@ -239,13 +246,24 @@ function ensureTitleHydrationSlots(descriptor: TemplateElementDescriptor, elemen
   if (!start) return;
 
   const endId = start.id.slice("start-".length);
-  const hasStart = Array.from(element.childNodes).some(
-    (child) => child.nodeType === 8 && getTemplateAnchorId((child as Comment).data) === start.id,
-  );
-  const hasEnd = Array.from(element.childNodes).some(
-    (child) => child.nodeType === 8 && getTemplateAnchorId((child as Comment).data) === endId,
-  );
-  if (hasStart && hasEnd) return;
+  const hasAnchor = (id: string): boolean => {
+    let child = element.firstChild;
+
+    while (child) {
+      if (
+        child.nodeType === Node.COMMENT_NODE &&
+        getTemplateAnchorId((child as Comment).data) === id
+      ) {
+        return true;
+      }
+
+      child = child.nextSibling;
+    }
+
+    return false;
+  };
+
+  if (hasAnchor(start.id) && hasAnchor(endId)) return;
 
   // A streamed or route-level title can replace the template's original
   // title markup before hydration. Recreate the template's static prefix and
@@ -415,6 +433,14 @@ function describeDOMNode(node: Node): TemplateNodeDescriptor {
 
   const element = node as Element;
 
+  const children: TemplateNodeDescriptor[] = [];
+  let child = element.firstChild;
+
+  while (child) {
+    children.push(describeDOMNode(child));
+    child = child.nextSibling;
+  }
+
   return {
     kind: "element",
     tag: element.localName,
@@ -422,20 +448,17 @@ function describeDOMNode(node: Node): TemplateNodeDescriptor {
       attribute.name,
       attribute.value,
     ]),
-    children: Array.from(element.childNodes, describeDOMNode),
+    children,
   };
 }
 
 function createTemplateBlueprint(root: TemplateElementDescriptor): TemplateBlueprint {
   const steps: TemplateNodeDescriptor[] = [];
-  const indices = new Map<TemplateNodeDescriptor, number>();
-  const parents = new Map<TemplateNodeDescriptor, TemplateElementDescriptor>();
 
   const visit = (node: TemplateNodeDescriptor, parent?: TemplateElementDescriptor): void => {
-    indices.set(node, steps.length);
+    node.index = steps.length;
+    node.parent = parent;
     steps.push(node);
-
-    if (parent) parents.set(node, parent);
 
     if (node.kind === "element") {
       for (const child of node.children) visit(child, node);
@@ -444,17 +467,24 @@ function createTemplateBlueprint(root: TemplateElementDescriptor): TemplateBluep
 
   visit(root);
 
-  return { steps, indices, parents };
+  return { steps };
 }
 
 function createTemplateInstance(blueprint: TemplateBlueprint): TemplateInstance {
   return {
     ...blueprint,
-    nodes: new Map(),
-    descriptors: new WeakMap(),
+    nodes: [],
     cursor: 1,
     hydrating: false,
   };
+}
+
+function getTemplateNode(
+  instance: TemplateInstance,
+  descriptor: TemplateNodeDescriptor,
+): TemplateRuntimeNode | undefined {
+  const index = descriptor.index;
+  return index === undefined ? undefined : instance.nodes[index];
 }
 
 function registerTemplateNode(
@@ -462,8 +492,26 @@ function registerTemplateNode(
   descriptor: TemplateNodeDescriptor,
   node: TemplateRuntimeNode,
 ): void {
-  instance.nodes.set(descriptor, node);
-  instance.descriptors.set(node as object, descriptor);
+  const index = descriptor.index;
+  if (index === undefined) {
+    throw new Error("[vynn]: A template node has no blueprint index.");
+  }
+
+  const previous = instance.nodes[index];
+
+  // Hydration can replace an initially mapped node with the claimed server
+  // node. Do not leave the discarded node retaining this template instance.
+  if (
+    previous &&
+    previous !== node &&
+    templateInstances.get(previous as object) === instance
+  ) {
+    templateInstances.delete(previous as object);
+    templateDescriptors.delete(previous as object);
+  }
+
+  instance.nodes[index] = node;
+  templateDescriptors.set(node as object, descriptor);
   templateInstances.set(node as object, instance);
 }
 
@@ -639,7 +687,7 @@ function insertHydratedNode(
   node: Node,
   instance: TemplateInstance,
 ): void {
-  const parentDescriptor = instance.parents.get(descriptor);
+  const parentDescriptor = descriptor.parent;
 
   if (!parentDescriptor) {
     parent.appendChild(node);
@@ -649,7 +697,7 @@ function insertHydratedNode(
   const index = parentDescriptor.children.indexOf(descriptor);
 
   for (let previousIndex = index - 1; previousIndex >= 0; previousIndex--) {
-    const previous = instance.nodes.get(parentDescriptor.children[previousIndex]);
+    const previous = getTemplateNode(instance, parentDescriptor.children[previousIndex]);
 
     if (previous instanceof Node && previous.parentNode === parent) {
       parent.insertBefore(node, previous.nextSibling);
@@ -658,7 +706,7 @@ function insertHydratedNode(
   }
 
   for (let nextIndex = index + 1; nextIndex < parentDescriptor.children.length; nextIndex++) {
-    const next = instance.nodes.get(parentDescriptor.children[nextIndex]);
+    const next = getTemplateNode(instance, parentDescriptor.children[nextIndex]);
 
     if (next instanceof Node && next.parentNode === parent) {
       parent.insertBefore(node, next);
@@ -670,9 +718,9 @@ function insertHydratedNode(
 }
 
 function claimTemplateNode(descriptor: TemplateNodeDescriptor, instance: TemplateInstance): void {
-  const parentDescriptor = instance.parents.get(descriptor);
+  const parentDescriptor = descriptor.parent;
   const parent = parentDescriptor
-    ? (instance.nodes.get(parentDescriptor) as Element | undefined)
+    ? (getTemplateNode(instance, parentDescriptor) as Element | undefined)
     : undefined;
 
   if (descriptor.kind === "anchor") {
@@ -688,7 +736,7 @@ function claimTemplateNode(descriptor: TemplateNodeDescriptor, instance: Templat
     const namespace = parent
       ? getChildDOMNamespace(parent.namespaceURI, parentDescriptor!.tag, descriptor.tag)
       : getElementNamespace(descriptor.tag);
-    const existing = instance.nodes.get(descriptor);
+    const existing = getTemplateNode(instance, descriptor);
     const isHeadMetadata =
       parentDescriptor?.tag === "head" &&
       ["title", "meta", "link"].includes(descriptor.tag.toLowerCase());
@@ -751,7 +799,7 @@ function claimTemplateNode(descriptor: TemplateNodeDescriptor, instance: Templat
     return;
   }
 
-  const existing = instance.nodes.get(descriptor);
+  const existing = getTemplateNode(instance, descriptor);
 
   // The hydration scanner skips <title> contents together with the metadata
   // element, so static title text must not consume a body text claim.
@@ -804,7 +852,7 @@ function claimTemplateNode(descriptor: TemplateNodeDescriptor, instance: Templat
 }
 
 function claimTemplateThrough(instance: TemplateInstance, target: TemplateNodeDescriptor): void {
-  const targetIndex = instance.indices.get(target);
+  const targetIndex = target.index;
 
   if (targetIndex === undefined) {
     throw new Error("[vynn]: A template node does not belong to its template.");
@@ -1036,7 +1084,7 @@ function createDynamicTemplateFactory<T extends Element = Element>(
     }
 
     normalizeTemplateTextAnchors(root);
-    return (dynamicTemplateHydrator?.(root as Element, namespace) ?? root) as T;
+    return (dynamicTemplateHydrator?.(root as Element, namespace, data) ?? root) as T;
   };
 }
 
@@ -1044,11 +1092,19 @@ function createDynamicTemplateFactory<T extends Element = Element>(
  * Hydrates a dynamic template candidate. This function is reachable only from
  * installDynamicTemplateHydration(), which is installed by the hydration entry.
  */
-function hydrateDynamicTemplate(root: Element, namespace: string): Element {
+function hydrateDynamicTemplate(
+  root: Element,
+  namespace: string,
+  data: TemplateData,
+): Element {
   if (!isHydrationClaimActive()) return root;
 
-  const descriptor = describeDOMNode(root) as TemplateElementDescriptor;
-  const blueprint = createTemplateBlueprint(descriptor);
+  // A factory's immutable descriptor graph is built once and shared by every
+  // instance, rather than allocating descriptor Maps for each rendered row.
+  const descriptor =
+    data.descriptor ?? (data.descriptor = describeDOMNode(root) as TemplateElementDescriptor);
+  const blueprint =
+    data.blueprint ?? (data.blueprint = createTemplateBlueprint(descriptor));
   const instance = createTemplateInstance(blueprint);
   instance.hydrating = true;
 
@@ -1092,6 +1148,11 @@ function hydrateDynamicTemplate(root: Element, namespace: string): Element {
   if (!instance.steps.some((step) => step.kind === "anchor")) {
     const last = instance.steps.at(-1);
     if (last) claimTemplateThrough(instance, last);
+
+    // Anchor-free templates have no dynamic child claims left to coordinate.
+    // Retire their per-instance indexes now instead of keeping them attached
+    // to every hydrated DOM node until a later compiler finalizer runs.
+    finishHydratedTemplate(hydratedRoot);
   }
 
   return hydratedRoot;
@@ -1099,17 +1160,17 @@ function hydrateDynamicTemplate(root: Element, namespace: string): Element {
 
 function resolveHydratedTemplateNode(node: Node): Node {
   const instance = templateInstances.get(node as object);
-  const descriptor = instance?.descriptors.get(node as object);
+  const descriptor = templateDescriptors.get(node as object);
 
   if (!instance?.hydrating || !descriptor) return node;
 
   claimTemplateThrough(instance, descriptor);
-  return (instance.nodes.get(descriptor) as Node | undefined) ?? node;
+  return (getTemplateNode(instance, descriptor) as Node | undefined) ?? node;
 }
 
 function claimHydratedTemplateAnchor(parent: Element, id: string): Node | undefined {
   const instance = templateInstances.get(parent as object);
-  const parentDescriptor = instance?.descriptors.get(parent as object);
+  const parentDescriptor = templateDescriptors.get(parent as object);
 
   if (!instance || !parentDescriptor || parentDescriptor.kind !== "element") {
     return undefined;
@@ -1127,7 +1188,7 @@ function claimHydratedTemplateAnchor(parent: Element, id: string): Node | undefi
     claimTemplateThrough(instance, descriptor);
   }
 
-  const node = instance.nodes.get(descriptor);
+  const node = getTemplateNode(instance, descriptor);
   if (node instanceof Node) return node;
 
   return findHydrationAnchor(parent, descriptor);
@@ -1139,6 +1200,18 @@ function finishHydratedTemplate(root: Element): void {
 
   const last = instance.steps.at(-1);
   if (last) claimTemplateThrough(instance, last);
+
+  // Completed instances no longer need node-to-blueprint associations.
+  instance.hydrating = false;
+
+  for (const node of instance.nodes) {
+    if (node && templateInstances.get(node as object) === instance) {
+      templateInstances.delete(node as object);
+      templateDescriptors.delete(node as object);
+    }
+  }
+
+  instance.nodes.length = 0;
 }
 
 /** Creates a reusable factory for a JSX subtree with no runtime bindings. */
@@ -1155,11 +1228,11 @@ export function $template<T extends Element = Element>(markup: string): () => T 
 export function $child<E extends Element = Element>(parent: Element | SSR_ELEMENT): E {
   if (!import.meta.env.SSR && dynamicTemplateNodeResolver) {
     const instance = templateInstances.get(parent as object);
-    const parentDescriptor = instance?.descriptors.get(parent as object);
+    const parentDescriptor = templateDescriptors.get(parent as object);
 
     if (instance && parentDescriptor?.kind === "element") {
       const descriptor = parentDescriptor.children[0];
-      const child = descriptor ? instance.nodes.get(descriptor) : undefined;
+      const child = descriptor ? getTemplateNode(instance, descriptor) : undefined;
       if (child) return (dynamicTemplateNodeResolver?.(child as Node) ?? child) as E;
     }
   }
@@ -1181,13 +1254,13 @@ export function $sibling<E extends Element = Element>(node: Node | SSR_NODE, cou
 
   if (!import.meta.env.SSR && dynamicTemplateNodeResolver) {
     const instance = templateInstances.get(node as object);
-    const descriptor = instance?.descriptors.get(node as object);
-    const parentDescriptor = descriptor ? instance?.parents.get(descriptor) : undefined;
+    const descriptor = templateDescriptors.get(node as object);
+    const parentDescriptor = descriptor ? descriptor.parent : undefined;
 
     if (instance && descriptor && parentDescriptor) {
       const index = parentDescriptor.children.indexOf(descriptor);
       const nextDescriptor = parentDescriptor.children[index + count];
-      const next = nextDescriptor ? instance.nodes.get(nextDescriptor) : undefined;
+      const next = nextDescriptor ? getTemplateNode(instance, nextDescriptor) : undefined;
       if (next) return (dynamicTemplateNodeResolver?.(next as Node) ?? next) as E;
     }
   }
@@ -1227,10 +1300,14 @@ export function $claimTemplateAnchor(parent: Element | SSR_ELEMENT, id: string):
   if (hydrated) return hydrated;
 
   const marker = getTemplateAnchorMarker(id);
-  for (const child of Array.from(element.childNodes)) {
+  let child = element.firstChild;
+
+  while (child) {
     if (child.nodeType === Node.COMMENT_NODE && (child as Comment).data === marker) {
       return child;
     }
+
+    child = child.nextSibling;
   }
 
   throw new Error("[vynn]: Missing dynamic child anchor " + JSON.stringify(marker) + ".");

@@ -216,6 +216,7 @@ describe("Vynn Oxc JSX compiler", () => {
 
     expect(code).toContain("_$template(");
     expect(code).not.toContain("_$staticTemplate(");
+    expect(code).toContain("_$finishTemplate(");
   });
 
   it("keeps static and dynamic template factories separate when their markup matches", () => {
@@ -550,6 +551,35 @@ describe("Vynn Oxc JSX compiler", () => {
 
     expect(code).toContain("_$for(");
     expect(code).toContain("_renderItemFor");
+  });
+
+  it("marks direct intrinsic keyed rows for the stable-row runtime path", () => {
+    const code = transformVynnOxc(
+      `function Rows(props: { rows: Array<{ id: number; value: number }> }) {
+        return <tbody>{props.rows.map((row) => (
+          <tr key={row.id}><td>{row.value}</td></tr>
+        ))}</tbody>;
+      }`,
+      "rows.tsx",
+    );
+
+    expect(code).toContain("_$for(");
+    expect(code).toMatch(/, true, true, false\)/);
+  });
+
+  it("keeps keyed rows with nested components on the reactive row path", () => {
+    const code = transformVynnOxc(
+      `function Rows(props: { rows: Array<{ id: number; value: number }> }) {
+        return <ul>{props.rows.map((row) => (
+          <li key={row.id}><RowDetails value={row.value} /></li>
+        ))}</ul>;
+      }`,
+      "rows-components.tsx",
+    );
+
+    expect(code).toContain("_$for(");
+    // Nested components must be reevaluated when the keyed item is replaced.
+    expect(code).toMatch(/, true, false, false\)/);
   });
 
   it("preserves Array.map thisArg when lowering a JSX callback", () => {
