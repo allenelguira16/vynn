@@ -1,6 +1,7 @@
 import type { DOMTemplateProgram } from "../dom/program";
 import type { TemplateReference } from "../template/types";
 import { createScope, disposeScope, runWithScope } from "../lifecycle/scope";
+import { isRenderNewComponent, type RenderNewComponent } from "../component";
 
 type SSRNodeKind = "root" | "element" | "text" | "comment";
 
@@ -207,6 +208,14 @@ function renderChildValue(value: unknown): string {
     return escapeText(String(value));
   }
   if (Array.isArray(value)) return value.map(renderChildValue).join("");
+  if (isRenderNewComponent(value)) {
+    const scope = createScope();
+    try {
+      return runWithScope(scope, () => renderProgram(value.render()));
+    } finally {
+      disposeScope(scope);
+    }
+  }
   if (isTemplateProgram(value)) return renderProgram(value);
   throw new TypeError(
     "[vynn render_new]: Server children must be primitives, arrays, or component template programs.",
@@ -348,10 +357,16 @@ function renderProgram(program: DOMTemplateProgram): string {
  * It supports the host markup subset emitted by transformVynnRenderNewOxc and
  * keeps paired dynamic-child markers in the output for client hydration.
  */
-export function renderTemplateProgramToString(program: DOMTemplateProgram): string {
+export function renderTemplateProgramToString(
+  program: DOMTemplateProgram | RenderNewComponent,
+): string {
   const scope = createScope(null);
   try {
-    return runWithScope(scope, () => renderProgram(program));
+    return runWithScope(scope, () =>
+      isRenderNewComponent(program)
+        ? renderProgram(program.render())
+        : renderProgram(program),
+    );
   } finally {
     disposeScope(scope);
   }
