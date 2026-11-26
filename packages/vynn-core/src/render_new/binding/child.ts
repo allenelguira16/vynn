@@ -12,12 +12,15 @@ import { hydrateTemplateProgramInRange } from "../dom/hydrate";
 import { isRenderNewComponent } from "../component";
 import { mountRenderNewComponent } from "../dom/component";
 import {
-  createDOMRange,
   insertDOMRange,
   moveDOMRange,
   removeDOMRange,
   type DOMNodeRange,
 } from "../dom/range";
+import {
+  createDOMTemplateKeyMarkerData,
+  readDOMTemplateKeyMarker,
+} from "../dom/keyed";
 
 export interface ChildBinding extends Disposable {
   readonly anchor: Comment;
@@ -158,6 +161,66 @@ function isPrimitive(value: unknown): value is string | number | bigint {
 
 function clearRange(start: Comment, end: Comment): void {
   removeNodes(getRangeNodes(start, end));
+}
+
+function createKeyedRange(document: Document, key: DOMTemplateKey): DOMNodeRange {
+  return Object.freeze({
+    start: document.createComment(createDOMTemplateKeyMarkerData(key, "start")),
+    end: document.createComment(createDOMTemplateKeyMarkerData(key, "end")),
+  });
+}
+
+function collectKeyedRanges(
+  start: Comment,
+  end: Comment,
+): Map<DOMTemplateKey, DOMNodeRange> | null {
+  const ranges = new Map<DOMTemplateKey, DOMNodeRange>();
+  const stack: Array<{ key: DOMTemplateKey; start: Comment }> = [];
+  let current = start.nextSibling;
+
+  while (current && current !== end) {
+    const marker = readDOMTemplateKeyMarker(current);
+    if (!marker) {
+      if (stack.length === 0) return null;
+      current = current.nextSibling;
+      continue;
+    }
+
+    if (marker.edge === "start") {
+      stack.push({ key: marker.key, start: current as Comment });
+    } else {
+      const opening = stack.pop();
+      if (!opening || opening.key !== marker.key) return null;
+
+      if (stack.length === 0) {
+        if (ranges.has(opening.key)) return null;
+        ranges.set(opening.key, {
+          start: opening.start,
+          end: current as Comment,
+        });
+      }
+    }
+
+    current = current.nextSibling;
+  }
+
+  if (current !== end || stack.length > 0) return null;
+  return ranges;
+}
+
+function clearKeyedRangeContent(range: DOMNodeRange): void {
+  const nodes: Node[] = [];
+  let current = range.start.nextSibling;
+
+  while (current && current !== range.end) {
+    nodes.push(current);
+    current = current.nextSibling;
+  }
+
+  if (current !== range.end) {
+    throw new Error("[vynn]: A keyed item range is not properly ordered.");
+  }
+  removeNodes(nodes);
 }
 
 function appendNode(parent: Node, node: Node, before: Node): () => void {
@@ -324,6 +387,72 @@ export function bindChild(
     );
   };
 
+  const hydrateKeyedPrograms = (
+    parent: Node,
+    before: Comment,
+    start: Comment,
+    end: Comment,
+    programs: readonly DOMTemplateProgram[],
+  ): void => {
+    const nextKeys = new Set<DOMTemplateKey>();
+    const nextItems: Array<{ key: DOMTemplateKey; program: DOMTemplateProgram }> = [];
+
+    for (const program of programs) {
+      if (!isDOMTemplateKey(program.key)) {
+        throw new TypeError(
+          "[vynn]: Every item in a keyed child list must have a string, number, or bigint key.",
+        );
+      }
+      if (nextKeys.has(program.key)) {
+        throw new TypeError("[vynn]: Duplicate key in a render_new child list.");
+      }
+      nextKeys.add(program.key);
+      nextItems.push({ key: program.key, program });
+    }
+
+    // A missing or malformed marker sequence is a list-level hydration
+    // mismatch. Clear only this child slot and recover by mounting its items.
+    const serverRanges = collectKeyedRanges(start, end);
+    if (!serverRanges) clearRange(start, end);
+
+    const availableRanges = serverRanges ?? new Map<DOMTemplateKey, DOMNodeRange>();
+
+    for (const [key, range] of availableRanges) {
+      if (!nextKeys.has(key)) removeDOMRange(range);
+    }
+
+    for (const { key, program } of nextItems) {
+      let range = availableRanges.get(key);
+      let mounted: MountedTemplateProgram | null = null;
+
+      if (range) {
+        mounted = hydrateTemplateProgramInRange(range.start, range.end, program, adapter);
+        if (!mounted) {
+          clearKeyedRangeContent(range);
+          mounted = mountTemplateProgram(parent, program, adapter, range.end);
+        }
+      } else {
+        range = createKeyedRange(anchor.ownerDocument!, key);
+        insertDOMRange(parent, range, before);
+        try {
+          mounted = mountTemplateProgram(parent, program, adapter, range.end);
+        } catch (error) {
+          removeDOMRange(range);
+          throw error;
+        }
+      }
+
+      keyedItems.set(key, { key, range, program, mounted });
+    }
+
+    let cursor: Node = before;
+    for (let index = nextItems.length - 1; index >= 0; index--) {
+      const item = keyedItems.get(nextItems[index]!.key)!;
+      moveDOMRange(item.range, parent, cursor);
+      cursor = item.range.start;
+    }
+  };
+
   const reconcileKeyedPrograms = (
     parent: Node,
     before: Comment,
@@ -379,7 +508,7 @@ export function bindChild(
     for (const { key, program } of nextItems) {
       const existing = keyedItems.get(key);
       if (!existing) {
-        const range = createDOMRange(anchor.ownerDocument!, "vynn:keyed-item");
+        const range = createKeyedRange(anchor.ownerDocument!, key);
         insertDOMRange(parent, range, before);
         try {
           const mounted = mountTemplateProgram(parent, program, adapter, range.end);
@@ -431,11 +560,11 @@ export function bindChild(
     if (isProgramArray && (hasKeyedEntries || isEmptyKeyedUpdate)) {
       if (hydrate) {
         disposeCurrent();
-        clearRange(anchor, end);
+        hydrateKeyedPrograms(parent, before, anchor, end, value as DOMTemplateProgram[]);
       } else {
         disposeOrdinaryChildren();
+        reconcileKeyedPrograms(parent, before, value as DOMTemplateProgram[]);
       }
-      reconcileKeyedPrograms(parent, before, value as DOMTemplateProgram[]);
       return;
     }
 
