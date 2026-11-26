@@ -154,6 +154,7 @@ describe("render_new SSR and hydration", () => {
       "<div><!--__vynn_render_new_child_0_start__-->one2three<!--__vynn_render_new_child_0_end__--></div>",
     );
   });
+
   it("serializes keyed template programs with stable item boundary markers", () => {
     const items = $state([
       { id: "alpha", label: "Alpha" },
@@ -197,6 +198,44 @@ describe("render_new SSR and hydration", () => {
       .toBeLessThan(html.indexOf("__vynn_render_new_keyed_item_s_0062006500740061_start__"));
     expect(html).toContain("__vynn_render_new_keyed_item_s_0061006c007000680061_end__");
     expect(html).toContain("__vynn_render_new_keyed_item_s_0062006500740061_end__");
+  });
+
+  it("validates duplicate SSR keys before evaluating item bindings", () => {
+    let itemReads = 0;
+    const rowTemplate = {
+      namespace: "html" as const,
+      markup: "<li><!--__vynn_render_new_child_0_start__--><!--__vynn_render_new_child_0_end__--></li>",
+      references: [{ id: 0, kind: "anchor" as const, path: [0, 0] }],
+    };
+    const row = {
+      template: rowTemplate,
+      bindings: [{
+        kind: "child" as const,
+        reference: 0,
+        read: () => {
+          itemReads += 1;
+          return "row";
+        },
+      }],
+    };
+    const program: DOMTemplateProgram = {
+      template: {
+        namespace: "html",
+        markup: "<ul><!--__vynn_render_new_child_0_start__--><!--__vynn_render_new_child_0_end__--></ul>",
+        references: [{ id: 0, kind: "anchor", path: [0, 0] }],
+      },
+      bindings: [{
+        kind: "child",
+        reference: 0,
+        read: () => [
+          { ...row, key: "duplicate" },
+          { ...row, key: "duplicate" },
+        ],
+      }],
+    };
+
+    expect(() => renderTemplateProgramToString(program)).toThrow("Duplicate key");
+    expect(itemReads).toBe(0);
   });
 
   it("hydrates keyed server items in place and reconciles them by key", () => {
