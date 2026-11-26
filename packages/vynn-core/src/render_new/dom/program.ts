@@ -26,6 +26,11 @@ export interface MountedTemplateProgram extends MountedTemplate<Node> {
   update(program: DOMTemplateProgram): void;
 }
 
+export interface MountTemplateProgramOptions {
+  /** Keep a document root attached when the handle is disposed, as during hydration recovery. */
+  readonly removeRootsOnDispose?: boolean;
+}
+
 export function isDocumentRootProgram(program: DOMTemplateProgram): boolean {
   return program.template.namespace === "html" &&
     /^<html(?:\s|>)/i.test(program.template.markup.trim());
@@ -142,6 +147,7 @@ function mountDocumentProgram(
   document: Document,
   program: DOMTemplateProgram,
   adapter: DOMTemplateAdapter,
+  removeRootsOnDispose: boolean,
 ): MountedTemplateProgram {
   if (!isDocumentRootProgram(program)) {
     throw new TypeError(
@@ -150,7 +156,7 @@ function mountDocumentProgram(
   }
 
   const staging = document.createDocumentFragment();
-  const mounted = mountTemplateProgram(staging, program, adapter);
+  const mounted = mountTemplateProgram(staging, program, adapter, null, { removeRootsOnDispose });
   const roots = mounted.instance.roots;
 
   if (
@@ -218,6 +224,7 @@ export function mountTemplateProgram(
   program: DOMTemplateProgram,
   adapter: DOMTemplateAdapter,
   before: Node | null = null,
+  options: MountTemplateProgramOptions = {},
 ): MountedTemplateProgram {
   assertProgram(program);
 
@@ -225,7 +232,7 @@ export function mountTemplateProgram(
     if (before !== null) {
       throw new TypeError("[vynn]: A full-document mount cannot use a before node.");
     }
-    return mountDocumentProgram(parent as Document, program, adapter);
+    return mountDocumentProgram(parent as Document, program, adapter, options.removeRootsOnDispose ?? true);
   }
 
   // Snapshot the instruction list for this mount. Instructions retain their
@@ -242,6 +249,7 @@ export function mountTemplateProgram(
     (instance, scope) => {
       bindings = applyTemplateBindings(scope, instance, instructions, adapter);
     },
+    options.removeRootsOnDispose ?? true,
   );
 
   return Object.freeze({
