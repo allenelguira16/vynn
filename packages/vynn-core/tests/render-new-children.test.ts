@@ -218,6 +218,46 @@ describe("render_new dynamic child slots", () => {
     mounted.dispose();
   });
 
+  it("rejects mixed keyed child arrays before replacing the current list", () => {
+    const document = createDocument();
+    const parent = document.createElement("main");
+    const items = $state<unknown>([]);
+    const rowProgram: DOMTemplateProgram = {
+      template: {
+        namespace: "html",
+        markup: "<li>Stable row</li>",
+        references: [],
+      },
+      bindings: [],
+      key: "stable",
+    };
+    const parentProgram: DOMTemplateProgram = {
+      template: {
+        namespace: "html",
+        markup: "<ul><!--__vynn_render_new_child_0_start__--><!--__vynn_render_new_child_0_end__--></ul>",
+        references: [{ id: 0, kind: "anchor", path: [0, 0] }],
+      },
+      bindings: [{ kind: "child", reference: 0, read: () => items.value }],
+    };
+
+    items.value = [rowProgram];
+    const mounted = mountTemplateProgram(
+      parent,
+      parentProgram,
+      createDOMTemplateAdapter(document),
+    );
+    const originalRow = parent.querySelector("li");
+
+    expect(() => {
+      items.value = [rowProgram, "not a template program"];
+    }).toThrow("A keyed child list must contain only DOM template programs");
+
+    expect(parent.querySelector("li")).toBe(originalRow);
+    expect(parent.textContent).toContain("Stable row");
+
+    mounted.dispose();
+  });
+
   it("removes stale keyed ranges even when an item cleanup throws", () => {
     const document = createDocument();
     const parent = document.createElement("main");
