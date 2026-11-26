@@ -1,4 +1,9 @@
 export {
+  bindChild,
+  type ChildBinding,
+} from "./child";
+
+export {
   bindAttribute,
   type AttributeBinding,
   type AttributeName,
