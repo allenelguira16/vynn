@@ -251,7 +251,7 @@ describe("render_new JSX compiler target", () => {
     );
 
     expect(code).toContain('markup: "<strong>Ready</strong>"');
-    expect(code).toContain("if (!props.ready) return null");
+    expect(code).toContain("if (!props.ready) return ({");
     expect(code).toContain("_vynnCreateRenderNewComponent");
   });
 
