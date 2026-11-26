@@ -64,6 +64,16 @@ export function $for<T, K>(
   warnMissingKey: true,
 ): JSX.Element;
 
+export function $for<T, K>(
+  items: () => T[],
+  each:
+    | ((item: T, index: State<number>) => JSX.Element)
+    | ((item: State<T>, index: State<number>) => JSX.Element),
+  getKey: ((item: T, index: number) => K) | undefined,
+  warnMissingKey: boolean,
+  stableRow?: boolean,
+): JSX.Element;
+
 export function $for<T>(
   items: () => T[],
   each:
@@ -71,6 +81,7 @@ export function $for<T>(
     | ((item: State<T>, index: State<number>) => JSX.Element),
   getKey?: (item: T, index: number) => unknown,
   warnMissingKey = false,
+  stableRow = false,
 ): JSX.Element {
   const namespace = getCurrentDOMNamespace();
   const keyed = getKey !== undefined;
@@ -124,7 +135,9 @@ export function $for<T>(
         return {
           identity,
           itemState,
-          node: createRowNode(renderedItem, indexState),
+          node: stableRow
+            ? renderEach(renderedItem, indexState)
+            : createRowNode(renderedItem, indexState),
           index: indexState,
           owner,
         };
