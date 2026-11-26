@@ -1184,8 +1184,8 @@ function finishHydratedTemplate(root: Element): void {
 
   instance.nodes.clear();
 
-  // steps, indices, and parents are shared with the cached TemplateBlueprint.
-  // Keep the blueprint intact for other instances created from the same markup.
+  // These structures belong to the source blueprint and can be shared.
+  // Do not mutate them; this instance's references disappear with the instance.
 }
 
 /** Creates a reusable factory for a JSX subtree with no runtime bindings. */
