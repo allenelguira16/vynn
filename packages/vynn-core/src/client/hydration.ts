@@ -25,17 +25,35 @@ import {
   runWithOwner,
 } from "../life-cycle/owner";
 
-let serverRenderedElements: Element[] = [];
-let serverRenderedTexts: Text[] = [];
-let serverRenderedLazy = new Map<string, LazyHydrationNodes>();
+type HydrationCursor = {
+  parent: Node;
+  end: Node | null;
+  current: Node | null;
+  scopeId: string | undefined;
+};
 
-let hydrationElementIndex = 0;
-let hydrationTextIndex = 0;
+type HydrationScope = {
+  id?: string;
+  parentId?: string;
+  elementCursor?: HydrationCursor;
+  textCursor?: HydrationCursor;
+  hydrating: boolean;
+  finished: boolean;
+  start?: Text;
+  end?: Text;
+};
+
+type LazyHydrationNodes = HydrationScope & { id: string };
+
+let rootHydrationScope: HydrationScope | undefined;
+let serverRenderedLazy = new Map<string, LazyHydrationNodes>();
+let lazyStartScopes = new WeakMap<Node, LazyHydrationNodes>();
+let lazyBoundaryAnchors = new WeakSet<Node>();
+let rawHTMLHydrationHosts = new WeakSet<Element>();
+let internalRangeHydrationNodes = new WeakSet<Node>();
 let rootHydrationDepth = 0;
 
 const LAZY_HYDRATION = Symbol("vynn.lazy-hydration");
-
-// Lazy boundaries discovered in the server-rendered HTML.
 let pendingLazyHydration = new Set<string>();
 
 type AfterHydrationTask = {
@@ -46,8 +64,11 @@ type AfterHydrationTask = {
 
 export type HydrationClaimSnapshot = {
   scope: LazyHydrationNodes | undefined;
-  elementIndex: number;
-  textIndex: number;
+  rootScope: HydrationScope | undefined;
+  elementCursor: HydrationCursor | undefined;
+  textCursor: HydrationCursor | undefined;
+  elementNode: Node | null;
+  textNode: Node | null;
 };
 
 const afterHydrationTasks = new Set<AfterHydrationTask>();
@@ -55,12 +76,17 @@ let hydrationCheckScheduled = false;
 
 export function withHydration(callback: () => void, root: Node) {
   installDynamicTemplateHydration();
-  [serverRenderedElements, serverRenderedTexts, serverRenderedLazy] = getServerRenderedNodes(root);
-
-  hydrationElementIndex = 0;
-  hydrationTextIndex = 0;
-
+  serverRenderedLazy = getServerRenderedNodes(root);
+  rootHydrationScope = createHydrationScope(root);
   pendingLazyHydration = new Set(serverRenderedLazy.keys());
+
+  for (const scope of serverRenderedLazy.values()) {
+    const parent = scope.start?.parentNode;
+    if (parent && scope.end?.parentNode === parent) {
+      scope.elementCursor = createHydrationCursor(parent, scope.start.nextSibling, scope.end, scope.id);
+      scope.textCursor = createHydrationCursor(parent, scope.start.nextSibling, scope.end, scope.id);
+    }
+  }
 
   rootHydrationDepth++;
 
@@ -68,15 +94,164 @@ export function withHydration(callback: () => void, root: Node) {
     callback();
   } finally {
     rootHydrationDepth = Math.max(0, rootHydrationDepth - 1);
+    finishRootIfClaimed();
     scheduleAfterHydrationCheck();
   }
 }
 
-function hasUnclaimedHydrationNodes(): boolean {
+function createHydrationCursor(
+  parent: Node,
+  current: Node | null,
+  end: Node | null,
+  scopeId: string | undefined,
+): HydrationCursor {
+  return { parent, current, end, scopeId };
+}
+
+function createHydrationScope(root: Node): HydrationScope {
+  return {
+    elementCursor: createHydrationCursor(root, root.firstChild, null, undefined),
+    textCursor: createHydrationCursor(root, root.firstChild, null, undefined),
+    hydrating: true,
+    finished: false,
+  };
+}
+
+function nextSiblingWithinHydrationScope(node: Node, cursor: HydrationCursor): Node | null {
+  let current: Node | null = node;
+
+  while (current && current !== cursor.parent) {
+    const sibling = current.nextSibling;
+    if (sibling && sibling !== cursor.end) return sibling;
+    current = current.parentNode;
+  }
+
+  return null;
+}
+
+function isSkippedHydrationElement(element: Element): boolean {
+  if (
+    element.parentElement?.localName === "head" &&
+    (element.localName === "title" ||
+      element.localName === "meta" ||
+      element.localName === "link")
+  ) {
+    return true;
+  }
+
+  return element.localName === "template" &&
+    element.hasAttribute("data-vynn-head-fallback");
+}
+
+function nextHydrationTraversalNode(node: Node, cursor: HydrationCursor): Node | null {
+  const nestedScope = lazyStartScopes.get(node);
+  if (
+    nestedScope &&
+    nestedScope.parentId === cursor.scopeId &&
+    nestedScope.end?.parentNode === nestedScope.start?.parentNode
+  ) {
+    const next = nestedScope.end.nextSibling;
+    return next === cursor.end ? null : next;
+  }
+
+  if (lazyBoundaryAnchors.has(node) || internalRangeHydrationNodes.has(node)) {
+    return nextSiblingWithinHydrationScope(node, cursor);
+  }
+
+  if (node.nodeType === Node.ELEMENT_NODE) {
+    const element = node as Element;
+    if (
+      !rawHTMLHydrationHosts.has(element) &&
+      !isSkippedHydrationElement(element) &&
+      element.firstChild
+    ) {
+      return element.firstChild;
+    }
+  }
+
+  return nextSiblingWithinHydrationScope(node, cursor);
+}
+
+function findNextHydrationNode(
+  cursor: HydrationCursor | undefined,
+  kind: "element" | "text",
+): Element | Text | undefined {
+  if (!cursor) return undefined;
+
+  let node = cursor.current;
+  while (node && node !== cursor.end) {
+    const nestedScope = lazyStartScopes.get(node);
+    if (
+      nestedScope &&
+      nestedScope.parentId === cursor.scopeId &&
+      nestedScope.end?.parentNode === nestedScope.start?.parentNode
+    ) {
+      const next = nestedScope.end.nextSibling;
+      node = next === cursor.end ? null : next;
+      cursor.current = node;
+      continue;
+    }
+
+    if (lazyBoundaryAnchors.has(node) || internalRangeHydrationNodes.has(node)) {
+      node = nextSiblingWithinHydrationScope(node, cursor);
+      cursor.current = node;
+      continue;
+    }
+
+    if (node.nodeType === Node.ELEMENT_NODE && isSkippedHydrationElement(node as Element)) {
+      node = nextSiblingWithinHydrationScope(node, cursor);
+      cursor.current = node;
+      continue;
+    }
+
+    const matches = kind === "element"
+      ? node.nodeType === Node.ELEMENT_NODE
+      : node.nodeType === Node.TEXT_NODE;
+
+    if (matches) {
+      cursor.current = node;
+      return node as Element | Text;
+    }
+
+    node = nextHydrationTraversalNode(node, cursor);
+    cursor.current = node;
+  }
+
+  cursor.current = null;
+  return undefined;
+}
+
+function claimNextHydrationNode(
+  cursor: HydrationCursor | undefined,
+  kind: "element" | "text",
+): Element | Text | undefined {
+  const node = findNextHydrationNode(cursor, kind);
+  if (!node || !cursor) return undefined;
+
+  cursor.current = nextHydrationTraversalNode(node, cursor);
+  return node;
+}
+
+function scopeHasUnclaimedNodes(scope: HydrationScope | undefined): boolean {
+  if (!scope?.hydrating) return false;
   return (
-    hydrationElementIndex < serverRenderedElements.length ||
-    hydrationTextIndex < serverRenderedTexts.length
+    !!findNextHydrationNode(scope.elementCursor, "element") ||
+    !!findNextHydrationNode(scope.textCursor, "text")
   );
+}
+
+function hasUnclaimedHydrationNodes(): boolean {
+  return scopeHasUnclaimedNodes(rootHydrationScope);
+}
+
+function finishRootIfClaimed(): void {
+  if (rootHydrationDepth !== 0 || !rootHydrationScope) return;
+  if (scopeHasUnclaimedNodes(rootHydrationScope)) return;
+
+  rootHydrationScope.hydrating = false;
+  if (rootHydrationScope.elementCursor) rootHydrationScope.elementCursor.current = null;
+  if (rootHydrationScope.textCursor) rootHydrationScope.textCursor.current = null;
+  rootHydrationScope = undefined;
 }
 
 /**
@@ -159,14 +334,12 @@ function scheduleAfterHydrationCheck(): void {
 }
 
 function finishIfClaimed(scope: LazyHydrationNodes): void {
-  if (
-    scope.id !== undefined &&
-    scope.finished &&
-    scope.elementIndex >= scope.elements.length &&
-    scope.textIndex >= scope.texts.length
-  ) {
+  if (scope.finished && !scopeHasUnclaimedNodes(scope)) {
     scope.hydrating = false;
+    if (scope.elementCursor) scope.elementCursor.current = null;
+    if (scope.textCursor) scope.textCursor.current = null;
     pendingLazyHydration.delete(scope.id);
+    serverRenderedLazy.delete(scope.id);
     scheduleAfterHydrationCheck();
   }
 }
@@ -178,42 +351,34 @@ function finishIfClaimed(scope: LazyHydrationNodes): void {
  */
 export function claimHydrationElement<T extends Element>() {
   const scope = getOwnerContext<LazyHydrationNodes>(LAZY_HYDRATION);
+  const node = claimNextHydrationNode(
+    scope?.elementCursor ?? rootHydrationScope?.elementCursor,
+    "element",
+  ) as T | undefined;
 
-  try {
-    if (scope) {
-      return scope.elements[scope.elementIndex] as T;
-    }
-
-    return serverRenderedElements[hydrationElementIndex] as T;
-  } finally {
-    if (scope) {
-      scope.elementIndex++;
-      finishIfClaimed(scope);
-    } else {
-      hydrationElementIndex++;
-      scheduleAfterHydrationCheck();
-    }
+  if (scope) finishIfClaimed(scope);
+  else {
+    finishRootIfClaimed();
+    scheduleAfterHydrationCheck();
   }
+
+  return node;
 }
 
 export function claimHydrationText() {
   const scope = getOwnerContext<LazyHydrationNodes>(LAZY_HYDRATION);
+  const node = claimNextHydrationNode(
+    scope?.textCursor ?? rootHydrationScope?.textCursor,
+    "text",
+  );
 
-  try {
-    if (scope) {
-      return scope.texts[scope.textIndex];
-    }
-
-    return serverRenderedTexts[hydrationTextIndex];
-  } finally {
-    if (scope) {
-      scope.textIndex++;
-      finishIfClaimed(scope);
-    } else {
-      hydrationTextIndex++;
-      scheduleAfterHydrationCheck();
-    }
+  if (scope) finishIfClaimed(scope);
+  else {
+    finishRootIfClaimed();
+    scheduleAfterHydrationCheck();
   }
+
+  return node;
 }
 
 export type ServerRenderedLazyRange = {
@@ -234,9 +399,9 @@ export function withServerRenderedLazy<T>(lazyID: string | number, callback: () 
 
   if (!scope) {
     // A lazy component mounted by client-side navigation has no SSR range.
-    // Give it an isolated, inactive scope instead of treating missing SSR
-    // nodes as hydration mismatches.
-    scope = createLazyHydrationNodes(id, rootHydrationDepth > 0);
+    // Give it an isolated scope with no claimable nodes.
+    scope = createLazyHydrationNodes(id, undefined);
+    scope.hydrating = rootHydrationDepth > 0;
     serverRenderedLazy.set(id, scope);
   }
 
@@ -253,11 +418,17 @@ export function withServerRenderedLazy<T>(lazyID: string | number, callback: () 
 /** Capture the current cursor before a render-effect attempt. */
 export function beginHydrationClaim(): HydrationClaimSnapshot {
   const scope = getOwnerContext<LazyHydrationNodes>(LAZY_HYDRATION);
+  const rootScope = scope ? undefined : rootHydrationScope;
+  const elementCursor = scope?.elementCursor ?? rootScope?.elementCursor;
+  const textCursor = scope?.textCursor ?? rootScope?.textCursor;
 
   return {
     scope,
-    elementIndex: scope?.elementIndex ?? hydrationElementIndex,
-    textIndex: scope?.textIndex ?? hydrationTextIndex,
+    rootScope,
+    elementCursor,
+    textCursor,
+    elementNode: elementCursor?.current ?? null,
+    textNode: textCursor?.current ?? null,
   };
 }
 
@@ -268,13 +439,14 @@ export function beginHydrationClaim(): HydrationClaimSnapshot {
  */
 export function rollbackHydrationClaim(snapshot: HydrationClaimSnapshot): void {
   if (snapshot.scope) {
-    snapshot.scope.elementIndex = snapshot.elementIndex;
-    snapshot.scope.textIndex = snapshot.textIndex;
+    if (snapshot.elementCursor) snapshot.elementCursor.current = snapshot.elementNode;
+    if (snapshot.textCursor) snapshot.textCursor.current = snapshot.textNode;
     return;
   }
 
-  hydrationElementIndex = snapshot.elementIndex;
-  hydrationTextIndex = snapshot.textIndex;
+  if (snapshot.rootScope) rootHydrationScope = snapshot.rootScope;
+  if (snapshot.elementCursor) snapshot.elementCursor.current = snapshot.elementNode;
+  if (snapshot.textCursor) snapshot.textCursor.current = snapshot.textNode;
 }
 
 /**
@@ -336,26 +508,11 @@ export function finishServerRenderedLazy(lazyID: string | number): void {
 const LAZY_START_REGEX = new RegExp(`^${LAZY_START_SSR_MARKER}:(\\d+(?:\\.\\d+)*)$`);
 const LAZY_END_REGEX = new RegExp(`^${LAZY_END_SSR_MARKER}:(\\d+(?:\\.\\d+)*)$`);
 
-type LazyHydrationNodes = {
-  id?: string;
-  elements: Element[];
-  texts: Text[];
-  elementIndex: number;
-  textIndex: number;
-  hydrating: boolean;
-  finished: boolean;
-  start?: Text;
-  end?: Text;
-};
-
-function createLazyHydrationNodes(id?: string, hydrating = true): LazyHydrationNodes {
+function createLazyHydrationNodes(id: string, parentId: string | undefined): LazyHydrationNodes {
   return {
     id,
-    elements: [],
-    texts: [],
-    elementIndex: 0,
-    textIndex: 0,
-    hydrating,
+    parentId,
+    hydrating: true,
     finished: false,
   };
 }
@@ -392,36 +549,24 @@ function findInternalRangeEnd(start: Comment): Comment | undefined {
   return undefined;
 }
 
-function getServerRenderedNodes(root: Node) {
-  const doms: Node[] = [];
+function getServerRenderedNodes(root: Node): Map<string, LazyHydrationNodes> {
   const lazy = new Map<string, LazyHydrationNodes>();
   const boundaryStack: string[] = [];
-  function getOrCreateLazyNodes(id: string): LazyHydrationNodes {
-    let nodes = lazy.get(id);
+  lazyStartScopes = new WeakMap<Node, LazyHydrationNodes>();
+  lazyBoundaryAnchors = new WeakSet<Node>();
+  rawHTMLHydrationHosts = new WeakSet<Element>();
+  internalRangeHydrationNodes = new WeakSet<Node>();
 
+  function getOrCreateLazyNodes(
+    id: string,
+    parentId: string | undefined = boundaryStack.at(-1),
+  ): LazyHydrationNodes {
+    let nodes = lazy.get(id);
     if (!nodes) {
-      nodes = createLazyHydrationNodes(id);
+      nodes = createLazyHydrationNodes(id, parentId);
       lazy.set(id, nodes);
     }
-
     return nodes;
-  }
-
-  function addNode(node: Node) {
-    const id = boundaryStack.at(-1);
-
-    if (id === undefined) {
-      doms.push(node);
-      return;
-    }
-
-    const nodes = getOrCreateLazyNodes(id);
-
-    if (isElement(node)) {
-      nodes.elements.push(node);
-    } else if (isTextNode(node)) {
-      nodes.texts.push(node);
-    }
   }
 
   function flattenNode(node: Node): Node | null {
@@ -449,6 +594,7 @@ function getServerRenderedNodes(root: Node) {
         ) {
           current.parentNode?.removeChild(current);
         } else {
+          internalRangeHydrationNodes.add(current);
           removeInternalRangeMarkers(current);
         }
 
@@ -468,10 +614,10 @@ function getServerRenderedNodes(root: Node) {
     }
 
     if (isElement(node) && node.hasAttribute(RAW_HTML_SSR_ATTRIBUTE)) {
-      // Raw HTML is opaque to Vynn. Claim its host element, but do not add any
-      // of its unmanaged descendants to the hydration queues.
+      // Raw HTML is opaque to Vynn. Claim its host element, but do not traverse
+      // or retain its unmanaged descendants in the hydration cursor.
       node.removeAttribute(RAW_HTML_SSR_ATTRIBUTE);
-      addNode(node);
+      rawHTMLHydrationHosts.add(node);
       return nextSibling;
     }
 
@@ -497,7 +643,10 @@ function getServerRenderedNodes(root: Node) {
 
         node.parentNode?.replaceChild(anchor, node);
 
-        getOrCreateLazyNodes(id).start = anchor;
+        const scope = getOrCreateLazyNodes(id, boundaryStack.at(-1));
+        scope.start = anchor;
+        lazyStartScopes.set(anchor, scope);
+        lazyBoundaryAnchors.add(anchor);
         boundaryStack.push(id);
         return nextSibling;
       }
@@ -510,7 +659,9 @@ function getServerRenderedNodes(root: Node) {
 
         node.parentNode?.replaceChild(anchor, node);
 
-        getOrCreateLazyNodes(id).end = anchor;
+        const scope = getOrCreateLazyNodes(id, boundaryStack.at(-2));
+        scope.end = anchor;
+        lazyBoundaryAnchors.add(anchor);
 
         const index = boundaryStack.lastIndexOf(id);
 
@@ -527,7 +678,6 @@ function getServerRenderedNodes(root: Node) {
         const empty = document.createTextNode("");
 
         node.parentNode?.replaceChild(empty, node);
-        addNode(empty);
         return nextSibling;
       }
 
@@ -537,12 +687,10 @@ function getServerRenderedNodes(root: Node) {
       }
     }
 
-    if (isElement(node) || isTextNode(node)) {
-      addNode(node);
-    }
-
-    // Walk sibling links directly. Reading childNodes creates and caches a
-    // live NodeList for every node visited by this scanner in Chromium.
+    // Walk sibling links directly. This preparation pass records only lazy
+    // range boundaries; ordinary element and text nodes are reached on demand
+    // by the hydration cursors. Reading childNodes creates and caches a live
+    // NodeList for every node visited by this scanner in Chromium.
     let child = node.firstChild;
     while (child) {
       child = flattenNode(child);
@@ -556,7 +704,7 @@ function getServerRenderedNodes(root: Node) {
     child = flattenNode(child);
   }
 
-  return [doms.filter(isElement), doms.filter(isTextNode), lazy] as const;
+  return lazy;
 }
 
 // Make the real implementation available only to bundles that include the
