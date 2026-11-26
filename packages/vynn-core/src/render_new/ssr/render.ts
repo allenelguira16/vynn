@@ -376,7 +376,7 @@ function renderProgram(program: DOMTemplateProgram): string {
     }
 
     const value = instruction.kind === "child"
-      ? consumePreparedRenderNewChildValue(instruction.read)
+      ? consumePreparedRenderNewChildValue(instruction.read, false)
       : instruction.read();
 
     switch (instruction.kind) {
