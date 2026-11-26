@@ -607,6 +607,7 @@ describe("render_new SSR and hydration", () => {
     expect(document.querySelector("#client-entry")).not.toBeNull();
 
     mounted.dispose();
+    expect(document.documentElement).not.toBeNull();
   });
 
 });
