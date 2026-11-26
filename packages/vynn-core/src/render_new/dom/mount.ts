@@ -10,6 +10,15 @@ import type { RenderScope } from "../types";
 import type { TemplateFactory, TemplateInstance } from "../template/types";
 
 /**
+ * Runs inside the new template's scope after references are resolved and root
+ * cleanup is registered, but before any root is inserted into the parent.
+ */
+export type TemplateInitializer<TNode extends Node> = (
+  instance: TemplateInstance<TNode>,
+  scope: RenderScope,
+) => void;
+
+/**
  * A template instance connected to the DOM and owned by a render scope.
  *
  * mounted describes this mount operation's lifetime. It becomes false when
@@ -53,6 +62,7 @@ function throwMountFailure(
  * The operation is transactional:
  * - The factory is instantiated with the new render scope active.
  * - A scope cleanup owns removal of every root node.
+ * - An optional initializer applies compiler-emitted bindings before insertion.
  * - Roots are inserted in their compiler-defined order.
  * - Any failure disposes the scope and removes the roots before rethrowing.
  *
@@ -63,8 +73,13 @@ export function mountTemplate<TNode extends Node>(
   parent: Node,
   factory: TemplateFactory<TNode>,
   before: Node | null = null,
+  initialize?: TemplateInitializer<TNode>,
 ): MountedTemplate<TNode> {
   assertFactory(factory);
+
+  if (initialize !== undefined && typeof initialize !== "function") {
+    throw new TypeError("[vynn]: mountTemplate() expects an initializer function.");
+  }
 
   const scope = createScope();
   let instance: TemplateInstance<TNode> | undefined;
@@ -93,6 +108,10 @@ export function mountTemplate<TNode extends Node>(
           mounted = false;
         }
       });
+
+      // Compiler-emitted bindings must be installed before insertion so the
+      // first observable DOM state is already reactive and event-ready.
+      initialize?.(created, scope);
 
       return created;
     });
