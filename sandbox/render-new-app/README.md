@@ -13,11 +13,12 @@ pnpm --filter render-new-app dev
 
 Open http://localhost:3001.
 
-The app returns a complete `<html>` document from `src/App.tsx`. Vynn renders
-that document on the server, injects the browser assets, then hydrates the
-existing `document.documentElement` with the new renderer. The playground
-includes a reactive counter and a keyed list so DOM identity can be inspected
-while rows are reordered, added, and removed.
+The app returns a complete `<html>` document from `src/App.tsx`. Vynn
+prepares the render tree, serializes the document on the server, injects the
+browser assets, then prepares the client tree before hydrating the existing
+`document.documentElement`. The playground includes a reactive counter and
+a keyed list so DOM identity can be inspected while rows are reordered,
+added, and removed.
 
 The Vite config uses:
 
@@ -25,8 +26,9 @@ The Vite config uses:
 vynn({ renderer: "new" })
 ```
 
-The integrated renderer mode currently uses synchronous `render_new` SSR
-serialization with document-root hydration. The outer Vite response pipeline
-still streams the completed document and injects CSS and client assets. It does
-not yet support the legacy file-router `Router` component, async rendering
-resources, dynamic `<title>` content, or the full legacy metadata runtime.
+The integrated renderer mode uses asynchronous tree preparation
+followed by synchronous `render_new` serialization and document-root
+hydration. The outer Vite response pipeline still streams the completed
+document and injects CSS and client assets. This sandbox does not yet exercise
+the native router, general async rendering resources, dynamic `<title>`
+content, or the full legacy metadata runtime.
