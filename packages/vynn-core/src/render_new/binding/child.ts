@@ -9,8 +9,8 @@ import {
   type MountedTemplateProgram,
 } from "../dom/program";
 import { hydrateTemplateProgramInRange } from "../dom/hydrate";
-import { isRenderNewComponent } from "../component";
-import { mountRenderNewComponent } from "../dom/component";
+import { isRenderNewComponent, type RenderNewComponent } from "../component";
+import { mountRenderNewComponent, type MountedRenderNewComponent } from "../dom/component";
 import {
   insertDOMRange,
   moveDOMRange,
@@ -31,18 +31,50 @@ export interface ChildBindingOptions {
   readonly hydrate?: boolean;
 }
 
-interface KeyedProgramMount {
+interface KeyedTemplateMount {
+  readonly kind: "template";
   readonly key: DOMTemplateKey;
   readonly range: DOMNodeRange;
-  program: DOMTemplateProgram;
+  value: DOMTemplateProgram;
   mounted: MountedTemplateProgram;
 }
+
+interface KeyedComponentMount {
+  readonly kind: "component";
+  readonly key: DOMTemplateKey;
+  readonly range: DOMNodeRange;
+  value: RenderNewComponent;
+  mounted: MountedRenderNewComponent;
+}
+
+type KeyedChildMount = KeyedTemplateMount | KeyedComponentMount;
+type KeyedChildValue = DOMTemplateProgram | RenderNewComponent;
 
 function isTemplateProgram(value: unknown): value is DOMTemplateProgram {
   if (!value || typeof value !== "object") return false;
   const candidate = value as Partial<DOMTemplateProgram>;
   return !!candidate.template && typeof candidate.template === "object" &&
     Array.isArray(candidate.bindings);
+}
+
+function hasOwnKey(value: unknown): boolean {
+  return !!value &&
+    typeof value === "object" &&
+    Object.prototype.hasOwnProperty.call(value, "key");
+}
+
+function isKeyedChildValue(value: unknown): value is KeyedChildValue {
+  return (isTemplateProgram(value) || isRenderNewComponent(value)) && hasOwnKey(value);
+}
+
+function getKeyedChildKey(value: KeyedChildValue): DOMTemplateKey {
+  const key = value.key;
+  if (!isDOMTemplateKey(key)) {
+    throw new TypeError(
+      "[vynn]: Every keyed child item requires a string, number, or bigint key.",
+    );
+  }
+  return key;
 }
 
 function isDOMNode(value: unknown): value is Node {
@@ -267,7 +299,8 @@ export function bindChild(
   const shouldHydrate = options.hydrate === true;
   let endAnchor: Comment | undefined;
   let ordinaryCleanups: Array<() => void> = [];
-  let keyedItems = new Map<DOMTemplateKey, KeyedProgramMount>();
+  let keyedItems = new Map<DOMTemplateKey, KeyedChildMount>();
+  let keyedMode = false;
 
   const disposeKeyedItems = (): void => {
     const errors: unknown[] = [];
@@ -391,27 +424,44 @@ export function bindChild(
     );
   };
 
-  const hydrateKeyedPrograms = (
+  const mountKeyedChild = (
+    parent: Node,
+    range: DOMNodeRange,
+    value: KeyedChildValue,
+  ): KeyedChildMount => {
+    const key = getKeyedChildKey(value);
+
+    if (isRenderNewComponent(value)) {
+      const mounted = mountRenderNewComponent(parent, value, adapter, range.end);
+      return { kind: "component", key, range, value, mounted };
+    }
+
+    const mounted = mountTemplateProgram(parent, value, adapter, range.end);
+    return { kind: "template", key, range, value, mounted };
+  };
+
+  const hydrateKeyedChildren = (
     parent: Node,
     before: Comment,
     start: Comment,
     end: Comment,
-    programs: readonly DOMTemplateProgram[],
+    values: readonly KeyedChildValue[],
   ): void => {
     const nextKeys = new Set<DOMTemplateKey>();
-    const nextItems: Array<{ key: DOMTemplateKey; program: DOMTemplateProgram }> = [];
+    const nextItems: Array<{ key: DOMTemplateKey; value: KeyedChildValue }> = [];
 
-    for (const program of programs) {
-      if (!isDOMTemplateKey(program.key)) {
+    for (const value of values) {
+      if (!isKeyedChildValue(value)) {
         throw new TypeError(
-          "[vynn]: Every item in a keyed child list must have a string, number, or bigint key.",
+          "[vynn]: A keyed child list must contain only keyed template programs or component descriptors.",
         );
       }
-      if (nextKeys.has(program.key)) {
+      const key = getKeyedChildKey(value);
+      if (nextKeys.has(key)) {
         throw new TypeError("[vynn]: Duplicate key in a render_new child list.");
       }
-      nextKeys.add(program.key);
-      nextItems.push({ key: program.key, program });
+      nextKeys.add(key);
+      nextItems.push({ key, value });
     }
 
     // A missing or malformed marker sequence is a list-level hydration
@@ -425,40 +475,80 @@ export function bindChild(
       if (!nextKeys.has(key)) removeDOMRange(range);
     }
 
-    for (const { key, program } of nextItems) {
+    for (const { key, value } of nextItems) {
       let range = availableRanges.get(key);
-      let mounted: MountedTemplateProgram | null = null;
 
-      if (range) {
+      if (!range) {
+        range = createKeyedRange(anchor.ownerDocument!, key);
+        insertDOMRange(parent, range, before);
         try {
-          mounted = hydrateTemplateProgramInRange(range.start, range.end, program, adapter);
-          if (!mounted) {
-            clearKeyedRangeContent(range);
-            mounted = mountTemplateProgram(parent, program, adapter, range.end);
-          }
+          keyedItems.set(key, mountKeyedChild(parent, range, value));
+        } catch (error) {
+          removeDOMRange(range);
+          throw error;
+        }
+        continue;
+      }
+
+      if (isRenderNewComponent(value)) {
+        try {
+          const mounted = mountRenderNewComponent(
+            parent,
+            value,
+            adapter,
+            range.end,
+            { start: range.start, end: range.end },
+          );
+          keyedItems.set(key, {
+            kind: "component",
+            key,
+            range,
+            value,
+            mounted,
+          });
         } catch (error) {
           try {
             removeDOMRange(range);
           } catch (cleanupError) {
             throw new AggregateError(
               [error, cleanupError],
-              "[vynn]: A keyed item failed to hydrate and its range could not be removed.",
+              "[vynn]: A keyed component failed to hydrate and its range could not be removed.",
             );
           }
           throw error;
         }
-      } else {
-        range = createKeyedRange(anchor.ownerDocument!, key);
-        insertDOMRange(parent, range, before);
-        try {
-          mounted = mountTemplateProgram(parent, program, adapter, range.end);
-        } catch (error) {
-          removeDOMRange(range);
-          throw error;
-        }
+        continue;
       }
 
-      keyedItems.set(key, { key, range, program, mounted });
+      try {
+        let mounted = hydrateTemplateProgramInRange(
+          range.start,
+          range.end,
+          value,
+          adapter,
+        );
+        if (!mounted) {
+          clearKeyedRangeContent(range);
+          mounted = mountTemplateProgram(parent, value, adapter, range.end);
+        }
+        keyedItems.set(key, {
+          kind: "template",
+          key,
+          range,
+          value,
+          mounted,
+        });
+      } catch (error) {
+        try {
+          removeDOMRange(range);
+        } catch (cleanupError) {
+          throw new AggregateError(
+            [error, cleanupError],
+            "[vynn]: A keyed item failed to hydrate and its range could not be removed.",
+          );
+        }
+        throw error;
+      }
     }
 
     let cursor: Node = before;
@@ -469,31 +559,61 @@ export function bindChild(
     }
   };
 
-  const reconcileKeyedPrograms = (
+  const replaceKeyedChild = (
     parent: Node,
-    before: Comment,
-    programs: readonly DOMTemplateProgram[],
-  ): void => {
-    const nextKeys = new Set<DOMTemplateKey>();
-    const nextItems: Array<{ key: DOMTemplateKey; program: DOMTemplateProgram }> = [];
+    existing: KeyedChildMount,
+    value: KeyedChildValue,
+  ): KeyedChildMount => {
+    const errors: unknown[] = [];
 
-    for (const program of programs) {
-      if (!isDOMTemplateKey(program.key)) {
-        throw new TypeError(
-          "[vynn]: Every item in a keyed child list must have a string, number, or bigint key.",
-        );
-      }
-      if (nextKeys.has(program.key)) {
-        throw new TypeError("[vynn]: Duplicate key in a render_new child list.");
-      }
-      nextKeys.add(program.key);
-      nextItems.push({ key: program.key, program });
+    try {
+      existing.mounted.dispose();
+    } catch (error) {
+      errors.push(error);
     }
 
-    // Dispose removed items before moving or creating anything, so their
-    // lifecycle cleanups cannot observe an already-reused DOM range. A failing
-    // cleanup must not prevent the corresponding range and map entry from being
-    // removed, nor should it block cleanup of other stale items.
+    try {
+      clearKeyedRangeContent(existing.range);
+    } catch (error) {
+      errors.push(error);
+    }
+
+    if (errors.length === 1) throw errors[0];
+    if (errors.length > 1) {
+      throw new AggregateError(
+        errors,
+        "[vynn]: A keyed child could not be replaced cleanly.",
+      );
+    }
+
+    return mountKeyedChild(parent, existing.range, value);
+  };
+
+  const reconcileKeyedChildren = (
+    parent: Node,
+    before: Comment,
+    values: readonly KeyedChildValue[],
+  ): void => {
+    const nextKeys = new Set<DOMTemplateKey>();
+    const nextItems: Array<{ key: DOMTemplateKey; value: KeyedChildValue }> = [];
+
+    // Validate the whole list before disposing or moving any current item.
+    for (const value of values) {
+      if (!isKeyedChildValue(value)) {
+        throw new TypeError(
+          "[vynn]: A keyed child list must contain only keyed template programs or component descriptors.",
+        );
+      }
+      const key = getKeyedChildKey(value);
+      if (nextKeys.has(key)) {
+        throw new TypeError("[vynn]: Duplicate key in a render_new child list.");
+      }
+      nextKeys.add(key);
+      nextItems.push({ key, value });
+    }
+
+    // Remove stale items before reusing any surviving ranges. Every cleanup is
+    // attempted even if an earlier component cleanup throws.
     const removalErrors: unknown[] = [];
     for (const [key, item] of [...keyedItems]) {
       if (nextKeys.has(key)) continue;
@@ -521,14 +641,14 @@ export function bindChild(
       );
     }
 
-    for (const { key, program } of nextItems) {
+    for (const { key, value } of nextItems) {
       const existing = keyedItems.get(key);
+
       if (!existing) {
         const range = createKeyedRange(anchor.ownerDocument!, key);
         insertDOMRange(parent, range, before);
         try {
-          const mounted = mountTemplateProgram(parent, program, adapter, range.end);
-          keyedItems.set(key, { key, range, program, mounted });
+          keyedItems.set(key, mountKeyedChild(parent, range, value));
         } catch (error) {
           removeDOMRange(range);
           throw error;
@@ -536,16 +656,22 @@ export function bindChild(
         continue;
       }
 
-      if (canUpdateTemplateProgram(existing.program, program)) {
-        existing.mounted.update(program);
-        existing.program = program;
-        continue;
+      if (existing.kind === "template" && isTemplateProgram(value)) {
+        if (canUpdateTemplateProgram(existing.value, value)) {
+          existing.mounted.update(value);
+          existing.value = value;
+          continue;
+        }
+      } else if (existing.kind === "component" && isRenderNewComponent(value)) {
+        if (existing.mounted.update(value)) {
+          // Keep the original descriptor: it owns the state cells that the
+          // mounted component's accessors close over.
+          continue;
+        }
       }
 
-      existing.mounted.dispose();
-      const mounted = mountTemplateProgram(parent, program, adapter, existing.range.end);
-      existing.program = program;
-      existing.mounted = mounted;
+      const replacement = replaceKeyedChild(parent, existing, value);
+      keyedItems.set(key, replacement);
     }
 
     // Move from the end toward the beginning so each item can be placed
@@ -566,34 +692,37 @@ export function bindChild(
 
     const end = endAnchor!;
     const before = end;
-    const isProgramArray = Array.isArray(value) && value.every(isTemplateProgram);
-    const hasKeyedEntries = Array.isArray(value) &&
-      value.some((item) =>
-        !!item &&
-        typeof item === "object" &&
-        Object.prototype.hasOwnProperty.call(item, "key"),
-      );
+    const hasKeyedEntries = Array.isArray(value) && value.some(hasOwnKey);
     const isEmptyKeyedUpdate = Array.isArray(value) &&
       value.length === 0 &&
-      keyedItems.size > 0;
+      keyedMode;
+    const shouldUseKeyedMode = hasKeyedEntries || isEmptyKeyedUpdate;
 
-    if (hasKeyedEntries && !isProgramArray) {
-      throw new TypeError(
-        "[vynn]: A keyed child list must contain only DOM template programs.",
-      );
-    }
+    if (shouldUseKeyedMode) {
+      if (!Array.isArray(value) || !value.every(isKeyedChildValue)) {
+        throw new TypeError(
+          "[vynn]: A keyed child list must contain only keyed template programs or component descriptors.",
+        );
+      }
 
-    if (isProgramArray && (hasKeyedEntries || isEmptyKeyedUpdate)) {
+      keyedMode = true;
       if (hydrate) {
         disposeCurrent();
-        hydrateKeyedPrograms(parent, before, anchor, end, value as DOMTemplateProgram[]);
+        hydrateKeyedChildren(
+          parent,
+          before as Comment,
+          anchor,
+          end,
+          value as KeyedChildValue[],
+        );
       } else {
         disposeOrdinaryChildren();
-        reconcileKeyedPrograms(parent, before, value as DOMTemplateProgram[]);
+        reconcileKeyedChildren(parent, before as Comment, value as KeyedChildValue[]);
       }
       return;
     }
 
+    keyedMode = false;
     if (keyedItems.size > 0) disposeKeyedItems();
     disposeOrdinaryChildren();
     append(parent, before, value, hydrate);
