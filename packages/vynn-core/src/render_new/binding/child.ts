@@ -57,6 +57,10 @@ function isDOMTemplateKey(value: unknown): value is DOMTemplateKey {
     typeof value === "bigint";
 }
 
+function sameDOMTemplateKey(left: DOMTemplateKey, right: DOMTemplateKey): boolean {
+  return left === right || Object.is(left, right);
+}
+
 function canUpdateTemplateProgram(
   current: DOMTemplateProgram,
   next: DOMTemplateProgram,
@@ -190,7 +194,7 @@ function collectKeyedRanges(
       stack.push({ key: marker.key, start: current as Comment });
     } else {
       const opening = stack.pop();
-      if (!opening || opening.key !== marker.key) return null;
+      if (!opening || !sameDOMTemplateKey(opening.key, marker.key)) return null;
 
       if (stack.length === 0) {
         if (ranges.has(opening.key)) return null;
@@ -426,10 +430,22 @@ export function bindChild(
       let mounted: MountedTemplateProgram | null = null;
 
       if (range) {
-        mounted = hydrateTemplateProgramInRange(range.start, range.end, program, adapter);
-        if (!mounted) {
-          clearKeyedRangeContent(range);
-          mounted = mountTemplateProgram(parent, program, adapter, range.end);
+        try {
+          mounted = hydrateTemplateProgramInRange(range.start, range.end, program, adapter);
+          if (!mounted) {
+            clearKeyedRangeContent(range);
+            mounted = mountTemplateProgram(parent, program, adapter, range.end);
+          }
+        } catch (error) {
+          try {
+            removeDOMRange(range);
+          } catch (cleanupError) {
+            throw new AggregateError(
+              [error, cleanupError],
+              "[vynn]: A keyed item failed to hydrate and its range could not be removed.",
+            );
+          }
+          throw error;
         }
       } else {
         range = createKeyedRange(anchor.ownerDocument!, key);
