@@ -81,11 +81,14 @@ function containsPreparedComponent(value: unknown): boolean {
  */
 export function consumePreparedRenderNewChildValue(
   read: () => unknown,
+  trackDependencies = true,
 ): unknown {
   const prepared = preparedChildValues.get(read);
   if (!prepared) return read();
 
   preparedChildValues.delete(read);
+  if (!trackDependencies) return prepared.value;
+
   const current = read();
   syncPreparedComponentProps(prepared.value, current);
   return prepared.value;
