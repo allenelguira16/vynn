@@ -81,6 +81,10 @@ function moveInternalDOMRanges(source: Element | null, target: Element | null): 
   }
 }
 
+function getDirectChildElement(parent: Element, localName: string): Element | null {
+  return Array.from(parent.children).find((child) => child.localName === localName) ?? null;
+}
+
 function preserveInternalDocumentRanges(
   currentRoot: Element | null,
   nextRoot: Element,
@@ -88,12 +92,12 @@ function preserveInternalDocumentRanges(
   if (!currentRoot) return;
 
   moveInternalDOMRanges(
-    currentRoot.querySelector(":scope > head"),
-    nextRoot.querySelector(":scope > head"),
+    getDirectChildElement(currentRoot, "head"),
+    getDirectChildElement(nextRoot, "head"),
   );
   moveInternalDOMRanges(
-    currentRoot.querySelector(":scope > body"),
-    nextRoot.querySelector(":scope > body"),
+    getDirectChildElement(currentRoot, "body"),
+    getDirectChildElement(nextRoot, "body"),
   );
 }
 
