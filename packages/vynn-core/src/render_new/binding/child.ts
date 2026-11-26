@@ -568,10 +568,20 @@ export function bindChild(
     const before = end;
     const isProgramArray = Array.isArray(value) && value.every(isTemplateProgram);
     const hasKeyedEntries = Array.isArray(value) &&
-      value.some((item) => isTemplateProgram(item) && Object.prototype.hasOwnProperty.call(item, "key"));
+      value.some((item) =>
+        !!item &&
+        typeof item === "object" &&
+        Object.prototype.hasOwnProperty.call(item, "key"),
+      );
     const isEmptyKeyedUpdate = Array.isArray(value) &&
       value.length === 0 &&
       keyedItems.size > 0;
+
+    if (hasKeyedEntries && !isProgramArray) {
+      throw new TypeError(
+        "[vynn]: A keyed child list must contain only DOM template programs.",
+      );
+    }
 
     if (isProgramArray && (hasKeyedEntries || isEmptyKeyedUpdate)) {
       if (hydrate) {
