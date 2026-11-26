@@ -255,18 +255,6 @@ This plugin does not change the default `vynn()` application pipeline.
 It is a standalone compiler adapter, and the new runtime is mounted explicitly.
 Do not install it alongside the legacy JSX transform for the same source files.
 
-The generated component call returns a deferred descriptor. For client-only
-rendering, mount it directly:
-
-```tsx
-import { mountRenderNew } from "vynn/render_new";
-
-const root = document.querySelector("#app");
-if (!root) throw new Error("Missing #app mount element");
-
-mountRenderNew(root, App());
-```
-
 The same component descriptor can be serialized on the server and hydrated in the browser.
 The server serializer is synchronous and uses its own markup renderer, not
 Vynn's legacy SSR implementation:
