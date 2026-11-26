@@ -40,3 +40,12 @@ export {
   removeDOMRange,
   type DOMNodeRange,
 } from "./range";
+
+export {
+  mountTemplateProgram,
+  type DOMTemplateProgram,
+} from "./program";
+
+export {
+  type TemplateInitializer,
+} from "./mount";
