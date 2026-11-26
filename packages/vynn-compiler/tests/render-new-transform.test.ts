@@ -233,7 +233,7 @@ describe("render_new JSX compiler target", () => {
 
     expect(code).not.toContain(" as const");
 
-    const createPage = new Function(code + "\\nreturn Page;") as () => (
+    const createPage = new Function(code + "\nreturn Page;") as () => (
       props: { title: string; label: string },
     ) => {
       template: { markup: string; namespace: string; references: unknown[] };
