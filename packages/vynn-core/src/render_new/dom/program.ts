@@ -12,9 +12,18 @@ import { mountTemplate, type MountedTemplate } from "./mount";
  * component's current props/state. It is intentionally unrelated to the
  * legacy vynn/render helper protocol.
  */
+export type DOMTemplateKey = string | number | bigint;
+
 export interface DOMTemplateProgram {
   readonly template: TemplateDefinition;
   readonly bindings: readonly TemplateBindingInstruction[];
+  /** Optional stable identity for a program returned from an array child expression. */
+  readonly key?: DOMTemplateKey;
+}
+
+export interface MountedTemplateProgram extends MountedTemplate<Node> {
+  /** Update reactive accessors without replacing compatible DOM nodes. */
+  update(program: DOMTemplateProgram): void;
 }
 
 function assertProgram(program: DOMTemplateProgram): void {
@@ -54,12 +63,33 @@ export function mountTemplateProgram(
   const instructions = Object.freeze([...program.bindings]);
   const factory = createTemplateFactory(program.template, adapter);
 
-  return mountTemplate(
+  let bindings: ReturnType<typeof applyTemplateBindings> | undefined;
+  const mounted = mountTemplate(
     parent,
     factory,
     before,
     (instance, scope) => {
-      applyTemplateBindings(scope, instance, instructions, adapter);
+      bindings = applyTemplateBindings(scope, instance, instructions, adapter);
     },
   );
+
+  return Object.freeze({
+    instance: mounted.instance,
+    scope: mounted.scope,
+    get mounted() {
+      return mounted.mounted;
+    },
+    dispose() {
+      mounted.dispose();
+    },
+    update(next: DOMTemplateProgram) {
+      assertProgram(next);
+      if (next.template !== program.template) {
+        throw new TypeError(
+          "[vynn]: A mounted template program can only update from the same static template definition.",
+        );
+      }
+      bindings?.update(next.bindings);
+    },
+  });
 }
