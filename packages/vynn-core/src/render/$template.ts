@@ -1160,7 +1160,7 @@ function hydrateDynamicTemplate(
 
 function resolveHydratedTemplateNode(node: Node): Node {
   const instance = templateInstances.get(node as object);
-  const descriptor = instance?.descriptors.get(node as object);
+  const descriptor = templateDescriptors.get(node as object);
 
   if (!instance?.hydrating || !descriptor) return node;
 
@@ -1170,7 +1170,7 @@ function resolveHydratedTemplateNode(node: Node): Node {
 
 function claimHydratedTemplateAnchor(parent: Element, id: string): Node | undefined {
   const instance = templateInstances.get(parent as object);
-  const parentDescriptor = instance?.descriptors.get(parent as object);
+  const parentDescriptor = templateDescriptors.get(parent as object);
 
   if (!instance || !parentDescriptor || parentDescriptor.kind !== "element") {
     return undefined;
@@ -1228,7 +1228,7 @@ export function $template<T extends Element = Element>(markup: string): () => T 
 export function $child<E extends Element = Element>(parent: Element | SSR_ELEMENT): E {
   if (!import.meta.env.SSR && dynamicTemplateNodeResolver) {
     const instance = templateInstances.get(parent as object);
-    const parentDescriptor = instance?.descriptors.get(parent as object);
+    const parentDescriptor = templateDescriptors.get(parent as object);
 
     if (instance && parentDescriptor?.kind === "element") {
       const descriptor = parentDescriptor.children[0];
@@ -1254,8 +1254,8 @@ export function $sibling<E extends Element = Element>(node: Node | SSR_NODE, cou
 
   if (!import.meta.env.SSR && dynamicTemplateNodeResolver) {
     const instance = templateInstances.get(node as object);
-    const descriptor = instance?.descriptors.get(node as object);
-    const parentDescriptor = descriptor ? instance?.parents.get(descriptor) : undefined;
+    const descriptor = templateDescriptors.get(node as object);
+    const parentDescriptor = descriptor ? descriptor.parent : undefined;
 
     if (instance && descriptor && parentDescriptor) {
       const index = parentDescriptor.children.indexOf(descriptor);
