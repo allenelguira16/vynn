@@ -250,6 +250,11 @@ describe("render_new JSX compiler target", () => {
     expect(program.bindings).toHaveLength(2);
     expect(program.bindings[0].read()).toBe("First title");
     expect(program.bindings[1].read()).toBe("First label");
+
+    const secondProgram = Page({ title: "Second title", label: "Second label" });
+    expect(secondProgram.template).toBe(program.template);
+    expect(secondProgram.bindings[0].read()).toBe("Second title");
+    expect(secondProgram.bindings[1].read()).toBe("Second label");
   });
 
   it("returns original source when the module contains no JSX", () => {
