@@ -21,6 +21,7 @@ import {
   createClientShell,
   createServerEntry,
   createSsrHandlerCode,
+  type VynnRenderer,
   readClientAssets,
   readSsrManifest,
 } from "./documents.ts";
@@ -59,6 +60,7 @@ type PluginOptions = {
   ssrMode: RenderMode;
   ssrCss?: VynnSsrCssCollector;
   serverFunctions?: VynnServerFunctionsOptions;
+  renderer?: VynnRenderer;
 };
 
 /**
@@ -78,6 +80,7 @@ export function vynnAppPlugin({
   ssrMode,
   ssrCss,
   serverFunctions,
+  renderer = "legacy",
 }: PluginOptions): Plugin {
   let resolvedConfig: ResolvedConfig | undefined;
   let entries = {} as ResolvedEntries;
@@ -262,13 +265,13 @@ export function vynnAppPlugin({
     async load(id) {
       if (id === RESOLVED_CLIENT_ENTRY_ID) {
         if (!entries.clientIsGenerated || !entries.appSpecifier) return null;
-        return createClientEntry(entries.appSpecifier, ssr);
+        return createClientEntry(entries.appSpecifier, ssr, renderer);
       }
 
       if (id === RESOLVED_SERVER_ENTRY_ID) {
         if (!ssr) return null;
         if (entries.serverIsGenerated && entries.appSpecifier) {
-          return createServerEntry(entries.appSpecifier, ssrMode);
+          return createServerEntry(entries.appSpecifier, ssrMode, renderer);
         }
         if (entries.serverFile) {
           return createAuthoredServerEntry(toAbsoluteSpecifier(entries.serverFile), ssrMode);
