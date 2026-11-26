@@ -580,4 +580,31 @@ describe("render_new SSR and hydration", () => {
     expect(hydratedDocument.documentElement).toBe(originalRoot);
   });
 
+  it("recovers from a document hydration mismatch without losing framework assets", () => {
+    const document = new JSDOM(
+      '<!doctype html><html><head><!--vynn:internal:start--><link id="app-css" rel="stylesheet" href="/assets/app.css"><!--vynn:internal:end--></head><body><!--vynn:internal:start--><script id="client-entry" type="module" src="/assets/client.js"></script><!--vynn:internal:end--><aside>stale root</aside></body></html>',
+    ).window.document;
+    const originalRoot = document.documentElement;
+
+    const program: DOMTemplateProgram = {
+      template: {
+        namespace: "html",
+        markup: "<html><head><title>Expected document</title></head><body><main>Fresh content</main></body></html>",
+        references: [],
+      },
+      bindings: [],
+    };
+
+    const mounted = hydrateRenderNew(document, program);
+
+    expect(document.documentElement).not.toBe(originalRoot);
+    expect(document.querySelector("title")?.textContent).toBe("Expected document");
+    expect(document.querySelector("main")?.textContent).toBe("Fresh content");
+    expect(document.querySelector("aside")).toBeNull();
+    expect(document.querySelector("#app-css")).not.toBeNull();
+    expect(document.querySelector("#client-entry")).not.toBeNull();
+
+    mounted.dispose();
+  });
+
 });
