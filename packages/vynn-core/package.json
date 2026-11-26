@@ -19,6 +19,10 @@
       "types": "./src/render_new/index.ts",
       "import": "./src/render_new/index.ts"
     },
+    "./render_new/server": {
+      "types": "./src/render_new/ssr/index.ts",
+      "import": "./src/render_new/ssr/index.ts"
+    },
     "./render": {
       "import": "./src/render/index.ts"
     },
