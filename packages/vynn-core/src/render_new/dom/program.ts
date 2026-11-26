@@ -1,5 +1,6 @@
 import { applyTemplateBindings, type TemplateBindingInstruction } from "../binding/instructions";
-import { createTemplateFactory, type TemplateAdapter } from "../template/factory";
+import { createTemplateFactory } from "../template/factory";
+import type { DOMTemplateAdapter } from "./adapter";
 import type { TemplateDefinition } from "../template/types";
 import { mountTemplate, type MountedTemplate } from "./mount";
 
@@ -39,10 +40,10 @@ function assertProgram(program: DOMTemplateProgram): void {
  * the parent. The mount operation remains transactional: invalid instructions
  * dispose the scope and leave no partially mounted roots.
  */
-export function mountTemplateProgram<TBlueprint>(
+export function mountTemplateProgram(
   parent: Node,
   program: DOMTemplateProgram,
-  adapter: TemplateAdapter<TBlueprint, Node>,
+  adapter: DOMTemplateAdapter,
   before: Node | null = null,
 ): MountedTemplate<Node> {
   assertProgram(program);
