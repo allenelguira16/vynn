@@ -267,7 +267,9 @@ describe("render_new SSR and hydration", () => {
     ];
 
     const updatedRows = Array.from(list.querySelectorAll("li"));
-    expect(updatedRows).toEqual([originalAlpha, originalGamma]);
+    expect(updatedRows).toHaveLength(2);
+    expect(updatedRows[0]).toBe(originalAlpha);
+    expect(updatedRows[1]).toBe(originalGamma);
     expect(updatedRows.map((row) => row.textContent)).toEqual([
       "Alpha updated",
       "Gamma updated",
