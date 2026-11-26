@@ -40,7 +40,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "bench:runtime": "vitest bench benchmarks/runtime.bench.ts"
+    "bench:runtime": "vitest bench benchmarks/runtime.bench.ts",
+    "test:memory": "vitest run tests/lazy-hydration.test.ts tests/store-memory-lifecycle.test.ts"
   },
   "devDependencies": {
     "@types/node": "^26.6.3",

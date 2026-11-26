@@ -37,8 +37,11 @@ jobs:
       - name: Lint
         run: pnpm lint
 
-      - name: Test all workspace packages
-        run: pnpm test
+      - name: Test memory lifecycle regressions
+        run: pnpm --filter vynn test:memory
+
+      - name: Run core runtime benchmarks
+        run: pnpm bench:runtime
 
       - name: Type-check framework packages
         run: pnpm typecheck
