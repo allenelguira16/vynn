@@ -272,10 +272,18 @@ export default function App() {
 }
 ```
 
-The adapter currently supports eager route components, nested layouts through
-`props.children`, reactive `$params` and `$search`, `Link` navigation,
-and a configured `notFound` component. It keeps an unchanged parent route
-mounted when navigation changes only a deeper route.
+The adapter supports eager and lazy route components, nested layouts
+through `props.children`, reactive `$params` and `$search`, `Link`
+navigation, configured `notFound` components, and page/layout
+`beforeLoad` guards. It keeps an unchanged parent route mounted when
+navigation changes only a deeper route.
+
+Guards receive the same `context`, `location`, `params`, `search`, and
+`signal` fields as the legacy router. A guard reruns when the current
+pathname or query string changes, aborts its previous signal, and only commits
+the result of the latest run. Client redirects use the existing `redirect()`
+API. Lazy modules share a load promise, display an empty range while the
+initial module is loading, and can be preloaded before a route transition.
 
 Route components can use the existing reactive route facades:
 
@@ -297,12 +305,15 @@ export function UserNavigation() {
 }
 ```
 
-This is an initial client-rendering slice, not a complete router migration.
-Routes with `beforeLoad` fail explicitly because guard execution and redirect
-commit handling have not been ported. Lazy route components and
-`toFileRouter()` are not exposed from this entry point because the current
-file router uses the legacy `lazy()` component runtime. SSR and hydration
-integration for this adapter are not yet implemented or verified.
+This is still an experimental client-rendering integration, not a
+complete router migration. The `toFileRouter()` transform also recognizes
+imports from `vynn-router/render_new` and uses the native lazy component
+runtime for its page and layout modules. The `lazy()` export is available
+when defining lazy routes manually.
+
+SSR and hydration integration for this adapter are not yet implemented or
+verified. Async guard results and lazy modules therefore do not participate
+in the new renderer's current synchronous SSR serializer.
 
 The existing `vynn-router` entry point remains unchanged and continues to
 provide the legacy renderer integration. Do not mix its `Router` or `Link`
