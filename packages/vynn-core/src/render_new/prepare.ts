@@ -2,6 +2,7 @@ import {
   isRenderNewComponent,
   prepareRenderNewComponent,
   resolveRenderNewComponentProgram,
+  updateRenderNewComponentProps,
   type RenderNewComponent,
 } from "./component";
 import { createScope, disposeScope, runWithScope } from "./lifecycle/scope";
@@ -42,12 +43,51 @@ export function consumePreparedRenderNewComponent(
  * Reads a child binding's cached first value. The cache is one-shot so future
  * reactive updates continue to evaluate the original accessor.
  */
+function syncPreparedComponentProps(previous: unknown, next: unknown): void {
+  if (isRenderNewComponent(previous) && isRenderNewComponent(next)) {
+    updateRenderNewComponentProps(previous, next);
+    return;
+  }
+
+  if (!Array.isArray(previous) || !Array.isArray(next)) return;
+
+  const nextByKey = new Map<unknown, RenderNewComponent>();
+  for (const item of next) {
+    if (
+      isRenderNewComponent(item) &&
+      Object.prototype.hasOwnProperty.call(item, "key")
+    ) {
+      nextByKey.set(item.key, item);
+    }
+  }
+
+  for (const item of previous) {
+    if (!isRenderNewComponent(item) ||
+      !Object.prototype.hasOwnProperty.call(item, "key")) continue;
+    const updated = nextByKey.get(item.key);
+    if (updated) updateRenderNewComponentProps(item, updated);
+  }
+}
+
+function containsPreparedComponent(value: unknown): boolean {
+  if (isRenderNewComponent(value)) return preparedComponents.has(value);
+  return Array.isArray(value) && value.some(containsPreparedComponent);
+}
+
+/**
+ * Re-evaluates the accessor once to establish reactive dependencies, then
+ * returns the prepared descriptor tree so the first mount does not run a
+ * component body twice.
+ */
 export function consumePreparedRenderNewChildValue(
   read: () => unknown,
 ): unknown {
   const prepared = preparedChildValues.get(read);
   if (!prepared) return read();
+
   preparedChildValues.delete(read);
+  const current = read();
+  syncPreparedComponentProps(prepared.value, current);
   return prepared.value;
 }
 
@@ -82,7 +122,10 @@ async function prepareValue(
 
     const scope = createScope(parentScope);
     try {
-      const skipChildren = await prepareRenderNewComponent(value);
+      const skipChildren = await runWithScope(
+        scope,
+        () => prepareRenderNewComponent(value),
+      );
       const program = runWithScope(scope, () =>
         resolveRenderNewComponentProgram(value.render()),
       );
@@ -104,9 +147,11 @@ async function prepareValue(
       if (instruction.kind !== "child") continue;
 
       const child = runWithScope(parentScope, () => instruction.read());
-      preparedChildValues.set(instruction.read, { value: child });
-      readers.push(instruction.read);
       await prepareValue(child, parentScope, visited, components, readers);
+      if (containsPreparedComponent(child)) {
+        preparedChildValues.set(instruction.read, { value: child });
+        readers.push(instruction.read);
+      }
     }
   }
 }
