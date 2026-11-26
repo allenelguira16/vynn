@@ -21,3 +21,13 @@ export {
   type EventHandler,
   type EventHandlerValue,
 } from "./event";
+
+export {
+  applyTemplateBindings,
+  type AttributeBindingInstruction,
+  type EventBindingInstruction,
+  type PropertyBindingInstruction,
+  type TemplateBindingInstruction,
+  type TemplateBindingSet,
+  type TextBindingInstruction,
+} from "./instructions";
