@@ -101,6 +101,36 @@ function matchNode(
   throw new HydrationMismatch();
 }
 
+function skipInternalDOMRanges(
+  nodes: readonly Node[],
+  startIndex: number,
+): number {
+  let index = startIndex;
+
+  while (
+    index < nodes.length &&
+    nodes[index]!.nodeType === 8 &&
+    (nodes[index] as Comment).data === "vynn:internal:start"
+  ) {
+    let depth = 1;
+    index++;
+
+    while (index < nodes.length && depth > 0) {
+      const node = nodes[index]!;
+      if (node.nodeType === 8) {
+        const data = (node as Comment).data;
+        if (data === "vynn:internal:start") depth++;
+        else if (data === "vynn:internal:end") depth--;
+      }
+      index++;
+    }
+
+    if (depth !== 0) throw new HydrationMismatch();
+  }
+
+  return index;
+}
+
 function matchSequence(
   expectedNodes: readonly Node[],
   actualNodes: readonly Node[],
@@ -110,6 +140,7 @@ function matchSequence(
   let actualIndex = 0;
 
   while (expectedIndex < expectedNodes.length) {
+    actualIndex = skipInternalDOMRanges(actualNodes, actualIndex);
     const expected = expectedNodes[expectedIndex]!;
     const actual = actualNodes[actualIndex];
 
@@ -156,6 +187,7 @@ function matchSequence(
     actualIndex++;
   }
 
+  actualIndex = skipInternalDOMRanges(actualNodes, actualIndex);
   if (actualIndex !== actualNodes.length) throw new HydrationMismatch();
 }
 
