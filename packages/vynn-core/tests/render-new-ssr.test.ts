@@ -658,6 +658,30 @@ describe("render_new SSR and hydration", () => {
     expect(cleanupCount).toBe(1);
   });
 
+  it("evaluates prepared child expressions once during SSR", async () => {
+    let reads = 0;
+    const program: DOMTemplateProgram = {
+      template: {
+        namespace: "html",
+        markup: '<p><!--__vynn_render_new_child_0_start__--><!--__vynn_render_new_child_0_end__--></p>',
+        references: [{ id: 0, kind: "anchor", path: [0, 0] }],
+      },
+      bindings: [{
+        kind: "child",
+        reference: 0,
+        read: () => {
+          reads += 1;
+          return "server value";
+        },
+      }],
+    };
+
+    const html = await renderTemplateProgramToStringAsync(program);
+
+    expect(html).toContain("server value");
+    expect(reads).toBe(1);
+  });
+
   it("hydrates prepared nested components without replacing server DOM", async () => {
     const createNestedApp = (
       value: State<string>,
