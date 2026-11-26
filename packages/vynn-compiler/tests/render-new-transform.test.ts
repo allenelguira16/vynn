@@ -326,17 +326,56 @@ describe("render_new JSX compiler target", () => {
     expect(code).not.toContain('key="first"');
   });
 
-  it("rejects keyed component entries until component prop updates are supported", () => {
-    expect(() =>
-      transformVynnRenderNewOxc(
-        `function List(props) {
-          return <ul>{props.items.map((item) => <Row key={item.id} item={item} />)}</ul>;
-        }`,
-        "list.jsx",
-      ),
-    ).toThrow("Keyed component entries are not supported yet");
+  it("compiles keyed component entries with stable identity and prop accessors", () => {
+    const code = transformVynnRenderNewOxc(
+      `function Row(props) {
+        return <li>{props.item.label}</li>;
+      }
+      function List(props) {
+        return <ul>{props.items.map((item) => (
+          <Row key={item.id} item={item} />
+        ))}</ul>;
+      }`,
+      "list.jsx",
+    );
+
+    expect(code).toContain("}, props, Row);");
+    expect(code).toContain('Object.assign(Row({ get "item"() { return (item); } }), { key: (item.id) })');
+    expect(code).not.toContain("Keyed component entries are not supported yet");
   });
 
+  it("returns keyed component descriptors from a compiled map callback", () => {
+    const code = transformVynnRenderNewOxc(
+      `function Row(props) { return <li>{props.label}</li>; }
+      function List(props) {
+        return <ul>{props.items.map((item) => <Row key={item.id} label={item.label} />)}</ul>;
+      }`,
+      "list.jsx",
+    );
+    const executable = code.replace(
+      'import { createRenderNewComponent as _vynnCreateRenderNewComponent } from "vynn/render_new/internal";',
+      "const _vynnCreateRenderNewComponent = (render, props, type) => ({ render, props, type });",
+    );
+    const createList = new Function(executable + "\\nreturn List;") as () => (
+      props: { items: Array<{ id: string; label: string }> },
+    ) => { render: () => { bindings: Array<{ read: () => unknown }> } };
+
+    const component = createList()({
+      items: [
+        { id: "first", label: "First" },
+        { id: "second", label: "Second" },
+      ],
+    });
+    const children = component.render().bindings[0]!.read() as Array<{
+      key: string;
+      props: { label: string };
+      type: Function;
+    }>;
+
+    expect(children.map((item) => item.key)).toEqual(["first", "second"]);
+    expect(children.map((item) => item.props.label)).toEqual(["First", "Second"]);
+    expect(children[0]!.type).toBe(children[1]!.type);
+  });
   it("passes nested JSX through a component's children prop", () => {
     const code = transformVynnRenderNewOxc(
       `function Page(props) {
