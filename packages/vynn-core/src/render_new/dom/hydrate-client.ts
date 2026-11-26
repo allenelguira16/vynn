@@ -6,7 +6,7 @@ import { isRenderNewComponent, type RenderNewComponent } from "../component";
 import { hydrateRenderNewComponent } from "./component";
 
 /**
- * Hydrates a DOM tree previously rendered by renderTemplateProgramToString().
+ * Hydrates a DOM tree previously rendered by renderTemplateProgramToString().\n * Deferred components execute within a component scope before adoption.
  * Compatible static nodes and dynamic child ranges are adopted. If the static
  * structure differs, the existing contents are replaced with a fresh mount.
  */
