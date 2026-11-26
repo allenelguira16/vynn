@@ -479,7 +479,13 @@ function serializeComponentChild(
     if (!isJSXAttribute(attribute)) continue;
 
     const propName = getJSXAttributeName(attribute.name);
-    if (propName === "key") continue;
+    if (propName === "key") {
+      fail(
+        "Keyed component entries are not supported yet. Use a keyed host element directly in the list expression.",
+        filename,
+        attribute,
+      );
+    }
 
     if (attribute.value === null) {
       properties.push("get " + JSON.stringify(propName) + "() { return true; }");
@@ -835,7 +841,7 @@ function serializeProgram(
     if (keyAttribute && isJSXAttribute(keyAttribute)) {
       if (isComponentJSXElement(root)) {
         fail(
-          "Keyed component entries are not supported yet. Key the host template returned by a component instead.",
+          "Keyed component entries are not supported yet. Use a keyed host element directly in the list expression.",
           filename,
           keyAttribute,
         );
