@@ -1102,6 +1102,14 @@ export function transformVynnRenderNewOxcWithMap(
   let templateIndex = 0;
   const templateCache = new Map<string, string>();
   const templateDeclarations: string[] = [];
+  let needsComponentHelper = false;
+  let componentHelperName = "_vynnCreateRenderNewComponent";
+  let componentHelperIndex = 0;
+
+  while (usedNames.has(componentHelperName)) {
+    componentHelperName = "_vynnCreateRenderNewComponent" + componentHelperIndex++;
+  }
+  usedNames.add(componentHelperName);
 
   const getTemplateName = (serialized: SerializedProgram): string => {
     const signature = JSON.stringify([
@@ -1207,6 +1215,38 @@ export function transformVynnRenderNewOxcWithMap(
       collectJSXReturns(component.body, roots, component);
     }
 
+    if (roots.length > 0) {
+      needsComponentHelper = true;
+      const body = component.body as Node;
+
+      if (isType(body, "BlockStatement")) {
+        // Move execution of the original component body into the render callback.
+        // This defers state/effect/context creation until the renderer owns a scope.
+        replacements.push({
+          start: body.start! + 1,
+          end: body.start! + 1,
+          value: "\nreturn " + componentHelperName + "(() => {\n",
+        });
+        replacements.push({
+          start: body.end! - 1,
+          end: body.end! - 1,
+          value: "\n});\n",
+        });
+      } else {
+        // Expression-bodied components need a callback around the JSX result.
+        replacements.push({
+          start: body.start!,
+          end: body.start!,
+          value: componentHelperName + "(() => (",
+        });
+        replacements.push({
+          start: body.end!,
+          end: body.end!,
+          value: "))",
+        });
+      }
+    }
+
     for (const root of roots) {
       const serialized = serializeProgram(root, source, filename, compileNestedJSX, compileExpression);
       const templateName = getTemplateName(serialized);
@@ -1217,7 +1257,7 @@ export function transformVynnRenderNewOxcWithMap(
         value: renderProgramExpression(
           serialized,
           templateName,
-          lang === "ts" || lang === "tsx",
+          useConstAssertions,
         ),
       });
       coveredRanges.push([root.start!, root.end!]);
@@ -1268,7 +1308,7 @@ export function transformVynnRenderNewOxcWithMap(
     previousStart = replacement.start;
   }
 
-  if (templateDeclarations.length > 0) {
+  if (templateDeclarations.length > 0 || needsComponentHelper) {
     const insertionOffset = getTemplateInsertionOffset(program, source);
     const prefix = code.slice(0, insertionOffset);
     const suffix = code.slice(insertionOffset);
@@ -1278,7 +1318,16 @@ export function transformVynnRenderNewOxcWithMap(
     code =
       prefix +
       before +
-      templateDeclarations.join("\n") +
+      [
+        ...(needsComponentHelper
+          ? [
+              "import { createRenderNewComponent as " +
+                componentHelperName +
+                "} from \"vynn/render_new/internal\";",
+            ]
+          : []),
+        ...templateDeclarations,
+      ].join("\n") +
       after +
       suffix;
   }
