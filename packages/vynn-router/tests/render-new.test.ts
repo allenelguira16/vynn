@@ -19,6 +19,7 @@ import {
   createRouter,
   Link,
   Router,
+  redirect,
   toFileRouter,
   type Route,
 } from "../src/render-new";
@@ -229,6 +230,30 @@ describe("render_new router adapter", () => {
     pending[1]?.resolve();
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(app.host.textContent).toBe("2:activity");
+
+    app.dispose();
+  });
+
+  it("commits redirects returned by a route guard", async () => {
+    const PrivatePage = routeComponent(() => textProgram(() => "Private"));
+    const LoginPage = routeComponent(() => textProgram(() => "Login"));
+    const app = mountRouter(
+      [
+        {
+          path: "/private",
+          component: PrivatePage,
+          beforeLoad: () => redirect("/login"),
+        },
+        { path: "/login", component: LoginPage },
+      ],
+      "/private",
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(app.router.state.location.pathname).toBe("/login");
+    expect(app.host.textContent).toBe("Login");
 
     app.dispose();
   });
