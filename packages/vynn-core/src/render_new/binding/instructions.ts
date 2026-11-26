@@ -55,6 +55,11 @@ export type TemplateBindingInstruction =
   | ChildBindingInstruction;
 
 /** A set of binding instructions applied to one template instance. */
+export interface TemplateBindingOptions {
+  /** Adopt compatible dynamic content already present in server-rendered markup. */
+  readonly hydrate?: boolean;
+}
+
 export interface TemplateBindingSet extends Disposable {
   readonly size: number;
 }
@@ -225,6 +230,7 @@ export function applyTemplateBindings(
   instance: TemplateInstance<Node>,
   instructions: readonly TemplateBindingInstruction[],
   adapter?: DOMTemplateAdapter,
+  options: TemplateBindingOptions = {},
 ): TemplateBindingSet {
   const prepared = prepareInstructions(instance, instructions);
   const bindings: Disposable[] = [];
@@ -262,7 +268,7 @@ export function applyTemplateBindings(
           if (!adapter) {
             throw new TypeError("[vynn]: A dynamic child binding requires a DOM template adapter.");
           }
-          bindings.push(bindChild(scope, target as Comment, adapter, instruction.read));
+          bindings.push(bindChild(scope, target as Comment, adapter, instruction.read, options));
           break;
 
         case "event":
