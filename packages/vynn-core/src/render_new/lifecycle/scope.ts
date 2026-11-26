@@ -87,7 +87,12 @@ function assertActive(scope: RenderScope, operation: string): ScopeRecord {
 export function createScope(parent?: RenderScope | null): RenderScope {
   const parentScope = parent === undefined ? getCurrentScope() : parent;
   const parentRecord = parentScope ? assertActive(parentScope, "create a child in") : undefined;
-  const parentOwner = parentRecord?.owner ?? (parent === null ? null : getOwner());
+  const activeOwner = getOwner();
+  const parentOwner = parent === null
+    ? null
+    : parent !== undefined
+      ? parentRecord?.owner ?? null
+      : activeOwner ?? parentRecord?.owner ?? null;
   const owner = createOwner(parentOwner, { identity: false });
 
   const record: ScopeRecord = {
