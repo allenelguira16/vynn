@@ -31,6 +31,72 @@ export function isDocumentRootProgram(program: DOMTemplateProgram): boolean {
     /^<html(?:\s|>)/i.test(program.template.markup.trim());
 }
 
+function moveInternalDOMRanges(source: Element | null, target: Element | null): void {
+  if (!source || !target) return;
+
+  let current: Node | null = source.firstChild;
+  while (current) {
+    const next = current.nextSibling;
+
+    if (
+      current.nodeType !== 8 ||
+      (current as Comment).data !== "vynn:internal:start"
+    ) {
+      current = next;
+      continue;
+    }
+
+    let depth = 1;
+    let end: Node | null = null;
+    let cursor = current.nextSibling;
+
+    while (cursor) {
+      if (cursor.nodeType === 8) {
+        const data = (cursor as Comment).data;
+        if (data === "vynn:internal:start") depth++;
+        else if (data === "vynn:internal:end") {
+          depth--;
+          if (depth === 0) {
+            end = cursor;
+            break;
+          }
+        }
+      }
+      cursor = cursor.nextSibling;
+    }
+
+    if (!end) {
+      current = next;
+      continue;
+    }
+
+    const after = end.nextSibling;
+    let moving: Node | null = current;
+    while (moving && moving !== after) {
+      const following = moving.nextSibling;
+      target.appendChild(moving);
+      moving = following;
+    }
+    current = after;
+  }
+}
+
+function preserveInternalDocumentRanges(
+  currentRoot: Element | null,
+  nextRoot: Element,
+): void {
+  if (!currentRoot) return;
+
+  moveInternalDOMRanges(
+    currentRoot.querySelector(":scope > head"),
+    nextRoot.querySelector(":scope > head"),
+  );
+  moveInternalDOMRanges(
+    currentRoot.querySelector(":scope > body"),
+    nextRoot.querySelector(":scope > body"),
+  );
+}
+
 function mountDocumentProgram(
   document: Document,
   program: DOMTemplateProgram,
@@ -64,8 +130,10 @@ function mountDocumentProgram(
 
   try {
     const current = document.documentElement;
-    if (current) document.replaceChild(roots[0]!, current);
-    else document.appendChild(roots[0]!);
+    const nextRoot = roots[0] as Element;
+    preserveInternalDocumentRanges(current, nextRoot);
+    if (current) document.replaceChild(nextRoot, current);
+    else document.appendChild(nextRoot);
   } catch (error) {
     try {
       mounted.dispose();
