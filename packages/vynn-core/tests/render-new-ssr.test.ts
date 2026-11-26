@@ -488,8 +488,12 @@ describe("render_new SSR and hydration", () => {
     expect(container.childNodes).toHaveLength(0);
   });
 
-  it("mounts a complete HTML document by replacing the existing document root", () => {
+  it("mounts a complete HTML document and preserves framework asset ranges", () => {
     const document = createDocument();
+    document.head.innerHTML =
+      '<!--vynn:internal:start--><link id="app-css" rel="stylesheet" href="/assets/app.css"><!--vynn:internal:end-->';
+    document.body.innerHTML =
+      '<!--vynn:internal:start--><script id="vite-client" type="module" src="/@vite/client"></script><!--vynn:internal:end-->';
     const originalRoot = document.documentElement;
     const message = $state("Mounted document content");
     const language = $state("en-PH");
@@ -518,6 +522,8 @@ describe("render_new SSR and hydration", () => {
     expect(document.documentElement?.getAttribute("lang")).toBe("en-PH");
     expect(document.querySelector("title")?.textContent).toBe("Vynn test");
     expect(document.querySelector("main")?.textContent).toBe("Mounted document content");
+    expect(document.querySelector("#app-css")).not.toBeNull();
+    expect(document.querySelector("#vite-client")).not.toBeNull();
 
     language.value = "en-US";
     message.value = "Updated document content";
