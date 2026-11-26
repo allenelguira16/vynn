@@ -1,6 +1,8 @@
 import { createDOMTemplateAdapter } from "./adapter";
 import { mountTemplateProgram, type DOMTemplateProgram } from "./program";
 import type { MountedTemplate } from "./mount";
+import { isRenderNewComponent, type RenderNewComponent } from "../component";
+import { mountRenderNewComponent } from "./component";
 
 /** Options for mounting one compiler-produced render_new program. */
 export interface MountRenderNewOptions {
@@ -17,7 +19,7 @@ export interface MountRenderNewOptions {
  */
 export function mountRenderNew(
   parent: Node,
-  program: DOMTemplateProgram,
+  program: DOMTemplateProgram | RenderNewComponent,
   options: MountRenderNewOptions = {},
 ): MountedTemplate<Node> {
   if (
@@ -41,10 +43,10 @@ export function mountRenderNew(
     throw new TypeError("[vynn]: The before node must be a child of the mount parent.");
   }
 
-  return mountTemplateProgram(
-    parent,
-    program,
-    createDOMTemplateAdapter(document),
-    before,
-  );
+  const adapter = createDOMTemplateAdapter(document);
+  if (isRenderNewComponent(program)) {
+    return mountRenderNewComponent(parent, program, adapter, before);
+  }
+
+  return mountTemplateProgram(parent, program, adapter, before);
 }
