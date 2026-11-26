@@ -217,3 +217,42 @@ title children update normally.
 
 The compiler keeps `<meta itemProp>` and `<link itemProp>` in their original
 DOM position, and does not hoist head tags written inside an SVG subtree.
+
+
+## Experimental render_new compiler target
+
+The new renderer is opt-in and separate from the integrated legacy application
+plugin. Use the standalone Vite transform while mounting the compiled component
+program yourself:
+
+```ts
+// vite.config.ts
+import { defineConfig } from "vite";
+import { vynnRenderNewOxcPlugin } from "vite-plugin-vynn";
+
+export default defineConfig({
+  plugins: [vynnRenderNewOxcPlugin()],
+});
+```
+
+A component compiled by this target returns a template program rather than a
+legacy VNode. Mount it with the matching runtime entry:
+
+```tsx
+import { mountRenderNew } from "vynn/render_new";
+
+function App() {
+  return <main>New renderer</main>;
+}
+
+const root = document.querySelector("#app");
+if (!root) throw new Error("Missing #app mount element");
+mountRenderNew(root, App());
+```
+
+This plugin does not enable Vynn's integrated document/SSR application mode.
+The render_new runtime currently supports client mounting of static templates,
+reactive attributes/properties/events, dynamic child slots, arrays, and child
+components. Server rendering and hydration are being developed against the same
+program contract and are not enabled by this plugin yet. Do not combine this
+plugin with the default legacy JSX transform in the same module graph.
