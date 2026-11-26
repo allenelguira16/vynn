@@ -483,7 +483,13 @@ export function Router<TContext = undefined>(
     },
     null,
     Router,
-    () => prepareRouter(getRouter()),
+    async () => {
+      await prepareRouter(getRouter());
+      // Router preparation resolves the URL and guards. Let the generic
+      // preparation walker continue through the now-stable route component
+      // tree so nested lazy components are prepared before SSR/hydration.
+      return false;
+    },
   ) as unknown as JSX.Element;
 }
 
