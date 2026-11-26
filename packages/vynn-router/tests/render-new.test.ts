@@ -9,6 +9,7 @@ import {
   renderTemplateProgramToStringAsync,
   runWithScope,
   type DOMTemplateProgram,
+  type RenderNewComponent,
   type TemplateDefinition,
 } from "vynn/render_new";
 
@@ -73,7 +74,10 @@ function mountRouter(
     () => createRouter({ routes, history, notFound }),
   );
   const host = window.document.createElement("div");
-  const program = runWithScope(scope, () => Router({ router }));
+  const program = runWithScope(
+    scope,
+    () => Router({ router }) as unknown as RenderNewComponent,
+  );
   const mounted = runWithScope(scope, () => mountRenderNew(host, program));
 
   return {
