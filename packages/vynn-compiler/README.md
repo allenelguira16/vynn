@@ -43,7 +43,9 @@ const code = transformVynnRenderNewOxc(source, "App.tsx");
 ```
 
 This target emits `DOMTemplateProgram`-shaped values containing static template
-markup, numeric node references, and reactive binding accessors. It does not
+markup, numeric node references, and reactive binding accessors. Template
+definitions are hoisted and deduplicated at module scope; each component call
+creates fresh accessors while reusing the same static definition. It does not
 import or call the legacy `vynn/render` helpers and does not change the output
 of `transformVynnOxc()`.
 
