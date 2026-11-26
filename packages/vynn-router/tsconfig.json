@@ -8,8 +8,9 @@
     "jsx": "preserve",
     "jsxImportSource": "vynn",
     "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "types": ["vite/client", "node"],
     "ignoreDeprecations": "6.0"
   },
-  "include": ["src/**/*", "tests/**/*"],
-  "exclude": ["dist/**/*"]
+  "include": ["src/**/*"],
+  "exclude": ["dist/**/*", "tests/**/*"]
 }
