@@ -1,4 +1,5 @@
 import { createScope, disposeScope, runWithScope } from "../lifecycle/scope";
+import { consumePreparedRenderNewComponent } from "../prepare";
 import type { RenderNewComponent } from "../component";
 import {
   isRenderNewComponent,
@@ -85,10 +86,13 @@ export function mountRenderNewComponent(
   hydrationRange?: HydrationRange,
 ): MountedRenderNewComponent {
   assertComponent(component);
-  const scope = createScope();
+  const prepared = consumePreparedRenderNewComponent(component);
+  const scope = prepared?.scope ?? createScope();
 
   try {
-    const mounted = runWithScope(scope, () => {
+    const mounted = prepared
+      ? prepared.program
+      : runWithScope(scope, () => {
       const program: DOMTemplateProgram = resolveRenderNewComponentProgram(component.render());
 
       if (hydrationRange) {
@@ -107,7 +111,24 @@ export function mountRenderNewComponent(
       return mountTemplateProgram(parent, program, adapter, before);
     });
 
-    return wrapComponentMount(scope, mounted, component);
+    const resolvedMount = prepared && hydrationRange
+      ? runWithScope(scope, () => {
+          // Prepared component trees are normally consumed by the root
+          // preparation path. Hydration ranges are resolved by the template
+          // hydrator after the prepared component program is selected.
+          const adopted = hydrateTemplateProgramInRange(
+            hydrationRange.start,
+            hydrationRange.end,
+            prepared.program,
+            adapter,
+          );
+          if (adopted) return adopted;
+          clearHydrationRange(hydrationRange);
+          return mountTemplateProgram(parent, prepared.program, adapter, before);
+        })
+      : mounted;
+
+    return wrapComponentMount(scope, resolvedMount, component);
   } catch (error) {
     return disposeAfterFailure(scope, error);
   }
@@ -124,13 +145,16 @@ export function hydrateRenderNewComponent(
   adapter: DOMTemplateAdapter,
 ): MountedRenderNewComponent {
   assertComponent(component);
-  const scope = createScope();
+  const prepared = consumePreparedRenderNewComponent(component);
+  const scope = prepared?.scope ?? createScope();
 
   try {
-    const mounted = runWithScope(scope, () => {
-      const program = resolveRenderNewComponentProgram(component.render());
-      return hydrateTemplateProgram(parent, program, adapter);
-    });
+    const mounted = prepared
+      ? hydrateTemplateProgram(parent, prepared.program, adapter)
+      : runWithScope(scope, () => {
+          const program = resolveRenderNewComponentProgram(component.render());
+          return hydrateTemplateProgram(parent, program, adapter);
+        });
 
     return wrapComponentMount(scope, mounted, component);
   } catch (error) {
