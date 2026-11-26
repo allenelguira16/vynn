@@ -18,7 +18,7 @@ function getChildRangeEnd(start: Node, nodes: readonly Node[], startIndex: numbe
   if (start.nodeType !== 8) return startIndex;
 
   const data = (start as Comment).data;
-  const match = /^__vynn_render_new_child_(\\d+)_start__$/.exec(data);
+  const match = /^__vynn_render_new_child_(\d+)_start__$/.exec(data);
   if (!match) return startIndex;
 
   const expectedEnd = "__vynn_render_new_child_" + match[1] + "_end__";
@@ -29,13 +29,13 @@ function getChildRangeEnd(start: Node, nodes: readonly Node[], startIndex: numbe
     if (candidate.nodeType !== 8) continue;
 
     const comment = (candidate as Comment).data;
-    const nestedStart = /^__vynn_render_new_child_(\\d+)_start__$/.exec(comment);
+    const nestedStart = /^__vynn_render_new_child_(\d+)_start__$/.exec(comment);
     if (nestedStart) {
       nested.push(nestedStart[1]!);
       continue;
     }
 
-    const nestedEnd = /^__vynn_render_new_child_(\\d+)_end__$/.exec(comment);
+    const nestedEnd = /^__vynn_render_new_child_(\d+)_end__$/.exec(comment);
     if (nestedEnd) {
       if (nested.length > 0) {
         if (nested[nested.length - 1] !== nestedEnd[1]) throw new HydrationMismatch();
