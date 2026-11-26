@@ -10,8 +10,8 @@ import type { RenderScope } from "../types";
 import type { TemplateFactory, TemplateInstance } from "../template/types";
 
 /**
- * Runs inside the new template's scope after references are resolved and root
- * cleanup is registered, but before any root is inserted into the parent.
+ * Runs inside the new template's scope after roots have been inserted, so
+ * dynamic child bindings can resolve their parent and mount into live ranges.
  */
 export type TemplateInitializer<TNode extends Node> = (
   instance: TemplateInstance<TNode>,
@@ -61,10 +61,10 @@ function throwMountFailure(
  *
  * The operation is transactional:
  * - The factory is instantiated with the new render scope active.
- * - A scope cleanup owns removal of every root node.
- * - An optional initializer applies compiler-emitted bindings before insertion.
  * - Roots are inserted in their compiler-defined order.
- * - Any failure disposes the scope and removes the roots before rethrowing.
+ * - An optional initializer installs bindings synchronously while anchors are attached.
+ * - A scope cleanup owns root removal after binding cleanups have been registered.
+ * - Any failure disposes the scope, removes partial roots, and rethrows.
  *
  * When called inside another render scope, the mounted template becomes its
  * child and is automatically disposed with that parent.
@@ -99,14 +99,19 @@ export function mountTemplate<TNode extends Node>(
         throw new TypeError("[vynn]: A template factory returned an invalid template instance.");
       }
 
-      // Compiler-emitted bindings must be installed before insertion so the
-      // first observable DOM state is already reactive and event-ready.
-      // Their cleanups are registered first, ensuring listeners/effects stop
-      // before the root nodes are removed during scope disposal.
-      initialize?.(created, scope);
+      // Keep the instance reference outside the callback so the catch path
+      // can remove roots even if insertion or initialization fails midway.
+      instance = created;
 
-      // Register before insertion so every successfully initialized root
-      // belongs to the scope even if the host rejects the final DOM operation.
+      // Child bindings need an attached parent during their synchronous first
+      // evaluation. Insertion is still synchronous, so no paint can observe an
+      // uninitialized template before the initializer finishes.
+      insertDOMNodes(parent, created.roots, before);
+      mounted = true;
+
+      // Register root cleanup after initialization. Binding/effect cleanup is
+      // therefore attempted before the roots are removed during disposal.
+      initialize?.(created, scope);
       onScopeDispose(() => {
         try {
           removeDOMNodes(created.roots);
@@ -117,9 +122,6 @@ export function mountTemplate<TNode extends Node>(
 
       return created;
     });
-
-    insertDOMNodes(parent, instance.roots, before);
-    mounted = true;
 
     const result: MountedTemplate<TNode> = {
       instance,
