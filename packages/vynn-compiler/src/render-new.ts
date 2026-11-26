@@ -1045,17 +1045,21 @@ function collectComponentFunctions(program: Node): Node[] {
 }
 
 /**
- * Compile a limited host-JSX subset to the new renderer's program protocol.
+ * Compiles a constrained host-JSX subset to the independent render_new
+ * component protocol.
  *
- * Supported in this first target:
+ * Supported:
  * - Named function components and named arrow/function component variables.
- * - JSX element or fragment expressions returned directly by those components.
- * - Static host elements/text, dynamic child expressions and component programs,
- *   dynamic attributes, common form-control properties, and event handlers.
+ * - Direct JSX element/fragment returns, including multiple block returns.
+ * - Static host markup, reactive attributes/properties, and event handlers.
+ * - Dynamic child slots, nested component calls, and component children.
+ * - JSX expressions used in conditionals and array-producing expressions
+ *   such as `.map(item => <Row />)`.
  *
- * It intentionally rejects spreads, refs, JSX nested inside conditional
- * expressions, and parser-sensitive HTML contexts until those features have
- * first-class compiler rules in render_new.
+ * Each component call returns a deferred descriptor. Its original body runs
+ * only when a renderer invokes the descriptor inside a component-owned scope.
+ * Spreads, refs, raw HTML, dynamic style objects, member-expression component
+ * tags, and parser-sensitive HTML contexts remain unsupported.
  */
 export function transformVynnRenderNewOxc(
   source: string,
