@@ -114,8 +114,6 @@ type PreparedRouterState = {
 };
 
 const preparedRouterStates = new WeakMap<object, PreparedRouterState>();
-const routerInstancesByProps = new WeakMap<object, RouterInstance<unknown>>();
-
 type PreloadableRouteComponent = Route["component"] & {
   preload?: () => Promise<unknown> | undefined;
 };
@@ -424,37 +422,32 @@ export function Router<TContext = undefined>(
   props: RouterProps<TContext>,
 ): JSX.Element {
   const ownsRouter = !("router" in props);
-  let router: RouterInstance<TContext>;
+  let router: RouterInstance<TContext> | undefined =
+    "router" in props ? props.router : undefined;
 
-  if ("router" in props) {
-    router = props.router;
-  } else {
-    const existing = routerInstancesByProps.get(props) as RouterInstance<TContext> | undefined;
-    router = existing ?? createRouter(props);
-    if (!existing) {
-      routerInstancesByProps.set(
-        props,
-        router as RouterInstance<unknown>,
-      );
-    }
-  }
+  const getRouter = (): RouterInstance<TContext> => {
+    router ??= createRouter(props as RouterOptions<TContext>);
+    return router;
+  };
 
   return createRenderNewComponent(
     () => {
+      const instance = getRouter();
+
       if (ownsRouter) {
-        onScopeDispose(() => router.dispose());
+        onScopeDispose(() => instance.dispose());
       }
 
       LocationProvider({
-        value: router.state.location,
+        value: instance.state.location,
         children: undefined as never,
       });
 
-      return createChildSlotProgram(() => createRouteOutlet(router, 0));
+      return createChildSlotProgram(() => createRouteOutlet(instance, 0));
     },
     null,
     Router,
-    () => prepareRouter(router),
+    () => prepareRouter(getRouter()),
   ) as unknown as JSX.Element;
 }
 
