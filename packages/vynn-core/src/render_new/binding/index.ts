@@ -34,6 +34,7 @@ export {
   type EventBindingInstruction,
   type PropertyBindingInstruction,
   type TemplateBindingInstruction,
+  type TemplateBindingOptions,
   type TemplateBindingSet,
   type TextBindingInstruction,
 } from "./instructions";
