@@ -16,19 +16,37 @@ type ManifestEntry = {
   name?: string;
 };
 
-export function createClientEntry(appSpecifier: string, ssr: boolean): string {
+export type VynnRenderer = "legacy" | "new";
+
+export function createClientEntry(
+  appSpecifier: string,
+  ssr: boolean,
+  renderer: VynnRenderer = "legacy",
+): string {
   const selected = (moduleName: string) =>
     `Reflect.get(${moduleName}, "default") ?? Reflect.get(${moduleName}, "App")`;
-  const renderer = ssr ? "hydrateToDOM" : "renderToDOM";
 
+  if (renderer === "new") {
+    const mount = ssr ? "hydrateRenderNew" : "mountRenderNew";
+    return [
+      `import * as appModule from ${JSON.stringify(appSpecifier)};`,
+      `import { ${mount} } from "vynn/render_new";`,
+      `const App = ${selected("appModule")};`,
+      `if (typeof App !== "function") throw new Error("[Vynn App] The app module must export a component as default or App.");`,
+      `${mount}(document, App({ url: window.location.pathname + window.location.search }));`,
+      "",
+    ].join("\\n");
+  }
+
+  const mount = ssr ? "hydrateToDOM" : "renderToDOM";
   return [
     `import * as appModule from ${JSON.stringify(appSpecifier)};`,
-    `import { ${renderer} } from "vynn/client";`,
+    `import { ${mount} } from "vynn/client";`,
     `const App = ${selected("appModule")};`,
     `if (typeof App !== "function") throw new Error("[Vynn App] The app module must export a component as default or App.");`,
-    `${renderer}(() => App({ url: window.location.pathname + window.location.search }), document);`,
+    `${mount}(() => App({ url: window.location.pathname + window.location.search }), document);`,
     "",
-  ].join("\n");
+  ].join("\\n");
 }
 export function createAuthoredServerEntry(
   serverSpecifier: string,
@@ -42,11 +60,32 @@ export function createAuthoredServerEntry(
   ].join("\n");
 }
 
-export function createServerEntry(appSpecifier: string, ssrMode: RenderMode = "stream"): string {
+export function createServerEntry(
+  appSpecifier: string,
+  ssrMode: RenderMode = "stream",
+  renderer: VynnRenderer = "legacy",
+): string {
   // Read optional exports dynamically. A direct `appModule.App` access makes
   // Rollup/Rolldown warn when the module intentionally uses a default export.
   const selected = (moduleName: string) =>
     `Reflect.get(${moduleName}, "default") ?? Reflect.get(${moduleName}, "App")`;
+
+  if (renderer === "new") {
+    return [
+      `import * as appModule from ${JSON.stringify(appSpecifier)};`,
+      `import { renderTemplateProgramToString } from "vynn/render_new/server";`,
+      `const App = ${selected("appModule")};`,
+      `if (typeof App !== "function") throw new Error("[Vynn App] The app module must export a component as default or App.");`,
+      `export function render(url, request) {`,
+      `  return {`,
+      `    body: renderTemplateProgramToString(App({ url })),`,
+      `    head: { render: () => "" },`,
+      `    modules: [],`,
+      `  };`,
+      `}`,
+      "",
+    ].join("\\n");
+  }
 
   return [
     `import * as appModule from ${JSON.stringify(appSpecifier)};`,
@@ -57,7 +96,7 @@ export function createServerEntry(appSpecifier: string, ssrMode: RenderMode = "s
     `  return renderToServer(() => App({ url }), ${JSON.stringify(ssrMode)}, request);`,
     `}`,
     "",
-  ].join("\n");
+  ].join("\\n");
 }
 
 export async function readSsrManifest(outDir: string): Promise<ViteSsrManifest> {
