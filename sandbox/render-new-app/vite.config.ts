@@ -5,6 +5,7 @@ export default defineConfig({
   plugins: [
     vynn({
       renderer: "new",
+      ssr: true,
     }),
   ],
   server: {
