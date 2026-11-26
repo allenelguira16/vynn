@@ -1,9 +1,10 @@
 import type { JSX } from "../types/jsx";
 
 
+import { createOwner, disposeOwner, getOwner, runWithOwner, type Owner } from "../life-cycle/owner";
 import { $computed } from "../reactivity/computed";
 import { untrack } from "../reactivity/effect";
-import { $state, createStateValue, type State } from "../reactivity/state";
+import { createStateValue, type State } from "../reactivity/state";
 import { $nodes } from "./$nodes";
 import { getCurrentDOMNamespace, withDOMNamespace } from "./namespace";
 
@@ -12,6 +13,7 @@ type ForEntry<T> = {
   itemState?: State<T>;
   node: JSX.Element;
   index: State<number>;
+  owner: Owner;
 };
 
 type ForBucket<T> = {
@@ -66,6 +68,7 @@ export function $for<T>(
 ): JSX.Element {
   const namespace = getCurrentDOMNamespace();
   const keyed = getKey !== undefined;
+  const parentOwner = getOwner();
   let warnedAboutMissingKey = false;
 
   const warnAboutMissingKey = (length: number): void => {
@@ -100,13 +103,48 @@ export function $for<T>(
       return renderEach(item, index);
     });
 
+  const createEntry = (item: T, identity: unknown, index: number): ForEntry<T> => {
+    // A row is a lifecycle boundary. Its renderer effects, nested components,
+    // and user-created effects must not outlive the entry when it is removed.
+    // Transparent owners do not consume an additional hydration identity slot.
+    const owner = createOwner(parentOwner, { identity: false });
+
+    try {
+      return runWithOwner(owner, () => {
+        const indexState = createStateValue(index);
+        const itemState = keyed ? createStateValue(item) : undefined;
+        const renderedItem = itemState ?? item;
+
+        return {
+          identity,
+          itemState,
+          node: createRowNode(renderedItem, indexState),
+          index: indexState,
+          owner,
+        };
+      });
+    } catch (cause) {
+      try {
+        disposeOwner(owner);
+      } catch (cleanupCause) {
+        throw new AggregateError(
+          [cause, cleanupCause],
+          "[Vynn] A list entry failed to render and its cleanup also failed.",
+        );
+      }
+      throw cause;
+    }
+  };
+
   if (import.meta.env.SSR) {
     return $nodes(() => {
       const values = items();
       warnAboutMissingKey(values.length);
 
       return values.map((item, i) => {
-        const indexState = $state(() => i);
+        // List indexes are synchronous cells, not async resources. Avoid
+        // allocating resource slots/controllers for every rendered item.
+        const indexState = createStateValue(i);
         return keyed
           ? renderEach(createStateValue(item), indexState)
           : renderEach(item, indexState);
@@ -155,18 +193,9 @@ export function $for<T>(
        * First render.
        */
       if (!initialized) {
-        const entries = newItems.map((item, index) => {
-          const indexState = $state(() => index);
-          const itemState = keyed ? createStateValue(item) : undefined;
-          const renderedItem = itemState ?? item;
-
-          return {
-            identity: newIdentities[index],
-            itemState,
-            node: createRowNode(renderedItem, indexState),
-            index: indexState,
-          };
-        });
+        const entries = newItems.map((item, index) =>
+          createEntry(item, newIdentities[index], index),
+        );
 
         oldEntries = entries;
         result = entries.map((entry) => entry.node);
@@ -216,21 +245,36 @@ export function $for<T>(
           entry.index.value = i;
           newEntries.push(entry);
         } else {
-          const indexState = $state(() => i);
-          const itemState = keyed ? createStateValue(newItem) : undefined;
-          const renderedItem = itemState ?? newItem;
+          newEntries.push(createEntry(newItem, identity, i));
+        }
+      }
 
-          newEntries.push({
-            identity,
-            itemState,
-            node: createRowNode(renderedItem, indexState),
-            index: indexState,
-          });
+      // Entries not consumed from the identity buckets no longer belong to
+      // the rendered list. Dispose their complete reactive subtree now rather
+      // than leaving its effects attached to the parent component owner.
+      const removedEntries: ForEntry<T>[] = [];
+      for (const bucket of oldByIdentity.values()) {
+        for (let index = bucket.nextIndex; index < bucket.entries.length; index++) {
+          removedEntries.push(bucket.entries[index]);
         }
       }
 
       oldEntries = newEntries;
       result = newEntries.map((entry) => entry.node);
+
+      const cleanupErrors: unknown[] = [];
+      for (const entry of removedEntries) {
+        try {
+          disposeOwner(entry.owner);
+        } catch (cause) {
+          cleanupErrors.push(cause);
+        }
+      }
+
+      if (cleanupErrors.length === 1) throw cleanupErrors[0];
+      if (cleanupErrors.length > 1) {
+        throw new AggregateError(cleanupErrors, "[Vynn] Multiple removed list entry cleanups failed.");
+      }
     });
 
     return result;
