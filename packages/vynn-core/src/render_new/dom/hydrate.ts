@@ -5,7 +5,6 @@ import type { TemplateInstance } from "../template/types";
 import { applyTemplateBindings } from "../binding/instructions";
 import { createScope, disposeScope, onScopeDispose, runWithScope } from "../lifecycle/scope";
 import { removeDOMNodes } from "./remove";
-import type { MountedTemplate } from "./mount";
 import { mountTemplateProgram } from "./program";
 
 class HydrationMismatch extends Error {
@@ -193,7 +192,7 @@ function createHydratedMount(
   const scope = createScope();
   let mounted = true;
   let currentProgram = program;
-  let bindings: ReturnType<typeof applyTemplateBindings>;
+  let bindings: ReturnType<typeof applyTemplateBindings> | undefined;
 
   try {
     runWithScope(scope, () => {
@@ -232,6 +231,9 @@ function createHydratedMount(
         throw new TypeError(
           "[vynn render_new]: A hydrated template program can only update from the same static template definition.",
         );
+      }
+      if (!bindings) {
+        throw new Error("[vynn render_new]: Hydrated bindings are not available for update.");
       }
       bindings.update(next.bindings);
       currentProgram = next;
