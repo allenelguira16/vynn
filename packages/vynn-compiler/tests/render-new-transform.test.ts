@@ -344,6 +344,17 @@ describe("render_new JSX compiler target", () => {
     expect(code).not.toContain("Keyed component entries are not supported yet");
   });
 
+  it("marks destructured component props for safe keyed remounts", () => {
+    const code = transformVynnRenderNewOxc(
+      `function Row({ label }) { return <li>{label}</li>; }
+      function List(props) {
+        return <ul>{props.items.map((item) => <Row key={item.id} label={item.label} />)}</ul>;
+      }`,
+      "list.jsx",
+    );
+
+    expect(code).toContain("}, null, Row);");
+  });
   it("returns keyed component descriptors from a compiled map callback", () => {
     const code = transformVynnRenderNewOxc(
       `function Row(props) { return <li>{props.label}</li>; }
