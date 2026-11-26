@@ -395,7 +395,15 @@ export function bindChild(
     }
 
     if (isRenderNewComponent(value)) {
-      const mounted = mountRenderNewComponent(parent, value, adapter, before);
+      const mounted = mountRenderNewComponent(
+        parent,
+        value,
+        adapter,
+        before,
+        hydrate && endAnchor
+          ? { start: anchor, end: endAnchor }
+          : undefined,
+      );
       ordinaryCleanups.push(() => mounted.dispose());
       return;
     }
