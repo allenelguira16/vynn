@@ -3,10 +3,9 @@ import type { PropsWithChildren } from "vynn";
 import { describe, expect, it } from "vitest";
 
 import {
-  createDOMTemplateAdapter,
   createScope,
   disposeScope,
-  mountTemplateProgram,
+  mountRenderNew,
   runWithScope,
   type DOMTemplateProgram,
   type TemplateDefinition,
@@ -73,15 +72,8 @@ function mountRouter(
     () => createRouter({ routes, history, notFound }),
   );
   const host = window.document.createElement("div");
-  const adapter = createDOMTemplateAdapter(window.document);
-  const program = runWithScope(
-    scope,
-    () => Router({ router }) as unknown as DOMTemplateProgram,
-  );
-  const mounted = runWithScope(
-    scope,
-    () => mountTemplateProgram(host, program, adapter),
-  );
+  const program = runWithScope(scope, () => Router({ router }));
+  const mounted = runWithScope(scope, () => mountRenderNew(host, program));
 
   return {
     host,
