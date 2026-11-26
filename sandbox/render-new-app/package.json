@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "vynn": "workspace:*",
+    "vynn-router": "workspace:*",
     "vite-plugin-vynn": "workspace:*"
   },
   "devDependencies": {
