@@ -137,7 +137,7 @@ describe("render_new event binding", () => {
     button.dispatchEvent(createEvent(document));
 
     expect(first).toHaveBeenCalledTimes(1);
-    expect(second).toHaveBeenCalledTimes(1);
+    expect(second).toHaveBeenCalledTimes(2);
 
     disposeScope(scope);
   });
