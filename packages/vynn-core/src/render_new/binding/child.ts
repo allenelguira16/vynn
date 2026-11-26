@@ -54,6 +54,49 @@ function isDOMTemplateKey(value: unknown): value is DOMTemplateKey {
     typeof value === "bigint";
 }
 
+function canUpdateTemplateProgram(
+  current: DOMTemplateProgram,
+  next: DOMTemplateProgram,
+): boolean {
+  if (current.template !== next.template || current.bindings.length !== next.bindings.length) {
+    return false;
+  }
+
+  for (let index = 0; index < current.bindings.length; index++) {
+    const left = current.bindings[index]!;
+    const right = next.bindings[index]!;
+    if (left.kind !== right.kind || left.reference !== right.reference) return false;
+
+    switch (left.kind) {
+      case "text":
+      case "child":
+        break;
+      case "attribute":
+        if (
+          right.kind !== "attribute" ||
+          (typeof left.name === "string" || typeof right.name === "string"
+            ? left.name !== right.name
+            : left.name.namespaceURI !== right.name.namespaceURI ||
+              left.name.qualifiedName !== right.name.qualifiedName ||
+              left.name.localName !== right.name.localName)
+        ) return false;
+        break;
+      case "property":
+        if (right.kind !== "property" || left.name !== right.name) return false;
+        break;
+      case "event":
+        if (
+          right.kind !== "event" ||
+          left.event !== right.event ||
+          left.options !== right.options
+        ) return false;
+        break;
+    }
+  }
+
+  return true;
+}
+
 function removeNodes(nodes: readonly Node[]): void {
   for (const node of nodes) {
     if (node.parentNode) node.parentNode.removeChild(node);
@@ -331,7 +374,7 @@ export function bindChild(
         continue;
       }
 
-      if (existing.program.template === program.template) {
+      if (canUpdateTemplateProgram(existing.program, program)) {
         existing.mounted.update(program);
         existing.program = program;
         continue;
@@ -384,19 +427,32 @@ export function bindChild(
     append(parent, before, value, hydrate);
   };
 
-  const stopEffect = runWithScope(scope, () =>
-    $renderEffect(() => {
-      if (!anchor.parentNode) {
-        throw new Error("[vynn]: A dynamic child anchor must belong to a parent node.");
-      }
+  let stopEffect: () => void;
+  try {
+    stopEffect = runWithScope(scope, () =>
+      $renderEffect(() => {
+        if (!anchor.parentNode) {
+          throw new Error("[vynn]: A dynamic child anchor must belong to a parent node.");
+        }
 
-      endAnchor ??= findEndAnchor(anchor);
-      const hydrateThisRun = shouldHydrate && firstEvaluation;
-      const value = read();
-      updateValue(value, hydrateThisRun);
-      firstEvaluation = false;
-    }),
-  );
+        endAnchor ??= findEndAnchor(anchor);
+        const hydrateThisRun = shouldHydrate && firstEvaluation;
+        const value = read();
+        updateValue(value, hydrateThisRun);
+        firstEvaluation = false;
+      }),
+    );
+  } catch (error) {
+    try {
+      disposeCurrent();
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [error, cleanupError],
+        "[vynn]: Initial dynamic child rendering failed and its partial output could not be disposed.",
+      );
+    }
+    throw error;
+  }
 
   const unregisterCleanup = runWithScope(scope, () =>
     onScopeDispose(disposeCurrent),
