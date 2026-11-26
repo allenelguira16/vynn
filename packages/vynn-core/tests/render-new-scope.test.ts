@@ -122,7 +122,7 @@ describe("render_new scope lifecycle", () => {
   it("runs cleanups with the owning scope active and continues after errors", () => {
     const scope = createScope(null);
     const events: string[] = [];
-    let scopeOwner: ReturnType<typeof getOwner>;
+    let scopeOwner: ReturnType<typeof getOwner> = null;
 
     runWithScope(scope, () => {
       scopeOwner = getOwner();
@@ -139,7 +139,7 @@ describe("render_new scope lifecycle", () => {
       });
     });
 
-    expect(() => disposeScope(scope)).toThrow(AggregateError);
+    expect(() => disposeScope(scope)).toThrow("cleanup failed");
     expect(events).toEqual(["first", "second"]);
     expect(scope.state).toBe("disposed");
   });
