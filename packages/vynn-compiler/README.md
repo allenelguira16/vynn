@@ -52,9 +52,11 @@ of `transformVynnOxc()`.
 The initial target intentionally supports a limited subset: named function
 components returning host JSX, static host elements and text, standalone
 dynamic text nodes, dynamic attributes, common form-control properties, and
-event handlers. It currently rejects component children, spreads, refs,
-conditional/list children, mixed static/dynamic text in one text node, and
-parser-sensitive HTML contexts such as tables, selects, and textareas.
+event handlers. Dynamic text is stringified and must occupy its own text node;
+wrap it in an element when mixing it with static text. It currently rejects
+component children, spreads, refs, conditional/list children, mixed
+static/dynamic text in one text node, and parser-sensitive HTML contexts such
+as tables, selects, and textareas.
 
 Generated component functions return a template program rather than mounting
 it. The caller supplies a DOM parent and adapter to
