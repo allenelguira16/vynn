@@ -2527,6 +2527,36 @@ class TransformState {
   }
 
   /**
+   * Event handlers and refs are attached during callback evaluation rather
+   * than through a reactive attribute effect. Keep the normal row range for
+   * callbacks that declare either so item replacement can reevaluate them.
+   */
+  private hasRowLifecycleBindings(node: Node): boolean {
+    let found = false;
+
+    const visit = (current: Node): void => {
+      if (found) return;
+
+      if (isJSXElement(current)) {
+        for (const attribute of current.openingElement.attributes) {
+          if (!isJSXAttribute(attribute)) continue;
+
+          const name = getJSXAttributeName(attribute.name);
+          if (name === "ref" || this.getEventAttribute(name)) {
+            found = true;
+            return;
+          }
+        }
+      }
+
+      forEachChild(current, visit);
+    };
+
+    visit(node);
+    return found;
+  }
+
+  /**
    * Extract a key only when the map callback directly returns one JSX element.
    * Conditional roots and fragments need a separate identity model, so they
    * are deliberately rejected rather than guessed.
@@ -2817,7 +2847,8 @@ class TransformState {
       !!listKey &&
       isArrowFunctionExpression(callbackSource) &&
       isJSXElement(callbackSource.body) &&
-      !isComponentElement(callbackSource.body);
+      !isComponentElement(callbackSource.body) &&
+      !this.hasRowLifecycleBindings(callbackSource.body);
     // An omitted map index cannot be observed by the callback. Avoid creating
     // one reactive state cell per row when the callback has only an item arg.
     const trackIndex = !(
