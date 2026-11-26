@@ -481,8 +481,8 @@ describe("Vynn Oxc JSX compiler", () => {
     );
 
     expect(code).toContain("_$cmpnt(function Status");
-    expect(code).toContain('_$staticTemplate("<div");
-    expect(code).toContain('_$staticTemplate("<section");
+    expect(code).toContain('_$staticTemplate("<div');
+    expect(code).toContain('_$staticTemplate("<section');
   });
 
   it("wraps function components whose returns are nested in switch cases", () => {
