@@ -246,23 +246,34 @@ function createGuardedRoute<TContext>(
 ): RenderNewComponent | null {
   const beforeLoad = match.route.beforeLoad;
   if (!beforeLoad) return child;
-  if (hasPreparedGuard(router, match)) return child;
+  const initiallyPrepared = hasPreparedGuard(router, match);
 
   if (isServer) {
+    if (initiallyPrepared) return child;
     throw new Error(
       "[vynn-router/render_new]: A guarded route must be prepared with renderTemplateProgramToStringAsync().",
     );
   }
 
   return createRenderNewComponent(() => {
-    const state = $state<RouteGuardState>({ status: "pending" });
+    const state = $state<RouteGuardState>(
+      initiallyPrepared ? { status: "allowed" } : { status: "pending" },
+    );
     let revision = 0;
+    let firstRun = true;
 
     $effect(() => {
       const location = {
         pathname: router.state.location.pathname,
         search: router.state.location.search,
       };
+
+      if (firstRun && initiallyPrepared) {
+        firstRun = false;
+        return;
+      }
+      firstRun = false;
+
       const currentRevision = ++revision;
       const controller = new AbortController();
       state.value = { status: "pending" };
