@@ -772,7 +772,7 @@ function serializeProgram(
   };
 }
 
-function renderProgramExpression(
+function renderTemplateDefinition(
   program: SerializedProgram,
   useConstAssertions: boolean,
 ): string {
@@ -782,6 +782,17 @@ function renderProgramExpression(
     '", path: [' + reference.path.join(", ") + "] }"
   ));
 
+  return "{ markup: " + JSON.stringify(program.markup) +
+    ', namespace: "' + program.namespace +
+    '", references: [' + references.join(", ") + "] }" +
+    (useConstAssertions ? " as const" : "");
+}
+
+function renderProgramExpression(
+  program: SerializedProgram,
+  templateName: string,
+  useConstAssertions: boolean,
+): string {
   const bindings = program.bindings.map((binding) => {
     if (binding.kind === "text") {
       return "{ kind: \"text\", reference: " + binding.reference +
@@ -806,11 +817,31 @@ function renderProgramExpression(
       ", read: " + binding.read + " }";
   });
 
-  return "({ template: { markup: " + JSON.stringify(program.markup) +
-    ', namespace: "' + program.namespace +
-    '", references: [' + references.join(", ") +
-    '] }, bindings: [' + bindings.join(", ") + "]" +
+  return "({ template: " + templateName +
+    ", bindings: [" + bindings.join(", ") + "]" +
     (useConstAssertions ? " } as const)" : " })");
+}
+
+function getTemplateInsertionOffset(program: Node, source: string): number {
+  const body = (program as unknown as { body: Node[] }).body;
+  let offset = source.startsWith("#!")
+    ? Math.max(0, source.indexOf("\n") + 1)
+    : 0;
+
+  for (const statement of body) {
+    const isDirective =
+      isType(statement, "ExpressionStatement") &&
+      isLiteralString(statement.expression);
+    const isImport = isType(statement, "ImportDeclaration");
+
+    if (!isDirective && !isImport) break;
+
+    if (Number.isSafeInteger(statement.end)) {
+      offset = Math.max(offset, statement.end!);
+    }
+  }
+
+  return offset;
 }
 
 function isComponentFunction(node: Node): boolean {
@@ -926,6 +957,42 @@ export function transformVynnRenderNewOxcWithMap(
   const program = parsed.program as unknown as Node;
   const replacements: SourceReplacement[] = [];
   const coveredRanges: Array<[number, number]> = [];
+  const usedNames = new Set<string>();
+
+  const collectUsedNames = (node: Node): void => {
+    if (isIdentifier(node)) usedNames.add(node.name);
+    forEachChild(node, collectUsedNames);
+  };
+  collectUsedNames(program);
+
+  let templateIndex = 0;
+  const templateCache = new Map<string, { name: string; definition: string }>();
+  const templateDeclarations: string[] = [];
+
+  const getTemplateName = (serialized: SerializedProgram): string => {
+    const signature = JSON.stringify([
+      serialized.markup,
+      serialized.namespace,
+      serialized.references.map(({ id, kind, path }) => [id, kind, path]),
+    ]);
+    const cached = templateCache.get(signature);
+    if (cached) return cached.name;
+
+    let name: string;
+    do {
+      name = "_vynnTemplate" + templateIndex++;
+    } while (usedNames.has(name));
+
+    usedNames.add(name);
+    const definition = renderTemplateDefinition(
+      serialized,
+      lang === "ts" || lang === "tsx",
+    );
+
+    templateCache.set(signature, { name, definition });
+    templateDeclarations.push("const " + name + " = " + definition + ";");
+    return name;
+  };
 
   for (const component of collectComponentFunctions(program)) {
     const metadata = component as unknown as {
@@ -959,11 +1026,14 @@ export function transformVynnRenderNewOxcWithMap(
 
     for (const root of roots) {
       const serialized = serializeProgram(root, source, filename);
+      const templateName = getTemplateName(serialized);
+
       replacements.push({
         start: root.start!,
         end: root.end!,
         value: renderProgramExpression(
           serialized,
+          templateName,
           lang === "ts" || lang === "tsx",
         ),
       });
@@ -1013,6 +1083,21 @@ export function transformVynnRenderNewOxcWithMap(
       replacement.value +
       code.slice(replacement.end);
     previousStart = replacement.start;
+  }
+
+  if (templateDeclarations.length > 0) {
+    const insertionOffset = getTemplateInsertionOffset(program, source);
+    const prefix = code.slice(0, insertionOffset);
+    const suffix = code.slice(insertionOffset);
+    const before = prefix.length > 0 && !prefix.endsWith("\\n") ? "\\n" : "";
+    const after = suffix.startsWith("\\n") ? "" : "\\n";
+
+    code =
+      prefix +
+      before +
+      templateDeclarations.join("\\n") +
+      after +
+      suffix;
   }
 
   return { code, map: null };
