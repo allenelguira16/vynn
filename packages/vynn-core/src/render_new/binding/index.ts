@@ -30,6 +30,7 @@ export {
 export {
   applyTemplateBindings,
   type AttributeBindingInstruction,
+  type ChildBindingInstruction,
   type EventBindingInstruction,
   type PropertyBindingInstruction,
   type TemplateBindingInstruction,
