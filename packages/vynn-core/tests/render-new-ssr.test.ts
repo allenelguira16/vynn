@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { JSDOM } from "jsdom";
 
-import { $state } from "../src/reactivity/state";
+import { $state, type State } from "../src/reactivity/state";
 import { createRenderNewComponent } from "../src/render_new/component";
 import {
   createDOMTemplateAdapter,
@@ -657,9 +657,10 @@ describe("render_new SSR and hydration", () => {
     mounted.dispose();
     expect(cleanupCount).toBe(1);
   });
+
   it("hydrates prepared nested components without replacing server DOM", async () => {
     const createNestedApp = (
-      value: ReturnType<typeof $state<string>>,
+      value: State<string>,
       counts: { parent: number; child: number },
     ) => createRenderNewComponent(() => {
       counts.parent += 1;
