@@ -273,6 +273,55 @@ describe("$template", () => {
     disposeOwner(owner);
   });
 
+  it("releases per-instance hydration indexes after finishing a template", () => {
+    const owner = createTestOwner();
+    const host = document.createElement("div");
+    host.innerHTML = "<main><section><span>nested</span></section><footer>after</footer></main>";
+
+    const factory = $template(
+      "<main><section><span>nested</span></section><footer>after</footer></main>",
+    );
+    const deleteSpy = vi.spyOn(WeakMap.prototype, "delete");
+
+    let root!: Element;
+    let section!: Element;
+
+    try {
+      runWithOwner(owner, () => {
+        withHydration(() => {
+          root = factory();
+          section = $child(root);
+          $finishTemplate(root);
+        }, host);
+      });
+
+      // Every mapped DOM node must stop retaining the finished template instance.
+      expect(deleteSpy).toHaveBeenCalledWith(root);
+      expect(deleteSpy).toHaveBeenCalledWith(section);
+      expect($child(root)).toBe(section);
+      expect($sibling(section)).toBe(root.lastElementChild);
+    } finally {
+      deleteSpy.mockRestore();
+    }
+
+    // The cached template factory remains usable after a previous instance retires.
+    const secondHost = document.createElement("div");
+    secondHost.innerHTML =
+      "<main><section><span>nested</span></section><footer>after</footer></main>";
+
+    let secondRoot!: Element;
+    runWithOwner(owner, () => {
+      withHydration(() => {
+        secondRoot = factory();
+        $finishTemplate(secondRoot);
+      }, secondHost);
+    });
+
+    expect(secondRoot).toBe(secondHost.firstElementChild);
+
+    disposeOwner(owner);
+  });
+
   it("navigates nested template children and then continues at a sibling", () => {
     const owner = createTestOwner();
     const host = document.createElement("div");

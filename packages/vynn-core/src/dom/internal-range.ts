@@ -33,13 +33,18 @@ export function isWithinInternalRange(node: Node): boolean {
 
 /** Removes internal range delimiters while preserving their contents. */
 export function removeInternalRangeMarkers(root: Node): void {
-  for (const child of [...root.childNodes]) {
+  let child = root.firstChild;
+
+  while (child) {
+    const next = child.nextSibling;
+
     if (isInternalRangeMarker(child)) {
       child.parentNode?.removeChild(child);
-      continue;
+    } else {
+      removeInternalRangeMarkers(child);
     }
 
-    removeInternalRangeMarkers(child);
+    child = next;
   }
 }
 

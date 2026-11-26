@@ -462,6 +462,18 @@ function registerTemplateNode(
   descriptor: TemplateNodeDescriptor,
   node: TemplateRuntimeNode,
 ): void {
+  const previous = instance.nodes.get(descriptor);
+
+  // Hydration can replace an initially mapped node with the claimed server
+  // node. Do not leave the discarded node retaining this template instance.
+  if (
+    previous &&
+    previous !== node &&
+    templateInstances.get(previous as object) === instance
+  ) {
+    templateInstances.delete(previous as object);
+  }
+
   instance.nodes.set(descriptor, node);
   instance.descriptors.set(node as object, descriptor);
   templateInstances.set(node as object, instance);
@@ -1139,6 +1151,22 @@ function finishHydratedTemplate(root: Element): void {
 
   const last = instance.steps.at(-1);
   if (last) claimTemplateThrough(instance, last);
+
+  // The compiler calls $finishTemplate after every static node and dynamic
+  // slot in this template has claimed its SSR node. Retire every node
+  // association so live DOM nodes no longer retain per-instance indexes.
+  instance.hydrating = false;
+
+  for (const node of instance.nodes.values()) {
+    if (templateInstances.get(node as object) === instance) {
+      templateInstances.delete(node as object);
+    }
+  }
+
+  instance.nodes.clear();
+
+  // steps, indices, and parents are shared with the cached TemplateBlueprint.
+  // Keep the blueprint intact for other instances created from the same markup.
 }
 
 /** Creates a reusable factory for a JSX subtree with no runtime bindings. */

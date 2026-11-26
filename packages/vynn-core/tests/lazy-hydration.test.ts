@@ -1,6 +1,10 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
+import {
+  INTERNAL_RANGE_END_MARKER,
+  INTERNAL_RANGE_START_MARKER,
+} from "../src/const";
 import {
   beginHydrationClaim,
   claimHydrationElement,
@@ -14,6 +18,47 @@ import { createOwner, disposeOwner, runWithOwner } from "../src/life-cycle/owner
 
 afterEach(() => {
   document.body.innerHTML = "";
+});
+
+describe("hydration DOM traversal", () => {
+  it("scans nested and internal ranges without creating childNodes collections", () => {
+    const root = document.createElement("div");
+    const rangeStart = document.createComment(INTERNAL_RANGE_START_MARKER);
+    const section = document.createElement("section");
+    const nestedStart = document.createComment(INTERNAL_RANGE_START_MARKER);
+    const paragraph = document.createElement("p");
+    paragraph.textContent = "inside";
+    const nestedEnd = document.createComment(INTERNAL_RANGE_END_MARKER);
+    const rangeEnd = document.createComment(INTERNAL_RANGE_END_MARKER);
+    const outside = document.createElement("footer");
+
+    section.append(nestedStart, paragraph, nestedEnd);
+    root.append(rangeStart, section, rangeEnd, outside);
+
+    const childNodesGetter = vi
+      .spyOn(Node.prototype, "childNodes", "get")
+      .mockImplementation(() => {
+        throw new Error("Hydration traversal must not materialize childNodes NodeLists.");
+      });
+
+    try {
+      expect(() => withHydration(() => {}, root)).not.toThrow();
+    } finally {
+      childNodesGetter.mockRestore();
+    }
+
+    expect(rangeStart.parentNode).toBeNull();
+    expect(rangeEnd.parentNode).toBeNull();
+    expect(nestedStart.parentNode).toBeNull();
+    expect(nestedEnd.parentNode).toBeNull();
+
+    const owner = createOwner(null);
+    runWithOwner(owner, () => {
+      // Internal ranges are opaque to the ordinary hydration node queue.
+      expect(claimHydrationElement()).toBe(outside);
+    });
+    disposeOwner(owner);
+  });
 });
 
 describe("lazy hydration text anchors", () => {
