@@ -226,6 +226,8 @@ function sameInstructionShape(
         left.event === right.event &&
         left.options === right.options;
   }
+
+  return false;
 }
 
 function disposeBindings(bindings: readonly Disposable[]): void {
