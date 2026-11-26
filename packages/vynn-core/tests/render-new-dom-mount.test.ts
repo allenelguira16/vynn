@@ -65,6 +65,24 @@ describe("render_new DOM template mounting", () => {
     expect(mounted.instance.roots[0].nextSibling).toBe(mounted.instance.roots[1]);
   });
 
+  it("runs the initializer after roots are attached to the parent", () => {
+    const document = createDocument();
+    const parent = document.createElement("div");
+    let wasAttachedDuringInitialization = false;
+
+    const mounted = mountTemplate(
+      parent,
+      createFactory(document, "<main></main>"),
+      null,
+      (instance) => {
+        wasAttachedDuringInitialization = instance.roots[0]?.parentNode === parent;
+      },
+    );
+
+    expect(wasAttachedDuringInitialization).toBe(true);
+    mounted.dispose();
+  });
+
   it("supports an empty template as a mounted disposable instance", () => {
     const document = createDocument();
     const parent = document.createElement("div");
