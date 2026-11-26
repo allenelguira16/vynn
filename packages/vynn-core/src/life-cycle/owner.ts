@@ -8,6 +8,17 @@ import {
   type RuntimeContext,
 } from "../runtime/context";
 
+const OWNER_RUNTIME_CONTEXT = Symbol("vynn.owner-runtime-context");
+const OWNER_CONTEXT_INITIALIZED = Symbol("vynn.owner-context-initialized");
+
+type OwnerRuntimeState = Owner & {
+  [OWNER_RUNTIME_CONTEXT]?: RuntimeContext;
+};
+
+type RuntimeContextOwnerState = RuntimeContext & {
+  [OWNER_CONTEXT_INITIALIZED]?: boolean;
+};
+
 export interface Owner {
   parent: Owner | null;
   children?: Owner[];
@@ -15,8 +26,6 @@ export interface Owner {
   mount?: (() => void | (() => void))[];
   disposed?: boolean;
   context?: Map<string | symbol, unknown>;
-  /** Runtime context retained for asynchronous owner re-entry. */
-  runtimeContext?: RuntimeContext;
   /** Stable hydration identity for this owner, when it owns an identity slot. */
   id: string | undefined;
   /** Nearest ancestor (or self) that owns the hydration ID sequence. */
@@ -81,7 +90,7 @@ function isWithinRuntimeContext(
  * without losing the app, route, or boundary context it inherited.
  */
 function getOwnerRuntimeContext(owner: Owner): RuntimeContext {
-  let context = owner.runtimeContext;
+  let context = (owner as OwnerRuntimeState)[OWNER_RUNTIME_CONTEXT];
   if (context) return context;
 
   const currentContext = getRuntimeContext();
@@ -94,7 +103,7 @@ function getOwnerRuntimeContext(owner: Owner): RuntimeContext {
       : parentContext ?? currentContext;
 
   context = createRuntimeContext(inheritedContext);
-  owner.runtimeContext = context;
+  (owner as OwnerRuntimeState)[OWNER_RUNTIME_CONTEXT] = context;
   return context;
 }
 
@@ -275,7 +284,7 @@ export function createOwner(parent = getOwner(), options: OwnerOptions = {}): Ow
       ? currentContext
       : parentContext;
 
-    owner.runtimeContext = createRuntimeContext(inheritedContext);
+    (owner as OwnerRuntimeState)[OWNER_RUNTIME_CONTEXT] = createRuntimeContext(inheritedContext);
   }
 
   if (parent) getOwnerChildren(parent).push(owner);
@@ -306,8 +315,9 @@ export function runWithOwner<T>(owner: Owner | null, fn: () => T): T {
   // The first activation initializes the persistent frame for this owner.
   // Later activations use a child frame, preserving any explicitly captured
   // descendant context while isolating temporary writes between callbacks.
-  if (!ownerContext.ownerInitialized) {
-    ownerContext.ownerInitialized = true;
+  const ownerContextState = ownerContext as RuntimeContextOwnerState;
+  if (!ownerContextState[OWNER_CONTEXT_INITIALIZED]) {
+    ownerContextState[OWNER_CONTEXT_INITIALIZED] = true;
 
     return runWithRuntimeContext(ownerContext, () => {
       setRuntimeOwner(owner);
