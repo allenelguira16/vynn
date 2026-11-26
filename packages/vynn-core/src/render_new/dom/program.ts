@@ -54,7 +54,7 @@ export function mountTemplateProgram(
   program: DOMTemplateProgram,
   adapter: DOMTemplateAdapter,
   before: Node | null = null,
-): MountedTemplate<Node> {
+): MountedTemplateProgram {
   assertProgram(program);
 
   // Snapshot the instruction list for this mount. Instructions retain their
