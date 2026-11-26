@@ -441,7 +441,7 @@ export function Router<TContext = undefined>(
 
       return createChildSlotProgram(() => createRouteOutlet(router, 0));
     },
-    props,
+    null,
     Router,
     () => prepareRouter(router),
   ) as unknown as JSX.Element;
