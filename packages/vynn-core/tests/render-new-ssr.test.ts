@@ -11,6 +11,7 @@ import {
   onScopeDispose,
   prepareRenderNewTree,
   renderTemplateProgramToString,
+  renderTemplateProgramToStringAsync,
 } from "../src/render_new";
 import type { DOMTemplateProgram } from "../src/render_new/dom/program";
 
@@ -656,5 +657,72 @@ describe("render_new SSR and hydration", () => {
     mounted.dispose();
     expect(cleanupCount).toBe(1);
   });
+  it("hydrates prepared nested components without replacing server DOM", async () => {
+    const createNestedApp = (
+      value: ReturnType<typeof $state<string>>,
+      counts: { parent: number; child: number },
+    ) => createRenderNewComponent(() => {
+      counts.parent += 1;
+      const child = createRenderNewComponent(() => {
+        counts.child += 1;
+        return {
+          template: {
+            namespace: "html",
+            markup: '<strong><!--__vynn_render_new_child_0_start__--><!--__vynn_render_new_child_0_end__--></strong>',
+            references: [{ id: 0, kind: "anchor" as const, path: [0, 0] }],
+          },
+          bindings: [{
+            kind: "child" as const,
+            reference: 0,
+            read: () => value.value,
+          }],
+        };
+      });
+
+      return {
+        template: {
+          namespace: "html",
+          markup: '<main><!--__vynn_render_new_child_0_start__--><!--__vynn_render_new_child_0_end__--></main>',
+          references: [{ id: 0, kind: "anchor" as const, path: [0, 0] }],
+        },
+        bindings: [{
+          kind: "child" as const,
+          reference: 0,
+          read: () => child,
+        }],
+      };
+    });
+
+    const serverValue = $state("server nested component");
+    const serverCounts = { parent: 0, child: 0 };
+    const serverApp = createNestedApp(serverValue, serverCounts);
+    const html = await renderTemplateProgramToStringAsync(serverApp);
+
+    expect(serverCounts).toEqual({ parent: 1, child: 1 });
+
+    const document = createDocument();
+    const host = document.createElement("div");
+    host.innerHTML = html;
+    const serverMain = host.querySelector("main");
+    const serverStrong = host.querySelector("strong");
+
+    const clientValue = $state("client nested component");
+    const clientCounts = { parent: 0, child: 0 };
+    const clientApp = createNestedApp(clientValue, clientCounts);
+    await prepareRenderNewTree(clientApp);
+    const mounted = hydrateRenderNew(host, clientApp);
+
+    expect(host.querySelector("main")).toBe(serverMain);
+    expect(host.querySelector("strong")).toBe(serverStrong);
+    expect(host.textContent).toBe("client nested component");
+    expect(clientCounts).toEqual({ parent: 1, child: 1 });
+
+    clientValue.value = "updated after hydration";
+    expect(host.textContent).toBe("updated after hydration");
+    expect(host.querySelector("strong")).toBe(serverStrong);
+
+    mounted.dispose();
+  });
+
 
 });
