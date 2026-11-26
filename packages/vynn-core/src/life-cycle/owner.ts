@@ -1,12 +1,4 @@
-import {
-  createRuntimeContext,
-  getRuntimeContext,
-  getRuntimeOwner,
-  runWithRuntimeContext,
-  runWithRuntimeContextScope,
-  setRuntimeOwner,
-  type RuntimeContext,
-} from "../runtime/context";
+import { getActiveOwner, runWithOwnerExecution } from "./owner-execution";
 
 export interface Owner {
   parent: Owner | null;
@@ -58,45 +50,6 @@ const ROOT_OWNER_ID = "0";
 
 const ownerIDReservations = new WeakMap<Owner, OwnerIDReservations>();
 const ownerIDTrackers = new WeakMap<Owner, OwnerIDTracker[]>();
-const ownerRuntimeContexts = new WeakMap<Owner, RuntimeContext>();
-const initializedOwnerRuntimeContexts = new WeakSet<Owner>();
-
-function isWithinRuntimeContext(
-  context: RuntimeContext,
-  ancestor: RuntimeContext,
-): boolean {
-  let current: RuntimeContext | null = context;
-
-  while (current) {
-    if (current === ancestor) return true;
-    current = current.parent;
-  }
-
-  return false;
-}
-
-/**
- * Each Owner retains the runtime context it was created under. This lets
- * lifecycle callbacks re-enter an owner after an unbound async transition
- * without losing the app, route, or boundary context it inherited.
- */
-function getOwnerRuntimeContext(owner: Owner): RuntimeContext {
-  let context = ownerRuntimeContexts.get(owner);
-  if (context) return context;
-
-  const currentContext = getRuntimeContext();
-  const parentContext = owner.parent
-    ? getOwnerRuntimeContext(owner.parent)
-    : undefined;
-  const inheritedContext =
-    parentContext && isWithinRuntimeContext(currentContext, parentContext)
-      ? currentContext
-      : parentContext ?? currentContext;
-
-  context = createRuntimeContext(inheritedContext);
-  ownerRuntimeContexts.set(owner, context);
-  return context;
-}
 
 /**
  * Encode one child index so hierarchical owner IDs can be concatenated
@@ -222,7 +175,7 @@ export function reserveOwnerIDReservations(reservations?: Record<string, number>
  * @returns The owner, or null when no owner is active.
  */
 export function getOwner(): Owner | null {
-  return getRuntimeOwner<Owner | null>() ?? null;
+  return getActiveOwner();
 }
 
 /**
@@ -268,16 +221,6 @@ export function createOwner(parent = getOwner(), options: OwnerOptions = {}): Ow
     ownerIDReservations.set(owner, new Map<string, number>());
   }
 
-  if (parent) {
-    const parentContext = getOwnerRuntimeContext(parent);
-    const currentContext = getRuntimeContext();
-    const inheritedContext = isWithinRuntimeContext(currentContext, parentContext)
-      ? currentContext
-      : parentContext;
-
-    ownerRuntimeContexts.set(owner, createRuntimeContext(inheritedContext));
-  }
-
   if (parent) getOwnerChildren(parent).push(owner);
 
   return owner;
@@ -294,38 +237,7 @@ export function createOwner(parent = getOwner(), options: OwnerOptions = {}): Ow
  * @returns The function's return value.
  */
 export function runWithOwner<T>(owner: Owner | null, fn: () => T): T {
-  if (!owner) {
-    return runWithRuntimeContextScope(() => {
-      setRuntimeOwner(null);
-      return fn();
-    });
-  }
-
-  const ownerContext = getOwnerRuntimeContext(owner);
-
-  // The first activation initializes the persistent frame for this owner.
-  // Later activations use a child frame, preserving any explicitly captured
-  // descendant context while isolating temporary writes between callbacks.
-  if (!initializedOwnerRuntimeContexts.has(owner)) {
-    initializedOwnerRuntimeContexts.add(owner);
-
-    return runWithRuntimeContext(ownerContext, () => {
-      setRuntimeOwner(owner);
-      return fn();
-    });
-  }
-
-  const activeContext = getRuntimeContext();
-  const parentContext = isWithinRuntimeContext(activeContext, ownerContext)
-    ? activeContext
-    : ownerContext;
-
-  return runWithRuntimeContext(parentContext, () =>
-    runWithRuntimeContextScope(() => {
-      setRuntimeOwner(owner);
-      return fn();
-    }),
-  );
+  return runWithOwnerExecution(owner, fn);
 }
 
 /**
