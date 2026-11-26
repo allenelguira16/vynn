@@ -547,7 +547,15 @@ describe("render_new SSR and hydration", () => {
       ],
     };
 
-    const html = renderTemplateProgramToString(program);
+    const html = renderTemplateProgramToString(program)
+      .replace(
+        "</head>",
+        '<!--vynn:internal:start--><link rel="stylesheet" href="/assets/app.css"><!--vynn:internal:end--></head>',
+      )
+      .replace(
+        "</body>",
+        '<!--vynn:internal:start--><script type="module" src="/assets/client.js"></script><!--vynn:internal:end--></body>',
+      );
     const hydratedDocument = new JSDOM("<!doctype html>" + html).window.document;
     const originalRoot = hydratedDocument.documentElement;
 
