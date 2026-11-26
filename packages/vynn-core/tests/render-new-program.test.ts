@@ -3,7 +3,7 @@ import { JSDOM } from "jsdom";
 
 import { $state } from "../src/reactivity/state";
 import { applyTemplateBindings } from "../src/render_new/binding/instructions";
-import { createScope, disposeScope } from "../src/render_new/lifecycle/scope";
+import { createScope, disposeScope, runWithScope } from "../src/render_new/lifecycle/scope";
 import {
   createDOMTemplateAdapter,
   mountTemplateProgram,
@@ -281,9 +281,77 @@ describe("render_new template programs", () => {
       ],
     };
 
-    mountTemplateProgram(parent, program, createDOMTemplateAdapter(document));
+    const mounted = mountTemplateProgram(parent, program, createDOMTemplateAdapter(document));
 
     expect(observations).toEqual([{ title: "ready", text: "Mounted" }]);
+    mounted.dispose();
+  });
+
+  it("disposes mounted bindings when an ancestor render scope is disposed", () => {
+    const document = createDocument();
+    const parent = document.createElement("main");
+    const adapter = createDOMTemplateAdapter(document);
+    const owner = createScope(null);
+    const label = $state("Before");
+    const handler = vi.fn();
+    let mounted: ReturnType<typeof mountTemplateProgram> | undefined;
+
+    owner.dispose();
+    expect(owner.state).toBe("disposed");
+
+    const activeOwner = createScope(null);
+    try {
+      // Create the mount while the parent render scope is current.
+      runWithScope(activeOwner, () => {
+        mounted = mountTemplateProgram(
+          parent,
+          {
+            template: templateDefinition,
+            bindings: [
+              { kind: "text", reference: 1, read: () => label.value },
+              { kind: "event", reference: 0, event: "click", read: () => handler },
+            ],
+          },
+          adapter,
+        );
+      });
+
+      expect(parent.textContent).toBe("Before");
+      disposeScope(activeOwner);
+      expect(parent.childNodes).toHaveLength(0);
+
+      label.value = "After";
+      const button = mounted?.instance.roots[0] as HTMLButtonElement;
+      button.dispatchEvent(createClick(document));
+      expect(handler).not.toHaveBeenCalled();
+    } finally {
+      if (activeOwner.state !== "disposed") disposeScope(activeOwner);
+    }
+  });
+
+  it("rolls back initialized bindings when insertion fails", () => {
+    const document = createDocument();
+    const parent = document.createElement("main");
+    const invalidBefore = document.createElement("footer");
+    const label = $state("Initial");
+    const program: DOMTemplateProgram = {
+      template: templateDefinition,
+      bindings: [
+        { kind: "text", reference: 1, read: () => label.value },
+      ],
+    };
+
+    expect(() =>
+      mountTemplateProgram(
+        parent,
+        program,
+        createDOMTemplateAdapter(document),
+        invalidBefore,
+      ),
+    ).toThrow();
+
+    expect(parent.childNodes).toHaveLength(0);
+    label.value = "Changed";
   });
 
   it("validates a malformed program before touching the parent", () => {
