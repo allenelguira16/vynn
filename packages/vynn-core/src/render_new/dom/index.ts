@@ -4,6 +4,11 @@ export {
 } from "./adapter";
 
 export {
+  mountTemplate,
+  type MountedTemplate,
+} from "./mount";
+
+export {
   createDOMComment,
   createDOMElement,
   createDOMFragment,
