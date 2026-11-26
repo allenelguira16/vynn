@@ -65,8 +65,10 @@ member-expression component tags, and parser-sensitive contexts such as
 tables, selects, and textareas. JSX must be returned directly from a named
 component function or appear inside one of its compiled JSX expressions.
 
-Generated components return a `DOMTemplateProgram`; they do not mount
-themselves. Use `mountRenderNew(parent, App())` for client rendering,
+Generated component calls return deferred component descriptors. The renderer
+executes each component body inside its own scope, then consumes the
+`DOMTemplateProgram` returned by that component's render callback. Use
+`mountRenderNew(parent, App())` for client rendering,
 `renderTemplateProgramToString(App())` for synchronous HTML serialization,
 and `hydrateRenderNew(parent, App())` for DOM hydration. The matching Vite
 adapter is `vynnRenderNewOxcPlugin()` from `vite-plugin-vynn`.
