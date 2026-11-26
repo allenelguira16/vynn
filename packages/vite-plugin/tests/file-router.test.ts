@@ -110,6 +110,26 @@ describe("Vynn App Router transform", () => {
     );
   });
 
+  it("transforms toFileRouter imports from the render_new entry point", () => {
+    const root = createProject();
+    writeAppFile("src/app/page.tsx", "export default function Home() { return null; }");
+
+    const source = [
+      'import { toFileRouter } from "vynn-router/render_new";',
+      'export const routes = toFileRouter("/src/app");',
+    ].join("\\n");
+
+    const transformed = transformFileRouterCalls(
+      source,
+      resolve(root, "src", "routes.ts"),
+      root,
+    );
+
+    expect(transformed).toContain(
+      'toFileRouter("/src/app", import.meta.glob(["/src/app/**/{page,layout,not-found}.',
+    );
+  });
+
   it("requires a static directory string", () => {
     const root = createProject();
     const source =
