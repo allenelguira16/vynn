@@ -291,10 +291,12 @@ hydrateRenderNew(root, App());
 
 Hydration preserves compatible static elements and recursively adopts
 compatible nested component programs and primitive child ranges. Keyed host
-template lists serialize per-item key markers on the server, adopt compatible
-items in place, reorder their existing DOM ranges, and remount only items whose
-static structure no longer matches. Missing and stale items are reconciled by
-key. Keyed component entries are not supported yet.
+template and component lists serialize per-item key markers on the server,
+adopt compatible items in place, and reorder their existing DOM ranges. Keyed
+components of the same component type retain their component scope and receive
+reactive prop updates when their parameter is a simple props object. Unsupported
+parameter shapes are remounted safely. Missing, stale, and structurally
+incompatible items are reconciled individually.
 
 This is not yet connected to the integrated `vynn({ ssr: true })` document
 pipeline, file router, or server-function request handling. The standalone
