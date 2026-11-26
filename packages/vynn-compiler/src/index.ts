@@ -2817,6 +2817,12 @@ class TransformState {
     // generated even though the call site points at a specialized variant.
     const callbackSource = this.namedMapCallbackSources.get(expression) ?? callback;
     const listKey = this.getMapCallbackKey(callbackSource);
+    // Determine this before transforming the callback body into runtime calls.
+    const stableIntrinsicRow =
+      !!listKey &&
+      isArrowFunctionExpression(callbackSource) &&
+      isJSXElement(callbackSource.body) &&
+      !isComponentElement(callbackSource.body);
     if (!listKey && isFunctionLike(callbackSource) && this.containsJSXKey(callbackSource)) {
       throw new Error(
         "[Vynn compiler] A list key must be placed on the single JSX element directly returned by the .map() callback. Conditional and multiple roots are not supported yet.",
@@ -2936,11 +2942,6 @@ class TransformState {
     // its own compiled bindings. Those bindings already subscribe to keyed
     // item state, so the runtime can render the row directly without allocating
     // a second $nodes range, two marker nodes, and an extra render computation.
-    const stableIntrinsicRow =
-      !!listKey &&
-      isArrowFunctionExpression(callbackSource) &&
-      isJSXElement(callbackSource.body) &&
-      !isComponentElement(callbackSource.body);
     args.push(booleanLiteral(stableIntrinsicRow));
 
     const result = callExpression(this.getRuntimeHelper("$for"), args);
