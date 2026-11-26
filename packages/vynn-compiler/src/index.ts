@@ -2527,6 +2527,36 @@ class TransformState {
   }
 
   /**
+   * Event handlers and refs are attached during callback evaluation rather
+   * than through a reactive attribute effect. Keep the normal row range for
+   * callbacks that declare either so item replacement can reevaluate them.
+   */
+  private hasRowLifecycleBindings(node: Node): boolean {
+    let found = false;
+
+    const visit = (current: Node): void => {
+      if (found) return;
+
+      if (isJSXElement(current)) {
+        for (const attribute of current.openingElement.attributes) {
+          if (!isJSXAttribute(attribute)) continue;
+
+          const name = getJSXAttributeName(attribute.name);
+          if (name === "ref" || this.getEventAttribute(name)) {
+            found = true;
+            return;
+          }
+        }
+      }
+
+      forEachChild(current, visit);
+    };
+
+    visit(node);
+    return found;
+  }
+
+  /**
    * Extract a key only when the map callback directly returns one JSX element.
    * Conditional roots and fragments need a separate identity model, so they
    * are deliberately rejected rather than guessed.
@@ -2812,6 +2842,20 @@ class TransformState {
     // generated even though the call site points at a specialized variant.
     const callbackSource = this.namedMapCallbackSources.get(expression) ?? callback;
     const listKey = this.getMapCallbackKey(callbackSource);
+    // Determine this before transforming the callback body into runtime calls.
+    const stableIntrinsicRow =
+      !!listKey &&
+      isArrowFunctionExpression(callbackSource) &&
+      isJSXElement(callbackSource.body) &&
+      !isComponentElement(callbackSource.body) &&
+      !this.hasRowLifecycleBindings(callbackSource.body);
+    // An omitted map index cannot be observed by the callback. Avoid creating
+    // one reactive state cell per row when the callback has only an item arg.
+    const trackIndex = !(
+      isArrowFunctionExpression(callbackSource) &&
+      callbackSource.params.length === 1 &&
+      isIdentifier(callbackSource.params[0])
+    );
     if (!listKey && isFunctionLike(callbackSource) && this.containsJSXKey(callbackSource)) {
       throw new Error(
         "[Vynn compiler] A list key must be placed on the single JSX element directly returned by the .map() callback. Conditional and multiple roots are not supported yet.",
@@ -2926,6 +2970,13 @@ class TransformState {
     // this enabled for every compiler-generated map makes imported callbacks
     // participate in the same development-only missing-key warning.
     args.push(booleanLiteral(true));
+
+    // A direct intrinsic JSX root has no callback-level reactive work outside
+    // its own compiled bindings. Those bindings already subscribe to keyed
+    // item state, so the runtime can render the row directly without allocating
+    // a second $nodes range, two marker nodes, and an extra render computation.
+    args.push(booleanLiteral(stableIntrinsicRow));
+    args.push(booleanLiteral(trackIndex));
 
     const result = callExpression(this.getRuntimeHelper("$for"), args);
     this.generatedForExpressions.add(result);
@@ -3161,7 +3212,35 @@ class TransformState {
     }
 
     if (bindings.length === 0) {
-      return inheritSourceLocation(callExpression(cloneNode(templateName), []), node);
+      if (useStaticTemplate) {
+        return inheritSourceLocation(callExpression(cloneNode(templateName), []), node);
+      }
+
+      // Full-document templates remain hydration-aware even when all of
+      // their markup is static. They still need to release the hydration
+      // descriptor map after the initial document nodes have been claimed.
+      const statements = outerStatements ?? [];
+      const root = this.generateUidIdentifier("root");
+
+      statements.push(
+        variableDeclaration("const", [
+          variableDeclarator(root, callExpression(cloneNode(templateName), [])),
+        ]),
+        expressionStatement(
+          callExpression(this.getRuntimeHelper("$finishTemplate"), [cloneNode(root)]),
+        ),
+      );
+
+      if (outerStatements) {
+        return inheritSourceLocation(cloneNode(root), node);
+      }
+
+      statements.push(returnStatement(cloneNode(root)));
+
+      return inheritSourceLocation(
+        callExpression(arrowFunctionExpression([], blockStatement(statements)), []),
+        node,
+      );
     }
 
     const statements = outerStatements ?? [];
