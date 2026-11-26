@@ -1,9 +1,5 @@
 import { resolveTemplateReferences, type TemplateNodeResolver } from "./resolve";
-import type {
-  TemplateDefinition,
-  TemplateInstance,
-  TemplateReference,
-} from "./types";
+import type { TemplateInstance, TemplateReference } from "./types";
 
 /**
  * Host-specific operation for cloning a parsed template blueprint.
@@ -104,7 +100,7 @@ function cloneRoots<TBlueprint, TNode>(
     }
 
     if ((typeof root === "object" && root !== null) || typeof root === "function") {
-      const objectRoot = root as object;
+      const objectRoot = root as unknown as object;
 
       if (objectRoots.has(objectRoot)) {
         throw new TypeError(
@@ -144,14 +140,4 @@ export function cloneTemplateInstance<TBlueprint, TNode>(
     roots,
     references: referenceTable,
   });
-}
-
-/**
- * Type-only helper for code that has a definition and needs its references
- * without retaining a wider TemplateDefinition dependency.
- */
-export function getTemplateReferences(
-  definition: Pick<TemplateDefinition, "references">,
-): readonly TemplateReference[] {
-  return definition.references;
 }
