@@ -6,6 +6,7 @@ import { applyTemplateBindings } from "../binding/instructions";
 import { createScope, disposeScope, onScopeDispose, runWithScope } from "../lifecycle/scope";
 import { removeDOMNodes } from "./remove";
 import type { MountedTemplate } from "./mount";
+import { mountTemplateProgram } from "./program";
 
 class HydrationMismatch extends Error {
   constructor() {
@@ -284,12 +285,5 @@ export function hydrateTemplateProgram(
   }
 
   removeDOMNodes(roots);
-  const { mountTemplateProgram } = awaitlessProgramMount();
   return mountTemplateProgram(parent, program, adapter);
 }
-
-function awaitlessProgramMount(): typeof import("./program") {
-  return programModule;
-}
-
-import * as programModule from "./program";
