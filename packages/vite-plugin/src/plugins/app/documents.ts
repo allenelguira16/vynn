@@ -320,7 +320,7 @@ export function createSsrHandlerCode(options: {
     entries.some((entry) => entry.tag === "meta" && "charset" in entry.attributes);
   const injectCharset = !hasCharset(current) && !hasCharset(next);
   const charsetMarkup = injectCharset
-    ? '<meta charset="UTF-8" key="meta:charset">'
+    ? '<!--vynn:internal:start--><meta charset="UTF-8" key="meta:charset"><!--vynn:internal:end-->'
     : "";
   const replacedCollections = new Set(
     next.map((entry) => entry.attributes["data-vynn-head-replace"]).filter(Boolean)
