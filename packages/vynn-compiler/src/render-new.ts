@@ -34,7 +34,7 @@ import {
   normalizeJSXText,
 } from "./ast.ts";
 
-export type RenderNewCompilerOptions = {
+export export type RenderNewCompilerOptions = {
   lang?: "js" | "jsx" | "ts" | "tsx";
   sourceType?: "module" | "script" | "unambiguous";
 };
