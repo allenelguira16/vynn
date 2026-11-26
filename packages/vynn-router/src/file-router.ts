@@ -15,10 +15,15 @@ export type FileRouteModuleMetadata = {
 
 export type FileRouteModuleMap = Record<string, () => Promise<unknown>>;
 
-type LoadedFileRouteModule<TContext> = Record<string, unknown> & {
+export type LoadedFileRouteModule<TContext = undefined> = Record<string, unknown> & {
   default: Route<TContext>["component"];
   beforeLoad?: Route<TContext>["beforeLoad"];
 };
+
+export type FileRouteComponentFactory<TContext = undefined> = (
+  loadModule: () => Promise<LoadedFileRouteModule<TContext>>,
+  file: FileRouteModuleMetadata,
+) => Route<TContext>["component"];
 
 type RouteDirectory<TContext> = {
   name: string;
@@ -172,13 +177,13 @@ function validatePagePaths<TContext>(root: RouteDirectory<TContext>): void {
   visit(root, []);
 }
 
-export function toFileRouter<TContext = undefined>(
+export function createFileRouter<TContext = undefined>(
   directory: string,
-  ...generated: [] | [FileRouteModuleMap, FileRouteModuleMetadata[]]
+  modules: FileRouteModuleMap,
+  files: FileRouteModuleMetadata[],
+  createRouteComponent: FileRouteComponentFactory<TContext>,
 ): Route<TContext>[] {
-  const [modules, files] = generated;
-
-  if (!modules || !files) {
+  if (!modules || !files || typeof createRouteComponent !== "function") {
     throw new Error(
       "[vynn-router] toFileRouter() must be transformed by the Vynn Vite plugin. " +
         "Make sure vite-plugin-vynn is registered in vite.config.ts.",
@@ -229,9 +234,7 @@ export function toFileRouter<TContext = undefined>(
   };
 
   const createLazyComponent = (file: FileRouteModuleMetadata): Route<TContext>["component"] =>
-    // The third argument is the root-relative key used by Vite's SSR manifest.
-    // The preload transform cannot infer an import hidden behind the glob map.
-    lazy(() => loadModule(file), undefined, file.path.replace(/^\/+/, ""));
+    createRouteComponent(() => loadModule(file), file);
 
   const createRouteGuard = (file: FileRouteModuleMetadata): Route<TContext>["beforeLoad"] => {
     if (!file.beforeLoad) return undefined;
@@ -328,4 +331,32 @@ export function toFileRouter<TContext = undefined>(
   };
 
   return [rootRoute];
+}
+
+
+/**
+ * Builds the normal legacy-router file tree. The render_new entry point uses
+ * createFileRouter() with its own lazy component factory.
+ */
+export function toFileRouter<TContext = undefined>(
+  directory: string,
+  ...generated: [] | [FileRouteModuleMap, FileRouteModuleMetadata[]]
+): Route<TContext>[] {
+  const [modules, files] = generated;
+
+  if (!modules || !files) {
+    throw new Error(
+      "[vynn-router] toFileRouter() must be transformed by the Vynn Vite plugin. " +
+        "Make sure vite-plugin-vynn is registered in vite.config.ts.",
+    );
+  }
+
+  return createFileRouter(
+    directory,
+    modules,
+    files,
+    (loadModule, file) =>
+      // The root-relative key is used by Vite's SSR manifest.
+      lazy(() => loadModule(), undefined, file.path.replace(/^\/+/, "")),
+  );
 }
