@@ -158,11 +158,14 @@ const propertyBindings = new Set([
 
 const propertyAliases: Record<string, string> = {
   autofocus: "autofocus",
+  autoplay: "autoplay",
   readonly: "readOnly",
   formnovalidate: "formNoValidate",
   allowfullscreen: "allowFullscreen",
   itemscope: "itemScope",
+  ismap: "isMap",
   nomodule: "noModule",
+  novalidate: "noValidate",
   playsinline: "playsInline",
 };
 
