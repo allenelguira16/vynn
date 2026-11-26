@@ -1124,6 +1124,55 @@ export function transformVynnRenderNewOxcWithMap(
     return name;
   };
 
+  const useConstAssertions = lang === "ts" || lang === "tsx";
+
+  const compileNestedJSX: CompileNestedJSX = (node) => {
+    const serialized = serializeProgram(
+      node,
+      source,
+      filename,
+      compileNestedJSX,
+      compileExpression,
+    );
+    const templateName = getTemplateName(serialized);
+    return renderProgramExpression(serialized, templateName, useConstAssertions);
+  };
+
+  const compileExpression: CompileJSXExpression = (expression) => {
+    const original = sourceOf(source, expression, filename);
+    const nestedJSX: Node[] = [];
+
+    const collectNested = (node: Node): void => {
+      if (isJSXElement(node) || isJSXFragment(node)) {
+        nestedJSX.push(node);
+        return;
+      }
+      forEachChild(node, collectNested);
+    };
+
+    collectNested(expression);
+    if (nestedJSX.length === 0) return original;
+
+    const replacements = nestedJSX
+      .map((node) => ({
+        start: node.start!,
+        end: node.end!,
+        value: compileNestedJSX(node),
+      }))
+      .sort((left, right) => right.start - left.start);
+
+    let compiled = original;
+    const baseOffset = expression.start!;
+
+    for (const replacement of replacements) {
+      const start = replacement.start - baseOffset;
+      const end = replacement.end - baseOffset;
+      compiled = compiled.slice(0, start) + replacement.value + compiled.slice(end);
+    }
+
+    return compiled;
+  };
+
   for (const component of collectComponentFunctions(program)) {
     const metadata = component as unknown as {
       async?: boolean;
@@ -1155,7 +1204,7 @@ export function transformVynnRenderNewOxcWithMap(
     }
 
     for (const root of roots) {
-      const serialized = serializeProgram(root, source, filename);
+      const serialized = serializeProgram(root, source, filename, compileNestedJSX, compileExpression);
       const templateName = getTemplateName(serialized);
 
       replacements.push({
