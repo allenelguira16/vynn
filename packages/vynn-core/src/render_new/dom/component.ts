@@ -90,32 +90,11 @@ export function mountRenderNewComponent(
   const scope = prepared?.scope ?? createScope();
 
   try {
-    const mounted = prepared
-      ? prepared.program
-      : runWithScope(scope, () => {
-      const program: DOMTemplateProgram = resolveRenderNewComponentProgram(component.render());
+    let mounted: MountedTemplate<Node>;
 
-      if (hydrationRange) {
-        const adopted = hydrateTemplateProgramInRange(
-          hydrationRange.start,
-          hydrationRange.end,
-          program,
-          adapter,
-        );
-
-        if (adopted) return adopted;
-
-        clearHydrationRange(hydrationRange);
-      }
-
-      return mountTemplateProgram(parent, program, adapter, before);
-    });
-
-    const resolvedMount = prepared && hydrationRange
-      ? runWithScope(scope, () => {
-          // Prepared component trees are normally consumed by the root
-          // preparation path. Hydration ranges are resolved by the template
-          // hydrator after the prepared component program is selected.
+    if (prepared) {
+      mounted = runWithScope(scope, () => {
+        if (hydrationRange) {
           const adopted = hydrateTemplateProgramInRange(
             hydrationRange.start,
             hydrationRange.end,
@@ -124,11 +103,30 @@ export function mountRenderNewComponent(
           );
           if (adopted) return adopted;
           clearHydrationRange(hydrationRange);
-          return mountTemplateProgram(parent, prepared.program, adapter, before);
-        })
-      : mounted;
+        }
 
-    return wrapComponentMount(scope, resolvedMount, component);
+        return mountTemplateProgram(parent, prepared.program, adapter, before);
+      });
+    } else {
+      mounted = runWithScope(scope, () => {
+        const program = resolveRenderNewComponentProgram(component.render());
+
+        if (hydrationRange) {
+          const adopted = hydrateTemplateProgramInRange(
+            hydrationRange.start,
+            hydrationRange.end,
+            program,
+            adapter,
+          );
+          if (adopted) return adopted;
+          clearHydrationRange(hydrationRange);
+        }
+
+        return mountTemplateProgram(parent, program, adapter, before);
+      });
+    }
+
+    return wrapComponentMount(scope, mounted, component);
   } catch (error) {
     return disposeAfterFailure(scope, error);
   }
@@ -149,12 +147,11 @@ export function hydrateRenderNewComponent(
   const scope = prepared?.scope ?? createScope();
 
   try {
-    const mounted = prepared
-      ? hydrateTemplateProgram(parent, prepared.program, adapter)
-      : runWithScope(scope, () => {
-          const program = resolveRenderNewComponentProgram(component.render());
-          return hydrateTemplateProgram(parent, program, adapter);
-        });
+    const mounted = runWithScope(scope, () => {
+      const program = prepared?.program ??
+        resolveRenderNewComponentProgram(component.render());
+      return hydrateTemplateProgram(parent, program, adapter);
+    });
 
     return wrapComponentMount(scope, mounted, component);
   } catch (error) {
