@@ -309,15 +309,20 @@ describe("render_new JSX compiler target", () => {
 
     expect(code).not.toContain(" as const");
 
-    const createPage = new Function(code + "\nreturn Page;") as () => (
+    const executable = code.replace(
+      'import { createRenderNewComponent as _vynnCreateRenderNewComponent } from "vynn/render_new/internal";',
+      'const _vynnCreateRenderNewComponent = (render) => ({ render });',
+    );
+    const createPage = new Function(executable + "\nreturn Page;") as () => (
       props: { title: string; label: string },
-    ) => {
+    ) => { render: () => {
       template: { markup: string; namespace: string; references: unknown[] };
       bindings: Array<{ kind: string; read: () => unknown }>;
-    };
+    } };
 
     const Page = createPage();
-    const program = Page({ title: "First title", label: "First label" });
+    const component = Page({ title: "First title", label: "First label" });
+    const program = component.render();
 
     expect(program.template.markup).toBe(
       '<button><!--__vynn_render_new_child_0_start__--><!--__vynn_render_new_child_0_end__--></button>',
@@ -327,7 +332,8 @@ describe("render_new JSX compiler target", () => {
     expect(program.bindings[0].read()).toBe("First title");
     expect(program.bindings[1].read()).toBe("First label");
 
-    const secondProgram = Page({ title: "Second title", label: "Second label" });
+    const secondComponent = Page({ title: "Second title", label: "Second label" });
+    const secondProgram = secondComponent.render();
     expect(secondProgram.template).toBe(program.template);
     expect(secondProgram.bindings[0].read()).toBe("Second title");
     expect(secondProgram.bindings[1].read()).toBe("Second label");
