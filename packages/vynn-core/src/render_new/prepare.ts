@@ -73,33 +73,10 @@ function syncPreparedComponentProps(previous: unknown, next: unknown): boolean {
   }
 
   if (isTemplateProgram(previous) && isTemplateProgram(next)) {
-    if (previous.template !== next.template) return false;
-
-    const nextChildren = next.bindings.filter(
-      (instruction) => instruction.kind === "child",
-    );
-    let childIndex = 0;
-
-    for (const instruction of previous.bindings) {
-      if (instruction.kind !== "child") continue;
-
-      const nextInstruction = nextChildren[childIndex++];
-      const preparedChild = preparedChildValues.get(instruction.read);
-      if (
-        !nextInstruction ||
-        nextInstruction.kind !== "child" ||
-        !preparedChild
-      ) {
-        continue;
-      }
-
-      syncPreparedComponentProps(
-        preparedChild.value,
-        nextInstruction.read(),
-      );
-    }
-
-    return true;
+    // A compatible prepared program keeps its original readers. Those readers
+    // close over the component's state-backed props and remain reactive after
+    // the component descriptor's props have been synchronized above.
+    return previous.template === next.template;
   }
 
   return false;
