@@ -915,6 +915,7 @@ describe("new reactive graph", () => {
       return new Promise<number>(resolve => resolvers.push(resolve));
     });
 
+    expect(result).toBeDefined();
     source.value = 1;
 
     expect(signals).toHaveLength(2);

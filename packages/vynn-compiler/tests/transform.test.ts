@@ -514,7 +514,7 @@ describe("Vynn Oxc JSX compiler", () => {
 
     expect(code).toContain("const Button = _$cmpnt(function Button");
     expect(code).toContain('_$staticTemplate("<span');
-    expect(code).toContain('_$template("<button");
+    expect(code).toContain('_$template("<button');
   });
 
   it("wraps anonymous default function declarations", () => {
