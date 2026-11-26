@@ -1,0 +1,280 @@
+import type { TemplateInstance } from "../template/types";
+import { bindAttribute, type AttributeName } from "./attribute";
+import { bindEvent, type EventHandlerValue } from "./event";
+import { bindProperty } from "./property";
+import { bindText } from "./text";
+import type { Accessor, Disposable, RenderScope } from "../types";
+
+/** A text-node instruction emitted by the render_new compiler target. */
+export interface TextBindingInstruction {
+  readonly kind: "text";
+  readonly reference: number;
+  readonly read: Accessor<unknown>;
+}
+
+/** An element-attribute instruction emitted by the render_new compiler target. */
+export interface AttributeBindingInstruction {
+  readonly kind: "attribute";
+  readonly reference: number;
+  readonly name: AttributeName;
+  readonly read: Accessor<unknown>;
+}
+
+/** A DOM-property instruction emitted by the render_new compiler target. */
+export interface PropertyBindingInstruction {
+  readonly kind: "property";
+  readonly reference: number;
+  readonly name: string;
+  readonly read: Accessor<unknown>;
+}
+
+/** An event-listener instruction emitted by the render_new compiler target. */
+export interface EventBindingInstruction {
+  readonly kind: "event";
+  readonly reference: number;
+  readonly event: string;
+  readonly read: Accessor<EventHandlerValue>;
+  readonly options?: boolean | AddEventListenerOptions;
+}
+
+/** The complete set of reactive operations that can be attached to a template. */
+export type TemplateBindingInstruction =
+  | TextBindingInstruction
+  | AttributeBindingInstruction
+  | PropertyBindingInstruction
+  | EventBindingInstruction;
+
+/** A set of binding instructions applied to one template instance. */
+export interface TemplateBindingSet extends Disposable {
+  readonly size: number;
+}
+
+interface PreparedInstruction {
+  readonly instruction: TemplateBindingInstruction;
+  readonly target: Node;
+}
+
+function assertInstructionList(
+  instructions: readonly TemplateBindingInstruction[],
+): void {
+  if (!Array.isArray(instructions)) {
+    throw new TypeError("[vynn]: Template bindings must be an instruction array.");
+  }
+}
+
+function assertReferenceID(reference: number): void {
+  if (!Number.isSafeInteger(reference) || reference < 0) {
+    throw new TypeError(
+      "[vynn]: A template binding reference must be a non-negative safe integer.",
+    );
+  }
+}
+
+function assertAccessor(read: unknown): asserts read is Accessor<unknown> {
+  if (typeof read !== "function") {
+    throw new TypeError("[vynn]: A template binding must provide a value accessor.");
+  }
+}
+
+function assertElementTarget(node: Node, kind: string): asserts node is Element {
+  if (!node || typeof node !== "object" || node.nodeType !== 1) {
+    throw new TypeError(
+      "[vynn]: A " + kind + " binding must target an element reference.",
+    );
+  }
+}
+
+function prepareInstructions(
+  instance: TemplateInstance<Node>,
+  instructions: readonly TemplateBindingInstruction[],
+): readonly PreparedInstruction[] {
+  if (
+    !instance ||
+    typeof instance !== "object" ||
+    !instance.references ||
+    typeof instance.references.get !== "function"
+  ) {
+    throw new TypeError("[vynn]: Applying template bindings expects a template instance.");
+  }
+
+  assertInstructionList(instructions);
+
+  const prepared: PreparedInstruction[] = [];
+
+  for (const instruction of instructions) {
+    if (!instruction || typeof instruction !== "object") {
+      throw new TypeError("[vynn]: A template binding instruction must be an object.");
+    }
+
+    assertReferenceID(instruction.reference);
+    assertAccessor(instruction.read);
+
+    const target = instance.references.get(instruction.reference);
+
+    if (!target) {
+      throw new Error(
+        "[vynn]: Template binding references missing node " +
+          instruction.reference +
+          ".",
+      );
+    }
+
+    switch (instruction.kind) {
+      case "text":
+        if (target.nodeType !== 3) {
+          throw new TypeError(
+            "[vynn]: A text binding must target a text reference.",
+          );
+        }
+        break;
+
+      case "attribute":
+        assertElementTarget(target, "attribute");
+        break;
+
+      case "property":
+        assertElementTarget(target, "property");
+        if (
+          typeof instruction.name !== "string" ||
+          instruction.name.length === 0 ||
+          instruction.name.trim() !== instruction.name
+        ) {
+          throw new TypeError(
+            "[vynn]: A property binding instruction requires a non-empty property name.",
+          );
+        }
+        break;
+
+      case "event":
+        if (
+          typeof target.addEventListener !== "function" ||
+          typeof target.removeEventListener !== "function"
+        ) {
+          throw new TypeError(
+            "[vynn]: An event binding must target an EventTarget reference.",
+          );
+        }
+        if (
+          typeof instruction.event !== "string" ||
+          instruction.event.length === 0 ||
+          instruction.event.trim() !== instruction.event
+        ) {
+          throw new TypeError(
+            "[vynn]: An event binding instruction requires a non-empty event type.",
+          );
+        }
+        break;
+
+      default:
+        throw new TypeError("[vynn]: A template binding has an unsupported instruction kind.");
+    }
+
+    prepared.push({ instruction, target });
+  }
+
+  return prepared;
+}
+
+function disposeBindings(bindings: readonly Disposable[]): void {
+  const errors: unknown[] = [];
+
+  for (const binding of [...bindings].reverse()) {
+    try {
+      binding.dispose();
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+
+  if (errors.length === 1) throw errors[0];
+  if (errors.length > 1) {
+    throw new AggregateError(errors, "[vynn]: Multiple template bindings failed to dispose.");
+  }
+}
+
+/**
+ * Applies compiler-emitted binding instructions to a cloned template instance.
+ *
+ * All reference IDs, target kinds, and accessor shapes are validated before
+ * the first reactive effect is installed. If an instruction fails while being
+ * applied, earlier bindings are disposed in reverse order before the error is
+ * rethrown. Each binding is also independently owned by the supplied scope.
+ *
+ * Binding accessors are retained as functions so their dependencies remain
+ * reactive; the instruction objects and reference table are metadata, not a
+ * second JSX representation.
+ */
+export function applyTemplateBindings(
+  scope: RenderScope,
+  instance: TemplateInstance<Node>,
+  instructions: readonly TemplateBindingInstruction[],
+): TemplateBindingSet {
+  const prepared = prepareInstructions(instance, instructions);
+  const bindings: Disposable[] = [];
+
+  try {
+    for (const { instruction, target } of prepared) {
+      switch (instruction.kind) {
+        case "text":
+          bindings.push(bindText(scope, target as Text, instruction.read));
+          break;
+
+        case "attribute":
+          bindings.push(
+            bindAttribute(
+              scope,
+              target as Element,
+              instruction.name,
+              instruction.read,
+            ),
+          );
+          break;
+
+        case "property":
+          bindings.push(
+            bindProperty(
+              scope,
+              target as Element,
+              instruction.name,
+              instruction.read,
+            ),
+          );
+          break;
+
+        case "event":
+          bindings.push(
+            bindEvent(
+              scope,
+              target,
+              instruction.event,
+              instruction.read,
+              instruction.options,
+            ),
+          );
+          break;
+      }
+    }
+  } catch (error) {
+    try {
+      disposeBindings(bindings);
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [error, cleanupError],
+        "[vynn]: Applying template bindings failed and earlier bindings could not all be disposed.",
+      );
+    }
+
+    throw error;
+  }
+
+  let disposed = false;
+
+  return Object.freeze({
+    size: bindings.length,
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      disposeBindings(bindings);
+    },
+  });
+}
