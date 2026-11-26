@@ -419,7 +419,8 @@ function serializeChildren(
       result.push({
         kind: "dynamic-child",
         expression,
-        placeholder: "<!--__vynn_render_new_child_" + index + "__-->",
+        placeholder: "<!--__vynn_render_new_child_" + index + "_start__-->" +
+          "<!--__vynn_render_new_child_" + index + "_end__-->",
       });
       continue;
     }
