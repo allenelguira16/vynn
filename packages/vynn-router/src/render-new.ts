@@ -115,6 +115,7 @@ type PreparedRouterState = {
   readonly search: string;
   readonly branch: readonly MatchedRoute<unknown>[];
   readonly guards: WeakSet<object>;
+  readonly redirectedExternally?: boolean;
 };
 
 const preparedRouterStates = new WeakMap<object, PreparedRouterState>();
@@ -192,17 +193,32 @@ async function prepareRouter<TContext>(
         guards.add(match.node);
       } catch (error) {
         if (!isServer && isClientRedirect(error)) {
+          if (error.target.origin !== window.location.origin) {
+            commitClientRedirect(
+              error,
+              () => true,
+              router.state.location,
+              false,
+            );
+            preparedRouterStates.set(router, {
+              pathname: location.pathname,
+              search: location.search,
+              branch: branch as readonly MatchedRoute<unknown>[],
+              guards: new WeakSet<object>(),
+              redirectedExternally: true,
+            });
+            return true;
+          }
+
           const targetLocation = {
             pathname: error.target.pathname,
             search: error.target.search,
           };
 
-          if (error.target.origin === window.location.origin) {
-            // Warm the redirect destination first. createRouter() commits a
-            // branch only after its own lazy preload finishes, so this keeps
-            // the navigation synchronous from the preparation pass.
-            await preloadRouterLocation(router, targetLocation);
-          }
+          // Warm the redirect destination first. createRouter() commits a
+          // branch only after its own lazy preload finishes, so this keeps
+          // the navigation synchronous from the preparation pass.
+          await preloadRouterLocation(router, targetLocation);
 
           commitClientRedirect(
             error,
@@ -478,6 +494,10 @@ export function Router<TContext = undefined>(
         value: instance.state.location,
         children: undefined as never,
       });
+
+      if (preparedRouterStates.get(instance)?.redirectedExternally) {
+        return createChildSlotProgram(() => null);
+      }
 
       return createChildSlotProgram(() => createRouteOutlet(instance, 0));
     },
