@@ -567,6 +567,21 @@ describe("Vynn Oxc JSX compiler", () => {
     expect(code).toMatch(/, true, true, false\)/);
   });
 
+  it("keeps keyed rows with nested components on the reactive row path", () => {
+    const code = transformVynnOxc(
+      `function Rows(props: { rows: Array<{ id: number; value: number }> }) {
+        return <ul>{props.rows.map((row) => (
+          <li key={row.id}><RowDetails value={row.value} /></li>
+        ))}</ul>;
+      }`,
+      "rows-components.tsx",
+    );
+
+    expect(code).toContain("_$for(");
+    // Nested components must be reevaluated when the keyed item is replaced.
+    expect(code).toMatch(/, true, false, false\\)/);
+  });
+
   it("preserves Array.map thisArg when lowering a JSX callback", () => {
     const code = transformVynnOxc(
       `const items = ["a"];
