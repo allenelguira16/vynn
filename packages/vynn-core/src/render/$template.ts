@@ -1123,6 +1123,11 @@ function hydrateDynamicTemplate(root: Element, namespace: string): Element {
   if (!instance.steps.some((step) => step.kind === "anchor")) {
     const last = instance.steps.at(-1);
     if (last) claimTemplateThrough(instance, last);
+
+    // Anchor-free templates have no dynamic child claims left to coordinate.
+    // Retire their per-instance indexes now instead of keeping them attached
+    // to every hydrated DOM node until a later compiler finalizer runs.
+    finishHydratedTemplate(hydratedRoot);
   }
 
   return hydratedRoot;
