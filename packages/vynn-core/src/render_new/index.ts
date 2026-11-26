@@ -1,4 +1,4 @@
-export type { RenderNewComponent } from "./component";
+export type { RenderNewComponent, RenderNewComponentResult } from "./component";
 
 export type {
   Accessor,
