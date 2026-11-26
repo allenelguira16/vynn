@@ -235,8 +235,9 @@ export default defineConfig({
 });
 ```
 
-A component compiled by this target returns a template program rather than a
-legacy VNode. Mount it with the matching runtime entry:
+A component compiled by this target returns a deferred component descriptor
+rather than a legacy VNode. The renderer executes its body inside a
+component-owned scope. Mount it with the matching runtime entry:
 
 ```tsx
 import { mountRenderNew } from "vynn/render_new";
@@ -254,7 +255,7 @@ This plugin does not change the default `vynn()` application pipeline.
 It is a standalone compiler adapter, and the new runtime is mounted explicitly.
 Do not install it alongside the legacy JSX transform for the same source files.
 
-The generated component returns a `DOMTemplateProgram`. For client-only
+The generated component call returns a deferred descriptor. For client-only
 rendering, mount it directly:
 
 ```tsx
@@ -266,7 +267,7 @@ if (!root) throw new Error("Missing #app mount element");
 mountRenderNew(root, App());
 ```
 
-The same program can be serialized on the server and hydrated in the browser.
+The same component descriptor can be serialized on the server and hydrated in the browser.
 The server serializer is synchronous and uses its own markup renderer, not
 Vynn's legacy SSR implementation:
 
