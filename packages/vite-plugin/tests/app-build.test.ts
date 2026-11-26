@@ -57,20 +57,25 @@ describe("Vynn render_new application entries", () => {
     const client = createClientEntry("/project/src/App.tsx", false, "new");
     const hydrated = createClientEntry("/project/src/App.tsx", true, "new");
 
-    expect(client).toContain('import { mountRenderNew } from "vynn/render_new";');
-    expect(client).toContain("mountRenderNew(document, App({ url:");
-    expect(hydrated).toContain('import { hydrateRenderNew } from "vynn/render_new";');
-    expect(hydrated).toContain("hydrateRenderNew(document, App({ url:");
+    expect(client).toContain('import { mountRenderNew, prepareRenderNewTree } from "vynn/render_new";');
+    expect(client).toContain("const app = App({ url:");
+    expect(client).toContain("await prepareRenderNewTree(app);");
+    expect(client).toContain("mountRenderNew(document, app);");
+    expect(hydrated).toContain('import { hydrateRenderNew, prepareRenderNewTree } from "vynn/render_new";');
+    expect(hydrated).toContain("await prepareRenderNewTree(app);");
+    expect(hydrated).toContain("hydrateRenderNew(document, app);");
     expect(createClientEntry("/project/src/App.tsx", true)).toContain(
       'import { hydrateToDOM } from "vynn/client";',
     );
   });
 
-  it("generates synchronous document SSR output for render_new", () => {
+  it("generates prepared async document SSR output for render_new", () => {
     const code = createServerEntry("/project/src/App.tsx", "stream", "new");
 
-    expect(code).toContain('import { renderTemplateProgramToString } from "vynn/render_new/server";');
-    expect(code).toContain("body: renderTemplateProgramToString(App({ url }))");
+    expect(code).toContain('import { renderTemplateProgramToStringAsync } from "vynn/render_new/server";');
+    expect(code).toContain("export async function render(url, request)");
+    expect(code).toContain("const app = App({ url });");
+    expect(code).toContain("body: await renderTemplateProgramToStringAsync(app)");
     expect(code).toContain('head: { render: () => "" }');
     expect(code).toContain("modules: []");
     expect(code).not.toContain('from "vynn/server"');
