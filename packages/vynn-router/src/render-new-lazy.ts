@@ -5,7 +5,7 @@ import type {
   TemplateDefinition,
 } from "vynn/render_new";
 
-type AnyRouteComponent = (props: PropsWithChildren) => JSX.Element;
+type AnyRouteComponent = (props: never) => JSX.Element;
 
 type ComponentExport<
   M extends Record<string, unknown>,
@@ -13,6 +13,11 @@ type ComponentExport<
 > = M[K] extends AnyRouteComponent ? M[K] : never;
 
 type LoadableModule<M extends Record<string, unknown>> = () => Promise<M>;
+
+type LazyState<TComponent> =
+  | { status: "pending" }
+  | { status: "loaded"; component: TComponent }
+  | { status: "error"; error: unknown };
 
 const lazyTemplate: TemplateDefinition = Object.freeze({
   namespace: "html",
@@ -38,14 +43,16 @@ function childProgram(read: () => unknown): DOMTemplateProgram {
 /**
  * Creates a renderer-native lazy component.
  *
- * The module promise is shared by the lazy declaration. Initial rendering
- * exposes an empty child range while loading; route navigation can use the
- * hidden preload capability to load the module before committing its branch.
+ * Module loading is shared by the lazy declaration. Each mounted instance
+ * owns its loading state and displays no content until its module resolves.
+ * The hidden preload method lets createRouter() load destination modules
+ * before it commits a route branch.
  */
 export function lazy<
   M extends Record<string, unknown> & { default: AnyRouteComponent },
 >(
   loader: LoadableModule<M>,
+  namedExport?: undefined,
   moduleId?: string,
 ): M["default"];
 export function lazy<
@@ -61,19 +68,10 @@ export function lazy<
   K extends keyof M = "default" & keyof M,
 >(
   loader: LoadableModule<M>,
-  namedExportOrModuleId?: K | string,
-  explicitModuleId?: string,
+  namedExport?: K,
+  moduleId?: string,
 ): ComponentExport<M, K> {
-  const namedExport = (
-    typeof namedExportOrModuleId === "string" &&
-    explicitModuleId === undefined &&
-    namedExportOrModuleId !== "default"
-      ? "default"
-      : namedExportOrModuleId ?? "default"
-  ) as K;
-  const moduleId = explicitModuleId ??
-    (namedExportOrModuleId === "default" ? undefined : undefined);
-
+  const exportName = (namedExport ?? "default") as K;
   let resolvedComponent: ComponentExport<M, K> | undefined;
   let modulePromise: Promise<ComponentExport<M, K>> | undefined;
 
@@ -83,12 +81,12 @@ export function lazy<
     if (!modulePromise) {
       modulePromise = loader()
         .then((module) => {
-          const component = module[namedExport] as ComponentExport<M, K> | undefined;
+          const component = module[exportName] as ComponentExport<M, K> | undefined;
 
           if (typeof component !== "function") {
             throw new Error(
               "[vynn render_new]: Lazy route export " +
-                JSON.stringify(String(namedExport)) +
+                JSON.stringify(String(exportName)) +
                 " is not a component.",
             );
           }
@@ -107,28 +105,32 @@ export function lazy<
 
   const LazyComponent = (props: PropsWithChildren): JSX.Element => {
     return createRenderNewComponent(() => {
-      const component = $state<ComponentExport<M, K> | undefined>(resolvedComponent);
+      const state = $state<LazyState<ComponentExport<M, K>>>(
+        resolvedComponent
+          ? { status: "loaded", component: resolvedComponent }
+          : { status: "pending" },
+      );
 
-      if (!component.value) {
+      if (!resolvedComponent) {
         void loadComponent().then(
-          (loaded) => {
-            component.value = loaded;
+          (component) => {
+            state.value = { status: "loaded", component };
           },
           (error: unknown) => {
-            component.value = (() => {
-              throw error;
-            }) as unknown as ComponentExport<M, K>;
+            state.value = { status: "error", error };
           },
         );
       }
 
       return childProgram(() => {
-        const Loaded = component.value;
-        if (!Loaded) return null;
+        const current = state.value;
+        if (current.status === "pending") return null;
+        if (current.status === "error") throw current.error;
+
         return createRenderNewComponent(
-          () => Loaded(props) as unknown as DOMTemplateProgram,
+          () => current.component(props) as unknown as DOMTemplateProgram,
           props,
-          Loaded,
+          current.component,
         );
       });
     }, props, LazyComponent);
