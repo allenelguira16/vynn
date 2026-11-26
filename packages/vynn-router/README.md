@@ -235,6 +235,79 @@ export default function App(props: { url: string }) {
 Use a path relative to the module containing `toFileRouter()`, such as
 `"./app"`, or a Vite-root-relative path such as `"/src/app"`.
 
+
+## Experimental `render_new` adapter
+
+The new renderer has a separate router entry point. It reuses the router's
+route matcher, history, and reactive location state, but uses native
+`render_new` component descriptors and child bindings instead of the legacy
+VNode outlet.
+
+Import from `vynn-router/render_new` when Vite is configured with
+`vynn({ renderer: "new" })`. Route components must be compiled for the new
+renderer as well:
+
+```tsx
+import { Router, type Route } from "vynn-router/render_new";
+
+import HomePage from "./pages/home";
+import UserPage from "./pages/user";
+import DashboardLayout from "./pages/dashboard-layout";
+import SettingsPage from "./pages/settings";
+
+const routes: Route[] = [
+  { path: "/", component: HomePage },
+  {
+    path: "/dashboard",
+    component: DashboardLayout,
+    children: [
+      { path: "settings", component: SettingsPage },
+    ],
+  },
+  { path: "/users/:id", component: UserPage },
+];
+
+export default function App() {
+  return <Router routes={routes} />;
+}
+```
+
+The adapter currently supports eager route components, nested layouts through
+`props.children`, reactive `$params` and `$search`, `Link` navigation,
+and a configured `notFound` component. It keeps an unchanged parent route
+mounted when navigation changes only a deeper route.
+
+Route components can use the existing reactive route facades:
+
+```tsx
+import { $params, $search } from "vynn-router/render_new";
+
+export default function UserPage() {
+  return <p>User {$params.id}, tab {$search.tab}</p>;
+}
+```
+
+Use the matching `Link` export from the same entry point:
+
+```tsx
+import { Link } from "vynn-router/render_new";
+
+export function UserNavigation() {
+  return <Link href="/users/42" activeClass="active">Open user</Link>;
+}
+```
+
+This is an initial client-rendering slice, not a complete router migration.
+Routes with `beforeLoad` fail explicitly because guard execution and redirect
+commit handling have not been ported. Lazy route components and
+`toFileRouter()` are not exposed from this entry point because the current
+file router uses the legacy `lazy()` component runtime. SSR and hydration
+integration for this adapter are not yet implemented or verified.
+
+The existing `vynn-router` entry point remains unchanged and continues to
+provide the legacy renderer integration. Do not mix its `Router` or `Link`
+components into a `render_new` route tree.
+
 ### Current scope
 
 The file router currently implements `page.tsx`, `layout.tsx`, dynamic
