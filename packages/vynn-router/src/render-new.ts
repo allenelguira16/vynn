@@ -425,3 +425,7 @@ export type {
 
 export { lazy } from "./render-new-lazy";
 export { toFileRouter } from "./file-router-render-new";
+export type {
+  FileRouteModuleMap,
+  FileRouteModuleMetadata,
+} from "./file-router-core";
