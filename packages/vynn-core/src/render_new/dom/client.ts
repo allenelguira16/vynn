@@ -44,9 +44,34 @@ export function mountRenderNew(
   }
 
   const adapter = createDOMTemplateAdapter(document);
-  if (isRenderNewComponent(program)) {
-    return mountRenderNewComponent(parent, program, adapter, before);
+  const preparedRoot = consumePreparedRenderNewRootScope(program);
+
+  const mount = () => isRenderNewComponent(program)
+    ? mountRenderNewComponent(parent, program, adapter, before)
+    : mountTemplateProgram(parent, program, adapter, before);
+
+  let mounted: MountedTemplate<Node>;
+  try {
+    mounted = preparedRoot ? runWithScope(preparedRoot, mount) : mount();
+  } catch (error) {
+    if (preparedRoot) disposeScope(preparedRoot);
+    throw error;
   }
 
-  return mountTemplateProgram(parent, program, adapter, before);
+  if (!preparedRoot) return mounted;
+
+  return Object.freeze({
+    instance: mounted.instance,
+    scope: mounted.scope,
+    get mounted() {
+      return mounted.mounted && preparedRoot.state === "active";
+    },
+    dispose() {
+      try {
+        mounted.dispose();
+      } finally {
+        disposeScope(preparedRoot);
+      }
+    },
+  });
 }
