@@ -1,6 +1,7 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
+    "types": ["vite/client", "node"],
     "ignoreDeprecations": "6.0"
   },
   "include": ["src", "../babel-preset"],
