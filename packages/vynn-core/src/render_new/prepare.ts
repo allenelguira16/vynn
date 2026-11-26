@@ -64,6 +64,8 @@ async function prepareValue(
   value: unknown,
   parentScope: RenderScope,
   visited: WeakSet<object>,
+  components: RenderNewComponent[],
+  readers: Array<() => unknown>,
 ): Promise<void> {
   if (value === null || value === undefined || typeof value === "boolean") return;
 
@@ -85,9 +87,10 @@ async function prepareValue(
         resolveRenderNewComponentProgram(value.render()),
       );
       preparedComponents.set(value, { scope, program });
+      components.push(value);
 
       if (!skipChildren) {
-        await prepareValue(program, scope, visited);
+        await prepareValue(program, scope, visited, components, readers);
       }
     } catch (error) {
       disposeScope(scope);
@@ -102,7 +105,8 @@ async function prepareValue(
 
       const child = runWithScope(parentScope, () => instruction.read());
       preparedChildValues.set(instruction.read, { value: child });
-      await prepareValue(child, parentScope, visited);
+      readers.push(instruction.read);
+      await prepareValue(child, parentScope, visited, components, readers);
     }
   }
 }
@@ -123,10 +127,20 @@ export async function prepareRenderNewTree(
   }
 
   const rootScope = createScope(null);
+  const components: RenderNewComponent[] = [];
+  const readers: Array<() => unknown> = [];
   try {
-    await prepareValue(program, rootScope, new WeakSet<object>());
+    await prepareValue(
+      program,
+      rootScope,
+      new WeakSet<object>(),
+      components,
+      readers,
+    );
     preparedRootScopes.set(program, rootScope);
   } catch (error) {
+    for (const component of components) preparedComponents.delete(component);
+    for (const read of readers) preparedChildValues.delete(read);
     disposeScope(rootScope);
     throw error;
   }
