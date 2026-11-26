@@ -338,7 +338,7 @@ describe("render_new template programs", () => {
     }
   });
 
-  it("rolls back initialized bindings when insertion fails", () => {
+  it("rejects an invalid insertion point before installing bindings", () => {
     const document = createDocument();
     const parent = document.createElement("main");
     const invalidBefore = document.createElement("footer");
@@ -361,6 +361,36 @@ describe("render_new template programs", () => {
 
     expect(parent.childNodes).toHaveLength(0);
     label.value = "Changed";
+  });
+
+  it("removes inserted roots and disposes initializer resources when initialization fails", () => {
+    const document = createDocument();
+    const parent = document.createElement("main");
+    const factory = createDOMTemplateAdapter(document);
+    let cleanupCount = 0;
+
+    expect(() =>
+      mountTemplate(
+        parent,
+        {
+          definition: templateDefinition,
+          instantiate() {
+            return {
+              roots: factory.clone(factory.parse(templateDefinition.markup, "html")),
+              references: new Map<number, Node>(),
+            };
+          },
+        },
+        null,
+        () => {
+          onScopeDispose(() => cleanupCount++);
+          throw new Error("initializer failed");
+        },
+      ),
+    ).toThrow("initializer failed");
+
+    expect(cleanupCount).toBe(1);
+    expect(parent.childNodes).toHaveLength(0);
   });
 
   it("validates a malformed program before touching the parent", () => {
