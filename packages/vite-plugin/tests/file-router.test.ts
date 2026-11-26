@@ -130,6 +130,41 @@ describe("Vynn App Router transform", () => {
     );
   });
 
+  it("discovers the native renderer sandbox route tree and async guard", () => {
+    const root = createProject();
+
+    writeAppFile("src/pages/layout.tsx", "export default function Layout() { return null; }");
+    writeAppFile("src/pages/page.tsx", "export default function Home() { return null; }");
+    writeAppFile(
+      "src/pages/users/[id]/page.tsx",
+      "export async function beforeLoad() {} export default function User() { return null; }",
+    );
+    writeAppFile(
+      "src/pages/not-found.tsx",
+      "export default function NotFound() { return null; }",
+    );
+
+    const source = [
+      'import { toFileRouter } from "vynn-router/render_new";',
+      'export const routes = toFileRouter("/src/pages");',
+    ].join("\n");
+
+    const transformed = transformFileRouterCalls(
+      source,
+      resolve(root, "src", "routes.ts"),
+      root,
+    );
+
+    expect(transformed).toContain('"path":"/src/pages/layout.tsx","kind":"layout","beforeLoad":false');
+    expect(transformed).toContain('"path":"/src/pages/page.tsx","kind":"page","beforeLoad":false');
+    expect(transformed).toContain(
+      '"path":"/src/pages/users/[id]/page.tsx","kind":"page","beforeLoad":true',
+    );
+    expect(transformed).toContain(
+      '"path":"/src/pages/not-found.tsx","kind":"not-found","beforeLoad":false',
+    );
+  });
+
   it("requires a static directory string", () => {
     const root = createProject();
     const source =
