@@ -1204,7 +1204,7 @@ export function transformVynnRenderNewOxcWithMap(
 
     if (metadata.async || metadata.generator) {
       fail(
-        "Async and generator components are not supported by the first render_new target.",
+        "Async and generator components are not supported by the render_new compiler target.",
         filename,
         component,
       );
