@@ -38,6 +38,7 @@ export function commitClientRedirect(
   error: unknown,
   isCurrent: () => boolean = () => true,
   routeLocation = currentLocation(),
+  defer = true,
 ): void {
   if (!isClientRedirect(error)) {
     return;
@@ -64,7 +65,9 @@ export function commitClientRedirect(
 
   // RouteView invokes this from its conditional computation. Defer the
   // location mutation until the current render commit has completed.
-  if (typeof window.requestAnimationFrame === "function") {
+  if (!defer) {
+    commit();
+  } else if (typeof window.requestAnimationFrame === "function") {
     window.requestAnimationFrame(() => commit());
   } else {
     window.setTimeout(commit, 0);
