@@ -390,6 +390,22 @@ describe("render_new JSX compiler target", () => {
     expect(calls).toBe(1);
   });
 
+  it("rejects async and generator components", () => {
+    expect(() =>
+      transformVynnRenderNewOxc(
+        "async function Page() { return <main />; }",
+        "page.jsx",
+      ),
+    ).toThrow("Async and generator components are not supported");
+
+    expect(() =>
+      transformVynnRenderNewOxc(
+        "function* Page() { return <main />; }",
+        "page.jsx",
+      ),
+    ).toThrow("Async and generator components are not supported");
+  });
+
   it("rejects script mode when a component helper import is required", () => {
     expect(() =>
       transformVynnRenderNewOxc(
