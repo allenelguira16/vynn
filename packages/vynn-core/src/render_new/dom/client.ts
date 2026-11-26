@@ -3,6 +3,8 @@ import { mountTemplateProgram, type DOMTemplateProgram } from "./program";
 import type { MountedTemplate } from "./mount";
 import { isRenderNewComponent, type RenderNewComponent } from "../component";
 import { mountRenderNewComponent } from "./component";
+import { consumePreparedRenderNewRootScope } from "../prepare";
+import { runWithScope, disposeScope } from "../lifecycle/scope";
 
 /** Options for mounting one compiler-produced render_new program. */
 export interface MountRenderNewOptions {
