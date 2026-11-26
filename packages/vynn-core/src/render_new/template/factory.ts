@@ -147,10 +147,10 @@ function getDefinitionSignature(definition: TemplateDefinition): string {
   ]);
 }
 
-function resolveReference<TNode>(
+function resolveReference<TBlueprint, TNode>(
   roots: readonly TNode[],
   reference: TemplateReference,
-  adapter: TemplateAdapter<unknown, TNode>,
+  adapter: TemplateAdapter<TBlueprint, TNode>,
 ): TNode {
   let node: TNode | null | undefined = roots[reference.path[0]];
 
