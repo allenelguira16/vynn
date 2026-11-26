@@ -64,8 +64,10 @@ updates currently replace the contents of the slot; keyed identity and
 incremental list reconciliation are not implemented. The compiler still
 rejects JSX spreads, refs, raw-HTML bindings, dynamic style objects,
 member-expression component tags, and parser-sensitive contexts such as
-tables, selects, and textareas. JSX must be returned directly from a named
-component function or appear inside one of its compiled JSX expressions.
+tables, selects, and textareas. JSX must occur in a named component's direct
+return, conditional/logical return expression, or a compiled JSX child
+expression. Script-mode transforms are rejected because deferred components
+need the internal ESM helper import.
 
 Generated component calls return deferred component descriptors. The renderer
 executes each component body inside its own scope, then consumes the
