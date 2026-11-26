@@ -43,7 +43,7 @@ jobs:
         shell: bash
         run: |
           mapfile -t changed_files < <(git diff --name-only origin/master...HEAD -- '*.md' '*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.json' '*.yml' '*.yaml')
-          if (("${#changed_files[@]}" > 0)); then
+          if ((${#changed_files[@]} > 0)); then
             pnpm exec oxfmt --check "${changed_files[@]}"
           fi
 
