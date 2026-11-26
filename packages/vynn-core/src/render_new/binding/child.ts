@@ -4,6 +4,8 @@ import type { Accessor, Disposable, RenderScope } from "../types";
 import type { DOMTemplateAdapter } from "../dom/adapter";
 import { mountTemplateProgram, type DOMTemplateProgram } from "../dom/program";
 import { hydrateTemplateProgramInRange } from "../dom/hydrate";
+import { isRenderNewComponent } from "../component";
+import { mountRenderNewComponent } from "../dom/component";
 
 export interface ChildBinding extends Disposable {
   readonly anchor: Comment;
@@ -195,6 +197,18 @@ export function bindChild(
 
           if (hydrate && end) clearRange(anchor, end);
           for (const item of value) append(item, false);
+          return;
+        }
+
+        if (isRenderNewComponent(value)) {
+          const mounted = mountRenderNewComponent(
+            parent,
+            value,
+            adapter,
+            before,
+            hydrate && end ? { start: anchor, end } : undefined,
+          );
+          cleanups.push(() => mounted.dispose());
           return;
         }
 
