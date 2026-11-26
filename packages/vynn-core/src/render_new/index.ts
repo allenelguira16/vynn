@@ -17,5 +17,6 @@ export {
 export * from "./template";
 
 export * from "./dom";
+export { mountRenderNew, type MountRenderNewOptions } from "./dom/client";
 
 export * from "./binding";
