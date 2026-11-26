@@ -2538,6 +2538,13 @@ class TransformState {
       if (found) return;
 
       if (isJSXElement(current)) {
+        // Nested components must be reevaluated when a keyed row's item cell
+        // changes. Keep those callbacks on the ordinary reactive row range.
+        if (isComponentElement(current)) {
+          found = true;
+          return;
+        }
+
         for (const attribute of current.openingElement.attributes) {
           if (!isJSXAttribute(attribute)) continue;
 
