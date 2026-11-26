@@ -30,10 +30,12 @@ export function createClientEntry(
     const mount = ssr ? "hydrateRenderNew" : "mountRenderNew";
     return [
       `import * as appModule from ${JSON.stringify(appSpecifier)};`,
-      `import { ${mount} } from "vynn/render_new";`,
+      `import { ${mount}, prepareRenderNewTree } from "vynn/render_new";`,
       `const App = ${selected("appModule")};`,
       `if (typeof App !== "function") throw new Error("[Vynn App] The app module must export a component as default or App.");`,
-      `${mount}(document, App({ url: window.location.pathname + window.location.search }));`,
+      `const app = App({ url: window.location.pathname + window.location.search });`,
+      `await prepareRenderNewTree(app);`,
+      `${mount}(document, app);`,
       "",
     ].join("\n");
   }
@@ -73,12 +75,13 @@ export function createServerEntry(
   if (renderer === "new") {
     return [
       `import * as appModule from ${JSON.stringify(appSpecifier)};`,
-      `import { renderTemplateProgramToString } from "vynn/render_new/server";`,
+      `import { renderTemplateProgramToStringAsync } from "vynn/render_new/server";`,
       `const App = ${selected("appModule")};`,
       `if (typeof App !== "function") throw new Error("[Vynn App] The app module must export a component as default or App.");`,
-      `export function render(url, request) {`,
+      `export async function render(url, request) {`,
+      `  const app = App({ url });`,
       `  return {`,
-      `    body: renderTemplateProgramToString(App({ url })),`,
+      `    body: await renderTemplateProgramToStringAsync(app),`,
       `    head: { render: () => "" },`,
       `    modules: [],`,
       `  };`,
