@@ -1,7 +1,5 @@
-import {
-  resolveTemplateReferences,
-  type TemplateNodeResolver,
-} from "./resolve";
+import { cloneTemplateInstance, type TemplateNodeCloner } from "./clone";
+import type { TemplateNodeResolver } from "./resolve";
 import type {
   TemplateDefinition,
   TemplateFactory,
@@ -19,7 +17,7 @@ import type {
  * and clone that representation. The factory itself knows neither host.
  */
 export interface TemplateAdapter<TBlueprint, TNode>
-  extends TemplateNodeResolver<TNode> {
+  extends TemplateNodeCloner<TBlueprint, TNode>, TemplateNodeResolver<TNode> {
   /** Parse static markup into a reusable host-specific blueprint. */
   parse(markup: string, namespace: TemplateNamespace): TBlueprint;
 
@@ -162,17 +160,12 @@ function createFactory<TBlueprint, TNode>(
         throw new TypeError("[vynn]: A template adapter must return an array of root nodes.");
       }
 
-      const roots = Object.freeze([...clonedRoots]);
-      const references = resolveTemplateReferences(
-        roots,
+      return cloneTemplateInstance(
+        blueprint,
+        adapter,
         definition.references,
         adapter,
       );
-
-      return Object.freeze({
-        roots,
-        references,
-      });
     },
   };
 
