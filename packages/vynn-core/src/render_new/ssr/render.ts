@@ -16,7 +16,6 @@ interface SSRNode {
   tag?: string;
   data?: string;
   attributes?: Array<{ name: string; value: string }>;
-  readonly void?: boolean;
 }
 
 const voidElements = new Set([
@@ -345,9 +344,8 @@ function renderProgram(program: DOMTemplateProgram): string {
         if (target.kind !== "comment") {
           throw new TypeError("[vynn render_new]: Child binding target is not a comment anchor.");
         }
-        const end = findEndMarker(target);
+        findEndMarker(target);
         childOutput.set(target, renderChildValue(value));
-        void end;
         break;
       }
     }
