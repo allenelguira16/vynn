@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { JSDOM } from "jsdom";
 
 import { $state } from "../src/reactivity/state";
+import { onScopeDispose } from "../src/render_new";
 import {
   createDOMTemplateAdapter,
   mountTemplateProgram,
@@ -214,6 +215,63 @@ describe("render_new dynamic child slots", () => {
 
     expect(parent.querySelector("li")).toBe(original);
     expect(parent.textContent).toContain("One");
+    mounted.dispose();
+  });
+
+  it("removes stale keyed ranges even when an item cleanup throws", () => {
+    const document = createDocument();
+    const parent = document.createElement("main");
+    const items = $state([
+      { id: "a", label: "Alpha" },
+      { id: "b", label: "Beta" },
+    ]);
+
+    const rowTemplate = {
+      namespace: "html" as const,
+      markup: "<li><!--__vynn_render_new_child_0_start__--><!--__vynn_render_new_child_0_end__--></li>",
+      references: [{ id: 0, kind: "anchor" as const, path: [0, 0] }],
+    };
+
+    const program: DOMTemplateProgram = {
+      template: {
+        namespace: "html",
+        markup: "<ul><!--__vynn_render_new_child_0_start__--><!--__vynn_render_new_child_0_end__--></ul>",
+        references: [{ id: 0, kind: "anchor", path: [0, 0] }],
+      },
+      bindings: [{
+        kind: "child",
+        reference: 0,
+        read: () => items.value.map((item) => ({
+          template: rowTemplate,
+          bindings: [{
+            kind: "child" as const,
+            reference: 0,
+            read: () => {
+              if (item.id === "a") {
+                onScopeDispose(() => {
+                  throw new Error("item cleanup failed");
+                });
+              }
+              return item.label;
+            },
+          }],
+          key: item.id,
+        })),
+      }],
+    };
+
+    const mounted = mountTemplateProgram(parent, program, createDOMTemplateAdapter(document));
+    const list = parent.querySelector("ul")!;
+    const originalB = list.children[1]!;
+
+    expect(() => {
+      items.value = [{ id: "b", label: "Beta" }];
+    }).toThrow("item cleanup failed");
+
+    expect(list.children).toHaveLength(1);
+    expect(list.children[0]).toBe(originalB);
+    expect(list.textContent).toBe("Beta");
+
     mounted.dispose();
   });
 
