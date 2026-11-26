@@ -21,9 +21,6 @@ export interface TemplateAdapter<TBlueprint, TNode>
   /** Parse static markup into a reusable host-specific blueprint. */
   parse(markup: string, namespace: TemplateNamespace): TBlueprint;
 
-  /** Clone a blueprint into a fresh, ordered list of root nodes. */
-  clone(blueprint: TBlueprint): readonly TNode[];
-
 }
 
 interface FactoryCacheEntry<TNode> {
@@ -144,7 +141,6 @@ function getDefinitionSignature(definition: TemplateDefinition): string {
   ]);
 }
 
-
 function createFactory<TBlueprint, TNode>(
   definition: TemplateDefinition,
   adapter: TemplateAdapter<TBlueprint, TNode>,
@@ -154,12 +150,6 @@ function createFactory<TBlueprint, TNode>(
   const factory: TemplateFactory<TNode> = {
     definition,
     instantiate(): TemplateInstance<TNode> {
-      const clonedRoots = adapter.clone(blueprint);
-
-      if (!Array.isArray(clonedRoots)) {
-        throw new TypeError("[vynn]: A template adapter must return an array of root nodes.");
-      }
-
       return cloneTemplateInstance(
         blueprint,
         adapter,
