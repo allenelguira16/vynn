@@ -2,6 +2,8 @@ import { createDOMTemplateAdapter } from "./adapter";
 import { hydrateTemplateProgram } from "./hydrate";
 import type { DOMTemplateProgram } from "./program";
 import type { MountedTemplate } from "./mount";
+import { isRenderNewComponent, type RenderNewComponent } from "../component";
+import { hydrateRenderNewComponent } from "./component";
 
 /**
  * Hydrates a DOM tree previously rendered by renderTemplateProgramToString().
@@ -10,7 +12,7 @@ import type { MountedTemplate } from "./mount";
  */
 export function hydrateRenderNew(
   parent: Node,
-  program: DOMTemplateProgram,
+  program: DOMTemplateProgram | RenderNewComponent,
 ): MountedTemplate<Node> {
   if (
     !parent ||
@@ -28,5 +30,10 @@ export function hydrateRenderNew(
     throw new TypeError("[vynn]: hydrateRenderNew() could not resolve the parent's owner document.");
   }
 
-  return hydrateTemplateProgram(parent, program, createDOMTemplateAdapter(document));
+  const adapter = createDOMTemplateAdapter(document);
+  if (isRenderNewComponent(program)) {
+    return hydrateRenderNewComponent(parent, program, adapter);
+  }
+
+  return hydrateTemplateProgram(parent, program, adapter);
 }
