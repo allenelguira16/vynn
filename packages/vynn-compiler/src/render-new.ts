@@ -1089,13 +1089,13 @@ export function transformVynnRenderNewOxcWithMap(
     const insertionOffset = getTemplateInsertionOffset(program, source);
     const prefix = code.slice(0, insertionOffset);
     const suffix = code.slice(insertionOffset);
-    const before = prefix.length > 0 && !prefix.endsWith("\\n") ? "\\n" : "";
-    const after = suffix.startsWith("\\n") ? "" : "\\n";
+    const before = prefix.length > 0 && !prefix.endsWith("\n") ? "\n" : "";
+    const after = suffix.startsWith("\n") ? "" : "\n";
 
     code =
       prefix +
       before +
-      templateDeclarations.join("\\n") +
+      templateDeclarations.join("\n") +
       after +
       suffix;
   }
