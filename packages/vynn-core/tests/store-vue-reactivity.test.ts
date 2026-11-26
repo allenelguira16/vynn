@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { createOwner, disposeOwner, runWithOwner } from "../src/life-cycle/owner";
 import { $computed } from "../src/reactivity/computed";
@@ -329,4 +329,88 @@ describe("$store Vue-style reactivity", () => {
       disposeSet();
     }
   });
+
+  it("shares proxy handlers across ordinary objects and collections", () => {
+    const NativeProxy = globalThis.Proxy;
+    const handlers: ProxyHandler<object>[] = [];
+    const observedProxy = new NativeProxy(NativeProxy, {
+      construct(target, args, newTarget) {
+        handlers.push(args[1] as ProxyHandler<object>);
+        return Reflect.construct(target, args, newTarget);
+      },
+    });
+
+    vi.stubGlobal("Proxy", observedProxy);
+    try {
+      $store({ value: 1 });
+      $store([1]);
+      $store(new Map());
+      $store(new Set());
+
+      expect(handlers).toHaveLength(4);
+      expect(handlers[0]).toBe(handlers[1]);
+      expect(handlers[2]).toBe(handlers[3]);
+      expect(handlers[0]).not.toBe(handlers[2]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("releases a store property dependency after its final observer is disposed", () => {
+    const raw = { value: 1 };
+    const store = $store(raw);
+    const disposeFirst = $effect(() => store.value);
+    const disposeSecond = $effect(() => store.value);
+    const deleteSpy = vi.spyOn(WeakMap.prototype, "delete");
+
+    try {
+      disposeFirst();
+      expect(deleteSpy).not.toHaveBeenCalledWith(raw);
+
+      disposeSecond();
+      expect(deleteSpy).toHaveBeenCalledWith(raw);
+    } finally {
+      deleteSpy.mockRestore();
+    }
+  });
+
+  it("reuses a store property dependency when a computation reads it again", () => {
+    const raw = { value: 1 };
+    const store = $store(raw);
+    const version = $state(0);
+    const result = $computed(() => {
+      version.value;
+      return store.value;
+    });
+    const deleteSpy = vi.spyOn(WeakMap.prototype, "delete");
+
+    try {
+      version.value++;
+      expect(result.value).toBe(1);
+      expect(deleteSpy).not.toHaveBeenCalledWith(raw);
+    } finally {
+      deleteSpy.mockRestore();
+    }
+  });
+
+  it("releases stale store property dependencies after a conditional rerun", () => {
+    const raw = { value: 1 };
+    const store = $store(raw);
+    const enabled = $state(true);
+    const result = $computed(() => enabled.value ? store.value : 0);
+    const deleteSpy = vi.spyOn(WeakMap.prototype, "delete");
+
+    try {
+      enabled.value = false;
+
+      expect(result.value).toBe(0);
+      expect(deleteSpy).toHaveBeenCalledWith(raw);
+
+      store.value = 2;
+      expect(result.value).toBe(0);
+    } finally {
+      deleteSpy.mockRestore();
+    }
+  });
+
 });
