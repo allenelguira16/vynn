@@ -6,6 +6,7 @@ import {
   createScope,
   disposeScope,
   mountRenderNew,
+  renderTemplateProgramToStringAsync,
   runWithScope,
   type DOMTemplateProgram,
   type TemplateDefinition,
@@ -225,6 +226,45 @@ describe("render_new router adapter", () => {
     expect(app.host.textContent).toBe("2:activity");
 
     app.dispose();
+  });
+
+  it("prepares async route guards and lazy modules before SSR serialization", async () => {
+    let moduleLoads = 0;
+    let guardCalls = 0;
+    const filePath = "/src/app/private/page.tsx";
+    const PrivatePage = routeComponent(() => textProgram(() => "Protected SSR page"));
+    const routes = toFileRouter("/src/app", {
+      [filePath]: async () => {
+        moduleLoads += 1;
+        return {
+          default: PrivatePage,
+          beforeLoad: async ({ params, location }: BeforeLoadContext) => {
+            guardCalls += 1;
+            expect(params).toEqual({});
+            expect(location.pathname).toBe("/private");
+            await Promise.resolve();
+          },
+        };
+      },
+    }, [{
+      path: filePath,
+      kind: "page",
+      beforeLoad: true,
+    }]);
+    const scope = createScope(null);
+    const router = runWithScope(
+      scope,
+      () => createRouter({ routes, url: "/private" }),
+    );
+    const program = runWithScope(scope, () => Router({ router }));
+    const html = await renderTemplateProgramToStringAsync(program as unknown as DOMTemplateProgram);
+
+    expect(moduleLoads).toBe(1);
+    expect(guardCalls).toBe(1);
+    expect(html).toContain("Protected SSR page");
+
+    router.dispose();
+    disposeScope(scope);
   });
 
   it("commits redirects returned by a route guard", async () => {
