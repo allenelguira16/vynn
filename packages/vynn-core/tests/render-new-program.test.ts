@@ -151,9 +151,9 @@ describe("render_new template programs", () => {
     );
     const templateInstance = {
       roots: instance,
-      references: new Map([
+      references: new Map<number, Node>([
         [0, instance[0]],
-        [1, instance[0].childNodes[0]],
+        [1, instance[0].childNodes[0] as Node],
       ]),
     };
     const scope = createScope(null);
@@ -181,7 +181,7 @@ describe("render_new template programs", () => {
     );
     const templateInstance = {
       roots: instance,
-      references: new Map([[0, instance[0]]]),
+      references: new Map<number, Node>([[0, instance[0]]]),
     };
     const scope = createScope(null);
 
