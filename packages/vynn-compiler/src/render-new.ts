@@ -34,7 +34,7 @@ import {
   normalizeJSXText,
 } from "./ast.ts";
 
-export export type RenderNewCompilerOptions = {
+export type RenderNewCompilerOptions = {
   lang?: "js" | "jsx" | "ts" | "tsx";
   sourceType?: "module" | "script" | "unambiguous";
 };
@@ -471,6 +471,7 @@ function serializeComponentChild(
 
   const name = getJSXIdentifierName(node.openingElement.name);
   const properties: string[] = [];
+  let keySource: string | undefined;
 
   for (const attribute of node.openingElement.attributes as unknown as Node[]) {
     if (isJSXSpreadAttribute(attribute)) {
@@ -480,11 +481,21 @@ function serializeComponentChild(
 
     const propName = getJSXAttributeName(attribute.name);
     if (propName === "key") {
-      fail(
-        "Keyed component entries are not supported yet. Use a keyed host element directly in the list expression.",
-        filename,
-        attribute,
-      );
+      if (attribute.value === null) {
+        fail("A keyed component requires a key value.", filename, attribute);
+      }
+      if (isLiteralString(attribute.value)) {
+        keySource = JSON.stringify(decodeHTML(attribute.value.value));
+        continue;
+      }
+      if (
+        isJSXExpressionContainer(attribute.value) &&
+        isExpression(attribute.value.expression)
+      ) {
+        keySource = compileExpression(attribute.value.expression);
+        continue;
+      }
+      fail("A keyed component requires a string, number, or bigint key expression.", filename, attribute);
     }
 
     if (attribute.value === null) {
@@ -558,7 +569,9 @@ function serializeComponentChild(
   return {
     kind: "dynamic-child",
     expression: null,
-    expressionSource: name + "({ " + properties.join(", ") + " })",
+    expressionSource: keySource === undefined
+      ? name + "({ " + properties.join(", ") + " })"
+      : "Object.assign(" + name + "({ " + properties.join(", ") + " }), { key: (" + keySource + ") })",
     placeholder: "<!--__vynn_render_new_child_" + index + "_start__-->" +
       "<!--__vynn_render_new_child_" + index + "_end__-->",
   };
@@ -1061,21 +1074,31 @@ type SourceReplacement = {
   value: string;
 };
 
-function collectComponentFunctions(program: Node): Node[] {
-  const components: Node[] = [];
+type ComponentFunctionInfo = {
+  readonly node: Node;
+  readonly name: string;
+};
+
+function collectComponentFunctions(program: Node): ComponentFunctionInfo[] {
+  const components: ComponentFunctionInfo[] = [];
 
   const collectDeclaration = (declaration: Node | null | undefined): void => {
     if (!declaration) return;
 
     if (isComponentFunction(declaration)) {
-      components.push(declaration);
+      components.push({
+        node: declaration,
+        name: (declaration.id as Node).name as string,
+      });
       return;
     }
 
     if (isType(declaration, "VariableDeclaration")) {
       for (const item of declaration.declarations) {
         if (!isIdentifier(item.id) || !/^[A-Z]/.test(item.id.name)) continue;
-        if (item.init && isFunctionLike(item.init)) components.push(item.init);
+        if (item.init && isFunctionLike(item.init)) {
+          components.push({ node: item.init, name: item.id.name });
+        }
       }
     }
   };
@@ -1239,7 +1262,14 @@ export function transformVynnRenderNewOxcWithMap(
     return compiled;
   };
 
-  for (const component of collectComponentFunctions(program)) {
+  for (const componentInfo of collectComponentFunctions(program)) {
+    const component = componentInfo.node;
+    const componentName = componentInfo.name;
+    const parameters = (component as unknown as { params?: Node[] }).params ?? [];
+    const firstParameter = parameters[0];
+    const propsArgument = firstParameter
+      ? isIdentifier(firstParameter) ? firstParameter.name : "null"
+      : "undefined";
     const metadata = component as unknown as {
       async?: boolean;
       generator?: boolean;
@@ -1292,7 +1322,7 @@ export function transformVynnRenderNewOxcWithMap(
         replacements.push({
           start: body.end! - 1,
           end: body.end! - 1,
-          value: "\n});\n",
+          value: "\n}, " + propsArgument + ", " + componentName + ");\n",
         });
       } else {
         // Expression-bodied components need a callback around the JSX result.
@@ -1304,7 +1334,7 @@ export function transformVynnRenderNewOxcWithMap(
         replacements.push({
           start: body.end!,
           end: body.end!,
-          value: "))",
+          value: "), " + propsArgument + ", " + componentName + ")",
         });
       }
     }
