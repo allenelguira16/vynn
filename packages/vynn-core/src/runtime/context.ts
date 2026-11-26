@@ -3,8 +3,6 @@ export interface RuntimeContext {
   values?: Map<string | symbol, unknown>;
   /** The owner active in this frame. Kept outside the general context Map. */
   currentOwner?: unknown;
-  /** Marks the persistent context frame's first activation by its Owner. */
-  ownerInitialized?: boolean;
 }
 
 export interface RuntimeContextStorage {
