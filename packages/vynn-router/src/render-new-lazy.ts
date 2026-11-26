@@ -14,6 +14,12 @@ type ComponentExport<
 
 type LoadableModule<M extends Record<string, unknown>> = () => Promise<M>;
 
+const lazyComponents = new WeakSet<Function>();
+
+export function isRenderNewLazyComponent(value: unknown): boolean {
+  return typeof value === "function" && lazyComponents.has(value);
+}
+
 type LazyState<TComponent> =
   | { status: "pending" }
   | { status: "loaded"; component: TComponent }
@@ -133,8 +139,10 @@ export function lazy<
           current.component,
         );
       });
-    }, props, LazyComponent);
+    }, props, LazyComponent) as unknown as JSX.Element;
   };
+
+  lazyComponents.add(LazyComponent);
 
   Object.defineProperty(LazyComponent, "preload", {
     configurable: false,
