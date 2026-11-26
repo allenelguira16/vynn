@@ -56,7 +56,9 @@ parser-sensitive HTML contexts such as tables, selects, and textareas.
 
 Generated component functions return a template program rather than mounting
 it. The caller supplies a DOM parent and adapter to
-`mountTemplateProgram(parent, program, adapter)` from `vynn/render_new`.
+`mountTemplateProgram(parent, program, adapter)` from the new renderer's
+internal DOM program module. The runtime is not exposed as a public
+`vynn/render_new` package export yet.
 
 This target is experimental. It does not yet emit source maps, SSR output,
 hydration instructions, structural child instructions, or an automatic Vite
