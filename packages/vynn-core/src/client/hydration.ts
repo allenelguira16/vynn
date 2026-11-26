@@ -265,7 +265,7 @@ export function isHydrationClaimActive(): boolean {
  * Checks whether hydration is still in progress.
  *
  * waitForLazy = false:
- *   Wait only for currently queued root DOM nodes to be claimed.
+ *   Wait only until the root DOM cursor reaches the end of its claimable range.
  *
  * waitForLazy = true:
  *   Also wait for every discovered lazy boundary to finish hydration.
@@ -342,9 +342,9 @@ function finishIfClaimed(scope: LazyHydrationNodes): void {
 }
 
 /**
- * Claims from the current lazy boundary when one is active. Lazy queues are
- * independent, so sibling boundaries can hydrate in whichever order their
- * dynamic imports resolve.
+ * Claims from the current lazy boundary when one is active. Each boundary
+ * owns an independent DOM cursor, so sibling boundaries can hydrate in
+ * whichever order their dynamic imports resolve.
  */
 export function claimHydrationElement<T extends Element>() {
   const scope = getOwnerContext<LazyHydrationNodes>(LAZY_HYDRATION);
@@ -381,7 +381,7 @@ export type ServerRenderedLazyRange = {
 };
 
 /**
- * Installs the matching server-rendered node queues on the lazy component
+ * Installs the matching server-rendered DOM cursor on the lazy component
  * owner. The owner context survives deferred render effects and async retries.
  * If no SSR range exists, an empty scope prevents the component from consuming
  * unrelated root hydration nodes.
@@ -424,7 +424,7 @@ export function beginHydrationClaim(): HydrationClaimSnapshot {
 
 /**
  * A suspended render attempt must not consume nodes. Its next attempt starts
- * from the same cursor, while other lazy owners keep their own independent
+ * from the same DOM cursor, while other lazy owners keep their own independent
  * positions.
  */
 export function rollbackHydrationClaim(snapshot: HydrationClaimSnapshot): void {
@@ -477,7 +477,7 @@ export function getServerRenderedLazyRange(
 
 /**
  * Marks a lazy component complete after its initial client render. Later
- * reactive updates must no longer consume that boundary’s hydration queues.
+ * reactive updates must no longer consume that boundary’s hydration cursor.
  */
 export function finishServerRenderedLazy(lazyID: string | number): void {
   const id = String(lazyID);
