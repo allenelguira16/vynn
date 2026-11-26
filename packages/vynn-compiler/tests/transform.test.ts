@@ -579,7 +579,7 @@ describe("Vynn Oxc JSX compiler", () => {
 
     expect(code).toContain("_$for(");
     // Nested components must be reevaluated when the keyed item is replaced.
-    expect(code).toMatch(/, true, false, false\\)/);
+    expect(code).toMatch(/, true, false, false\)/);
   });
 
   it("preserves Array.map thisArg when lowering a JSX callback", () => {
