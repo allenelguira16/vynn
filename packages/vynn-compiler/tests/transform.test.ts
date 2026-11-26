@@ -499,8 +499,8 @@ describe("Vynn Oxc JSX compiler", () => {
     );
 
     expect(code).toContain("_$cmpnt(function Status");
-    expect(code).toContain('_$staticTemplate("<strong");
-    expect(code).toContain('_$staticTemplate("<em");
+    expect(code).toContain('_$staticTemplate("<strong');
+    expect(code).toContain('_$staticTemplate("<em');
   });
 
   it("wraps PascalCase function-expression component variables", () => {
@@ -513,7 +513,7 @@ describe("Vynn Oxc JSX compiler", () => {
     );
 
     expect(code).toContain("const Button = _$cmpnt(function Button");
-    expect(code).toContain('_$staticTemplate("<span");
+    expect(code).toContain('_$staticTemplate("<span');
     expect(code).toContain('_$template("<button");
   });
 
@@ -526,14 +526,14 @@ describe("Vynn Oxc JSX compiler", () => {
     );
 
     expect(code).toMatch(/export default _$cmpnt\(function\s*\(/);
-    expect(code).toContain('_$staticTemplate("<main");
+    expect(code).toContain('_$staticTemplate("<main');
   });
 
   it("wraps anonymous default arrow components", () => {
     const code = transformVynnOxc(`export default () => <main>Anonymous</main>;`, "app.tsx");
 
     expect(code).toMatch(/export default _$cmpnt\(function\s*\(/);
-    expect(code).toContain('_$staticTemplate("<main");
+    expect(code).toContain('_$staticTemplate("<main');
   });
 
   it("lowers JSX returned from nested named map callbacks", () => {

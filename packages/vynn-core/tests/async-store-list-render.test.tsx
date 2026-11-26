@@ -153,7 +153,7 @@ describe("async store list rendering", () => {
       return (
         <Await fallback={<p>Loading</p>}>
           <ul>
-            {pokedex.results.map(({ name, url }) => (
+            {pokedex.results.map(({ name, url }, index) => (
               <Row name={name} url={url} />
             ))}
           </ul>
@@ -274,7 +274,7 @@ describe("async store list rendering", () => {
       return (
         <Await fallback={<p>Loading</p>}>
           <ul>
-            {pokedex.results.map(({ name, url }) => (
+            {pokedex.results.map(({ name, url }, index) => (
               <Row name={name} url={url} />
             ))}
           </ul>

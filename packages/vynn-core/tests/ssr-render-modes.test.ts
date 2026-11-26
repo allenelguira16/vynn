@@ -15,6 +15,7 @@ import { lazy } from "../src/components/lazy";
 import { registerSsrModule } from "../src/context/ssr-modules";
 import { createOwner, disposeOwner, getOwner, runWithOwner } from "../src/life-cycle/owner";
 import { $registerHead } from "../src/render/head-runtime";
+import { $insert } from "../src/render/$insert";
 import {
   createSSRAsync,
   createSSRComment,
