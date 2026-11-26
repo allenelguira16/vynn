@@ -114,7 +114,6 @@ describe("render_new dynamic child slots", () => {
     const items = $state([
       { id: "a", label: "Alpha" },
       { id: "b", label: "Beta" },
-      { id: "c", label: "Gamma" },
     ]);
 
     const rowTemplate = {
@@ -225,6 +224,7 @@ describe("render_new dynamic child slots", () => {
     const items = $state([
       { id: "a", label: "Alpha" },
       { id: "b", label: "Beta" },
+      { id: "c", label: "Gamma" },
     ]);
 
     const rowTemplate = {
