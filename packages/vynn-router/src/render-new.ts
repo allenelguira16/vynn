@@ -106,6 +106,133 @@ function renderRoutePathBoundary(props: {
   return createChildSlotProgram(() => props.children);
 }
 
+type PreparedRouterState = {
+  readonly pathname: string;
+  readonly search: string;
+  readonly branch: readonly MatchedRoute<unknown>[];
+  readonly guards: WeakSet<object>;
+};
+
+const preparedRouterStates = new WeakMap<object, PreparedRouterState>();
+const routerInstancesByProps = new WeakMap<object, RouterInstance<unknown>>();
+
+type PreloadableRouteComponent = Route["component"] & {
+  preload?: () => Promise<unknown> | undefined;
+};
+
+function isSameBranch(
+  left: readonly MatchedRoute<unknown>[],
+  right: readonly MatchedRoute<unknown>[],
+): boolean {
+  return left.length === right.length &&
+    left.every((match, index) => match.node === right[index]?.node);
+}
+
+/**
+ * Resolves every lazy module and beforeLoad guard in the router's current
+ * branch. The result is cached for the current URL and consumed by the
+ * synchronous render_new serializer or initial client hydration.
+ */
+async function prepareRouter<TContext>(
+  router: RouterInstance<TContext>,
+): Promise<boolean> {
+  for (let redirects = 0; redirects < 10; redirects++) {
+    const location = {
+      pathname: router.state.location.pathname,
+      search: router.state.location.search,
+    };
+    const branch = getRouterMatchState<TContext>(router).value;
+    const pendingModules: Promise<unknown>[] = [];
+
+    for (const match of branch) {
+      const component = match.route.component as PreloadableRouteComponent;
+      const pending = component.preload?.();
+      if (pending) pendingModules.push(pending);
+    }
+
+    await Promise.all(pendingModules);
+
+    const guards = new WeakSet<object>();
+    let redirected = false;
+
+    for (const match of branch) {
+      const beforeLoad = match.route.beforeLoad;
+      if (!beforeLoad) continue;
+
+      const controller = new AbortController();
+      try {
+        await beforeLoad({
+          context: router.context,
+          location,
+          params: getRouteParams(match.fullPath, location),
+          search: new URLSearchParams(location.search),
+          signal: controller.signal,
+        });
+        guards.add(match.node);
+      } catch (error) {
+        if (!isServer && isClientRedirect(error)) {
+          commitClientRedirect(
+            error,
+            () =>
+              router.state.location.pathname === location.pathname &&
+              router.state.location.search === location.search,
+            router.state.location,
+            false,
+          );
+
+          if (
+            router.state.location.pathname !== location.pathname ||
+            router.state.location.search !== location.search
+          ) {
+            redirected = true;
+            break;
+          }
+        }
+
+        throw error;
+      }
+    }
+
+    if (redirected) continue;
+
+    const currentBranch = getRouterMatchState<TContext>(router).value;
+    if (
+      router.state.location.pathname !== location.pathname ||
+      router.state.location.search !== location.search ||
+      !isSameBranch(
+        branch as readonly MatchedRoute<unknown>[],
+        currentBranch as readonly MatchedRoute<unknown>[],
+      )
+    ) {
+      continue;
+    }
+
+    preparedRouterStates.set(router, {
+      pathname: location.pathname,
+      search: location.search,
+      branch: branch as readonly MatchedRoute<unknown>[],
+      guards,
+    });
+    return true;
+  }
+
+  throw new Error(
+    "[vynn-router/render_new]: Route preparation exceeded the redirect limit.",
+  );
+}
+
+function hasPreparedGuard<TContext>(
+  router: RouterInstance<TContext>,
+  match: MatchedRoute<TContext>,
+): boolean {
+  const prepared = preparedRouterStates.get(router);
+  return !!prepared &&
+    prepared.pathname === router.state.location.pathname &&
+    prepared.search === router.state.location.search &&
+    prepared.branch.some((entry) => entry.node === match.node) &&
+    prepared.guards.has(match.node);
+}
+
 type RouteGuardState =
   | { status: "pending" }
   | { status: "allowed" }
@@ -119,6 +246,13 @@ function createGuardedRoute<TContext>(
 ): RenderNewComponent | null {
   const beforeLoad = match.route.beforeLoad;
   if (!beforeLoad) return child;
+  if (hasPreparedGuard(router, match)) return child;
+
+  if (isServer) {
+    throw new Error(
+      "[vynn-router/render_new]: A guarded route must be prepared with renderTemplateProgramToStringAsync().",
+    );
+  }
 
   return createRenderNewComponent(() => {
     const state = $state<RouteGuardState>({ status: "pending" });
@@ -279,20 +413,38 @@ export function Router<TContext = undefined>(
   props: RouterProps<TContext>,
 ): JSX.Element {
   const ownsRouter = !("router" in props);
-  const router: RouterInstance<TContext> = "router" in props
-    ? props.router
-    : createRouter(props);
+  let router: RouterInstance<TContext>;
 
-  if (ownsRouter) {
-    onScopeDispose(() => router.dispose());
+  if ("router" in props) {
+    router = props.router;
+  } else {
+    const existing = routerInstancesByProps.get(props) as RouterInstance<TContext> | undefined;
+    router = existing ?? createRouter(props);
+    if (!existing) {
+      routerInstancesByProps.set(
+        props,
+        router as RouterInstance<unknown>,
+      );
+    }
   }
 
-  LocationProvider({
-    value: router.state.location,
-    children: undefined as never,
-  });
+  return createRenderNewComponent(
+    () => {
+      if (ownsRouter) {
+        onScopeDispose(() => router.dispose());
+      }
 
-  return createChildSlotProgram(() => createRouteOutlet(router, 0)) as unknown as JSX.Element;
+      LocationProvider({
+        value: router.state.location,
+        children: undefined as never,
+      });
+
+      return createChildSlotProgram(() => createRouteOutlet(router, 0));
+    },
+    props,
+    Router,
+    () => prepareRouter(router),
+  ) as unknown as JSX.Element;
 }
 
 export type RenderNewLinkProps = PropsWithChildren<{
