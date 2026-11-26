@@ -72,9 +72,10 @@ type StaticTextNode = {
   value: string;
 };
 
-type DynamicTextNode = {
-  kind: "dynamic-text";
-  expression: Node;
+type DynamicChildNode = {
+  kind: "dynamic-child";
+  expression: Node | null;
+  expressionSource?: string;
   placeholder: string;
 };
 
@@ -86,17 +87,22 @@ type SerializedElement = {
   bindings: PendingBinding[];
 };
 
-type SerializedNode = StaticTextNode | DynamicTextNode | SerializedElement;
+type SerializedNode = StaticTextNode | DynamicChildNode | SerializedElement;
 
 type TemplateReference = {
   id: number;
-  kind: "element" | "text";
+  kind: "element" | "text" | "anchor";
   path: number[];
 };
 
 type EmittedBinding =
   | {
       kind: "text";
+      reference: number;
+      read: string;
+    }
+  | {
+      kind: "child";
       reference: number;
       read: string;
     }
@@ -411,38 +417,128 @@ function serializeChildren(
 
       const index = textIndex.value++;
       result.push({
-        kind: "dynamic-text",
+        kind: "dynamic-child",
         expression,
-        placeholder: "__vynn_render_new_text_" + index + "__",
+        placeholder: "<!--__vynn_render_new_child_" + index + "__-->",
       });
       continue;
     }
 
     if (isJSXElement(child)) {
-      result.push(serializeElement(child, source, filename, textIndex, inSVG));
+      result.push(
+        isComponentJSXElement(child)
+          ? serializeComponentChild(child, source, filename, textIndex)
+          : serializeElement(child, source, filename, textIndex, inSVG),
+      );
       continue;
     }
 
     fail("Unsupported JSX child node in the render_new target.", filename, child);
   }
 
-  for (let index = 0; index < result.length; index++) {
-    if (result[index].kind !== "dynamic-text") continue;
+  return result;
+}
 
-    if (
-      result[index - 1]?.kind === "text" ||
-      result[index + 1]?.kind === "text" ||
-      result[index - 1]?.kind === "dynamic-text" ||
-      result[index + 1]?.kind === "dynamic-text"
-    ) {
-      fail(
-        "A dynamic text expression must occupy its own text node. Wrap it in an element when mixing it with static text.",
-        filename,
+function isComponentJSXElement(node: Node): boolean {
+  if (!isJSXElement(node) || !isJSXIdentifier(node.openingElement.name)) return false;
+  const name = getJSXIdentifierName(node.openingElement.name);
+  return /^[A-Z]/.test(name);
+}
+
+/**
+ * Serializes a component element as a dynamic child program. Getter props keep
+ * expressions live while the child component creates its own template scope.
+ * Host JSX children inside a component's children prop are deferred until the
+ * compiler gains a first-class nested-program expression.
+ */
+function serializeComponentChild(
+  node: Node,
+  source: string,
+  filename: string,
+  textIndex: { value: number },
+): DynamicChildNode {
+  if (!isJSXElement(node) || !isJSXIdentifier(node.openingElement.name)) {
+    fail("A component child must use a simple JSX identifier.", filename, node);
+  }
+
+  const name = getJSXIdentifierName(node.openingElement.name);
+  const properties: string[] = [];
+
+  for (const attribute of node.openingElement.attributes as unknown as Node[]) {
+    if (isJSXSpreadAttribute(attribute)) {
+      fail("JSX spread attributes are not supported by the first render_new target.", filename, attribute);
+    }
+    if (!isJSXAttribute(attribute)) continue;
+
+    const propName = getJSXAttributeName(attribute.name);
+    if (propName === "key") continue;
+
+    if (attribute.value === null) {
+      properties.push("get " + JSON.stringify(propName) + "() { return true; }");
+      continue;
+    }
+
+    if (isLiteralString(attribute.value)) {
+      properties.push(
+        "get " + JSON.stringify(propName) + "() { return " +
+          JSON.stringify(decodeHTML(attribute.value.value)) + "; }",
       );
+      continue;
+    }
+
+    if (isJSXExpressionContainer(attribute.value)) {
+      const expression = attribute.value.expression;
+      if (isJSXEmptyExpression(expression)) continue;
+      if (!isExpression(expression) || containsJSX(expression)) {
+        fail("Nested JSX expressions in component props are not supported by this target yet.", filename, attribute);
+      }
+
+      properties.push(
+        "get " + JSON.stringify(propName) + "() { return (" +
+          sourceOf(source, expression, filename) + "); }",
+      );
+      continue;
+    }
+
+    fail("Unsupported component prop value.", filename, attribute);
+  }
+
+  const childValues: string[] = [];
+  for (const child of node.children as unknown as Node[]) {
+    if (isJSXText(child)) {
+      const value = normalizeJSXText(child.value);
+      if (value) childValues.push(JSON.stringify(value));
+      continue;
+    }
+
+    if (isJSXExpressionContainer(child)) {
+      const expression = child.expression;
+      if (isJSXEmptyExpression(expression)) continue;
+      if (!isExpression(expression) || containsJSX(expression)) {
+        fail("Nested JSX component children are not supported by this target yet.", filename, child);
+      }
+      childValues.push("(" + sourceOf(source, expression, filename) + ")");
+      continue;
+    }
+
+    if (isJSXElement(child) || isJSXFragment(child)) {
+      fail("Host JSX inside a component children prop is not supported by this target yet.", filename, child);
     }
   }
 
-  return result;
+  if (childValues.length > 0) {
+    properties.push(
+      "get \"children\"() { return [" + childValues.join(", ") + "]; }",
+    );
+  }
+
+  const index = textIndex.value++;
+  return {
+    kind: "dynamic-child",
+    expression: null,
+    expressionSource: name + "({ " + properties.join(", ") + " })",
+    placeholder: "<!--__vynn_render_new_child_" + index + "__-->",
+  };
 }
 
 function serializeElement(
@@ -654,7 +750,7 @@ function renderSerializedNode(node: SerializedNode): string {
   switch (node.kind) {
     case "text":
       return escapeText(node.value);
-    case "dynamic-text":
+    case "dynamic-child":
       return node.placeholder;
     case "element":
       return node.markup;
@@ -688,7 +784,11 @@ function serializeProgram(
       ),
     );
   } else if (isJSXElement(root)) {
-    roots.push(serializeElement(root, source, filename, textIndex, false));
+    roots.push(
+      isComponentJSXElement(root)
+        ? serializeComponentChild(root, source, filename, textIndex)
+        : serializeElement(root, source, filename, textIndex, false),
+    );
   } else {
     fail("Expected a JSX element or fragment return.", filename, root);
   }
@@ -714,12 +814,14 @@ function serializeProgram(
   };
 
   const visit = (node: SerializedNode, path: number[]): void => {
-    if (node.kind === "dynamic-text") {
-      const reference = addReference("text", path);
+    if (node.kind === "dynamic-child") {
+      const reference = addReference("anchor", path);
+      const expression = node.expressionSource ??
+        expressionSource(source, node.expression!, filename);
       bindings.push({
-        kind: "text",
+        kind: "child",
         reference,
-        read: "() => (" + expressionSource(source, node.expression, filename) + ")",
+        read: "() => (" + expression + ")",
       });
       return;
     }
@@ -799,6 +901,11 @@ function renderProgramExpression(
   const bindings = program.bindings.map((binding) => {
     if (binding.kind === "text") {
       return "{ kind: \"text\", reference: " + binding.reference +
+        ", read: " + binding.read + " }";
+    }
+
+    if (binding.kind === "child") {
+      return "{ kind: \"child\", reference: " + binding.reference +
         ", read: " + binding.read + " }";
     }
 
@@ -919,12 +1026,12 @@ function collectComponentFunctions(program: Node): Node[] {
  * Supported in this first target:
  * - Named function components and named arrow/function component variables.
  * - JSX element or fragment expressions returned directly by those components.
- * - Static host elements/text, dynamic standalone text, dynamic attributes,
- *   common form-control properties, and event handlers.
+ * - Static host elements/text, dynamic child expressions and component programs,
+ *   dynamic attributes, common form-control properties, and event handlers.
  *
- * It intentionally rejects component children, spreads, refs, conditional/list
- * children, and parser-sensitive HTML contexts until those features have
- * first-class instructions in render_new.
+ * It intentionally rejects spreads, refs, JSX nested inside conditional
+ * expressions, and parser-sensitive HTML contexts until those features have
+ * first-class compiler rules in render_new.
  */
 export function transformVynnRenderNewOxc(
   source: string,
