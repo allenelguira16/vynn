@@ -35,7 +35,7 @@ export function createClientEntry(
       `if (typeof App !== "function") throw new Error("[Vynn App] The app module must export a component as default or App.");`,
       `${mount}(document, App({ url: window.location.pathname + window.location.search }));`,
       "",
-    ].join("\\n");
+    ].join("\n");
   }
 
   const mount = ssr ? "hydrateToDOM" : "renderToDOM";
@@ -46,7 +46,7 @@ export function createClientEntry(
     `if (typeof App !== "function") throw new Error("[Vynn App] The app module must export a component as default or App.");`,
     `${mount}(() => App({ url: window.location.pathname + window.location.search }), document);`,
     "",
-  ].join("\\n");
+  ].join("\n");
 }
 export function createAuthoredServerEntry(
   serverSpecifier: string,
@@ -84,7 +84,7 @@ export function createServerEntry(
       `  };`,
       `}`,
       "",
-    ].join("\\n");
+    ].join("\n");
   }
 
   return [
@@ -96,7 +96,7 @@ export function createServerEntry(
     `  return renderToServer(() => App({ url }), ${JSON.stringify(ssrMode)}, request);`,
     `}`,
     "",
-  ].join("\\n");
+  ].join("\n");
 }
 
 export async function readSsrManifest(outDir: string): Promise<ViteSsrManifest> {
