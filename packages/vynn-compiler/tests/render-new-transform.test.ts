@@ -89,6 +89,56 @@ describe("render_new JSX compiler target", () => {
     expect(code).toContain('path: [1, 0]');
   });
 
+  it("compiles a complete HTML document root", () => {
+    const code = transformVynnRenderNewOxc(
+      `function App(props: { lang: string; message: string }) {
+        return (
+          <html lang={props.lang}>
+            <head>
+              <title>Vynn application</title>
+              <meta name="description" content="Experimental document renderer" />
+            </head>
+            <body className="app-shell">
+              <main><p>{props.message}</p></main>
+            </body>
+          </html>
+        );
+      }`,
+      "app.tsx",
+    );
+
+    expect(code).toContain('markup: "<html lang=\\\\"');
+    expect(code).toContain("<head><title>Vynn application</title><meta");
+    expect(code).toContain("<body class=\\\\"app-shell\\\\"><main>");
+    expect(code).toContain('kind: "anchor", path: [0, 1, 0, 0, 0]');
+    expect(code).not.toContain("Document elements must be returned");
+  });
+
+  it("rejects incomplete or misplaced document elements", () => {
+    expect(() =>
+      transformVynnRenderNewOxc(
+        "function App() { return <html><body>Missing head</body></html>; }",
+        "app.jsx",
+      ),
+    ).toThrow("exactly one <head> followed by one <body>");
+
+    expect(() =>
+      transformVynnRenderNewOxc(
+        "function App() { return <main><head><title>Invalid</title></head></main>; }",
+        "app.jsx",
+      ),
+    ).toThrow("complete <html>");
+  });
+
+  it("rejects dynamic title children until document metadata bindings exist", () => {
+    expect(() =>
+      transformVynnRenderNewOxc(
+        "function App(props) { return <html><head><title>{props.title}</title></head><body /></html>; }",
+        "app.jsx",
+      ),
+    ).toThrow("Dynamic or nested content inside <title>");
+  });
+
   it("preserves nested SVG namespaces and namespaced attributes", () => {
     const code = transformVynnRenderNewOxc(
       `function Icon(props: { href: string; width: number }) {
