@@ -13,6 +13,7 @@ import {
 import { LocationProvider, RoutePathProvider } from "./context";
 import { createRouter } from "./create-router";
 import { isRenderNewLazyComponent } from "./render-new-lazy";
+import { isFileRouteOutlet } from "./file-router-core";
 import { isServer } from "./environment";
 import { currentLocation, navigate } from "./location";
 import { getRouteParams, matchRoute } from "./path";
@@ -114,8 +115,8 @@ type RouteGuardState =
 function createGuardedRoute<TContext>(
   router: RouterInstance<TContext>,
   match: MatchedRoute<TContext>,
-  child: RenderNewComponent,
-): RenderNewComponent {
+  child: RenderNewComponent | null,
+): RenderNewComponent | null {
   const beforeLoad = match.route.beforeLoad;
   if (!beforeLoad) return child;
 
@@ -206,9 +207,11 @@ function createRouteView<TContext>(
       : { children: routeChildren as unknown as JSX.Element }
   ) as PropsWithChildren;
 
-  const routeComponent = isRenderNewLazyComponent(component)
-    ? component(componentProps) as unknown as RenderNewComponent
-    : createComponentDescriptor(component, componentProps);
+  const routeComponent = isFileRouteOutlet(component)
+    ? routeChildren ?? null
+    : isRenderNewLazyComponent(component)
+      ? component(componentProps) as unknown as RenderNewComponent
+      : createComponentDescriptor(component, componentProps);
   const guardedRoute = createGuardedRoute(router, match, routeComponent);
   const boundaryProps = {
     path: match.fullPath,
