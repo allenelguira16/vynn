@@ -65,8 +65,10 @@ compatible keyed items retain their DOM nodes across reorder, and their binding
 accessors update in place. Unkeyed arrays still replace their contents.
 During hydration, server-rendered keyed items are matched by key and compatible
 item DOM is adopted in place; missing, stale, and structurally incompatible
-items are reconciled individually. Keyed component entries are not supported
-yet. The compiler still
+items are reconciled individually. Keyed component entries also retain their
+component scope and DOM range when their component type and simple object-props
+shape match. Their prop cells update reactively. Components with destructured
+or otherwise non-simple parameter shapes are safely remounted on keyed updates. The compiler still
 rejects JSX spreads, refs, raw-HTML bindings, dynamic style objects,
 member-expression component tags, and parser-sensitive contexts such as
 tables, selects, and textareas. JSX must occur in a named component's direct
