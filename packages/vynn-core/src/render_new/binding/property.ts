@@ -40,7 +40,11 @@ function writeProperty(
 ): void {
   // Property bindings preserve the original value. The DOM property setter is
   // responsible for any platform-specific conversion.
-  if (Object.is(Reflect.get(element, name), value)) {
+  // An absent property with an undefined value still needs to be created.
+  if (
+    Reflect.has(element, name) &&
+    Object.is(Reflect.get(element, name), value)
+  ) {
     return;
   }
 
