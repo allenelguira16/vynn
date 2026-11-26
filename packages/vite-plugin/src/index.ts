@@ -5,6 +5,7 @@ import type { RenderMode } from "vynn";
 import { vynnAppPlugin } from "./plugins/app/index.ts";
 import { vynnFileRouterPlugin } from "./plugins/file-router.ts";
 import { vynnOxcPlugin } from "./plugins/jsx-transpiler.ts";
+import { vynnRenderNewOxcPlugin } from "./plugins/render-new-transpiler.ts";
 import { vynnNodeAdapterPlugin } from "./plugins/node-adapter.ts";
 import {
   type VynnServerFunctionsOptions,
@@ -88,3 +89,6 @@ export {
 } from "./host.ts";
 export { isRunnableViteEnvironment } from "./host.ts";
 export type { VynnSsrHandler, VynnSsrService } from "./host.ts";
+
+/** Opt-in JSX transform for the independent render_new runtime. */
+export { vynnRenderNewOxcPlugin, type VynnRenderNewOxcPluginOptions } from "./plugins/render-new-transpiler.ts";
