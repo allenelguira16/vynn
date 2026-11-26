@@ -990,6 +990,7 @@ function isComponentFunction(node: Node): boolean {
 function collectJSXReturns(
   node: Node,
   roots: Node[],
+  dynamicReturns: Node[],
   rootFunction: Node,
 ): void {
   if (node !== rootFunction && isFunctionLike(node)) return;
@@ -1000,9 +1001,15 @@ function collectJSXReturns(
       roots.push(argument);
       return;
     }
+    if (argument && containsJSX(argument)) {
+      dynamicReturns.push(argument);
+    }
+    return;
   }
 
-  forEachChild(node, (child) => collectJSXReturns(child, roots, rootFunction));
+  forEachChild(node, (child) =>
+    collectJSXReturns(child, roots, dynamicReturns, rootFunction),
+  );
 }
 
 type SourceReplacement = {
@@ -1204,6 +1211,7 @@ export function transformVynnRenderNewOxcWithMap(
     }
 
     const roots: Node[] = [];
+    const dynamicReturns: Node[] = [];
 
     if (
       (isType(component, "ArrowFunctionExpression") || isType(component, "FunctionExpression")) &&
@@ -1211,15 +1219,20 @@ export function transformVynnRenderNewOxcWithMap(
     ) {
       roots.push(component.body);
     } else if (
+      (isType(component, "ArrowFunctionExpression") || isType(component, "FunctionExpression")) &&
+      containsJSX(component.body)
+    ) {
+      dynamicReturns.push(component.body);
+    } else if (
       (isType(component, "FunctionDeclaration") ||
         isType(component, "FunctionExpression") ||
         isType(component, "ArrowFunctionExpression")) &&
       isType(component.body, "BlockStatement")
     ) {
-      collectJSXReturns(component.body, roots, component);
+      collectJSXReturns(component.body, roots, dynamicReturns, component);
     }
 
-    if (roots.length > 0) {
+    if (roots.length > 0 || dynamicReturns.length > 0) {
       needsComponentHelper = true;
       const body = component.body as Node;
 
@@ -1265,6 +1278,33 @@ export function transformVynnRenderNewOxcWithMap(
         ),
       });
       coveredRanges.push([root.start!, root.end!]);
+    }
+
+    for (const expression of dynamicReturns) {
+      const serialized: SerializedProgram = {
+        markup:
+          "<!--__vynn_render_new_child_0_start__-->" +
+          "<!--__vynn_render_new_child_0_end__-->",
+        namespace: "html",
+        references: [{ id: 0, kind: "anchor", path: [0] }],
+        bindings: [{
+          kind: "child",
+          reference: 0,
+          read: "() => (" + compileExpression(expression) + ")",
+        }],
+      };
+      const templateName = getTemplateName(serialized);
+
+      replacements.push({
+        start: expression.start!,
+        end: expression.end!,
+        value: renderProgramExpression(
+          serialized,
+          templateName,
+          useConstAssertions,
+        ),
+      });
+      coveredRanges.push([expression.start!, expression.end!]);
     }
   }
 
