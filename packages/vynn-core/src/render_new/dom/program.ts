@@ -26,6 +26,61 @@ export interface MountedTemplateProgram extends MountedTemplate<Node> {
   update(program: DOMTemplateProgram): void;
 }
 
+function isDocumentRootProgram(program: DOMTemplateProgram): boolean {
+  return program.template.namespace === "html" &&
+    /^<html(?:\\s|>)/i.test(program.template.markup.trim());
+}
+
+function mountDocumentProgram(
+  document: Document,
+  program: DOMTemplateProgram,
+  adapter: DOMTemplateAdapter,
+): MountedTemplateProgram {
+  if (!isDocumentRootProgram(program)) {
+    throw new TypeError(
+      "[vynn]: Mounting into a Document requires one complete <html> root program.",
+    );
+  }
+
+  const staging = document.createDocumentFragment();
+  const mounted = mountTemplateProgram(staging, program, adapter);
+  const roots = mounted.instance.roots;
+
+  if (
+    roots.length !== 1 ||
+    roots[0]?.nodeType !== 1 ||
+    (roots[0] as Element).localName !== "html"
+  ) {
+    try {
+      mounted.dispose();
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [new TypeError("[vynn]: A document template must instantiate exactly one <html> element."), cleanupError],
+        "[vynn]: The invalid document template could not be disposed.",
+      );
+    }
+    throw new TypeError("[vynn]: A document template must instantiate exactly one <html> element.");
+  }
+
+  try {
+    const current = document.documentElement;
+    if (current) document.replaceChild(roots[0]!, current);
+    else document.appendChild(roots[0]!);
+  } catch (error) {
+    try {
+      mounted.dispose();
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [error, cleanupError],
+        "[vynn]: The document root could not be mounted or rolled back.",
+      );
+    }
+    throw error;
+  }
+
+  return mounted;
+}
+
 function assertProgram(program: DOMTemplateProgram): void {
   if (!program || typeof program !== "object") {
     throw new TypeError("[vynn]: mountTemplateProgram() expects a template program.");
@@ -56,6 +111,13 @@ export function mountTemplateProgram(
   before: Node | null = null,
 ): MountedTemplateProgram {
   assertProgram(program);
+
+  if (parent.nodeType === 9) {
+    if (before !== null) {
+      throw new TypeError("[vynn]: A full-document mount cannot use a before node.");
+    }
+    return mountDocumentProgram(parent as Document, program, adapter);
+  }
 
   // Snapshot the instruction list for this mount. Instructions retain their
   // accessor closures, but a caller cannot append or remove operations while
