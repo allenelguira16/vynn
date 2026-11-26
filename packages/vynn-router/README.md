@@ -305,15 +305,24 @@ export function UserNavigation() {
 }
 ```
 
-This is still an experimental client-rendering integration, not a
-complete router migration. The `toFileRouter()` transform also recognizes
-imports from `vynn-router/render_new` and uses the native lazy component
-runtime for its page and layout modules. The `lazy()` export is available
-when defining lazy routes manually.
+This is an experimental integration, not a complete router migration.
+The `toFileRouter()` transform also recognizes imports from
+`vynn-router/render_new` and uses the native lazy component runtime for its
+page and layout modules. The `lazy()` export is available when defining lazy
+routes manually.
 
-SSR and hydration integration for this adapter are not yet implemented or
-verified. Async guard results and lazy modules therefore do not participate
-in the new renderer's current synchronous SSR serializer.
+The initial route branch supports SSR and hydration when the app uses the
+integrated Vite plugin with `renderer: "new"` and `ssr: true`. The generated
+server and client entries call `prepareRenderNewTree()` before serializing
+or hydrating. Router preparation preloads lazy modules and awaits each
+matched route's `beforeLoad` guard. Client redirects during preparation
+resolve before hydration; subsequent client navigations continue to run
+guards with abortable signals.
+
+The new serializer remains synchronous after preparation. General async
+resources, `Await` boundaries, and true streaming of unresolved
+render_new components are not supported by this initial SSR integration.
+
 
 The existing `vynn-router` entry point remains unchanged and continues to
 provide the legacy renderer integration. Do not mix its `Router` or `Link`
