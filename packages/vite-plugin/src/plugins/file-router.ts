@@ -307,7 +307,8 @@ export function transformFileRouterCalls(
 
   visit(program, (node) => {
     if (node.type !== "ImportDeclaration") return;
-    if (getStringLiteral(node.source) !== "vynn-router") return;
+    const importSource = getStringLiteral(node.source);
+    if (importSource !== "vynn-router" && importSource !== "vynn-router/render_new") return;
 
     for (const specifier of asNodes(node.specifiers)) {
       if (specifier.type !== "ImportSpecifier") continue;
