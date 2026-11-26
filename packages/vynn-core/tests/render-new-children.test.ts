@@ -22,7 +22,7 @@ describe("render_new dynamic child slots", () => {
     const program: DOMTemplateProgram = {
       template: {
         namespace: "html",
-        markup: '<p>before<!--__vynn_render_new_child_0__-->after</p>',
+        markup: '<p>before<!--__vynn_render_new_child_0_start__--><!--__vynn_render_new_child_0_end__-->after</p>',
         references: [{ id: 0, kind: "anchor", path: [0, 1] }],
       },
       bindings: [{ kind: "child", reference: 0, read: () => value.value }],
@@ -51,7 +51,7 @@ describe("render_new dynamic child slots", () => {
     const program: DOMTemplateProgram = {
       template: {
         namespace: "html",
-        markup: "<div><!--slot--></div>",
+        markup: "<div><!--__vynn_render_new_child_0_start__--><!--__vynn_render_new_child_0_end__--></div>",
         references: [{ id: 0, kind: "anchor", path: [0, 0] }],
       },
       bindings: [{ kind: "child", reference: 0, read: () => value.value }],
@@ -76,7 +76,7 @@ describe("render_new dynamic child slots", () => {
     const childProgram: DOMTemplateProgram = {
       template: {
         namespace: "html",
-        markup: "<strong><!--label--></strong>",
+        markup: "<strong><!--__vynn_render_new_child_0_start__--><!--__vynn_render_new_child_0_end__--></strong>",
         references: [{ id: 0, kind: "anchor", path: [0, 0] }],
       },
       bindings: [{ kind: "child", reference: 0, read: () => firstLabel.value }],
@@ -87,7 +87,7 @@ describe("render_new dynamic child slots", () => {
     const parentProgram: DOMTemplateProgram = {
       template: {
         namespace: "html",
-        markup: "<section><!--component--></section>",
+        markup: "<section><!--__vynn_render_new_child_0_start__--><!--__vynn_render_new_child_0_end__--></section>",
         references: [{ id: 0, kind: "anchor", path: [0, 0] }],
       },
       bindings: [{ kind: "child", reference: 0, read: () => current.value }],
@@ -113,7 +113,7 @@ describe("render_new dynamic child slots", () => {
     const program: DOMTemplateProgram = {
       template: {
         namespace: "html",
-        markup: "<div><!--slot--></div>",
+        markup: "<div><!--__vynn_render_new_child_0_start__--><!--__vynn_render_new_child_0_end__--></div>",
         references: [{ id: 0, kind: "anchor", path: [0, 0] }],
       },
       bindings: [{ kind: "child", reference: 0, read: () => ({ arbitrary: true }) }],
