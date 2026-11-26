@@ -1,5 +1,6 @@
 import { $state, type JSX, type PropsWithChildren } from "vynn";
 import { createRenderNewComponent } from "vynn/render_new/internal";
+import { isServer } from "./environment";
 import type {
   DOMTemplateProgram,
   TemplateDefinition,
@@ -111,6 +112,12 @@ export function lazy<
 
   const LazyComponent = (props: PropsWithChildren): JSX.Element => {
     return createRenderNewComponent(() => {
+      if (isServer && !resolvedComponent) {
+        throw new Error(
+          "[vynn render_new]: Lazy components must be prepared before synchronous SSR serialization.",
+        );
+      }
+
       const state = $state<LazyState<ComponentExport<M, K>>>(
         resolvedComponent
           ? { status: "loaded", component: resolvedComponent }
@@ -139,7 +146,10 @@ export function lazy<
           current.component,
         );
       });
-    }, props, LazyComponent) as unknown as JSX.Element;
+    }, props, LazyComponent, async () => {
+      await loadComponent();
+      return false;
+    }) as unknown as JSX.Element;
   };
 
   lazyComponents.add(LazyComponent);
