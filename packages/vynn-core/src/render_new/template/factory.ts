@@ -20,7 +20,6 @@ export interface TemplateAdapter<TBlueprint, TNode>
   extends TemplateNodeCloner<TBlueprint, TNode>, TemplateNodeResolver<TNode> {
   /** Parse static markup into a reusable host-specific blueprint. */
   parse(markup: string, namespace: TemplateNamespace): TBlueprint;
-
 }
 
 interface FactoryCacheEntry<TNode> {
