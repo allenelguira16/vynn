@@ -106,6 +106,54 @@ describe("lazy hydration text anchors", () => {
   });
 });
 
+describe("ordered hydration cursor", () => {
+  it("claims mixed elements and text in document order", () => {
+    const root = document.createElement("div");
+    root.innerHTML = "<p>first <b>bold</b></p><hr>last";
+
+    const paragraph = root.querySelector("p");
+    const firstText = paragraph?.firstChild;
+    const bold = root.querySelector("b");
+    const boldText = bold?.firstChild;
+    const rule = root.querySelector("hr");
+    const lastText = rule?.nextSibling;
+
+    withHydration(() => {}, root);
+
+    const owner = createOwner(null);
+    runWithOwner(owner, () => {
+      expect(claimHydrationElement()).toBe(paragraph);
+      expect(claimHydrationText()).toBe(firstText);
+      expect(claimHydrationElement()).toBe(bold);
+      expect(claimHydrationText()).toBe(boldText);
+      expect(claimHydrationElement()).toBe(rule);
+      expect(claimHydrationText()).toBe(lastText);
+    });
+
+    expect(isHydrating(false)).toBe(false);
+    disposeOwner(owner);
+  });
+
+  it("does not advance the cursor when a claim requests the wrong node kind", () => {
+    const root = document.createElement("div");
+    root.innerHTML = "<p>text</p>";
+
+    const paragraph = root.querySelector("p");
+    const text = paragraph?.firstChild;
+    withHydration(() => {}, root);
+
+    const owner = createOwner(null);
+    runWithOwner(owner, () => {
+      expect(claimHydrationText()).toBeUndefined();
+      expect(claimHydrationElement()).toBe(paragraph);
+      expect(claimHydrationText()).toBe(text);
+    });
+
+    expect(isHydrating(false)).toBe(false);
+    disposeOwner(owner);
+  });
+});
+
 describe("hydration cursor release", () => {
   it("releases the root cursor after its final element and text claims", () => {
     const root = document.createElement("div");
