@@ -118,8 +118,8 @@ describe("render_new JSX compiler target", () => {
 
     expect(code).toContain('class="primary"');
     expect(code).toContain('name: "disabled"');
-    expect(code).toContain('name: "aria-hidden"');
-    expect(code).toContain('read: () => (false)');
+    expect(code).toContain('aria-hidden=\\\"false\\\"');
+    expect(code).not.toContain('read: () => (false)');
   });
 
   it("keeps null event handlers as reactive event instructions", () => {
