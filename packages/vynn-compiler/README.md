@@ -42,12 +42,13 @@ import { transformVynnRenderNewOxc } from "vynn-compiler/render-new";
 const code = transformVynnRenderNewOxc(source, "App.tsx");
 ```
 
-This target emits `DOMTemplateProgram`-shaped values containing static template
-markup, numeric node references, and reactive binding accessors. Template
-definitions are hoisted and deduplicated at module scope; each component call
-creates fresh accessors while reusing the same static definition. It does not
-import or call the legacy `vynn/render` helpers and does not change the output
-of `transformVynnOxc()`.
+This target emits deferred component descriptors. The runtime evaluates
+each component body inside its own render scope and consumes the returned
+`DOMTemplateProgram`, which contains static template markup, numeric node
+references, and reactive binding accessors. Template definitions are hoisted
+and deduplicated at module scope. The generated code imports only the new
+component helper from `vynn/render_new/internal`; it does not call the legacy
+`vynn/render` helpers or change the output of `transformVynnOxc()`.
 
 The current target supports named function components with direct JSX
 returns and conditional return expressions, static host markup, reactive
