@@ -1,5 +1,6 @@
 import type { DOMTemplateProgram } from "../dom/program";
 import type { TemplateReference } from "../template/types";
+import { createDOMTemplateKeyMarkerData } from "../dom/keyed";
 import { createScope, disposeScope, runWithScope } from "../lifecycle/scope";
 import {
   isRenderNewComponent,
@@ -205,12 +206,56 @@ function setAttribute(node: SSRNode, name: string, value: unknown): void {
   else node.attributes.push({ name, value: text });
 }
 
+function renderKeyedProgramArray(value: readonly unknown[]): string | null {
+  const hasKeyedEntry = value.some((item) =>
+    !!item &&
+    typeof item === "object" &&
+    Object.prototype.hasOwnProperty.call(item, "key"),
+  );
+  if (!hasKeyedEntry) return null;
+
+  const keys = new Set<unknown>();
+  const output: string[] = [];
+
+  for (const item of value) {
+    if (!isTemplateProgram(item) || !Object.prototype.hasOwnProperty.call(item, "key")) {
+      throw new TypeError(
+        "[vynn render_new]: A keyed server child list must contain only keyed template programs.",
+      );
+    }
+
+    const key = item.key;
+    if (
+      typeof key !== "string" &&
+      typeof key !== "number" &&
+      typeof key !== "bigint"
+    ) {
+      throw new TypeError(
+        "[vynn render_new]: Every keyed server child program requires a string, number, or bigint key.",
+      );
+    }
+    if (keys.has(key)) {
+      throw new TypeError("[vynn render_new]: Duplicate key in a render_new server child list.");
+    }
+    keys.add(key);
+
+    const start = createDOMTemplateKeyMarkerData(key, "start");
+    const end = createDOMTemplateKeyMarkerData(key, "end");
+    output.push("<!--" + start + "-->" + renderProgram(item) + "<!--" + end + "-->");
+  }
+
+  return output.join("");
+}
+
 function renderChildValue(value: unknown): string {
   if (value === null || value === undefined || typeof value === "boolean") return "";
   if (typeof value === "string" || typeof value === "number" || typeof value === "bigint") {
     return escapeText(String(value));
   }
-  if (Array.isArray(value)) return value.map(renderChildValue).join("");
+  if (Array.isArray(value)) {
+    const keyed = renderKeyedProgramArray(value);
+    return keyed ?? value.map(renderChildValue).join("");
+  }
   if (isRenderNewComponent(value)) {
     const scope = createScope();
     try {
