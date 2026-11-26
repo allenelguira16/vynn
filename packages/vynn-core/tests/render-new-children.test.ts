@@ -114,6 +114,7 @@ describe("render_new dynamic child slots", () => {
     const items = $state([
       { id: "a", label: "Alpha" },
       { id: "b", label: "Beta" },
+      { id: "c", label: "Gamma" },
     ]);
 
     const rowTemplate = {
@@ -247,9 +248,9 @@ describe("render_new dynamic child slots", () => {
             kind: "child" as const,
             reference: 0,
             read: () => {
-              if (item.id === "a") {
+              if (item.id !== "b") {
                 onScopeDispose(() => {
-                  throw new Error("item cleanup failed");
+                  throw new Error(item.id + " cleanup failed");
                 });
               }
               return item.label;
@@ -264,10 +265,15 @@ describe("render_new dynamic child slots", () => {
     const list = parent.querySelector("ul")!;
     const originalB = list.children[1]!;
 
-    expect(() => {
+    let cleanupFailure: unknown;
+    try {
       items.value = [{ id: "b", label: "Beta" }];
-    }).toThrow("item cleanup failed");
+    } catch (error) {
+      cleanupFailure = error;
+    }
 
+    expect(cleanupFailure).toBeInstanceOf(AggregateError);
+    expect((cleanupFailure as AggregateError).errors).toHaveLength(2);
     expect(list.children).toHaveLength(1);
     expect(list.children[0]).toBe(originalB);
     expect(list.textContent).toBe("Beta");
