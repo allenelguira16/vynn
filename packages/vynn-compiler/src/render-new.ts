@@ -969,7 +969,7 @@ export function transformVynnRenderNewOxcWithMap(
   collectUsedNames(program);
 
   let templateIndex = 0;
-  const templateCache = new Map<string, { name: string; definition: string }>();
+  const templateCache = new Map<string, string>();
   const templateDeclarations: string[] = [];
 
   const getTemplateName = (serialized: SerializedProgram): string => {
@@ -979,7 +979,7 @@ export function transformVynnRenderNewOxcWithMap(
       serialized.references.map(({ id, kind, path }) => [id, kind, path]),
     ]);
     const cached = templateCache.get(signature);
-    if (cached) return cached.name;
+    if (cached) return cached;
 
     let name: string;
     do {
@@ -992,7 +992,7 @@ export function transformVynnRenderNewOxcWithMap(
       lang === "ts" || lang === "tsx",
     );
 
-    templateCache.set(signature, { name, definition });
+    templateCache.set(signature, name);
     templateDeclarations.push("const " + name + " = " + definition + ";");
     return name;
   };
