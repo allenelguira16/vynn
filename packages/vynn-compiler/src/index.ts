@@ -5339,3 +5339,15 @@ class TransformState {
     return callExpression(this.getRuntimeHelper("$insert"), args);
   }
 }
+
+
+/**
+ * Experimental JSX target for the independent render_new runtime.
+ * It does not change the legacy transformVynnOxc() output.
+ */
+export {
+  transformVynnRenderNewOxc,
+  transformVynnRenderNewOxcWithMap,
+  type RenderNewCompilerOptions,
+  type RenderNewTransformResult,
+} from "./render-new.ts";
