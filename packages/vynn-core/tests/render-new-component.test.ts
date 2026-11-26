@@ -5,6 +5,7 @@ import { $state } from "../src/reactivity/state";
 import { onScopeDispose } from "../src/render_new/lifecycle/scope";
 import { createRenderNewComponent } from "../src/render_new/internal";
 import { mountRenderNew } from "../src/render_new/dom/client";
+import { hydrateRenderNew } from "../src/render_new/dom/hydrate-client";
 import { renderTemplateProgramToString } from "../src/render_new/ssr/render";
 
 function createDocument(): Document {
@@ -92,6 +93,45 @@ describe("render_new deferred component scopes", () => {
 
     mounted.dispose();
     expect(disposeCalls).toBe(1);
+    expect(parent.childNodes).toHaveLength(0);
+  });
+
+  it("hydrates deferred components without losing their owner lifetime", () => {
+    const document = createDocument();
+    const parent = document.createElement("main");
+    let renderCalls = 0;
+    let disposeCalls = 0;
+
+    const component = createRenderNewComponent(() => {
+      renderCalls++;
+      const label = $state("hydrated component");
+      onScopeDispose(() => {
+        disposeCalls++;
+      });
+      return {
+        template: {
+          namespace: "html",
+          markup: "<article><!--__vynn_render_new_child_0_start__--><!--__vynn_render_new_child_0_end__--></article>",
+          references: [{ id: 0, kind: "anchor", path: [0, 0] }],
+        },
+        bindings: [{ kind: "child", reference: 0, read: () => label.value }],
+      };
+    });
+
+    const html = renderTemplateProgramToString(component);
+    parent.innerHTML = html;
+    const serverRoot = parent.firstElementChild;
+
+    expect(disposeCalls).toBe(1);
+
+    const mounted = hydrateRenderNew(parent, component);
+
+    expect(renderCalls).toBe(2);
+    expect(parent.firstElementChild).toBe(serverRoot);
+    expect(parent.textContent).toBe("hydrated component");
+
+    mounted.dispose();
+    expect(disposeCalls).toBe(2);
     expect(parent.childNodes).toHaveLength(0);
   });
 
