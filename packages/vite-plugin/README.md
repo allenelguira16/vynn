@@ -283,11 +283,11 @@ hydrateRenderNew(root, App());
 ```
 
 Hydration preserves compatible static elements and recursively adopts
-compatible nested component programs and primitive child ranges. A static
-structure mismatch falls back to a fresh mount of that subtree. Keyed host
-template lists preserve DOM identity during client-side reorder and update,
-but their items are recreated on initial hydration. Keyed component entries
-are not supported yet.
+compatible nested component programs and primitive child ranges. Keyed host
+template lists serialize per-item key markers on the server, adopt compatible
+items in place, reorder their existing DOM ranges, and remount only items whose
+static structure no longer matches. Missing and stale items are reconciled by
+key. Keyed component entries are not supported yet.
 
 This is not yet connected to the integrated `vynn({ ssr: true })` document
 pipeline, file router, or server-function request handling. The standalone
