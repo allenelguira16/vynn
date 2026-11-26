@@ -34,21 +34,31 @@ function removeNodes(nodes: readonly Node[]): void {
 }
 
 function findEndAnchor(start: Comment): Comment | null {
-  const match = /^__vynn_render_new_child_(\d+)_start__$/.exec(start.data);
+  const match = /^__vynn_render_new_child_(\\d+)_start__$/.exec(start.data);
   if (!match) return null;
 
   const expectedEnd = "__vynn_render_new_child_" + match[1] + "_end__";
-  let nestedRanges = 0;
+  const nested: string[] = [];
   let current = start.nextSibling;
 
   while (current) {
     if (current.nodeType === 8) {
       const data = (current as Comment).data;
-      if (/^__vynn_render_new_child_\d+_start__$/.test(data)) {
-        nestedRanges++;
-      } else if (data === expectedEnd) {
-        if (nestedRanges === 0) return current as Comment;
-        nestedRanges--;
+      const nestedStart = /^__vynn_render_new_child_(\\d+)_start__$/.exec(data);
+      if (nestedStart) {
+        nested.push(nestedStart[1]!);
+      } else {
+        const nestedEnd = /^__vynn_render_new_child_(\\d+)_end__$/.exec(data);
+        if (nestedEnd) {
+          if (nested.length > 0) {
+            if (nested[nested.length - 1] !== nestedEnd[1]) {
+              throw new Error("[vynn]: Dynamic child range markers are incorrectly nested.");
+            }
+            nested.pop();
+          } else if (data === expectedEnd) {
+            return current as Comment;
+          }
+        }
       }
     }
     current = current.nextSibling;
