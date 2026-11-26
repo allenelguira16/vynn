@@ -52,6 +52,46 @@ describe("$for row lifecycle", () => {
     disposeOwner(owner);
   });
 
+  it("updates stable intrinsic rows when an item is replaced with the same key", async () => {
+    const rows = $state([{ id: 1, label: "before" }]);
+    const owner = createOwner(null);
+    const host = document.createElement("div");
+    let initialRow: Element | null = null;
+
+    runWithOwner(owner, () => {
+      $insert(
+        host,
+        () =>
+          $for(
+            () => rows.value,
+            (item) => {
+              const element = $template("<p></p>")();
+              $insert(element, () => item.value.label);
+              return element as unknown as JSX.Element;
+            },
+            (row) => row.id,
+            true,
+            true,
+            false,
+          ),
+      );
+    });
+
+    document.body.append(host);
+    await flushEffects();
+    initialRow = host.querySelector("p");
+
+    expect(initialRow?.textContent).toBe("before");
+
+    rows.value = [{ id: 1, label: "after" }];
+    await flushEffects();
+
+    expect(host.querySelector("p")).toBe(initialRow);
+    expect(initialRow?.textContent).toBe("after");
+
+    disposeOwner(owner);
+  });
+
   it("disposes removed row effects while preserving keyed rows that are reordered", async () => {
     const first: Row = { id: 1, value: $state(0) };
     const second: Row = { id: 2, value: $state(0) };
