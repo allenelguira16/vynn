@@ -459,19 +459,20 @@ export function Router<TContext = undefined>(
   const ownsRouter = !("router" in props);
   let router: RouterInstance<TContext> | undefined =
     "router" in props ? props.router : undefined;
+  let cleanupRegistered = false;
 
   const getRouter = (): RouterInstance<TContext> => {
     router ??= createRouter(props as RouterOptions<TContext>);
+    if (ownsRouter && !cleanupRegistered) {
+      onScopeDispose(() => router!.dispose());
+      cleanupRegistered = true;
+    }
     return router;
   };
 
   return createRenderNewComponent(
     () => {
       const instance = getRouter();
-
-      if (ownsRouter) {
-        onScopeDispose(() => instance.dispose());
-      }
 
       LocationProvider({
         value: instance.state.location,
