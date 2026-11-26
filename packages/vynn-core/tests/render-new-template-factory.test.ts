@@ -145,14 +145,15 @@ describe("render_new template factory", () => {
   });
 
   it("rebuilds a cached blueprint when a mutable definition changes", () => {
-    const definition = createDefinition() as {
-      markup: string;
-      namespace: TemplateNamespace;
-      references: Array<{
-        id: number;
-        kind: TemplateReferenceKind;
-        path: number[];
-      }>;
+    const definition = {
+      markup: "<main>label<!--slot--></main><aside></aside>",
+      namespace: "html" as const,
+      references: [
+        { id: 0, kind: "element" as const, path: [0] },
+        { id: 1, kind: "text" as const, path: [0, 0] },
+        { id: 2, kind: "anchor" as const, path: [0, 1] },
+        { id: 3, kind: "element" as const, path: [1] },
+      ],
     };
     const host = createFakeAdapter();
 
