@@ -22,7 +22,7 @@ export interface RenderNewComponent {
 
 const EMPTY_RENDER_NEW_PROGRAM: DOMTemplateProgram = Object.freeze({
   template: Object.freeze({
-    namespace: "html",
+    namespace: "html" as const,
     markup: "",
     references: Object.freeze([]),
   }),
