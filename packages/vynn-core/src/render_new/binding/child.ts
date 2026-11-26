@@ -1,11 +1,23 @@
 import { $renderEffect } from "../../reactivity/effect";
-import { runWithScope } from "../lifecycle/scope";
+import { runWithScope, onScopeDispose } from "../lifecycle/scope";
 import type { Accessor, Disposable, RenderScope } from "../types";
 import type { DOMTemplateAdapter } from "../dom/adapter";
-import { mountTemplateProgram, type DOMTemplateProgram } from "../dom/program";
+import {
+  mountTemplateProgram,
+  type DOMTemplateProgram,
+  type DOMTemplateKey,
+  type MountedTemplateProgram,
+} from "../dom/program";
 import { hydrateTemplateProgramInRange } from "../dom/hydrate";
 import { isRenderNewComponent } from "../component";
 import { mountRenderNewComponent } from "../dom/component";
+import {
+  createDOMRange,
+  insertDOMRange,
+  moveDOMRange,
+  removeDOMRange,
+  type DOMNodeRange,
+} from "../dom/range";
 
 export interface ChildBinding extends Disposable {
   readonly anchor: Comment;
@@ -14,6 +26,13 @@ export interface ChildBinding extends Disposable {
 export interface ChildBindingOptions {
   /** Reuse compatible server-rendered content on the first evaluation. */
   readonly hydrate?: boolean;
+}
+
+interface KeyedProgramMount {
+  readonly key: DOMTemplateKey;
+  readonly range: DOMNodeRange;
+  program: DOMTemplateProgram;
+  mounted: MountedTemplateProgram;
 }
 
 function isTemplateProgram(value: unknown): value is DOMTemplateProgram {
@@ -29,15 +48,23 @@ function isDOMNode(value: unknown): value is Node {
     typeof (value as Node).cloneNode === "function";
 }
 
+function isDOMTemplateKey(value: unknown): value is DOMTemplateKey {
+  return typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "bigint";
+}
+
 function removeNodes(nodes: readonly Node[]): void {
   for (const node of nodes) {
     if (node.parentNode) node.parentNode.removeChild(node);
   }
 }
 
-function findEndAnchor(start: Comment): Comment | null {
-  const match = /^__vynn_render_new_child_(\\d+)_start__$/.exec(start.data);
-  if (!match) return null;
+function findEndAnchor(start: Comment): Comment {
+  const match = /^__vynn_render_new_child_(\d+)_start__$/.exec(start.data);
+  if (!match) {
+    throw new Error("[vynn]: A dynamic child binding must target a paired range start marker.");
+  }
 
   const expectedEnd = "__vynn_render_new_child_" + match[1] + "_end__";
   const nested: string[] = [];
@@ -46,11 +73,11 @@ function findEndAnchor(start: Comment): Comment | null {
   while (current) {
     if (current.nodeType === 8) {
       const data = (current as Comment).data;
-      const nestedStart = /^__vynn_render_new_child_(\\d+)_start__$/.exec(data);
+      const nestedStart = /^__vynn_render_new_child_(\d+)_start__$/.exec(data);
       if (nestedStart) {
         nested.push(nestedStart[1]!);
       } else {
-        const nestedEnd = /^__vynn_render_new_child_(\\d+)_end__$/.exec(data);
+        const nestedEnd = /^__vynn_render_new_child_(\d+)_end__$/.exec(data);
         if (nestedEnd) {
           if (nested.length > 0) {
             if (nested[nested.length - 1] !== nestedEnd[1]) {
@@ -86,12 +113,6 @@ function isPrimitive(value: unknown): value is string | number | bigint {
   return typeof value === "string" || typeof value === "number" || typeof value === "bigint";
 }
 
-function isPrimitiveArray(value: readonly unknown[]): boolean {
-  return value.every((item) =>
-    item === null || item === undefined || typeof item === "boolean" || isPrimitive(item),
-  );
-}
-
 function primitiveText(value: unknown): string {
   if (value === null || value === undefined || typeof value === "boolean") return "";
   return String(value);
@@ -113,9 +134,11 @@ function appendNode(parent: Node, node: Node, before: Node): () => void {
 }
 
 /**
- * Inserts dynamic render values between a compiler-emitted pair of comment
- * markers. Compatible server-rendered text and child programs are adopted on
- * the first hydrated evaluation; changed values are replaced inside the range.
+ * Binds a dynamic child range to reactive render values.
+ *
+ * Arrays of DOMTemplatePrograms with explicit `key` metadata use stable
+ * per-item comment ranges. Compatible items update their binding accessors
+ * in place and are moved as complete ranges when their order changes.
  */
 export function bindChild(
   scope: RenderScope,
@@ -135,125 +158,253 @@ export function bindChild(
   }
 
   let firstEvaluation = true;
+  let disposed = false;
   const shouldHydrate = options.hydrate === true;
+  let endAnchor: Comment | undefined;
+  let ordinaryCleanups: Array<() => void> = [];
+  let keyedItems = new Map<DOMTemplateKey, KeyedProgramMount>();
 
-  const stop = runWithScope(scope, () =>
+  const disposeKeyedItems = (): void => {
+    const errors: unknown[] = [];
+    for (const item of [...keyedItems.values()].reverse()) {
+      try {
+        item.mounted.dispose();
+      } catch (error) {
+        errors.push(error);
+      }
+      try {
+        removeDOMRange(item.range);
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+    keyedItems.clear();
+
+    if (errors.length === 1) throw errors[0];
+    if (errors.length > 1) {
+      throw new AggregateError(errors, "[vynn]: Multiple keyed child items failed to dispose.");
+    }
+  };
+
+  const disposeOrdinaryChildren = (): void => {
+    const cleanups = ordinaryCleanups;
+    ordinaryCleanups = [];
+    const errors: unknown[] = [];
+
+    for (const cleanup of cleanups.reverse()) {
+      try {
+        cleanup();
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+
+    if (errors.length === 1) throw errors[0];
+    if (errors.length > 1) {
+      throw new AggregateError(errors, "[vynn]: Multiple dynamic child values failed to dispose.");
+    }
+  };
+
+  const disposeCurrent = (): void => {
+    const errors: unknown[] = [];
+    try {
+      disposeKeyedItems();
+    } catch (error) {
+      errors.push(error);
+    }
+    try {
+      disposeOrdinaryChildren();
+    } catch (error) {
+      errors.push(error);
+    }
+
+    if (errors.length === 1) throw errors[0];
+    if (errors.length > 1) {
+      throw new AggregateError(errors, "[vynn]: Dynamic child cleanup failed.");
+    }
+  };
+
+  const append = (parent: Node, before: Node, value: unknown, hydrate: boolean): void => {
+    if (value === null || value === undefined || typeof value === "boolean") {
+      if (hydrate && endAnchor) clearRange(anchor, endAnchor);
+      return;
+    }
+
+    if (isPrimitive(value)) {
+      const text = String(value);
+      if (hydrate && endAnchor) {
+        const existing = getRangeNodes(anchor, endAnchor);
+        if (existing.length === 1 && existing[0]!.nodeType === 3) {
+          (existing[0] as Text).data = text;
+          ordinaryCleanups.push(() => removeNodes([existing[0]!]));
+          return;
+        }
+        clearRange(anchor, endAnchor);
+      }
+      if (text.length > 0) {
+        const textNode = anchor.ownerDocument!.createTextNode(text);
+        parent.insertBefore(textNode, before);
+        ordinaryCleanups.push(() => removeNodes([textNode]));
+      }
+      return;
+    }
+
+    if (Array.isArray(value)) {
+      if (hydrate && endAnchor) clearRange(anchor, endAnchor);
+      for (const item of value) append(parent, before, item, false);
+      return;
+    }
+
+    if (isRenderNewComponent(value)) {
+      const mounted = mountRenderNewComponent(parent, value, adapter, before);
+      ordinaryCleanups.push(() => mounted.dispose());
+      return;
+    }
+
+    if (isTemplateProgram(value)) {
+      if (hydrate && endAnchor) {
+        const adopted = hydrateTemplateProgramInRange(anchor, endAnchor, value, adapter);
+        if (adopted) {
+          ordinaryCleanups.push(() => adopted.dispose());
+          return;
+        }
+        clearRange(anchor, endAnchor);
+      }
+      const mounted = mountTemplateProgram(parent, value, adapter, before);
+      ordinaryCleanups.push(() => mounted.dispose());
+      return;
+    }
+
+    if (isDOMNode(value)) {
+      if (hydrate && endAnchor) clearRange(anchor, endAnchor);
+      ordinaryCleanups.push(appendNode(parent, value, before));
+      return;
+    }
+
+    throw new TypeError(
+      "[vynn]: Dynamic children must be renderable primitives, DOM Nodes, arrays, or component template programs.",
+    );
+  };
+
+  const reconcileKeyedPrograms = (
+    parent: Node,
+    before: Comment,
+    programs: readonly DOMTemplateProgram[],
+  ): void => {
+    const nextKeys = new Set<DOMTemplateKey>();
+    const nextItems: Array<{ key: DOMTemplateKey; program: DOMTemplateProgram }> = [];
+
+    for (const program of programs) {
+      if (!isDOMTemplateKey(program.key)) {
+        throw new TypeError(
+          "[vynn]: Every item in a keyed child list must have a string, number, or bigint key.",
+        );
+      }
+      if (nextKeys.has(program.key)) {
+        throw new TypeError("[vynn]: Duplicate key in a render_new child list.");
+      }
+      nextKeys.add(program.key);
+      nextItems.push({ key: program.key, program });
+    }
+
+    // Dispose removed items before moving or creating anything, so their
+    // lifecycle cleanups cannot observe an already-reused DOM range.
+    for (const [key, item] of [...keyedItems]) {
+      if (nextKeys.has(key)) continue;
+      item.mounted.dispose();
+      removeDOMRange(item.range);
+      keyedItems.delete(key);
+    }
+
+    for (const { key, program } of nextItems) {
+      const existing = keyedItems.get(key);
+      if (!existing) {
+        const range = createDOMRange(anchor.ownerDocument!, "vynn:keyed-item");
+        insertDOMRange(parent, range, before);
+        const mounted = mountTemplateProgram(parent, program, adapter, range.end);
+        keyedItems.set(key, { key, range, program, mounted });
+        continue;
+      }
+
+      if (existing.program.template === program.template) {
+        existing.mounted.update(program);
+        existing.program = program;
+        continue;
+      }
+
+      existing.mounted.dispose();
+      const mounted = mountTemplateProgram(parent, program, adapter, existing.range.end);
+      existing.program = program;
+      existing.mounted = mounted;
+    }
+
+    // Move from the end toward the beginning so each item can be placed
+    // immediately before the already-positioned next item.
+    let cursor: Node = before;
+    for (let index = nextItems.length - 1; index >= 0; index--) {
+      const item = keyedItems.get(nextItems[index]!.key)!;
+      moveDOMRange(item.range, parent, cursor);
+      cursor = item.range.start;
+    }
+  };
+
+  const updateValue = (value: unknown, hydrate: boolean): void => {
+    const parent = anchor.parentNode;
+    if (!parent) {
+      throw new Error("[vynn]: A dynamic child anchor must belong to a parent node.");
+    }
+
+    const end = endAnchor!;
+    const before = end;
+    const isProgramArray = Array.isArray(value) && value.every(isTemplateProgram);
+    const hasKeyedEntries = Array.isArray(value) &&
+      value.some((item) => isTemplateProgram(item) && item.key !== undefined);
+
+    if (isProgramArray && (hasKeyedEntries || keyedItems.size > 0)) {
+      if (hydrate) {
+        disposeCurrent();
+        clearRange(anchor, end);
+      } else {
+        disposeOrdinaryChildren();
+      }
+      reconcileKeyedPrograms(parent, before, value as DOMTemplateProgram[]);
+      return;
+    }
+
+    if (keyedItems.size > 0) disposeKeyedItems();
+    disposeOrdinaryChildren();
+    append(parent, before, value, hydrate);
+  };
+
+  const stopEffect = runWithScope(scope, () =>
     $renderEffect(() => {
-      const parent = anchor.parentNode;
-      if (!parent) {
+      if (!anchor.parentNode) {
         throw new Error("[vynn]: A dynamic child anchor must belong to a parent node.");
       }
 
-      const end = findEndAnchor(anchor);
-      const before: Node = end ?? anchor;
-      const cleanups: Array<() => void> = [];
-      const hydrateThisRun = shouldHydrate && firstEvaluation && !!end;
-
-      const append = (value: unknown, hydrate: boolean): void => {
-        if (value === null || value === undefined || typeof value === "boolean") {
-          if (hydrate && end) clearRange(anchor, end);
-          return;
-        }
-
-        if (isPrimitive(value)) {
-          const text = String(value);
-          if (hydrate && end) {
-            const existing = getRangeNodes(anchor, end);
-            if (existing.length === 1 && existing[0]!.nodeType === 3) {
-              const textNode = existing[0] as Text;
-              textNode.data = text;
-              cleanups.push(() => removeNodes([textNode]));
-              return;
-            }
-            clearRange(anchor, end);
-          }
-          if (text.length > 0) {
-            const textNode = anchor.ownerDocument!.createTextNode(text);
-            parent.insertBefore(textNode, before);
-            cleanups.push(() => removeNodes([textNode]));
-          }
-          return;
-        }
-
-        if (Array.isArray(value)) {
-          if (hydrate && end && isPrimitiveArray(value)) {
-            const text = value.map(primitiveText).join("");
-            const existing = getRangeNodes(anchor, end);
-            if (text.length === 0 && existing.length === 0) return;
-            if (existing.length === 1 && existing[0]!.nodeType === 3) {
-              const textNode = existing[0] as Text;
-              textNode.data = text;
-              cleanups.push(() => removeNodes([textNode]));
-              return;
-            }
-            clearRange(anchor, end);
-            if (text.length > 0) {
-              const textNode = anchor.ownerDocument!.createTextNode(text);
-              parent.insertBefore(textNode, before);
-              cleanups.push(() => removeNodes([textNode]));
-            }
-            return;
-          }
-
-          if (hydrate && end) clearRange(anchor, end);
-          for (const item of value) append(item, false);
-          return;
-        }
-
-        if (isRenderNewComponent(value)) {
-          const mounted = mountRenderNewComponent(
-            parent,
-            value,
-            adapter,
-            before,
-            hydrate && end ? { start: anchor, end } : undefined,
-          );
-          cleanups.push(() => mounted.dispose());
-          return;
-        }
-
-        if (isTemplateProgram(value)) {
-          if (hydrate && end) {
-            const adopted = hydrateTemplateProgramInRange(anchor, end, value, adapter);
-            if (adopted) {
-              cleanups.push(() => adopted.dispose());
-              return;
-            }
-            clearRange(anchor, end);
-          }
-          const mounted = mountTemplateProgram(parent, value, adapter, before);
-          cleanups.push(() => mounted.dispose());
-          return;
-        }
-
-        if (isDOMNode(value)) {
-          if (hydrate && end) clearRange(anchor, end);
-          cleanups.push(appendNode(parent, value, before));
-          return;
-        }
-
-        throw new TypeError(
-          "[vynn]: Dynamic children must be renderable primitives, DOM Nodes, arrays, or component template programs.",
-        );
-      };
-
-      try {
-        append(read(), hydrateThisRun);
-      } catch (error) {
-        for (const cleanup of cleanups.reverse()) cleanup();
-        throw error;
-      } finally {
-        firstEvaluation = false;
-      }
-
-      return () => {
-        for (const cleanup of cleanups.reverse()) cleanup();
-      };
+      endAnchor ??= findEndAnchor(anchor);
+      const hydrateThisRun = shouldHydrate && firstEvaluation;
+      const value = read();
+      updateValue(value, hydrateThisRun);
+      firstEvaluation = false;
     }),
+  );
+
+  const unregisterCleanup = runWithScope(scope, () =>
+    onScopeDispose(disposeCurrent),
   );
 
   return Object.freeze({
     anchor,
-    dispose: stop,
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      stopEffect();
+      try {
+        disposeCurrent();
+      } finally {
+        unregisterCleanup();
+      }
+    },
   });
 }
