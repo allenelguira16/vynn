@@ -26,7 +26,7 @@ export interface MountedTemplateProgram extends MountedTemplate<Node> {
   update(program: DOMTemplateProgram): void;
 }
 
-function isDocumentRootProgram(program: DOMTemplateProgram): boolean {
+export function isDocumentRootProgram(program: DOMTemplateProgram): boolean {
   return program.template.namespace === "html" &&
     /^<html(?:\s|>)/i.test(program.template.markup.trim());
 }
