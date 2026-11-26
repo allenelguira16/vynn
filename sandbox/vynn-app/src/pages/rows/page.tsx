@@ -1,4 +1,4 @@
-import { $store } from "vynn";
+import { $state } from "vynn";
 
 import { Template } from "../../components/template";
 
@@ -17,45 +17,55 @@ function createRows(): Row[] {
 }
 
 export default function RowsPage() {
-  const rows = $store(createRows());
+  const rows = $state(createRows());
   let nextID = INITIAL_ROW_COUNT + 1;
 
   const updateOne = () => {
-    if (rows.length === 0) return;
-    rows[Math.min(499, rows.length - 1)].value++;
-  };
+    const current = rows.value;
+    if (current.length === 0) return;
 
-  const updateOneHundred = () => {
-    for (let index = 0; index < rows.length; index += 10) {
-      rows[index].value++;
-    }
-  };
-
-  const appendOneHundred = () => {
-    rows.push(
-      ...Array.from({ length: 100 }, () => {
-        const id = nextID++;
-        return { id, value: id };
-      }),
+    const target = Math.min(499, current.length - 1);
+    rows.value = current.map((row, index) =>
+      index === target ? { ...row, value: row.value + 1 } : row,
     );
   };
 
-  const removeMiddle = () => {
-    if (rows.length === 0) return;
-    rows.splice(Math.floor(rows.length / 2), 1);
+  const updateOneHundred = () => {
+    rows.value = rows.value.map((row, index) =>
+      index % 10 === 0 ? { ...row, value: row.value + 1 } : row,
+    );
   };
 
-  const reverseRows = () => rows.reverse();
+  const appendOneHundred = () => {
+    const appended = Array.from({ length: 100 }, () => {
+      const id = nextID++;
+      return { id, value: id };
+    });
+
+    rows.value = [...rows.value, ...appended];
+  };
+
+  const removeMiddle = () => {
+    const current = rows.value;
+    if (current.length === 0) return;
+
+    const middle = Math.floor(current.length / 2);
+    rows.value = [...current.slice(0, middle), ...current.slice(middle + 1)];
+  };
+
+  const reverseRows = () => {
+    rows.value = [...rows.value].reverse();
+  };
 
   const resetRows = () => {
-    rows.splice(0, rows.length, ...createRows());
+    rows.value = createRows();
     nextID = INITIAL_ROW_COUNT + 1;
   };
 
   return (
     <Template title="1,000 Reactive Rows">
       <div class="flex flex-wrap items-center gap-2 mb-3">
-        <span class="text-sm font-medium">Rows: {rows.length.toLocaleString()}</span>
+        <span class="text-sm font-medium">Rows: {rows.value.length.toLocaleString()}</span>
         <button class="btn btn-sm" onClick={updateOne}>Update one</button>
         <button class="btn btn-sm" onClick={updateOneHundred}>Update 100</button>
         <button class="btn btn-sm" onClick={appendOneHundred}>Append 100</button>
@@ -78,7 +88,7 @@ export default function RowsPage() {
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => (
+            {rows.value.map((row) => (
               <tr key={row.id}>
                 <td>{row.id}</td>
                 <td>Hi key-{row.value}</td>
