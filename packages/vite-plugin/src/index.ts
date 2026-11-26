@@ -5,7 +5,6 @@ import type { RenderMode } from "vynn";
 import { vynnAppPlugin } from "./plugins/app/index.ts";
 import { vynnFileRouterPlugin } from "./plugins/file-router.ts";
 import { vynnOxcPlugin } from "./plugins/jsx-transpiler.ts";
-import { vynnRenderNewOxcPlugin } from "./plugins/render-new-transpiler.ts";
 import { vynnNodeAdapterPlugin } from "./plugins/node-adapter.ts";
 import {
   type VynnServerFunctionsOptions,
