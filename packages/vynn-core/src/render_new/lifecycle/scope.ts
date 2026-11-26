@@ -203,7 +203,9 @@ export function disposeScope(scope: RenderScope): void {
   if (record.state !== "active") return;
 
   if (record.owner.disposed) {
-    markScopeTreeDisposed(scope);
+    // An ancestor Owner is already walking this Owner tree. Its registered
+    // parent cleanup marks the scope fully disposed after this Owner finishes.
+    record.state = "disposing";
     return;
   }
 
