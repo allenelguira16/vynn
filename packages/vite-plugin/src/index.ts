@@ -88,6 +88,7 @@ export function serverFunctions(options: VynnServerFunctionsOptions = {}) {
   return serverFunctionsPlugin(options);
 }
 export type { VynnServerFunctionsOptions };
+export type { VynnRenderer };
 export {
   handleVynnDevRequest,
   loadVynnSsrHandler,
