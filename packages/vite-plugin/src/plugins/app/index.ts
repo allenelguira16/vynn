@@ -403,6 +403,7 @@ export function vynnAppPlugin({
                   base,
                   clientEntryUrl: getClientEntryDevUrl(entries, root(), base),
                   dev: true,
+                  preserveRendererAssets: renderer === "new",
                 }),
                 {
                   headers: { "content-type": "text/html; charset=utf-8" },
@@ -513,6 +514,7 @@ export function vynnAppPlugin({
         clientEntryUrl: joinAssetBase(base, `/${assets.file}`),
         css: assets.css,
         dev: false,
+        preserveRendererAssets: renderer === "new",
       });
       await mkdir(outDir, { recursive: true });
       await writeFile(resolve(outDir, "index.html"), shell, "utf8");
