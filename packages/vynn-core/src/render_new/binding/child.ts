@@ -2,6 +2,7 @@ import { $renderEffect } from "../../reactivity/effect";
 import { runWithScope, onScopeDispose } from "../lifecycle/scope";
 import type { Accessor, Disposable, RenderScope } from "../types";
 import type { DOMTemplateAdapter } from "../dom/adapter";
+import { consumePreparedRenderNewChildValue } from "../prepare";
 import {
   mountTemplateProgram,
   type DOMTemplateProgram,
@@ -738,7 +739,9 @@ export function bindChild(
 
         endAnchor ??= findEndAnchor(anchor);
         const hydrateThisRun = shouldHydrate && firstEvaluation;
-        const value = read();
+        const value = firstEvaluation
+          ? consumePreparedRenderNewChildValue(read)
+          : read();
         updateValue(value, hydrateThisRun);
         firstEvaluation = false;
       }),
