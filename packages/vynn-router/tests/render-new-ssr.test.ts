@@ -17,14 +17,7 @@ import {
   type Route,
 } from "../src/render-new";
 
-const privatePage: Route["component"] = () => ({
-  template: {
-    namespace: "html",
-    markup: "<main>Private content</main>",
-    references: [],
-  },
-  bindings: [],
-}) as never;
+const privatePage = (() => null) as Route["component"];
 
 describe("render_new router SSR", () => {
   it("returns a server redirect Response from an async route guard", async () => {
@@ -48,10 +41,16 @@ describe("render_new router SSR", () => {
       () => Router({ router }) as unknown as RenderNewComponent,
     );
 
-    await expect(renderTemplateProgramToStringAsync(app)).rejects.toMatchObject({
-      status: 302,
-    });
-    await expect(renderTemplateProgramToStringAsync(app)).rejects.toBeDefined();
+    let thrown: unknown;
+    try {
+      await renderTemplateProgramToStringAsync(app);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(Response);
+    expect((thrown as Response).status).toBe(302);
+    expect((thrown as Response).headers.get("location")).toBe("/login");
 
     router.dispose();
     disposeScope(scope);
