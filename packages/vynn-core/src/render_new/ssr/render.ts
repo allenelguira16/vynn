@@ -305,6 +305,11 @@ function renderProgram(program: DOMTemplateProgram): string {
       throw new Error("[vynn render_new]: Binding references missing node " + instruction.reference + ".");
     }
 
+    if (instruction.kind === "event") {
+      // Event handlers are client-only and are not evaluated during SSR.
+      continue;
+    }
+
     const value = instruction.read();
 
     switch (instruction.kind) {
@@ -335,10 +340,6 @@ function renderProgram(program: DOMTemplateProgram): string {
         }
         break;
       }
-
-      case "event":
-        // Event listeners are client-only behavior.
-        break;
 
       case "child": {
         if (target.kind !== "comment") {
