@@ -1,0 +1,87 @@
+.route-navigation {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.route-link {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 11px;
+  color: #b8bdca;
+  font-size: 11px;
+  text-decoration: none;
+  transition: border-color 140ms ease, color 140ms ease, background 140ms ease;
+}
+
+.route-link:hover,
+.route-link-active {
+  border-color: rgba(168, 139, 255, 0.5);
+  background: rgba(168, 139, 255, 0.1);
+  color: #e9e4f7;
+}
+
+.route-page {
+  min-height: 65vh;
+  padding: 66px 0 58px;
+}
+
+.route-page h1 {
+  margin: 18px 0 14px;
+  color: #f3f1f8;
+  font: 600 clamp(32px, 4vw, 48px)/1.1 "Space Grotesk", sans-serif;
+  letter-spacing: -0.055em;
+}
+
+.route-page > p {
+  max-width: 660px;
+  color: #a4a9b7;
+  font-size: 14px;
+  line-height: 1.8;
+}
+
+.route-card {
+  display: flex;
+  max-width: 420px;
+  flex-direction: column;
+  gap: 10px;
+  margin: 28px 0;
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(22, 26, 36, 0.7);
+}
+
+.route-value {
+  color: #f0eef6;
+  font: 600 32px "Space Grotesk", sans-serif;
+}
+
+.route-detail,
+.route-note {
+  color: #8d93a3;
+  font-size: 12px;
+}
+
+.route-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin: 24px 0;
+}
+
+@media (max-width: 760px) {
+  .topbar {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 14px;
+    padding: 16px 0;
+  }
+
+  .route-navigation {
+    width: 100%;
+  }
+}
