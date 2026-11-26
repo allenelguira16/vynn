@@ -172,7 +172,7 @@ describe("render_new JSX compiler target", () => {
       "components.tsx",
     );
 
-    expect(code.match(/const _vynnTemplate\\d+ =/g)).toHaveLength(1);
+    expect(code.match(/const _vynnTemplate[0-9]+ =/g)).toHaveLength(1);
     expect(code.match(/template: _vynnTemplate0/g)).toHaveLength(2);
   });
 
