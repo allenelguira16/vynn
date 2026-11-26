@@ -321,8 +321,13 @@ export function bindChild(
       if (!existing) {
         const range = createDOMRange(anchor.ownerDocument!, "vynn:keyed-item");
         insertDOMRange(parent, range, before);
-        const mounted = mountTemplateProgram(parent, program, adapter, range.end);
-        keyedItems.set(key, { key, range, program, mounted });
+        try {
+          const mounted = mountTemplateProgram(parent, program, adapter, range.end);
+          keyedItems.set(key, { key, range, program, mounted });
+        } catch (error) {
+          removeDOMRange(range);
+          throw error;
+        }
         continue;
       }
 
@@ -358,9 +363,12 @@ export function bindChild(
     const before = end;
     const isProgramArray = Array.isArray(value) && value.every(isTemplateProgram);
     const hasKeyedEntries = Array.isArray(value) &&
-      value.some((item) => isTemplateProgram(item) && item.key !== undefined);
+      value.some((item) => isTemplateProgram(item) && Object.prototype.hasOwnProperty.call(item, "key"));
+    const isEmptyKeyedUpdate = Array.isArray(value) &&
+      value.length === 0 &&
+      keyedItems.size > 0;
 
-    if (isProgramArray && (hasKeyedEntries || keyedItems.size > 0)) {
+    if (isProgramArray && (hasKeyedEntries || isEmptyKeyedUpdate)) {
       if (hydrate) {
         disposeCurrent();
         clearRange(anchor, end);
