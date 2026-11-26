@@ -85,6 +85,7 @@ describe("$for row lifecycle", () => {
             (row) => row.id,
             true,
             true,
+            false,
           ),
       );
     });
