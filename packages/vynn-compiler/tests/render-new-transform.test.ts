@@ -144,6 +144,38 @@ describe("render_new JSX compiler target", () => {
     expect(code).toContain("read: () => (props.name)");
   });
 
+  it("hoists template definitions after module directives", () => {
+    const code = transformVynnRenderNewOxc(
+      `"use client";
+      function Page(props: { value: string }) {
+        return <main>{props.value}</main>;
+      }`,
+      "page.tsx",
+    );
+
+    expect(code.indexOf('"use client"')).toBeLessThan(
+      code.indexOf("const _vynnTemplate0"),
+    );
+    expect(code.indexOf("const _vynnTemplate0")).toBeLessThan(
+      code.indexOf("function Page"),
+    );
+  });
+
+  it("deduplicates identical template definitions across components", () => {
+    const code = transformVynnRenderNewOxc(
+      `function First(props: { value: string }) {
+        return <p>{props.value}</p>;
+      }
+      function Second(props: { value: string }) {
+        return <p>{props.value}</p>;
+      }`,
+      "components.tsx",
+    );
+
+    expect(code.match(/const _vynnTemplate\\d+ =/g)).toHaveLength(1);
+    expect(code.match(/template: _vynnTemplate0/g)).toHaveLength(2);
+  });
+
   it("compiles multiple JSX returns in the same component", () => {
     const code = transformVynnRenderNewOxc(
       `function Status(props: { loading: boolean }) {
