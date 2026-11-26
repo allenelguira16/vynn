@@ -374,6 +374,52 @@ describe("$template", () => {
     disposeOwner(owner);
   });
 
+  it("retires anchor-free hydration metadata before dynamic bindings initialize", async () => {
+    const owner = createTestOwner();
+    const host = document.createElement("div");
+    host.innerHTML = "<main><button>server</button></main>";
+
+    const title = $state("client");
+    const factory = $template("<main><button>server</button></main>");
+    const deleteSpy = vi.spyOn(WeakMap.prototype, "delete");
+
+    let root!: Element;
+    let button!: Element;
+
+    try {
+      runWithOwner(owner, () => {
+        withHydration(() => {
+          root = factory();
+
+          // Anchor-free templates are fully claimed and retired before the
+          // factory returns, so bindings can safely use native DOM traversal.
+          expect(deleteSpy).toHaveBeenCalledWith(root);
+
+          button = $child(root);
+          expect(button).toBe(root.firstElementChild);
+          expect(deleteSpy).toHaveBeenCalledWith(button);
+
+          $attr(button, "title", () => title.value);
+          $finishTemplate(root);
+        }, host);
+      });
+
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(button.getAttribute("title")).toBe("client");
+
+      title.value = "updated";
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(button.getAttribute("title")).toBe("updated");
+    } finally {
+      deleteSpy.mockRestore();
+      disposeOwner(owner);
+    }
+  });
+
   it("navigates nested template children and then continues at a sibling", () => {
     const owner = createTestOwner();
     const host = document.createElement("div");
