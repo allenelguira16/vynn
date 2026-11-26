@@ -7,7 +7,12 @@
     "lint:fix": "oxlint --fix",
     "fmt": "oxfmt",
     "fmt:check": "oxfmt --check",
-    "bench:size": "node benchmarks/scripts/size.mjs"
+    "test": "pnpm -r --if-present test",
+    "typecheck": "pnpm --filter vynn exec tsc --noEmit && pnpm --filter vynn-router exec tsc --noEmit && pnpm --filter vynn-compiler exec tsc --noEmit && pnpm --filter vite-plugin-vynn exec tsc --noEmit",
+    "build": "pnpm --filter app build",
+    "check": "pnpm lint && pnpm fmt:check && pnpm test && pnpm typecheck && pnpm build",
+    "bench:size": "node benchmarks/scripts/size.mjs",
+    "bench:runtime": "pnpm --filter vynn bench:runtime"
   },
   "devDependencies": {
     "oxfmt": "^0.75.0",

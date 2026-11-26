@@ -114,6 +114,7 @@ describe("lazy hydration reference cleanup", () => {
     const lazyElement = root.querySelector("#lazy");
     const lazyText = lazyElement?.firstChild;
     const rootElement = root.querySelector("#root");
+    const rootText = rootElement?.firstChild;
 
     withHydration(() => {}, root);
     expect(isHydrating()).toBe(true);
@@ -128,6 +129,7 @@ describe("lazy hydration reference cleanup", () => {
       });
 
       expect(claimHydrationElement()).toBe(rootElement);
+      expect(claimHydrationText()).toBe(rootText);
     });
 
     expect(getServerRenderedLazyRange("7")).toBeUndefined();

@@ -39,7 +39,8 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "bench:runtime": "vitest bench benchmarks/runtime.bench.ts"
   },
   "devDependencies": {
     "@types/node": "^26.6.3",
