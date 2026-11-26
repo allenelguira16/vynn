@@ -7,12 +7,9 @@ import {
 } from "./file-router-core";
 import type { Route } from "./types";
 
-export {
-  createFileRouter,
-  type FileRouteComponentFactory,
-  type FileRouteModuleMap,
-  type FileRouteModuleMetadata,
-  type LoadedFileRouteModule,
+export type {
+  FileRouteModuleMap,
+  FileRouteModuleMetadata,
 } from "./file-router-core";
 
 /**
