@@ -421,3 +421,6 @@ export type {
   RouterOptions,
   RouterState,
 } from "./types";
+
+export { lazy } from "./render-new-lazy";
+export { toFileRouter } from "./file-router-render-new";
