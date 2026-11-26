@@ -156,11 +156,6 @@ function isPrimitive(value: unknown): value is string | number | bigint {
   return typeof value === "string" || typeof value === "number" || typeof value === "bigint";
 }
 
-function primitiveText(value: unknown): string {
-  if (value === null || value === undefined || typeof value === "boolean") return "";
-  return String(value);
-}
-
 function clearRange(start: Comment, end: Comment): void {
   removeNodes(getRangeNodes(start, end));
 }
@@ -351,12 +346,34 @@ export function bindChild(
     }
 
     // Dispose removed items before moving or creating anything, so their
-    // lifecycle cleanups cannot observe an already-reused DOM range.
+    // lifecycle cleanups cannot observe an already-reused DOM range. A failing
+    // cleanup must not prevent the corresponding range and map entry from being
+    // removed, nor should it block cleanup of other stale items.
+    const removalErrors: unknown[] = [];
     for (const [key, item] of [...keyedItems]) {
       if (nextKeys.has(key)) continue;
-      item.mounted.dispose();
-      removeDOMRange(item.range);
+
       keyedItems.delete(key);
+
+      try {
+        item.mounted.dispose();
+      } catch (error) {
+        removalErrors.push(error);
+      }
+
+      try {
+        removeDOMRange(item.range);
+      } catch (error) {
+        removalErrors.push(error);
+      }
+    }
+
+    if (removalErrors.length === 1) throw removalErrors[0];
+    if (removalErrors.length > 1) {
+      throw new AggregateError(
+        removalErrors,
+        "[vynn]: Multiple keyed child items failed to dispose.",
+      );
     }
 
     for (const { key, program } of nextItems) {
