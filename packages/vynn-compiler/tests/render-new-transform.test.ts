@@ -281,6 +281,39 @@ describe("render_new JSX compiler target", () => {
     expect(code).toContain('markup: "<li><!--__vynn_render_new_child_0_start__--><!--__vynn_render_new_child_0_end__--></li>"');
   });
 
+  it("returns keyed programs from a compiled map callback", () => {
+    const code = transformVynnRenderNewOxc(
+      `function List(props) {
+        return <ul>{props.items.map((item) => <li key={item.id}>{item.label}</li>)}</ul>;
+      }`,
+      "list.jsx",
+    );
+    const executable = code.replace(
+      'import { createRenderNewComponent as _vynnCreateRenderNewComponent } from "vynn/render_new/internal";',
+      "const _vynnCreateRenderNewComponent = (render) => ({ render });",
+    );
+    const createList = new Function(executable + "\\nreturn List;") as () => (
+      props: { items: Array<{ id: string; label: string }> },
+    ) => { render: () => {
+      bindings: Array<{ read: () => unknown }>;
+    } };
+
+    const component = createList()({
+      items: [
+        { id: "first", label: "First" },
+        { id: "second", label: "Second" },
+      ],
+    });
+    const program = component.render();
+    const children = program.bindings[0]!.read() as Array<{
+      key: string;
+      template: object;
+    }>;
+
+    expect(children.map((item) => item.key)).toEqual(["first", "second"]);
+    expect(children[0]!.template).toBe(children[1]!.template);
+  });
+
   it("supports static string keys on nested host templates", () => {
     const code = transformVynnRenderNewOxc(
       `function List() {
