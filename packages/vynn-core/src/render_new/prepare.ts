@@ -44,35 +44,78 @@ export function consumePreparedRenderNewComponent(
  * Reads a child binding's cached first value. The cache is one-shot so future
  * reactive updates continue to evaluate the original accessor.
  */
-function syncPreparedComponentProps(previous: unknown, next: unknown): void {
+function syncPreparedComponentProps(previous: unknown, next: unknown): boolean {
   if (isRenderNewComponent(previous) && isRenderNewComponent(next)) {
     updateRenderNewComponentProps(previous, next);
-    return;
+    return true;
   }
 
-  if (!Array.isArray(previous) || !Array.isArray(next)) return;
-
-  const nextByKey = new Map<unknown, RenderNewComponent>();
-  for (const item of next) {
-    if (
-      isRenderNewComponent(item) &&
-      Object.prototype.hasOwnProperty.call(item, "key")
-    ) {
-      nextByKey.set(item.key, item);
+  if (Array.isArray(previous) && Array.isArray(next)) {
+    const nextByKey = new Map<unknown, RenderNewComponent>();
+    for (const item of next) {
+      if (
+        isRenderNewComponent(item) &&
+        Object.prototype.hasOwnProperty.call(item, "key")
+      ) {
+        nextByKey.set(item.key, item);
+      }
     }
+
+    for (const item of previous) {
+      if (
+        !isRenderNewComponent(item) ||
+        !Object.prototype.hasOwnProperty.call(item, "key")
+      ) continue;
+      const updated = nextByKey.get(item.key);
+      if (updated) updateRenderNewComponentProps(item, updated);
+    }
+    return true;
   }
 
-  for (const item of previous) {
-    if (!isRenderNewComponent(item) ||
-      !Object.prototype.hasOwnProperty.call(item, "key")) continue;
-    const updated = nextByKey.get(item.key);
-    if (updated) updateRenderNewComponentProps(item, updated);
+  if (isTemplateProgram(previous) && isTemplateProgram(next)) {
+    if (previous.template !== next.template) return false;
+
+    const nextChildren = next.bindings.filter(
+      (instruction) => instruction.kind === "child",
+    );
+    let childIndex = 0;
+
+    for (const instruction of previous.bindings) {
+      if (instruction.kind !== "child") continue;
+
+      const nextInstruction = nextChildren[childIndex++];
+      const preparedChild = preparedChildValues.get(instruction.read);
+      if (
+        !nextInstruction ||
+        nextInstruction.kind !== "child" ||
+        !preparedChild
+      ) {
+        continue;
+      }
+
+      syncPreparedComponentProps(
+        preparedChild.value,
+        nextInstruction.read(),
+      );
+    }
+
+    return true;
   }
+
+  return false;
 }
-
 function containsPreparedComponent(value: unknown): boolean {
   if (isRenderNewComponent(value)) return preparedComponents.has(value);
-  return Array.isArray(value) && value.some(containsPreparedComponent);
+  if (Array.isArray(value)) return value.some(containsPreparedComponent);
+
+  if (isTemplateProgram(value)) {
+    return value.bindings.some((instruction) =>
+      instruction.kind === "child" &&
+      preparedChildValues.get(instruction.read)?.containsPreparedComponent === true,
+    );
+  }
+
+  return false;
 }
 
 /**
@@ -93,8 +136,9 @@ export function consumePreparedRenderNewChildValue(
   const current = read();
   if (!prepared.containsPreparedComponent) return current;
 
-  syncPreparedComponentProps(prepared.value, current);
-  return prepared.value;
+  return syncPreparedComponentProps(prepared.value, current)
+    ? prepared.value
+    : current;
 }
 
 /** Consumes the temporary root scope created by prepareRenderNewTree(). */
