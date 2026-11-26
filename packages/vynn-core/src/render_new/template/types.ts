@@ -56,6 +56,7 @@ export interface TemplateDefinition {
  * A template can have multiple root nodes, so the instance exposes an ordered
  * root list instead of assuming a single root Element. references maps each
  * compiler-emitted reference ID to the corresponding node in this instance.
+ * The reference table is immutable at runtime, not only through its type.
  */
 export interface TemplateInstance<TNode = unknown> {
   readonly roots: readonly TNode[];
