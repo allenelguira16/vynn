@@ -41,8 +41,21 @@ export function insertDOMNodes(
     }
   }
 
-  const orderedNodes = Array.from(nodes);
+  const inputNodes = Array.from(nodes);
+  const orderedNodes: Node[] = [];
   const seen = new Set<Node>();
+
+  for (const inputNode of inputNodes) {
+    assertNode(inputNode);
+
+    // Inserting a DocumentFragment inserts its children, not the fragment
+    // object itself. Snapshot those children before staging the full group.
+    if (inputNode.nodeType === 11 && !("host" in inputNode)) {
+      orderedNodes.push(...Array.from(inputNode.childNodes));
+    } else {
+      orderedNodes.push(inputNode);
+    }
+  }
 
   for (const node of orderedNodes) {
     assertNode(node);
@@ -52,6 +65,10 @@ export function insertDOMNodes(
     }
 
     if (node === before) {
+      if (orderedNodes.length === 1 && before?.parentNode === parent) {
+        return Object.freeze(orderedNodes);
+      }
+
       throw new Error("[vynn]: The DOM insertion reference cannot be part of the inserted node group.");
     }
 
