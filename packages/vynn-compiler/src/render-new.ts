@@ -131,6 +131,7 @@ type SerializedProgram = {
   namespace: "html" | "svg" | "mathml";
   references: TemplateReference[];
   bindings: EmittedBinding[];
+  keySource?: string;
 };
 
 const voidElements = new Set([
@@ -824,6 +825,40 @@ function serializeProgram(
         ? "mathml"
         : "html";
 
+  let keySource: string | undefined;
+  if (isJSXElement(root)) {
+    const keyAttribute = (root.openingElement.attributes as unknown as Node[])
+      .find((attribute) =>
+        isJSXAttribute(attribute) && getJSXAttributeName(attribute.name) === "key",
+      );
+
+    if (keyAttribute && isJSXAttribute(keyAttribute)) {
+      if (isComponentJSXElement(root)) {
+        fail(
+          "Keyed component entries are not supported yet. Key the host template returned by a component instead.",
+          filename,
+          keyAttribute,
+        );
+      }
+
+      if (keyAttribute.value === null) {
+        fail("A render_new key must be a string, number, or bigint expression.", filename, keyAttribute);
+      }
+
+      if (isLiteralString(keyAttribute.value)) {
+        keySource = JSON.stringify(decodeHTML(keyAttribute.value.value));
+      } else if (isJSXExpressionContainer(keyAttribute.value)) {
+        const expression = keyAttribute.value.expression;
+        if (isJSXEmptyExpression(expression) || !isExpression(expression)) {
+          fail("A render_new key requires a value expression.", filename, keyAttribute);
+        }
+        keySource = compileExpression(expression);
+      } else {
+        fail("Unsupported render_new key value.", filename, keyAttribute);
+      }
+    }
+  }
+
   const references: TemplateReference[] = [];
   const bindings: EmittedBinding[] = [];
   let nextReference = 0;
@@ -898,6 +933,7 @@ function serializeProgram(
     namespace,
     references,
     bindings,
+    ...(keySource === undefined ? {} : { keySource }),
   };
 }
 
@@ -953,6 +989,7 @@ function renderProgramExpression(
 
   return "({ template: " + templateName +
     ", bindings: [" + bindings.join(", ") + "]" +
+    (program.keySource === undefined ? "" : ", key: (" + program.keySource + ")") +
     (useConstAssertions ? " } as const)" : " })");
 }
 
