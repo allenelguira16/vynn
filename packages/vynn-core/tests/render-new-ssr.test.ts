@@ -7,6 +7,9 @@ import {
   createDOMTemplateAdapter,
   hydrateRenderNew,
   mountTemplateProgram,
+  mountRenderNew,
+  onScopeDispose,
+  prepareRenderNewTree,
   renderTemplateProgramToString,
 } from "../src/render_new";
 import type { DOMTemplateProgram } from "../src/render_new/dom/program";
@@ -608,6 +611,50 @@ describe("render_new SSR and hydration", () => {
 
     mounted.dispose();
     expect(document.documentElement).not.toBeNull();
+  });
+
+  it("prepares a component once and keeps its scope alive through mount", async () => {
+    const document = createDocument();
+    const host = document.createElement("div");
+    const value = $state("prepared value");
+    let renderCount = 0;
+    let cleanupCount = 0;
+
+    const component = createRenderNewComponent(() => {
+      renderCount += 1;
+      onScopeDispose(() => {
+        cleanupCount += 1;
+      });
+
+      return {
+        template: {
+          namespace: "html",
+          markup: '<p><!--__vynn_render_new_child_0_start__--><!--__vynn_render_new_child_0_end__--></p>',
+          references: [{ id: 0, kind: "anchor", path: [0, 0] }],
+        },
+        bindings: [{
+          kind: "child" as const,
+          reference: 0,
+          read: () => value.value,
+        }],
+      };
+    });
+
+    await prepareRenderNewTree(component);
+
+    expect(renderCount).toBe(1);
+    expect(cleanupCount).toBe(0);
+
+    const mounted = mountRenderNew(host, component);
+
+    expect(renderCount).toBe(1);
+    expect(host.textContent).toBe("prepared value");
+
+    value.value = "reactive update";
+    expect(host.textContent).toBe("reactive update");
+
+    mounted.dispose();
+    expect(cleanupCount).toBe(1);
   });
 
 });
