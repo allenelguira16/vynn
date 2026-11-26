@@ -74,6 +74,6 @@ and `hydrateRenderNew(parent, App())` for DOM hydration. The matching Vite
 adapter is `vynnRenderNewOxcPlugin()` from `vite-plugin-vynn`.
 
 
-This target is experimental. It does not yet emit source maps, SSR output,
-hydration instructions, structural child instructions, or an automatic Vite
-integration.
+This target remains experimental. It does not yet emit source maps, support
+async/streaming resources, preserve keyed list identity, or integrate with
+Vynn's automatic document, router, and server-function application pipeline.
