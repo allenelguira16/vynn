@@ -22,7 +22,11 @@ import {
   getRouterMatchState,
   subscribeRouterMatchState,
 } from "./router-state";
-import type { MatchedRoute } from "./matcher";
+import {
+  compileRoutes,
+  findRouteBranch,
+  type MatchedRoute,
+} from "./matcher";
 import type {
   BeforeLoadContext,
   Location,
@@ -126,6 +130,25 @@ function isSameBranch(
     left.every((match, index) => match.node === right[index]?.node);
 }
 
+async function preloadRouterLocation<TContext>(
+  router: RouterInstance<TContext>,
+  location: Location,
+): Promise<void> {
+  const branch = findRouteBranch<TContext>(
+    compileRoutes(router.routes),
+    location,
+  );
+  const pending: Promise<unknown>[] = [];
+
+  for (const match of branch) {
+    const component = match.route.component as PreloadableRouteComponent;
+    const result = component.preload?.();
+    if (result) pending.push(result);
+  }
+
+  await Promise.all(pending);
+}
+
 /**
  * Resolves every lazy module and beforeLoad guard in the router's current
  * branch. The result is cached for the current URL and consumed by the
@@ -169,6 +192,18 @@ async function prepareRouter<TContext>(
         guards.add(match.node);
       } catch (error) {
         if (!isServer && isClientRedirect(error)) {
+          const targetLocation = {
+            pathname: error.target.pathname,
+            search: error.target.search,
+          };
+
+          if (error.target.origin === window.location.origin) {
+            // Warm the redirect destination first. createRouter() commits a
+            // branch only after its own lazy preload finishes, so this keeps
+            // the navigation synchronous from the preparation pass.
+            await preloadRouterLocation(router, targetLocation);
+          }
+
           commitClientRedirect(
             error,
             () =>
