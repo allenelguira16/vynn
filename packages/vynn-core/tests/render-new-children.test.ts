@@ -3,6 +3,7 @@ import { JSDOM } from "jsdom";
 
 import { $state } from "../src/reactivity/state";
 import { onScopeDispose } from "../src/render_new";
+import { createRenderNewComponent } from "../src/render_new/component";
 import {
   createDOMTemplateAdapter,
   mountTemplateProgram,
@@ -319,6 +320,87 @@ describe("render_new dynamic child slots", () => {
     expect(list.textContent).toBe("Beta");
 
     mounted.dispose();
+  });
+
+  it("preserves keyed component scopes and updates props in place", () => {
+    const document = createDocument();
+    const parent = document.createElement("main");
+    const adapter = createDOMTemplateAdapter(document);
+    const items = $state([
+      { id: "a", label: "Alpha" },
+      { id: "b", label: "Beta" },
+    ]);
+    let disposeCount = 0;
+
+    const rowTemplate = {
+      namespace: "html" as const,
+      markup: "<li><!--__vynn_render_new_child_0_start__--><!--__vynn_render_new_child_0_end__--></li>",
+      references: [{ id: 0, kind: "anchor" as const, path: [0, 0] }],
+    };
+
+    function Row(props: { label: string }) {
+      return createRenderNewComponent(() => {
+        onScopeDispose(() => {
+          disposeCount += 1;
+        });
+        return {
+          template: rowTemplate,
+          bindings: [{
+            kind: "child" as const,
+            reference: 0,
+            read: () => props.label,
+          }],
+        };
+      }, props, Row);
+    }
+
+    const listProgram: DOMTemplateProgram = {
+      template: {
+        namespace: "html",
+        markup: "<ul><!--__vynn_render_new_child_0_start__--><!--__vynn_render_new_child_0_end__--></ul>",
+        references: [{ id: 0, kind: "anchor", path: [0, 0] }],
+      },
+      bindings: [{
+        kind: "child",
+        reference: 0,
+        read: () => items.value.map((item) =>
+          Object.assign(Row({ label: item.label }), { key: item.id }),
+        ),
+      }],
+    };
+
+    const mounted = mountTemplateProgram(parent, listProgram, adapter);
+    const list = parent.querySelector("ul")!;
+    const originalA = list.children[0]!;
+    const originalB = list.children[1]!;
+
+    expect(Array.from(list.children).map((node) => node.textContent)).toEqual([
+      "Alpha",
+      "Beta",
+    ]);
+
+    items.value = [
+      { id: "b", label: "Beta updated" },
+      { id: "a", label: "Alpha updated" },
+    ];
+
+    expect(list.children[0]).toBe(originalB);
+    expect(list.children[1]).toBe(originalA);
+    expect(Array.from(list.children).map((node) => node.textContent)).toEqual([
+      "Beta updated",
+      "Alpha updated",
+    ]);
+    expect(disposeCount).toBe(0);
+
+    items.value = [{ id: "a", label: "Only A" }];
+
+    expect(list.children).toHaveLength(1);
+    expect(list.children[0]).toBe(originalA);
+    expect(list.textContent).toBe("Only A");
+    expect(disposeCount).toBe(1);
+
+    mounted.dispose();
+    expect(disposeCount).toBe(2);
   });
 
   it("does not stringify unsupported render values", () => {
