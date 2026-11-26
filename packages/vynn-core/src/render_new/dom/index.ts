@@ -55,6 +55,7 @@ export {
   type DOMTemplateKey,
   type DOMTemplateProgram,
   type MountedTemplateProgram,
+  type MountTemplateProgramOptions,
 } from "./program";
 
 export {
