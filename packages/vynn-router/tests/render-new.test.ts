@@ -16,6 +16,7 @@ import {
   $params,
   $search,
   createMemoryHistory,
+  type BeforeLoadContext,
   createRouter,
   Link,
   Router,
@@ -270,7 +271,7 @@ describe("render_new router adapter", () => {
         moduleLoads += 1;
         return {
           default: UserPage,
-          beforeLoad: async ({ params }) => {
+          beforeLoad: async ({ params }: BeforeLoadContext) => {
             guardCalls += 1;
             expect(params.id).toBe("42");
           },
