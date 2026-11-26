@@ -1,6 +1,6 @@
 import type { DOMTemplateProgram } from "./dom/program";
 
-const renderNewComponentBrand = Symbol.for("vynn.render_new.component");
+const renderNewComponentBrand: unique symbol = Symbol("vynn.render_new.component");
 
 /**
  * A deferred component invocation.
