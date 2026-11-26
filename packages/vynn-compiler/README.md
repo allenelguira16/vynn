@@ -63,8 +63,10 @@ nodes on the client, arrays, and nested component template programs. Host
 template programs returned from arrays can carry an explicit `key` attribute:
 compatible keyed items retain their DOM nodes across reorder, and their binding
 accessors update in place. Unkeyed arrays still replace their contents.
-Keyed component entries are not supported yet, and keyed server-rendered items
-are recreated during initial hydration rather than adopted individually. The compiler still
+During hydration, server-rendered keyed items are matched by key and compatible
+item DOM is adopted in place; missing, stale, and structurally incompatible
+items are reconciled individually. Keyed component entries are not supported
+yet. The compiler still
 rejects JSX spreads, refs, raw-HTML bindings, dynamic style objects,
 member-expression component tags, and parser-sensitive contexts such as
 tables, selects, and textareas. JSX must occur in a named component's direct
