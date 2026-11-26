@@ -2571,11 +2571,12 @@ class TransformState {
       return {
         expression: cloneNode(value.expression) as ExpressionNode,
         attribute: keyAttribute,
+        root,
       };
     }
 
     if (isLiteralString(value)) {
-      return { expression: stringLiteral(value.value), attribute: keyAttribute };
+      return { expression: stringLiteral(value.value), attribute: keyAttribute, root };
     }
 
     throw new Error(
@@ -2926,6 +2927,17 @@ class TransformState {
     // this enabled for every compiler-generated map makes imported callbacks
     // participate in the same development-only missing-key warning.
     args.push(booleanLiteral(true));
+
+    // A direct intrinsic JSX root has no callback-level reactive work outside
+    // its own compiled bindings. Those bindings already subscribe to keyed
+    // item state, so the runtime can render the row directly without allocating
+    // a second $nodes range, two marker nodes, and an extra render computation.
+    const stableIntrinsicRow =
+      !!listKey &&
+      isArrowFunctionExpression(callbackSource) &&
+      isJSXElement(callbackSource.body) &&
+      !isComponentElement(callbackSource.body);
+    args.push(booleanLiteral(stableIntrinsicRow));
 
     const result = callExpression(this.getRuntimeHelper("$for"), args);
     this.generatedForExpressions.add(result);
