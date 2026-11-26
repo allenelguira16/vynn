@@ -51,12 +51,13 @@ component helper from `vynn/render_new/internal`; it does not call the legacy
 `vynn/render` helpers or change the output of `transformVynnOxc()`.
 
 The current target supports named function components with direct JSX
-returns and conditional return expressions, complete HTML document roots with a constrained `<head>` and `<body>`, static host markup, reactive
-attributes and properties, event handlers, comment-ranged dynamic children,
-nested component programs, conditional JSX expressions, and array expressions
-such as `.map(item => <Row />)`. Component
-props are emitted as lazy getters so reactive values remain live. Component
-children are available through a `children` getter.
+returns and conditional return expressions, complete HTML document roots with
+a constrained `<head>` and `<body>`, static host markup, reactive attributes
+and properties, event handlers, comment-ranged dynamic children, nested
+component programs, conditional JSX expressions, and array expressions such
+as `.map(item => <Row />)`. Component props are emitted as lazy getters so
+reactive values remain live. Component children are available through a
+`children` getter.
 
 Dynamic slots accept nullish/boolean values, strings, numbers, bigints, DOM
 nodes on the client, arrays, and nested component template programs. Host
@@ -68,10 +69,13 @@ item DOM is adopted in place; missing, stale, and structurally incompatible
 items are reconciled individually. Keyed component entries also retain their
 component scope and DOM range when their component type and simple object-props
 shape match. Their prop cells update reactively. Components with destructured
-or otherwise non-simple parameter shapes are safely remounted on keyed updates. A document root must contain one `<head>` followed by one `<body>`; `<title>` text is currently static. The compiler still
-rejects JSX spreads, refs, raw-HTML bindings, dynamic style objects,
-member-expression component tags, and parser-sensitive contexts such as
-tables, selects, and textareas. JSX must occur in a named component's direct
+or otherwise non-simple parameter shapes are safely remounted on keyed updates.
+Document roots require exactly one `<head>` followed by one `<body>`; `<title>`
+content must be static text.
+
+The compiler still rejects JSX spreads, refs, raw-HTML bindings, dynamic style
+objects, member-expression component tags, and parser-sensitive contexts such
+as tables, selects, and textareas. JSX must occur in a named component's direct
 return, conditional/logical return expression, or a compiled JSX child
 expression. Script-mode transforms are rejected because deferred components
 need the internal ESM helper import.
