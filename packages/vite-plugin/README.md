@@ -219,87 +219,70 @@ The compiler keeps `<meta itemProp>` and `<link itemProp>` in their original
 DOM position, and does not hoist head tags written inside an SVG subtree.
 
 
-## Experimental render_new compiler target
+## Experimental render_new application renderer
 
-The new renderer is opt-in and separate from the integrated legacy application
-plugin. Use the standalone Vite transform while mounting the compiled component
-program yourself:
+The new renderer can be selected in the integrated application plugin without
+changing the legacy default:
 
 ```ts
 // vite.config.ts
 import { defineConfig } from "vite";
-import { vynnRenderNewOxcPlugin } from "vite-plugin-vynn";
+import vynn from "vite-plugin-vynn";
 
 export default defineConfig({
-  plugins: [vynnRenderNewOxcPlugin()],
+  plugins: [vynn({ renderer: "new" })],
 });
 ```
 
-A component compiled by this target returns a deferred component descriptor
-rather than a legacy VNode. The renderer executes its body inside a
-component-owned scope. Mount it with the matching runtime entry:
-
-```tsx
-import { mountRenderNew } from "vynn/render_new";
-
-function App() {
-  return <main>New renderer</main>;
-}
-
-const root = document.querySelector("#app");
-if (!root) throw new Error("Missing #app mount element");
-mountRenderNew(root, App());
-```
-
-This plugin does not change the default `vynn()` application pipeline.
-It is a standalone compiler adapter, and the new runtime is mounted explicitly.
-Do not install it alongside the legacy JSX transform for the same source files.
-
-A runnable client-only browser example is available in
-`sandbox/render-new-app`. From the workspace root, run
-`pnpm --filter render-new-app dev` and open
-[http://localhost:3001](http://localhost:3001). That sandbox installs only
-`vynnRenderNewOxcPlugin()` and manually mounts its root with
-`mountRenderNew()`.
-
-The same component descriptor can be serialized on the server and hydrated in the browser.
-The server serializer is synchronous and uses its own markup renderer, not
-Vynn's legacy SSR implementation:
+With `ssr: true`, the same option generates the new renderer's server entry
+and hydrates the document in the browser:
 
 ```ts
-// src/entry-server.ts
-import { renderTemplateProgramToString } from "vynn/render_new/server";
-import { App } from "./App";
+plugins: [vynn({ renderer: "new", ssr: true })]
+```
 
-export function render() {
-  return renderTemplateProgramToString(App());
+The app component must return one complete document root with exactly one
+`<head>` followed by one `<body>`:
+
+```tsx
+export default function App() {
+  return (
+    <html lang="en">
+      <head>
+        <title>My Vynn app</title>
+        <meta name="description" content="A Vynn application." />
+      </head>
+      <body>
+        <main>Hello from render_new</main>
+      </body>
+    </html>
+  );
 }
 ```
 
-Place that HTML inside the same mount element on the server. The browser can
-then adopt it:
+Vynn generates the client entry automatically. Client-only mode mounts the
+new document tree; SSR mode adopts the existing server-rendered
+`document.documentElement`. The server entry uses the independent
+`renderTemplateProgramToString()` serializer and feeds its complete HTML
+document into the existing Vite asset-injection handler. The renderer's own
+SSR pass is synchronous even though the outer response can still stream.
 
-```tsx
-import { hydrateRenderNew } from "vynn/render_new";
-import { App } from "./App";
+The legacy renderer remains the default. Do not install
+`vynnRenderNewOxcPlugin()` alongside `vynn({ renderer: "new" })` for the same
+files. The standalone adapter remains available for projects that want to
+mount the renderer themselves.
 
-const root = document.querySelector("#app");
-if (!root) throw new Error("Missing #app mount element");
+A working integrated client sandbox is available in `sandbox/render-new-app`:
 
-hydrateRenderNew(root, App());
+```sh
+pnpm --filter render-new-app dev
 ```
 
-Hydration preserves compatible static elements and recursively adopts
-compatible nested component programs and primitive child ranges. Keyed host
-template and component lists serialize per-item key markers on the server,
-adopt compatible items in place, and reorder their existing DOM ranges. Keyed
-components of the same component type retain their component scope and receive
-reactive prop updates when their parameter is a simple props object. Unsupported
-parameter shapes are remounted safely. Missing, stale, and structurally
-incompatible items are reconciled individually.
+Open [http://localhost:3001](http://localhost:3001).
 
-This is not yet connected to the integrated `vynn({ ssr: true })` document
-pipeline, file router, or server-function request handling. The standalone
-server API is synchronous, does not yet coordinate async resources or
-streaming, and the compiler currently returns `map: null`. Keep this target
-isolated from the legacy renderer while those framework-level pieces are built.
+This mode is still experimental. The current integration does not yet support
+the legacy `vynn-router` `Router` component, async/streaming resources,
+dynamic `<title>` content, or the legacy reactive head-metadata runtime.
+The compiler also retains its documented restrictions on spreads, refs,
+raw-HTML bindings, dynamic style objects, member-expression component tags,
+and parser-sensitive contexts such as tables, selects, and textareas.
