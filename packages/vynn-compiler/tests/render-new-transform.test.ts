@@ -18,7 +18,7 @@ describe("render_new JSX compiler target", () => {
     expect(code).toContain('kind: "child", reference: 0');
     expect(code).toContain("read: () => (props.name)");
     expect(code).toContain("as const");
-    expect(code).not.toContain("vynn/render");
+    expect(code).not.toContain('from "vynn/render";');
   });
 
   it("compiles reactive attributes, form properties, and event listeners", () => {
@@ -337,6 +337,30 @@ describe("render_new JSX compiler target", () => {
     expect(secondProgram.template).toBe(program.template);
     expect(secondProgram.bindings[0].read()).toBe("Second title");
     expect(secondProgram.bindings[1].read()).toBe("Second label");
+  });
+
+  it("defers a component body until the returned descriptor is rendered", () => {
+    const code = transformVynnRenderNewOxc(
+      "function Page(props) { props.onRender(); return <p>{props.label}</p>; }",
+      "page.jsx",
+    );
+    const executable = code.replace(
+      'import { createRenderNewComponent as _vynnCreateRenderNewComponent } from "vynn/render_new/internal";',
+      "const _vynnCreateRenderNewComponent = (render) => ({ render });",
+    );
+    const createPage = new Function(executable + "\\nreturn Page;") as () => (
+      props: { label: string; onRender: () => void },
+    ) => { render: () => unknown };
+
+    let calls = 0;
+    const component = createPage()({
+      label: "deferred",
+      onRender: () => calls++,
+    });
+
+    expect(calls).toBe(0);
+    component.render();
+    expect(calls).toBe(1);
   });
 
   it("returns original source when the module contains no JSX", () => {
