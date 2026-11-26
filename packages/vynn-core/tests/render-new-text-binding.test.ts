@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { JSDOM } from "jsdom";
 
+import { $effect } from "../src/reactivity/effect";
 import { $state } from "../src/reactivity/state";
 import {
   createScope,
@@ -40,6 +41,34 @@ describe("render_new text binding", () => {
     value.value = "second";
 
     expect(node.data).toBe("second");
+
+    disposeScope(scope);
+  });
+
+  it("updates before ordinary effects run", async () => {
+    const document = createDocument();
+    const node = document.createTextNode("");
+    const scope = createScope(null);
+    const value = $state("first");
+    const observed: string[] = [];
+
+    bindText(scope, node, () => value.value);
+    $effect(() => {
+      value.value;
+      observed.push(node.data);
+    });
+
+    expect(observed).toEqual(["first"]);
+
+    value.value = "second";
+
+    // Render-priority effects flush synchronously; ordinary effects wait for
+    // the scheduled effect queue.
+    expect(node.data).toBe("second");
+    expect(observed).toEqual(["first"]);
+
+    await new Promise<void>((resolve) => queueMicrotask(resolve));
+    expect(observed).toEqual(["first", "second"]);
 
     disposeScope(scope);
   });
