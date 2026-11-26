@@ -29,3 +29,35 @@ when needed to avoid a name collision.
 
 Run this transform before any other JSX transform; do not run a second JSX
 lowering pass on the same source.
+
+
+## Experimental `render_new` target
+
+The compiler also exposes a separate, experimental target for Vynn's independent
+`render_new` runtime:
+
+```ts
+import { transformVynnRenderNewOxc } from "vynn-compiler/render-new";
+
+const code = transformVynnRenderNewOxc(source, "App.tsx");
+```
+
+This target emits `DOMTemplateProgram`-shaped values containing static template
+markup, numeric node references, and reactive binding accessors. It does not
+import or call the legacy `vynn/render` helpers and does not change the output
+of `transformVynnOxc()`.
+
+The initial target intentionally supports a limited subset: named function
+components returning host JSX, static host elements and text, standalone
+dynamic text nodes, dynamic attributes, common form-control properties, and
+event handlers. It currently rejects component children, spreads, refs,
+conditional/list children, mixed static/dynamic text in one text node, and
+parser-sensitive HTML contexts such as tables, selects, and textareas.
+
+Generated component functions return a template program rather than mounting
+it. The caller supplies a DOM parent and adapter to
+`mountTemplateProgram(parent, program, adapter)` from `vynn/render_new`.
+
+This target is experimental. It does not yet emit source maps, SSR output,
+hydration instructions, structural child instructions, or an automatic Vite
+integration.
