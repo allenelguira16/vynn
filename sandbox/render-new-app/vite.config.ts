@@ -1,8 +1,12 @@
 import { defineConfig } from "vite";
-import { vynnRenderNewOxcPlugin } from "vite-plugin-vynn";
+import vynn from "vite-plugin-vynn";
 
 export default defineConfig({
-  plugins: [vynnRenderNewOxcPlugin()],
+  plugins: [
+    vynn({
+      renderer: "new",
+    }),
+  ],
   server: {
     port: 3001,
     strictPort: true,
