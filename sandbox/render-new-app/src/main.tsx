@@ -1,4 +1,4 @@
-import { mountRenderNew } from "vynn/render_new";
+import { mountRenderNew, type RenderNewComponent } from "vynn/render_new";
 
 import App from "./App";
 import "./style.css";
@@ -9,4 +9,5 @@ if (!root) {
   throw new Error("[render-new-app]: Missing #app mount element.");
 }
 
-mountRenderNew(root, App());
+// The experimental transform replaces JSX return values with deferred descriptors.
+mountRenderNew(root, App() as unknown as RenderNewComponent);
