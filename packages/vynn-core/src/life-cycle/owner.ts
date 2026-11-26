@@ -15,6 +15,8 @@ export interface Owner {
   mount?: (() => void | (() => void))[];
   disposed?: boolean;
   context?: Map<string | symbol, unknown>;
+  /** Runtime context retained for asynchronous owner re-entry. */
+  runtimeContext?: RuntimeContext;
   /** Stable hydration identity for this owner, when it owns an identity slot. */
   id: string | undefined;
   /** Nearest ancestor (or self) that owns the hydration ID sequence. */
@@ -58,8 +60,6 @@ const ROOT_OWNER_ID = "0";
 
 const ownerIDReservations = new WeakMap<Owner, OwnerIDReservations>();
 const ownerIDTrackers = new WeakMap<Owner, OwnerIDTracker[]>();
-const ownerRuntimeContexts = new WeakMap<Owner, RuntimeContext>();
-const initializedOwnerRuntimeContexts = new WeakSet<Owner>();
 
 function isWithinRuntimeContext(
   context: RuntimeContext,
@@ -81,7 +81,7 @@ function isWithinRuntimeContext(
  * without losing the app, route, or boundary context it inherited.
  */
 function getOwnerRuntimeContext(owner: Owner): RuntimeContext {
-  let context = ownerRuntimeContexts.get(owner);
+  let context = owner.runtimeContext;
   if (context) return context;
 
   const currentContext = getRuntimeContext();
@@ -94,7 +94,7 @@ function getOwnerRuntimeContext(owner: Owner): RuntimeContext {
       : parentContext ?? currentContext;
 
   context = createRuntimeContext(inheritedContext);
-  ownerRuntimeContexts.set(owner, context);
+  owner.runtimeContext = context;
   return context;
 }
 
@@ -275,7 +275,7 @@ export function createOwner(parent = getOwner(), options: OwnerOptions = {}): Ow
       ? currentContext
       : parentContext;
 
-    ownerRuntimeContexts.set(owner, createRuntimeContext(inheritedContext));
+    owner.runtimeContext = createRuntimeContext(inheritedContext);
   }
 
   if (parent) getOwnerChildren(parent).push(owner);
@@ -306,8 +306,8 @@ export function runWithOwner<T>(owner: Owner | null, fn: () => T): T {
   // The first activation initializes the persistent frame for this owner.
   // Later activations use a child frame, preserving any explicitly captured
   // descendant context while isolating temporary writes between callbacks.
-  if (!initializedOwnerRuntimeContexts.has(owner)) {
-    initializedOwnerRuntimeContexts.add(owner);
+  if (!ownerContext.ownerInitialized) {
+    ownerContext.ownerInitialized = true;
 
     return runWithRuntimeContext(ownerContext, () => {
       setRuntimeOwner(owner);
