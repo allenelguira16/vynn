@@ -2,6 +2,7 @@ import type { DOMTemplateProgram } from "../dom/program";
 import type { TemplateReference } from "../template/types";
 import { createDOMTemplateKeyMarkerData } from "../dom/keyed";
 import { createScope, disposeScope, runWithScope } from "../lifecycle/scope";
+import { prepareRenderNewTree } from "../prepare";
 import {
   isRenderNewComponent,
   resolveRenderNewComponentProgram,
@@ -431,6 +432,18 @@ export function renderTemplateProgramToString(
   } finally {
     disposeScope(scope);
   }
+}
+
+
+/**
+ * Prepares asynchronous component boundaries (for example route modules and
+ * guards) before using the synchronous serializer.
+ */
+export async function renderTemplateProgramToStringAsync(
+  program: DOMTemplateProgram | RenderNewComponent,
+): Promise<string> {
+  await prepareRenderNewTree(program);
+  return renderTemplateProgramToString(program);
 }
 
 export { escapeAttribute as escapeRenderNewAttribute, escapeText as escapeRenderNewText };
