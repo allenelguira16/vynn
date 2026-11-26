@@ -135,6 +135,20 @@ describe("render_new deferred component scopes", () => {
     expect(parent.childNodes).toHaveLength(0);
   });
 
+  it("treats nullish and boolean component branches as empty output", () => {
+    const document = createDocument();
+    const parent = document.createElement("main");
+
+    const component = createRenderNewComponent(() => null);
+    const mounted = mountRenderNew(parent, component);
+
+    expect(parent.childNodes).toHaveLength(0);
+    expect(renderTemplateProgramToString(component)).toBe("");
+
+    mounted.dispose();
+    expect(parent.childNodes).toHaveLength(0);
+  });
+
   it("executes and disposes component resources during standalone SSR", () => {
     let renderCalls = 0;
     let disposeCalls = 0;
