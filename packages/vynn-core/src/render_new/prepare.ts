@@ -216,10 +216,10 @@ export async function prepareRenderNewTree(
   }
 
   const rootScope = createRootScope();
-  runWithScope(rootScope, initializeAsyncHydrationRuntime);
   const components: RenderNewComponent[] = [];
   const readers: Array<() => unknown> = [];
   try {
+    runWithScope(rootScope, initializeAsyncHydrationRuntime);
     await prepareValue(
       program,
       rootScope,

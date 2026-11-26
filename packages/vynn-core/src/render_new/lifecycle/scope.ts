@@ -78,16 +78,13 @@ function assertActive(scope: RenderScope, operation: string): ScopeRecord {
 }
 
 /**
- * Creates an independent render lifetime.
- *
- * When parent is omitted, the current render scope is used. If there is no
- * current render scope, the new scope inherits the current Vynn Owner, when
- * one exists. Pass null to create a detached root scope.
- *
- * Render scopes use transparent Vynn Owners: they inherit reactive and runtime
- * context, but do not allocate hydration identity slots.
+ * Constructs a render scope and its backing Owner. Only the root render scope
+ * owns a hydration identity; ordinary component scopes remain transparent.
  */
-function createScopeInternal(parent: RenderScope | null | undefined, identity: boolean): RenderScope {
+function createScopeInternal(
+  parent: RenderScope | null | undefined,
+  identity: boolean,
+): RenderScope {
   const parentScope = parent === undefined ? getCurrentScope() : parent;
   const parentRecord = parentScope ? assertActive(parentScope, "create a child in") : undefined;
   const activeOwner = getOwner();
@@ -144,7 +141,13 @@ export function createRootScope(): RenderScope {
   return createScopeInternal(null, true);
 }
 
-/** Creates a transparent child scope under the current or supplied scope. */
+/**
+ * Creates an independent transparent render lifetime.
+ *
+ * When parent is omitted, the current render scope is used. If there is no
+ * current render scope, the new scope inherits the active Vynn Owner.
+ * Pass null to create a detached scope without a hydration identity.
+ */
 export function createScope(parent?: RenderScope | null): RenderScope {
   return createScopeInternal(parent, false);
 }

@@ -89,6 +89,7 @@ describe("render_new Await boundary", () => {
     });
 
     const htmlPromise = renderTemplateProgramToStringAsync(app);
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
     resolveResource();
     const html = await htmlPromise;
 
