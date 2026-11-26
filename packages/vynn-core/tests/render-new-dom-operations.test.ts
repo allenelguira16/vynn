@@ -87,6 +87,33 @@ describe("render_new DOM insertion and movement", () => {
     expect(elementNames(parent)).toEqual(["b", "i", "em"]);
   });
 
+  it("treats insertion of a node before itself as a no-op", () => {
+    const document = createDocument();
+    const parent = document.createElement("div");
+    const child = document.createElement("span");
+
+    parent.append(child);
+
+    expect(insertDOMNode(parent, child, child)).toBe(child);
+    expect(parent.firstChild).toBe(child);
+    expect(parent.childNodes).toHaveLength(1);
+  });
+
+  it("inserts DocumentFragment children and returns the nodes actually inserted", () => {
+    const document = createDocument();
+    const parent = document.createElement("div");
+    const fragment = document.createDocumentFragment();
+    const first = document.createElement("a");
+    const second = document.createElement("b");
+
+    fragment.append(first, second);
+    const inserted = insertDOMNodes(parent, [fragment]);
+
+    expect(inserted).toEqual([first, second]);
+    expect(fragment.childNodes).toHaveLength(0);
+    expect(elementNames(parent)).toEqual(["a", "b"]);
+  });
+
   it("inserts an ordered group without reversing existing or detached nodes", () => {
     const document = createDocument();
     const parent = document.createElement("div");
@@ -131,6 +158,32 @@ describe("render_new DOM insertion and movement", () => {
     moveDOMNode(third, parent, first);
 
     expect(elementNames(parent)).toEqual(["c", "a", "b"]);
+  });
+
+  it("rejects hierarchy cycles without detaching the original node", () => {
+    const document = createDocument();
+    const outer = document.createElement("div");
+    const inner = document.createElement("section");
+
+    outer.append(inner);
+
+    expect(() => insertDOMNode(inner, outer))
+      .toThrow("cannot be inserted into itself or one of its descendants");
+    expect(inner.parentNode).toBe(outer);
+    expect(outer.firstChild).toBe(inner);
+  });
+
+  it("restores source nodes when the destination rejects the insertion", () => {
+    const document = createDocument();
+    const source = document.createElement("section");
+    const secondRoot = document.createElement("main");
+
+    source.append(secondRoot);
+
+    expect(() => insertDOMNode(document, secondRoot))
+      .toThrow();
+    expect(secondRoot.parentNode).toBe(source);
+    expect(source.firstChild).toBe(secondRoot);
   });
 
   it("rejects invalid parents, references, and duplicate node groups", () => {
