@@ -223,6 +223,35 @@ describe("render_new JSX compiler target", () => {
     expect(code).toContain('from "vynn/render"');
   });
 
+  it("emits executable JavaScript programs with live accessor closures", () => {
+    const code = transformVynnRenderNewOxc(
+      `function Page(props) {
+        return <button title={props.title}>{props.label}</button>;
+      }`,
+      "page.jsx",
+    );
+
+    expect(code).not.toContain(" as const");
+
+    const createPage = new Function(code + "\\nreturn Page;") as () => (
+      props: { title: string; label: string },
+    ) => {
+      template: { markup: string; namespace: string; references: unknown[] };
+      bindings: Array<{ kind: string; read: () => unknown }>;
+    };
+
+    const Page = createPage();
+    const program = Page({ title: "First title", label: "First label" });
+
+    expect(program.template.markup).toBe(
+      '<button>__vynn_render_new_text_0__</button>',
+    );
+    expect(program.template.namespace).toBe("html");
+    expect(program.bindings).toHaveLength(2);
+    expect(program.bindings[0].read()).toBe("First title");
+    expect(program.bindings[1].read()).toBe("First label");
+  });
+
   it("returns original source when the module contains no JSX", () => {
     const source = "export const value: number = 42;";
     expect(transformVynnRenderNewOxc(source, "value.ts")).toBe(source);
