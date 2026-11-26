@@ -9,7 +9,6 @@ import {
   hydrateTemplateProgramInRange,
 } from "./hydrate";
 import type { MountedTemplate } from "./mount";
-import type { TemplateInstance } from "../template/types";
 
 export interface HydrationRange {
   readonly start: Comment;
@@ -132,6 +131,3 @@ export function hydrateRenderNewComponent(
   }
 }
 
-export function isDeferredComponent(value: unknown): value is RenderNewComponent {
-  return isRenderNewComponent(value);
-}
