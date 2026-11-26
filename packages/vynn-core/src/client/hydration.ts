@@ -47,7 +47,12 @@ type LazyHydrationNodes = HydrationScope & { id: string };
 
 let rootHydrationScope: HydrationScope | undefined;
 let serverRenderedLazy = new Map<string, LazyHydrationNodes>();
-let lazyStartScopes = new WeakMap<Node, LazyHydrationNodes>();
+type LazyRangeReference = {
+  parentId: string | undefined;
+  end?: Text;
+};
+
+let lazyStartRanges = new WeakMap<Node, LazyRangeReference>();
 let lazyBoundaryAnchors = new WeakSet<Node>();
 let rawHTMLHydrationHosts = new WeakSet<Element>();
 let internalRangeHydrationNodes = new WeakSet<Node>();
@@ -144,13 +149,13 @@ function isSkippedHydrationElement(element: Element): boolean {
 }
 
 function nextHydrationTraversalNode(node: Node, cursor: HydrationCursor): Node | null {
-  const nestedScope = lazyStartScopes.get(node);
+  const nestedRange = lazyStartRanges.get(node);
   if (
-    nestedScope &&
-    nestedScope.parentId === cursor.scopeId &&
-    nestedScope.end?.parentNode === nestedScope.start?.parentNode
+    nestedRange &&
+    nestedRange.parentId === cursor.scopeId &&
+    nestedRange.end?.parentNode === node.parentNode
   ) {
-    const next = nestedScope.end.nextSibling;
+    const next = nestedRange.end.nextSibling;
     return next === cursor.end ? null : next;
   }
 
@@ -180,13 +185,13 @@ function findNextHydrationNode(
 
   let node = cursor.current;
   while (node && node !== cursor.end) {
-    const nestedScope = lazyStartScopes.get(node);
+    const nestedRange = lazyStartRanges.get(node);
     if (
-      nestedScope &&
-      nestedScope.parentId === cursor.scopeId &&
-      nestedScope.end?.parentNode === nestedScope.start?.parentNode
+      nestedRange &&
+      nestedRange.parentId === cursor.scopeId &&
+      nestedRange.end?.parentNode === node.parentNode
     ) {
-      const next = nestedScope.end.nextSibling;
+      const next = nestedRange.end.nextSibling;
       node = next === cursor.end ? null : next;
       cursor.current = node;
       continue;
@@ -249,8 +254,8 @@ function finishRootIfClaimed(): void {
   if (scopeHasUnclaimedNodes(rootHydrationScope)) return;
 
   rootHydrationScope.hydrating = false;
-  if (rootHydrationScope.elementCursor) rootHydrationScope.elementCursor.current = null;
-  if (rootHydrationScope.textCursor) rootHydrationScope.textCursor.current = null;
+  rootHydrationScope.elementCursor = undefined;
+  rootHydrationScope.textCursor = undefined;
   rootHydrationScope = undefined;
 }
 
@@ -336,8 +341,11 @@ function scheduleAfterHydrationCheck(): void {
 function finishIfClaimed(scope: LazyHydrationNodes): void {
   if (scope.finished && !scopeHasUnclaimedNodes(scope)) {
     scope.hydrating = false;
-    if (scope.elementCursor) scope.elementCursor.current = null;
-    if (scope.textCursor) scope.textCursor.current = null;
+    scope.elementCursor = undefined;
+    scope.textCursor = undefined;
+    scope.start = undefined;
+    scope.end = undefined;
+    scope.parentId = undefined;
     pendingLazyHydration.delete(scope.id);
     serverRenderedLazy.delete(scope.id);
     scheduleAfterHydrationCheck();
@@ -548,7 +556,7 @@ function findInternalRangeEnd(start: Comment): Comment | undefined {
 function getServerRenderedNodes(root: Node): Map<string, LazyHydrationNodes> {
   const lazy = new Map<string, LazyHydrationNodes>();
   const boundaryStack: string[] = [];
-  lazyStartScopes = new WeakMap<Node, LazyHydrationNodes>();
+  lazyStartRanges = new WeakMap<Node, LazyRangeReference>();
   lazyBoundaryAnchors = new WeakSet<Node>();
   rawHTMLHydrationHosts = new WeakSet<Element>();
   internalRangeHydrationNodes = new WeakSet<Node>();
@@ -641,7 +649,7 @@ function getServerRenderedNodes(root: Node): Map<string, LazyHydrationNodes> {
 
         const scope = getOrCreateLazyNodes(id, boundaryStack.at(-1));
         scope.start = anchor;
-        lazyStartScopes.set(anchor, scope);
+        lazyStartRanges.set(anchor, { parentId: scope.parentId });
         lazyBoundaryAnchors.add(anchor);
         boundaryStack.push(id);
         return nextSibling;
@@ -657,6 +665,10 @@ function getServerRenderedNodes(root: Node): Map<string, LazyHydrationNodes> {
 
         const scope = getOrCreateLazyNodes(id, boundaryStack.at(-2));
         scope.end = anchor;
+        if (scope.start) {
+          const range = lazyStartRanges.get(scope.start);
+          if (range) range.end = anchor;
+        }
         lazyBoundaryAnchors.add(anchor);
 
         const index = boundaryStack.lastIndexOf(id);
