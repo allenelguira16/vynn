@@ -213,7 +213,7 @@ describe("render_new DOM insertion and movement", () => {
 
     expect(fragment.firstChild).toBe(section);
     expect(topLevelComment.parentNode).toBe(document);
-    expect(document.firstChild).toBe(topLevelComment);
+    expect(topLevelComment.nextSibling).toBe(document.documentElement);
   });
 });
 
