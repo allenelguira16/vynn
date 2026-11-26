@@ -261,7 +261,7 @@ export function setDOMAttributeValue<E extends Element>(
       next != null &&
       !rawHTMLContentElements.has(element) &&
       !isHydrationClaimActive() &&
-      element.childNodes.length > 0
+      element.firstChild !== null
     ) {
       throw new Error("[vynn]: An element cannot have both the html prop and children.");
     }
