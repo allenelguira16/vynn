@@ -21,6 +21,10 @@
     "./server-functions": {
       "types": "./src/server-functions/index.ts",
       "import": "./src/server-functions/index.ts"
+    },
+    "./render-new": {
+      "types": "./src/render-new.ts",
+      "import": "./src/render-new.ts"
     }
   },
   "scripts": {
