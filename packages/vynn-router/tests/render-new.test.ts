@@ -5,7 +5,9 @@ import { describe, expect, it } from "vitest";
 import {
   createScope,
   disposeScope,
+  hydrateRenderNew,
   mountRenderNew,
+  prepareRenderNewTree,
   renderTemplateProgramToStringAsync,
   runWithScope,
   type DOMTemplateProgram,
@@ -131,7 +133,10 @@ describe("render_new router adapter", () => {
     const serverScope = createScope(null);
     const serverRouter = runWithScope(
       serverScope,
-      () => createRouter({ routes, url: "/" }),
+      () => createRouter({
+        routes,
+        history: createMemoryHistory({ initialEntries: ["/"] }),
+      }),
     );
     const serverApp = runWithScope(
       serverScope,
