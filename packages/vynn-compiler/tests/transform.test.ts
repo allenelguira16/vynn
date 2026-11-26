@@ -563,7 +563,7 @@ describe("Vynn Oxc JSX compiler", () => {
     );
 
     expect(code).toContain("_$for(");
-    expect(code).toMatch(/, true, true\)/);
+    expect(code).toMatch(/, true, true, false\)/);
   });
 
   it("preserves Array.map thisArg when lowering a JSX callback", () => {
