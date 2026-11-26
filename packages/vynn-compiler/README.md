@@ -50,9 +50,10 @@ import or call the legacy `vynn/render` helpers and does not change the output
 of `transformVynnOxc()`.
 
 The current target supports named function components with direct JSX
-returns, static host markup, reactive attributes and properties, event handlers,
-comment-ranged dynamic children, nested component programs, conditional JSX
-expressions, and array expressions such as `.map(item => <Row />)`. Component
+returns and conditional return expressions, static host markup, reactive
+attributes and properties, event handlers, comment-ranged dynamic children,
+nested component programs, conditional JSX expressions, and array expressions
+such as `.map(item => <Row />)`. Component
 props are emitted as lazy getters so reactive values remain live. Component
 children are available through a `children` getter.
 
