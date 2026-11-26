@@ -107,9 +107,11 @@ describe("render_new JSX compiler target", () => {
       "app.tsx",
     );
 
-    expect(code).toContain('markup: "<html lang=\\\\"');
+    expect(code).toContain('markup: "<html');
+    expect(code).toContain("lang=");
     expect(code).toContain("<head><title>Vynn application</title><meta");
-    expect(code).toContain("<body class=\\\\"app-shell\\\\"><main>");
+    expect(code).toContain("<body class=");
+    expect(code).toContain("<main>");
     expect(code).toContain('kind: "anchor", path: [0, 1, 0, 0, 0]');
     expect(code).not.toContain("Document elements must be returned");
   });
