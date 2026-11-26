@@ -1001,7 +1001,7 @@ function collectJSXReturns(
       roots.push(argument);
       return;
     }
-    if (argument && containsJSX(argument)) {
+    if (argument) {
       dynamicReturns.push(argument);
     }
     return;
@@ -1228,7 +1228,8 @@ export function transformVynnRenderNewOxcWithMap(
       (isType(component, "FunctionDeclaration") ||
         isType(component, "FunctionExpression") ||
         isType(component, "ArrowFunctionExpression")) &&
-      isType(component.body, "BlockStatement")
+      isType(component.body, "BlockStatement") &&
+      containsJSX(component.body)
     ) {
       collectJSXReturns(component.body, roots, dynamicReturns, component);
     }
