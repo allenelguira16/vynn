@@ -355,8 +355,11 @@ describe("render_new router adapter", () => {
       scope,
       () => createRouter({ routes, url: "/private" }),
     );
-    const program = runWithScope(scope, () => Router({ router }));
-    const html = await renderTemplateProgramToStringAsync(program as unknown as DOMTemplateProgram);
+    const program = runWithScope(
+      scope,
+      () => Router({ router }) as unknown as RenderNewComponent,
+    );
+    const html = await renderTemplateProgramToStringAsync(program);
 
     expect(moduleLoads).toBe(1);
     expect(guardCalls).toBe(1);
