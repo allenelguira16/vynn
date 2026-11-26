@@ -5,6 +5,8 @@ import type { RenderMode } from "vynn";
 import { vynnAppPlugin } from "./plugins/app/index.ts";
 import { vynnFileRouterPlugin } from "./plugins/file-router.ts";
 import { vynnOxcPlugin } from "./plugins/jsx-transpiler.ts";
+import { vynnRenderNewOxcPlugin } from "./plugins/render-new-transpiler.ts";
+import type { VynnRenderer } from "./plugins/app/documents.ts";
 import { vynnNodeAdapterPlugin } from "./plugins/node-adapter.ts";
 import {
   type VynnServerFunctionsOptions,
@@ -24,6 +26,8 @@ export type VynnPluginOptions = {
   ssr?: boolean;
   /** SSR render mode. Defaults to "stream". */
   ssrMode?: RenderMode;
+  /** Select the JSX renderer. The legacy renderer remains the default. */
+  renderer?: VynnRenderer;
   /** Enable "use server" RPC handling. */
   serverFunctions?: boolean | VynnServerFunctionsOptions;
 };
@@ -38,7 +42,10 @@ export type VynnPluginOptions = {
  * Server functions are optional and can also be used without SSR.
  */
 export default function vynn(options: VynnPluginOptions = {}) {
-  const plugins: Plugin[] = [vynnFileRouterPlugin(), vynnOxcPlugin()];
+  const jsxPlugin = options.renderer === "new"
+    ? vynnRenderNewOxcPlugin()
+    : vynnOxcPlugin();
+  const plugins: Plugin[] = [vynnFileRouterPlugin(), jsxPlugin];
   const ssrCss = options.ssr ? createVynnSsrCssPlugin() : undefined;
   const ssrPreload = options.ssr ? vynnSsrPreloadPlugin() : undefined;
   const serverFunctionsOptions =
@@ -60,6 +67,7 @@ export default function vynn(options: VynnPluginOptions = {}) {
     vynnAppPlugin({
       ssr: options.ssr === true,
       ssrMode: options.ssrMode ?? "stream",
+      renderer: options.renderer ?? "legacy",
       ssrCss,
       serverFunctions:
         options.serverFunctions && serverFunctionsOptions?.enabled !== false
