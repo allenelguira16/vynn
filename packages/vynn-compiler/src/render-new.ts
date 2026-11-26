@@ -338,7 +338,7 @@ function serializeChildren(
   children: readonly Node[],
   source: string,
   filename: string,
-  parentTag: string,
+  inSVG: boolean,
   textIndex: { value: number },
 ): SerializedNode[] {
   const result: SerializedNode[] = [];
@@ -355,7 +355,7 @@ function serializeChildren(
         child.children as unknown as Node[],
         source,
         filename,
-        parentTag,
+        inSVG,
         textIndex,
       );
       for (const node of nested) appendSerialized(result, node);
@@ -396,7 +396,7 @@ function serializeChildren(
     }
 
     if (isJSXElement(child)) {
-      result.push(serializeElement(child, source, filename, textIndex, false));
+      result.push(serializeElement(child, source, filename, textIndex, inSVG));
       continue;
     }
 
@@ -427,7 +427,7 @@ function serializeElement(
   source: string,
   filename: string,
   textIndex: { value: number },
-  root: boolean,
+  parentInSVG: boolean,
 ): SerializedElement {
   if (!isJSXElement(node)) {
     fail("Expected a JSX element.", filename, node);
@@ -462,9 +462,8 @@ function serializeElement(
     );
   }
 
-  const inSVG = lowerTag === "svg" || tag.toLowerCase() === "foreignobject"
-    ? lowerTag === "svg"
-    : false;
+  const inSVG = parentInSVG || lowerTag === "svg";
+  const childrenInSVG = inSVG && lowerTag !== "foreignobject";
 
   const attributes: string[] = [];
   const bindings: PendingBinding[] = [];
@@ -566,7 +565,7 @@ function serializeElement(
         node.children as unknown as Node[],
         source,
         filename,
-        lowerTag,
+        childrenInSVG,
         textIndex,
       );
 
@@ -629,12 +628,12 @@ function serializeProgram(
         root.children as unknown as Node[],
         source,
         filename,
-        "",
+        false,
         textIndex,
       ),
     );
   } else if (isJSXElement(root)) {
-    roots.push(serializeElement(root, source, filename, textIndex, true));
+    roots.push(serializeElement(root, source, filename, textIndex, false));
   } else {
     fail("Expected a JSX element or fragment return.", filename, root);
   }
@@ -755,7 +754,7 @@ function renderProgramExpression(program: SerializedProgram): string {
   return "({ template: { markup: " + JSON.stringify(program.markup) +
     ', namespace: "' + program.namespace +
     '", references: [' + references.join(", ") +
-    '] }, bindings: [' + bindings.join(", ") + "] })";
+    '] }, bindings: [' + bindings.join(", ") + "] } as const)";
 }
 
 function isComponentFunction(node: Node): boolean {
