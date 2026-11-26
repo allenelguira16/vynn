@@ -23,3 +23,5 @@ export * from "./dom";
 export * from "./binding";
 
 export * from "./ssr";
+
+export { prepareRenderNewTree } from "./prepare";
