@@ -9,7 +9,9 @@ import {
   beginHydrationClaim,
   claimHydrationElement,
   claimHydrationText,
+  finishServerRenderedLazy,
   getServerRenderedLazyRange,
+  isHydrating,
   rollbackHydrationClaim,
   withHydration,
   withServerRenderedLazy,
@@ -101,6 +103,51 @@ describe("lazy hydration text anchors", () => {
       expect(claimHydrationElement()).toBe(rootElement);
     });
     disposeOwner(rootOwner);
+  });
+});
+
+describe("hydration cursor release", () => {
+  it("releases the root cursor after its final element and text claims", () => {
+    const root = document.createElement("div");
+    root.innerHTML = "<main>ready</main>";
+
+    const element = root.querySelector("main");
+    const text = element?.firstChild;
+    withHydration(() => {}, root);
+
+    const owner = createOwner(null);
+    runWithOwner(owner, () => {
+      expect(claimHydrationElement()).toBe(element);
+      expect(claimHydrationText()).toBe(text);
+    });
+
+    expect(isHydrating(false)).toBe(false);
+    expect(claimHydrationElement()).toBeUndefined();
+    disposeOwner(owner);
+  });
+
+  it("releases a completed lazy scope and its retained node references", () => {
+    const root = document.createElement("div");
+    root.innerHTML = '<!--l:9--><article id="lazy">ready</article><!--/l:9-->';
+
+    const element = root.querySelector("#lazy");
+    const text = element?.firstChild;
+    withHydration(() => {}, root);
+
+    expect(getServerRenderedLazyRange("9")).toBeDefined();
+
+    const owner = createOwner(null);
+    runWithOwner(owner, () => {
+      withServerRenderedLazy("9", () => {
+        expect(claimHydrationElement()).toBe(element);
+        expect(claimHydrationText()).toBe(text);
+        finishServerRenderedLazy("9");
+      });
+    });
+
+    expect(getServerRenderedLazyRange("9")).toBeUndefined();
+    expect(isHydrating()).toBe(false);
+    disposeOwner(owner);
   });
 });
 
