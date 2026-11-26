@@ -18,7 +18,7 @@ type ForEntry<T> = {
   identity: unknown;
   itemState?: State<T>;
   node: JSX.Element;
-  index: State<number>;
+  index?: State<number>;
   owner: Owner;
 };
 
@@ -72,6 +72,7 @@ export function $for<T, K>(
   getKey: ((item: T, index: number) => K) | undefined,
   warnMissingKey: boolean,
   stableRow?: boolean,
+  trackIndex?: boolean,
 ): JSX.Element;
 
 export function $for<T>(
@@ -82,6 +83,7 @@ export function $for<T>(
   getKey?: (item: T, index: number) => unknown,
   warnMissingKey = false,
   stableRow = false,
+  trackIndex = true,
 ): JSX.Element {
   const namespace = getCurrentDOMNamespace();
   const keyed = getKey !== undefined;
@@ -105,10 +107,10 @@ export function $for<T>(
     item: T | State<T>,
     index: State<number>,
   ) => JSX.Element;
-  const renderEach = (item: T | State<T>, index: State<number>): JSX.Element =>
-    withDOMNamespace(namespace, () => invokeEach(item, index));
+  const renderEach = (item: T | State<T>, index?: State<number>): JSX.Element =>
+    withDOMNamespace(namespace, () => invokeEach(item, index as State<number>));
 
-  const createRowNode = (item: T | State<T>, index: State<number>): JSX.Element =>
+  const createRowNode = (item: T | State<T>, index?: State<number>): JSX.Element =>
     $nodes(() => {
       // Keep each row associated with its matched item, not its current array
       // position. Reordering then moves the existing row without invoking its
@@ -128,7 +130,7 @@ export function $for<T>(
 
     try {
       return runWithOwner(owner, () => {
-        const indexState = createStateValue(index);
+        const indexState = trackIndex ? createStateValue(index) : undefined;
         const itemState = keyed ? createStateValue(item) : undefined;
         const renderedItem = itemState ?? item;
 
@@ -163,7 +165,7 @@ export function $for<T>(
       return values.map((item, i) => {
         // List indexes are synchronous cells, not async resources. Avoid
         // allocating resource slots/controllers for every rendered item.
-        const indexState = createStateValue(i);
+        const indexState = trackIndex ? createStateValue(i) : undefined;
         return keyed
           ? renderEach(createStateValue(item), indexState)
           : renderEach(item, indexState);
@@ -284,7 +286,7 @@ export function $for<T>(
               entry.itemState.value = newItem;
             }
 
-            entry.index.value = i;
+            if (entry.index) entry.index.value = i;
             newEntries.push(entry);
           } else {
             const created = createEntry(newItem, identity, i);
