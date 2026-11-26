@@ -5,6 +5,8 @@ import type { DOMTemplateAdapter } from "../dom/adapter";
 import { bindEvent, type EventHandlerValue } from "./event";
 import { bindProperty } from "./property";
 import { bindText } from "./text";
+import { createStateValue } from "../../reactivity/state";
+import { batch } from "../../reactivity/effect";
 import type { Accessor, Disposable, RenderScope } from "../types";
 
 /** A text-node instruction emitted by the render_new compiler target. */
@@ -62,6 +64,8 @@ export interface TemplateBindingOptions {
 
 export interface TemplateBindingSet extends Disposable {
   readonly size: number;
+  /** Replace accessors while retaining compatible DOM nodes and effects. */
+  update(instructions: readonly TemplateBindingInstruction[]): void;
 }
 
 interface PreparedInstruction {
@@ -196,6 +200,34 @@ function prepareInstructions(
   return prepared;
 }
 
+function sameAttributeName(left: AttributeName, right: AttributeName): boolean {
+  if (typeof left === "string" || typeof right === "string") return left === right;
+  return left.namespaceURI === right.namespaceURI &&
+    left.qualifiedName === right.qualifiedName &&
+    left.localName === right.localName;
+}
+
+function sameInstructionShape(
+  left: TemplateBindingInstruction,
+  right: TemplateBindingInstruction,
+): boolean {
+  if (left.kind !== right.kind || left.reference !== right.reference) return false;
+
+  switch (left.kind) {
+    case "text":
+    case "child":
+      return true;
+    case "attribute":
+      return right.kind === "attribute" && sameAttributeName(left.name, right.name);
+    case "property":
+      return right.kind === "property" && left.name === right.name;
+    case "event":
+      return right.kind === "event" &&
+        left.event === right.event &&
+        left.options === right.options;
+  }
+}
+
 function disposeBindings(bindings: readonly Disposable[]): void {
   const errors: unknown[] = [];
 
@@ -234,12 +266,18 @@ export function applyTemplateBindings(
 ): TemplateBindingSet {
   const prepared = prepareInstructions(instance, instructions);
   const bindings: Disposable[] = [];
+  const readers = prepared.map(({ instruction }) =>
+    createStateValue<Accessor<unknown>>(instruction.read as Accessor<unknown>),
+  );
 
   try {
-    for (const { instruction, target } of prepared) {
+    for (let index = 0; index < prepared.length; index++) {
+      const { instruction, target } = prepared[index]!;
+      const read = () => readers[index]!.value();
+
       switch (instruction.kind) {
         case "text":
-          bindings.push(bindText(scope, target as Text, instruction.read));
+          bindings.push(bindText(scope, target as Text, read));
           break;
 
         case "attribute":
@@ -248,7 +286,7 @@ export function applyTemplateBindings(
               scope,
               target as Element,
               instruction.name,
-              instruction.read,
+              read,
             ),
           );
           break;
@@ -259,7 +297,7 @@ export function applyTemplateBindings(
               scope,
               target as Element,
               instruction.name,
-              instruction.read,
+              read,
             ),
           );
           break;
@@ -268,7 +306,7 @@ export function applyTemplateBindings(
           if (!adapter) {
             throw new TypeError("[vynn]: A dynamic child binding requires a DOM template adapter.");
           }
-          bindings.push(bindChild(scope, target as Comment, adapter, instruction.read, options));
+          bindings.push(bindChild(scope, target as Comment, adapter, read, options));
           break;
 
         case "event":
@@ -277,7 +315,7 @@ export function applyTemplateBindings(
               scope,
               target,
               instruction.event,
-              instruction.read,
+              read,
               instruction.options,
             ),
           );
@@ -301,6 +339,28 @@ export function applyTemplateBindings(
 
   return Object.freeze({
     size: bindings.length,
+    update(nextInstructions: readonly TemplateBindingInstruction[]) {
+      if (disposed) {
+        throw new Error("[vynn]: Cannot update a disposed template binding set.");
+      }
+
+      const next = prepareInstructions(instance, nextInstructions);
+      if (next.length !== prepared.length) {
+        throw new TypeError("[vynn]: Updating a template requires the same binding instruction count.");
+      }
+
+      for (let index = 0; index < prepared.length; index++) {
+        if (!sameInstructionShape(prepared[index]!.instruction, next[index]!.instruction)) {
+          throw new TypeError("[vynn]: Updating a template requires compatible binding instruction metadata.");
+        }
+      }
+
+      batch(() => {
+        for (let index = 0; index < next.length; index++) {
+          readers[index]!.value = next[index]!.instruction.read as Accessor<unknown>;
+        }
+      });
+    },
     dispose() {
       if (disposed) return;
       disposed = true;
