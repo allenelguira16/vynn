@@ -2,7 +2,12 @@ import type { DOMTemplateProgram } from "../dom/program";
 import type { TemplateReference } from "../template/types";
 import { createDOMTemplateKeyMarkerData } from "../dom/keyed";
 import { createScope, disposeScope, runWithScope } from "../lifecycle/scope";
-import { prepareRenderNewTree } from "../prepare";
+import {
+  consumePreparedRenderNewChildValue,
+  consumePreparedRenderNewComponent,
+  consumePreparedRenderNewRootScope,
+  prepareRenderNewTree,
+} from "../prepare";
 import {
   isRenderNewComponent,
   resolveRenderNewComponentProgram,
@@ -269,13 +274,16 @@ function renderChildValue(value: unknown): string {
     return keyed ?? value.map(renderChildValue).join("");
   }
   if (isRenderNewComponent(value)) {
-    const scope = createScope();
+    const prepared = consumePreparedRenderNewComponent(value);
+    const scope = prepared?.scope ?? createScope();
     try {
-      return runWithScope(scope, () =>
-        renderProgram(resolveRenderNewComponentProgram(value.render())),
-      );
+      const program = prepared?.program ??
+        runWithScope(scope, () =>
+          resolveRenderNewComponentProgram(value.render()),
+        );
+      return runWithScope(scope, () => renderProgram(program));
     } finally {
-      disposeScope(scope);
+      if (!prepared) disposeScope(scope);
     }
   }
   if (isTemplateProgram(value)) return renderProgram(value);
@@ -367,7 +375,9 @@ function renderProgram(program: DOMTemplateProgram): string {
       continue;
     }
 
-    const value = instruction.read();
+    const value = instruction.kind === "child"
+      ? consumePreparedRenderNewChildValue(instruction.read)
+      : instruction.read();
 
     switch (instruction.kind) {
       case "text":
@@ -422,13 +432,24 @@ function renderProgram(program: DOMTemplateProgram): string {
 export function renderTemplateProgramToString(
   program: DOMTemplateProgram | RenderNewComponent,
 ): string {
-  const scope = createScope(null);
+  const preparedRoot = consumePreparedRenderNewRootScope(program);
+  const scope = preparedRoot ?? createScope(null);
   try {
-    return runWithScope(scope, () =>
-      isRenderNewComponent(program)
-        ? renderProgram(resolveRenderNewComponentProgram(program.render()))
-        : renderProgram(program),
-    );
+    return runWithScope(scope, () => {
+      if (!isRenderNewComponent(program)) return renderProgram(program);
+
+      const prepared = consumePreparedRenderNewComponent(program);
+      const componentScope = prepared?.scope ?? createScope(scope);
+      try {
+        const componentProgram = prepared?.program ??
+          runWithScope(componentScope, () =>
+            resolveRenderNewComponentProgram(program.render()),
+          );
+        return runWithScope(componentScope, () => renderProgram(componentProgram));
+      } finally {
+        if (!prepared) disposeScope(componentScope);
+      }
+    });
   } finally {
     disposeScope(scope);
   }
