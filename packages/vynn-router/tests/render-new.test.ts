@@ -12,6 +12,7 @@ import {
   runWithScope,
   type DOMTemplateProgram,
   type RenderNewComponent,
+  type RenderScope,
   type TemplateDefinition,
 } from "vynn/render_new";
 
@@ -26,6 +27,7 @@ import {
   redirect,
   toFileRouter,
   type Route,
+  type RouterInstance,
 } from "../src/render-new";
 
 const textTemplate: TemplateDefinition = {
@@ -64,9 +66,9 @@ function routeComponent(
   return render as unknown as Route["component"];
 }
 
-function routerDispose(
-  router: ReturnType<typeof createRouter>,
-  scope: ReturnType<typeof createScope>,
+function routerDispose<TContext>(
+  router: RouterInstance<TContext>,
+  scope: RenderScope,
 ) {
   router.dispose();
   disposeScope(scope);
