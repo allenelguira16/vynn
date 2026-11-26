@@ -1,4 +1,9 @@
 export {
+  mountRenderNew,
+  type MountRenderNewOptions,
+} from "./client";
+
+export {
   createDOMTemplateAdapter,
   type DOMTemplateAdapter,
 } from "./adapter";
