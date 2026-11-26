@@ -152,6 +152,9 @@ describe("render_new scope lifecycle", () => {
 
     runWithScope(root, () => {
       child = createScope();
+      onScopeDispose(() => {
+        expect(root.state).toBe("disposing");
+      });
     });
 
     disposeOwner(owner);
