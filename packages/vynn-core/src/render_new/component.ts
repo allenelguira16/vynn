@@ -1,3 +1,4 @@
+import { batch } from "../reactivity/effect";
 import { createStateValue, type State } from "../reactivity/state";
 import type { DOMTemplateProgram } from "./dom/program";
 
@@ -204,9 +205,11 @@ export function updateRenderNewComponentProps(
     updates.push({ target, value: source.value });
   }
 
-  for (const update of updates) {
-    update.target.value = update.value;
-  }
+  batch(() => {
+    for (const update of updates) {
+      update.target.value = update.value;
+    }
+  });
 
   return true;
 }
