@@ -3,7 +3,7 @@ import {
   createFileRouter,
   type FileRouteModuleMap,
   type FileRouteModuleMetadata,
-} from "./file-router";
+} from "./file-router-core";
 import type { Route } from "./types";
 
 /**
