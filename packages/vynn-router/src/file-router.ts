@@ -38,6 +38,6 @@ export function toFileRouter<TContext = undefined>(
     modules,
     files,
     (loadModule, file) =>
-      lazy(() => loadModule(), undefined, file.path.replace(/^\\/+/, "")),
+      lazy(() => loadModule(), undefined, file.path.replace(/^\/+/, "")),
   );
 }
