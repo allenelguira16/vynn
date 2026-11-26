@@ -83,6 +83,8 @@ describe("$for row lifecycle", () => {
               return element as unknown as JSX.Element;
             },
             (row) => row.id,
+            true,
+            true,
           ),
       );
     });
@@ -102,6 +104,9 @@ describe("$for row lifecycle", () => {
     expect(
       [...host.querySelectorAll("p")].map((element) => element.dataset.id),
     ).toEqual(["1", "2"]);
+    // The stable intrinsic-row fast path keeps only the list's two boundary
+    // markers. It does not allocate two additional text markers per row.
+    expect([...host.childNodes].filter((node) => node.nodeType === Node.TEXT_NODE)).toHaveLength(2);
 
     // Moving keyed items must preserve their row owners and computations.
     rows.value = [second, first];
