@@ -125,6 +125,38 @@ describe("render_new router adapter", () => {
     app.dispose();
   });
 
+  it("follows a beforeLoad redirect before the first serialization", async () => {
+    const PrivatePage = routeComponent(() => textProgram(() => "Private"));
+    const LoginPage = routeComponent(() => textProgram(() => "Login"));
+    const scope = createScope(null);
+    const router = runWithScope(
+      scope,
+      () => createRouter({
+        routes: [
+          {
+            path: "/private",
+            component: PrivatePage,
+            beforeLoad: () => redirect("/login"),
+          },
+          { path: "/login", component: LoginPage },
+        ],
+        history: createMemoryHistory({ initialEntries: ["/private"] }),
+      }),
+    );
+    const app = runWithScope(
+      scope,
+      () => Router({ router }) as unknown as RenderNewComponent,
+    );
+
+    const html = await renderTemplateProgramToStringAsync(app);
+
+    expect(router.state.location.pathname).toBe("/login");
+    expect(html).toContain("Login");
+    expect(html).not.toContain("Private");
+
+    routerDispose(router, scope);
+  });
+
   it("hydrates the prepared initial route into existing server DOM", async () => {
     const HomePage = routeComponent(() =>
       textProgram(() => `Route ${$params.id ?? "home"}`),
