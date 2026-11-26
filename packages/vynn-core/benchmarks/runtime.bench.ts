@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { bench, describe } from "vitest";
+import { test } from "vitest";
 
 import { $computed } from "../src/reactivity/computed";
 import { $state } from "../src/reactivity/state";
@@ -11,8 +11,8 @@ import {
   withHydration,
 } from "../src/client/hydration";
 
-describe("Vynn runtime", () => {
-  bench("store: dynamic dependency churn and cleanup", () => {
+test("store dependency churn and cleanup", async ({ bench }) => {
+  await bench("64 dynamic keys × 256 updates", () => {
     const owner = createOwner(null);
 
     runWithOwner(owner, () => {
@@ -30,9 +30,11 @@ describe("Vynn runtime", () => {
     });
 
     disposeOwner(owner);
-  });
+  }).run();
+});
 
-  bench("store: nested reads across a 1k-item collection", () => {
+test("nested store reads across 1k items", async ({ bench }) => {
+  await bench("read and derive from 1,000 nested records", () => {
     const owner = createOwner(null);
 
     runWithOwner(owner, () => {
@@ -49,9 +51,11 @@ describe("Vynn runtime", () => {
     });
 
     disposeOwner(owner);
-  });
+  }).run();
+});
 
-  bench("hydration: scan and release a 200-node root", () => {
+test("hydration scanning and reference release", async ({ bench }) => {
+  await bench("scan and release a 200-node root", () => {
     const root = document.createElement("main");
     const markup = Array.from(
       { length: 200 },
@@ -63,5 +67,5 @@ describe("Vynn runtime", () => {
       for (let index = 0; index < 400; index++) claimHydrationElement();
       for (let index = 0; index < 200; index++) claimHydrationText();
     }, root);
-  });
+  }).run();
 });
