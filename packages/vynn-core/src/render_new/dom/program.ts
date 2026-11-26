@@ -58,7 +58,7 @@ export function mountTemplateProgram<TBlueprint>(
     factory,
     before,
     (instance, scope) => {
-      applyTemplateBindings(scope, instance, instructions);
+      applyTemplateBindings(scope, instance, instructions, adapter);
     },
   );
 }
