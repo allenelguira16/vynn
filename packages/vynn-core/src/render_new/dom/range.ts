@@ -118,9 +118,7 @@ export function insertDOMRange(
   range: DOMNodeRange,
   before: Node | null = null,
 ): DOMNodeRange {
-  const nodes = getDOMRangeNodes(range);
-  insertDOMNodes(parent, nodes, before);
-  return range;
+  return moveDOMRange(range, parent, before);
 }
 
 /**
@@ -136,7 +134,12 @@ export function moveDOMRange(
 ): DOMNodeRange {
   const nodes = getDOMRangeNodes(range);
 
-  if (before !== null && nodes.includes(before)) {
+  if (
+    before !== null &&
+    nodes.includes(before) &&
+    before.parentNode === parent &&
+    range.start.parentNode === parent
+  ) {
     return range;
   }
 
