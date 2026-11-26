@@ -215,8 +215,10 @@ function renderKeyedProgramArray(value: readonly unknown[]): string | null {
   if (!hasKeyedEntry) return null;
 
   const keys = new Set<unknown>();
-  const output: string[] = [];
+  const keyedPrograms: Array<{ key: string | number | bigint; program: DOMTemplateProgram }> = [];
 
+  // Validate the full list before evaluating any program binding. A duplicate
+  // or malformed key should not partially execute earlier items during SSR.
   for (const item of value) {
     if (!isTemplateProgram(item) || !Object.prototype.hasOwnProperty.call(item, "key")) {
       throw new TypeError(
@@ -238,13 +240,14 @@ function renderKeyedProgramArray(value: readonly unknown[]): string | null {
       throw new TypeError("[vynn render_new]: Duplicate key in a render_new server child list.");
     }
     keys.add(key);
-
-    const start = createDOMTemplateKeyMarkerData(key, "start");
-    const end = createDOMTemplateKeyMarkerData(key, "end");
-    output.push("<!--" + start + "-->" + renderProgram(item) + "<!--" + end + "-->");
+    keyedPrograms.push({ key, program: item });
   }
 
-  return output.join("");
+  return keyedPrograms.map(({ key, program }) => {
+    const start = createDOMTemplateKeyMarkerData(key, "start");
+    const end = createDOMTemplateKeyMarkerData(key, "end");
+    return "<!--" + start + "-->" + renderProgram(program) + "<!--" + end + "-->";
+  }).join("");
 }
 
 function renderChildValue(value: unknown): string {
