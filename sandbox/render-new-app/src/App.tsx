@@ -1,4 +1,5 @@
 import { $state } from "vynn";
+import "./style.css";
 
 type DemoItem = {
   id: number;
@@ -58,7 +59,15 @@ export default function App() {
   };
 
   return (
-    <main className="page-shell">
+    <html lang="en-PH">
+      <head>
+        <meta charSet="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="description" content="An interactive browser sandbox for Vynn's new renderer." />
+        <title>Vynn render_new</title>
+      </head>
+      <body>
+        <main className="page-shell">
       <header className="topbar">
         <a className="brand" href="/" aria-label="Vynn render new home">
           <span className="brand-mark">v</span>
@@ -161,10 +170,12 @@ export default function App() {
         </div>
       </section>
 
-      <footer className="footer">
-        <span>VYNN RENDER_NEW</span>
-        <span>Standalone browser sandbox · client rendering</span>
-      </footer>
-    </main>
+          <footer className="footer">
+            <span>VYNN RENDER_NEW</span>
+            <span>Integrated Vite app · document-root rendering</span>
+          </footer>
+        </main>
+      </body>
+    </html>
   );
 }
