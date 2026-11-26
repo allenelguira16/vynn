@@ -2823,6 +2823,11 @@ class TransformState {
       isArrowFunctionExpression(callbackSource) &&
       isJSXElement(callbackSource.body) &&
       !isComponentElement(callbackSource.body);
+    // An omitted map index cannot be observed by the callback. Avoid creating
+    // one reactive state cell per row when the callback has only an item arg.
+    const trackIndex = isFunctionLike(callbackSource)
+      ? callbackSource.params.length > 1
+      : true;
     if (!listKey && isFunctionLike(callbackSource) && this.containsJSXKey(callbackSource)) {
       throw new Error(
         "[Vynn compiler] A list key must be placed on the single JSX element directly returned by the .map() callback. Conditional and multiple roots are not supported yet.",
@@ -2943,6 +2948,7 @@ class TransformState {
     // item state, so the runtime can render the row directly without allocating
     // a second $nodes range, two marker nodes, and an extra render computation.
     args.push(booleanLiteral(stableIntrinsicRow));
+    args.push(booleanLiteral(trackIndex));
 
     const result = callExpression(this.getRuntimeHelper("$for"), args);
     this.generatedForExpressions.add(result);
