@@ -107,6 +107,116 @@ describe("render_new dynamic child slots", () => {
     expect(parent.childNodes).toHaveLength(0);
   });
 
+  it("preserves keyed template DOM identity across reorder and updates", () => {
+    const document = createDocument();
+    const parent = document.createElement("main");
+    const items = $state([
+      { id: "a", label: "Alpha" },
+      { id: "b", label: "Beta" },
+    ]);
+
+    const rowTemplate = {
+      namespace: "html" as const,
+      markup: "<li><!--__vynn_render_new_child_0_start__--><!--__vynn_render_new_child_0_end__--></li>",
+      references: [{ id: 0, kind: "anchor" as const, path: [0, 0] }],
+    };
+
+    const listProgram: DOMTemplateProgram = {
+      template: {
+        namespace: "html",
+        markup: "<ul><!--__vynn_render_new_child_0_start__--><!--__vynn_render_new_child_0_end__--></ul>",
+        references: [{ id: 0, kind: "anchor", path: [0, 0] }],
+      },
+      bindings: [{
+        kind: "child",
+        reference: 0,
+        read: () => items.value.map((item) => ({
+          template: rowTemplate,
+          bindings: [{
+            kind: "child" as const,
+            reference: 0,
+            read: () => item.label,
+          }],
+          key: item.id,
+        })),
+      }],
+    };
+
+    const mounted = mountTemplateProgram(parent, listProgram, createDOMTemplateAdapter(document));
+    const list = parent.querySelector("ul")!;
+    const originalA = list.children[0]!;
+    const originalB = list.children[1]!;
+
+    expect(Array.from(list.children).map((node) => node.textContent)).toEqual([
+      "Alpha",
+      "Beta",
+    ]);
+
+    items.value = [
+      { id: "b", label: "Beta updated" },
+      { id: "a", label: "Alpha updated" },
+      { id: "c", label: "Gamma" },
+    ];
+
+    expect(list.children).toHaveLength(3);
+    expect(list.children[0]).toBe(originalB);
+    expect(list.children[1]).toBe(originalA);
+    expect(Array.from(list.children).map((node) => node.textContent)).toEqual([
+      "Beta updated",
+      "Alpha updated",
+      "Gamma",
+    ]);
+
+    items.value = [{ id: "a", label: "Only A" }];
+    expect(list.children).toHaveLength(1);
+    expect(list.children[0]).toBe(originalA);
+    expect(list.textContent).toBe("Only A");
+
+    mounted.dispose();
+    expect(parent.childNodes).toHaveLength(0);
+  });
+
+  it("rejects duplicate keys before changing the current keyed list", () => {
+    const document = createDocument();
+    const parent = document.createElement("main");
+    const items = $state([{ id: "one", label: "One" }]);
+    const rowTemplate = {
+      namespace: "html" as const,
+      markup: "<li><!--__vynn_render_new_child_0_start__--><!--__vynn_render_new_child_0_end__--></li>",
+      references: [{ id: 0, kind: "anchor" as const, path: [0, 0] }],
+    };
+
+    const program: DOMTemplateProgram = {
+      template: {
+        namespace: "html",
+        markup: "<ul><!--__vynn_render_new_child_0_start__--><!--__vynn_render_new_child_0_end__--></ul>",
+        references: [{ id: 0, kind: "anchor", path: [0, 0] }],
+      },
+      bindings: [{
+        kind: "child",
+        reference: 0,
+        read: () => items.value.map((item) => ({
+          template: rowTemplate,
+          bindings: [{ kind: "child" as const, reference: 0, read: () => item.label }],
+          key: item.id,
+        })),
+      }],
+    };
+
+    const mounted = mountTemplateProgram(parent, program, createDOMTemplateAdapter(document));
+    const original = parent.querySelector("li");
+    expect(() => {
+      items.value = [
+        { id: "duplicate", label: "First" },
+        { id: "duplicate", label: "Second" },
+      ];
+    }).toThrow("Duplicate key");
+
+    expect(parent.querySelector("li")).toBe(original);
+    expect(parent.textContent).toContain("One");
+    mounted.dispose();
+  });
+
   it("does not stringify unsupported render values", () => {
     const document = createDocument();
     const parent = document.createElement("main");
