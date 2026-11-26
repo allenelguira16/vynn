@@ -38,7 +38,28 @@ function assertNamespace(namespace: TemplateNamespace): void {
   }
 }
 
+function parseHTMLDocument(document: Document, markup: string): DocumentFragment {
+  const DOMParserConstructor = document.defaultView?.DOMParser;
+  if (!DOMParserConstructor) {
+    throw new Error("[vynn]: Full-document templates require a DOMParser implementation.");
+  }
+
+  const parsed = new DOMParserConstructor().parseFromString(markup, "text/html");
+  const root = parsed.documentElement;
+  if (!root || root.localName !== "html") {
+    throw new SyntaxError("[vynn]: A full-document template must have one <html> root.");
+  }
+
+  const fragment = document.createDocumentFragment();
+  fragment.appendChild(document.importNode(root, true));
+  return fragment;
+}
+
 function parseHTML(document: Document, markup: string): DocumentFragment {
+  if (/^\\s*<html(?:\\s|>)/i.test(markup)) {
+    return parseHTMLDocument(document, markup);
+  }
+
   const template = document.createElement("template") as HTMLTemplateElement;
   template.innerHTML = markup;
 
