@@ -199,9 +199,30 @@ export function $for<T>(
        * First render.
        */
       if (!initialized) {
-        const entries = newItems.map((item, index) =>
-          createEntry(item, newIdentities[index], index),
-        );
+        const entries: ForEntry<T>[] = [];
+
+        try {
+          for (let index = 0; index < newItems.length; index++) {
+            entries.push(createEntry(newItems[index], newIdentities[index], index));
+          }
+        } catch (cause) {
+          const cleanupErrors: unknown[] = [];
+          for (const entry of entries) {
+            try {
+              disposeOwner(entry.owner);
+            } catch (cleanupCause) {
+              cleanupErrors.push(cleanupCause);
+            }
+          }
+
+          if (cleanupErrors.length > 0) {
+            throw new AggregateError(
+              [cause, ...cleanupErrors],
+              "[Vynn] A list failed to render and cleanup of earlier entries also failed.",
+            );
+          }
+          throw cause;
+        }
 
         oldEntries = entries;
         result = entries.map((entry) => entry.node);
@@ -229,30 +250,52 @@ export function $for<T>(
       }
 
       const newEntries: ForEntry<T>[] = [];
+      const createdEntries: ForEntry<T>[] = [];
 
-      for (let i = 0; i < newItems.length; i++) {
-        const newItem = newItems[i];
-        const identity = newIdentities[i];
-        const bucket = oldByIdentity.get(normalizeIdentity(identity));
-        const entry =
-          bucket && bucket.nextIndex < bucket.entries.length
-            ? bucket.entries[bucket.nextIndex++]
-            : undefined;
+      try {
+        for (let i = 0; i < newItems.length; i++) {
+          const newItem = newItems[i];
+          const identity = newIdentities[i];
+          const bucket = oldByIdentity.get(normalizeIdentity(identity));
+          const entry =
+            bucket && bucket.nextIndex < bucket.entries.length
+              ? bucket.entries[bucket.nextIndex++]
+              : undefined;
 
-        if (entry) {
-          // Preserve the existing DOM and reactive subtree.
-          entry.identity = identity;
+          if (entry) {
+            // Preserve the existing DOM and reactive subtree.
+            entry.identity = identity;
 
-          // Keyed rows read the current item through this stable reactive cell.
-          if (entry.itemState) {
-            entry.itemState.value = newItem;
+            // Keyed rows read the current item through this stable reactive cell.
+            if (entry.itemState) {
+              entry.itemState.value = newItem;
+            }
+
+            entry.index.value = i;
+            newEntries.push(entry);
+          } else {
+            const created = createEntry(newItem, identity, i);
+            createdEntries.push(created);
+            newEntries.push(created);
           }
-
-          entry.index.value = i;
-          newEntries.push(entry);
-        } else {
-          newEntries.push(createEntry(newItem, identity, i));
         }
+      } catch (cause) {
+        const cleanupErrors: unknown[] = [];
+        for (const entry of createdEntries) {
+          try {
+            disposeOwner(entry.owner);
+          } catch (cleanupCause) {
+            cleanupErrors.push(cleanupCause);
+          }
+        }
+
+        if (cleanupErrors.length > 0) {
+          throw new AggregateError(
+            [cause, ...cleanupErrors],
+            "[Vynn] A list update failed and cleanup of newly created entries also failed.",
+          );
+        }
+        throw cause;
       }
 
       // Entries not consumed from the identity buckets no longer belong to
