@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { JSDOM } from "jsdom";
 
-import { createScope, disposeScope, onScopeDispose, runWithScope } from "../src/render_new/lifecycle/scope";
+import { createScope, disposeScope, getCurrentScope, onScopeDispose, runWithScope } from "../src/render_new/lifecycle/scope";
 import { createDOMTemplateAdapter } from "../src/render_new/dom/adapter";
 import { mountTemplate, type MountedTemplate } from "../src/render_new/dom/mount";
 import { createTemplateFactory } from "../src/render_new/template/factory";
-import type { TemplateFactory, TemplateInstance } from "../src/render_new/template/types";
+import type { TemplateFactory } from "../src/render_new/template/types";
 
 function createDocument(): Document {
   return new JSDOM("<!doctype html><html><body></body></html>").window.document;
@@ -130,25 +130,19 @@ describe("render_new DOM template mounting", () => {
   it("runs factory creation inside the mounted render scope", () => {
     const document = createDocument();
     const parent = document.createElement("div");
-    let capturedScope: ReturnType<typeof import("../src/render_new/lifecycle/scope").getCurrentScope> = null;
+    let capturedScope = getCurrentScope();
 
     const factory: TemplateFactory<Node> = {
       definition: { markup: "", namespace: "html", references: [] },
       instantiate() {
-        capturedScope = importScope();
-        return createDOMTemplateAdapter(document)
-          .parse("<main></main>", "html") as unknown as TemplateInstance<Node>;
+        capturedScope = getCurrentScope();
+        const fragment = createDOMTemplateAdapter(document).parse("<main></main>", "html");
+        return {
+          roots: Array.from(fragment.childNodes),
+          references: new Map(),
+        };
       },
     };
-
-    function importScope() {
-      return currentScope();
-    }
-
-    function currentScope() {
-      // Accessed through the public scope helper imported below.
-      return getActiveScope();
-    }
 
     const mounted = mountTemplate(parent, factory);
 
