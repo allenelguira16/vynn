@@ -148,12 +148,12 @@ const booleanAttributes = new Set([
   "playsinline", "readonly", "required", "reversed", "selected",
 ]);
 
+// HTML boolean attributes need property assignment for dynamic values:
+// setAttribute("disabled", "false") still enables the attribute.
 const propertyBindings = new Set([
-  "value", "checked", "selected", "muted", "indeterminate",
-  "disabled", "required", "multiple", "hidden", "autofocus",
-  "readonly", "autoplay", "controls", "open", "loop",
-  "novalidate", "formnovalidate", "allowfullscreen",
-  "itemscope", "ismap", "nomodule", "playsinline",
+  ...booleanAttributes,
+  "value",
+  "indeterminate",
 ]);
 
 const propertyAliases: Record<string, string> = {
