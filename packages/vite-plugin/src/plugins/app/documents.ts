@@ -550,6 +550,12 @@ export function createSsrHandlerCode(options: {
   ].join("\n");
 }
 
+function wrapClientShellInternal(value: string): string {
+  return value
+    ? "<!--vynn:internal:start-->" + value + "<!--vynn:internal:end-->"
+    : "";
+}
+
 export function createClientShell(options: {
   base: string;
   clientEntryUrl: string;
@@ -567,17 +573,19 @@ export function createClientShell(options: {
   const viteClient = options.dev
     ? `<script type="module" src="${escapeHtml(joinAssetBase(options.base, "/@vite/client"))}"></script>`
     : "";
+  const clientEntry =
+    `<script type="module" src="${escapeHtml(options.clientEntryUrl)}"></script>`;
 
   return [
     "<!doctype html>",
     "<html>",
     "<head>",
-    '<meta charset="UTF-8" key="meta:charset">',
-    css,
-    viteClient,
+    wrapClientShellInternal('<meta charset="UTF-8" key="meta:charset">'),
+    wrapClientShellInternal(css),
+    wrapClientShellInternal(viteClient),
     "</head>",
     "<body>",
-    `<script type="module" src="${escapeHtml(options.clientEntryUrl)}"></script>`,
+    wrapClientShellInternal(clientEntry),
     "</body>",
     "</html>",
   ].join("");
