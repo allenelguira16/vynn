@@ -262,10 +262,17 @@ export default function App() {
 
 Vynn generates the client entry automatically. Client-only mode mounts the
 new document tree; SSR mode adopts the existing server-rendered
-`document.documentElement`. The server entry uses the independent
-`renderTemplateProgramToString()` serializer and feeds its complete HTML
-document into the existing Vite asset-injection handler. The renderer's own
-SSR pass is synchronous even though the outer response can still stream.
+`document.documentElement`. Both generated entries first call
+`prepareRenderNewTree()`: the initial router branch can preload its lazy
+modules and finish asynchronous `beforeLoad` guards before the browser
+hydrates or the server serializes the document.
+
+The server entry uses `renderTemplateProgramToStringAsync()`, which performs
+that preparation and then runs the independent synchronous
+`renderTemplateProgramToString()` serializer. The completed HTML document
+is passed into the existing Vite asset-injection handler. The outer response
+can still stream, but the render_new HTML itself is assembled before response
+streaming begins.
 
 The legacy renderer remains the default. Do not install
 `vynnRenderNewOxcPlugin()` alongside `vynn({ renderer: "new" })` for the same
@@ -280,9 +287,12 @@ pnpm --filter render-new-app dev
 
 Open [http://localhost:3001](http://localhost:3001).
 
-This mode is still experimental. The current integration does not yet support
-the legacy `vynn-router` `Router` component, async/streaming resources,
-dynamic `<title>` content, or the legacy reactive head-metadata runtime.
+This mode is still experimental. The native router entry point is
+`vynn-router/render_new`; it supports initial-route SSR/hydration, lazy route
+modules, and async route guards through the preparation phase. It does not
+yet support Vynn's general async resources or `Await` during SSR, true
+streaming of unresolved render_new boundaries, dynamic `<title>` content,
+or the legacy reactive head-metadata runtime.
 The compiler also retains its documented restrictions on spreads, refs,
 raw-HTML bindings, dynamic style objects, member-expression component tags,
 and parser-sensitive contexts such as tables, selects, and textareas.
