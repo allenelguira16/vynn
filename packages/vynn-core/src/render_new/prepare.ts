@@ -16,6 +16,7 @@ interface PreparedComponent {
 
 interface PreparedChildValue {
   readonly value: unknown;
+  readonly containsPreparedComponent: boolean;
 }
 
 const preparedComponents = new WeakMap<RenderNewComponent, PreparedComponent>();
@@ -90,6 +91,8 @@ export function consumePreparedRenderNewChildValue(
   if (!trackDependencies) return prepared.value;
 
   const current = read();
+  if (!prepared.containsPreparedComponent) return current;
+
   syncPreparedComponentProps(prepared.value, current);
   return prepared.value;
 }
@@ -151,10 +154,12 @@ async function prepareValue(
 
       const child = runWithScope(parentScope, () => instruction.read());
       await prepareValue(child, parentScope, visited, components, readers);
-      if (containsPreparedComponent(child)) {
-        preparedChildValues.set(instruction.read, { value: child });
-        readers.push(instruction.read);
-      }
+      const hasPreparedComponent = containsPreparedComponent(child);
+      preparedChildValues.set(instruction.read, {
+        value: child,
+        containsPreparedComponent: hasPreparedComponent,
+      });
+      readers.push(instruction.read);
     }
   }
 }
