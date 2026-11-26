@@ -410,7 +410,11 @@ function serializeChildren(
         continue;
       }
 
-      if (!isExpression(expression)) {
+      if (
+        !isExpression(expression) &&
+        !isJSXElement(expression) &&
+        !isJSXFragment(expression)
+      ) {
         fail("Unsupported JSX child expression.", filename, child);
       }
 
