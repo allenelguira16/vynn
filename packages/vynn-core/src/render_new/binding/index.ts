@@ -14,3 +14,10 @@ export {
   bindText,
   type TextBinding,
 } from "./text";
+
+export {
+  bindEvent,
+  type EventBinding,
+  type EventHandler,
+  type EventHandlerValue,
+} from "./event";
