@@ -1,6 +1,9 @@
 import { createScope, disposeScope, runWithScope } from "../lifecycle/scope";
 import type { RenderNewComponent } from "../component";
-import { isRenderNewComponent } from "../component";
+import {
+  isRenderNewComponent,
+  resolveRenderNewComponentProgram,
+} from "../component";
 import type { DOMTemplateAdapter } from "./adapter";
 import type { DOMTemplateProgram } from "./program";
 import { mountTemplateProgram } from "./program";
@@ -75,11 +78,7 @@ export function mountRenderNewComponent(
 
   try {
     const mounted = runWithScope(scope, () => {
-      const program: DOMTemplateProgram = component.render();
-
-      if (!program || typeof program !== "object") {
-        throw new TypeError("[vynn render_new]: A component must return a template program.");
-      }
+      const program: DOMTemplateProgram = resolveRenderNewComponentProgram(component.render());
 
       if (hydrationRange) {
         const adopted = hydrateTemplateProgramInRange(
@@ -118,10 +117,7 @@ export function hydrateRenderNewComponent(
 
   try {
     const mounted = runWithScope(scope, () => {
-      const program = component.render();
-      if (!program || typeof program !== "object") {
-        throw new TypeError("[vynn render_new]: A component must return a template program.");
-      }
+      const program = resolveRenderNewComponentProgram(component.render());
       return hydrateTemplateProgram(parent, program, adapter);
     });
 
