@@ -174,7 +174,7 @@ export function runWithScope<T>(scope: RenderScope, callback: () => T): T {
  * Cleanups run once during disposal, after child scopes have been disposed.
  * They execute with the owning scope's Vynn Owner active.
  */
-export function onScopeDispose(cleanup: Cleanup): void {
+export function onScopeDispose(cleanup: Cleanup): Cleanup {
   if (typeof cleanup !== "function") {
     throw new TypeError("[vynn]: onScopeDispose() expects a cleanup function.");
   }
@@ -186,9 +186,27 @@ export function onScopeDispose(cleanup: Cleanup): void {
   }
 
   const record = assertActive(scope, "register cleanup in");
-  const runCleanup = bindRuntimeContext(() => runWithOwner(record.owner, cleanup));
+  let registered = true;
+  const runCleanup = bindRuntimeContext(() => {
+    if (!registered) return;
+    registered = false;
+    runWithOwner(record.owner, cleanup);
+  });
 
   record.owner.cleanups.push(runCleanup);
+
+  // A caller may release a resource before its entire scope is disposed.
+  // Return an idempotent unregister function so that resource cleanup does
+  // not leave an otherwise unnecessary closure attached to the Owner.
+  return () => {
+    if (!registered) return;
+    registered = false;
+
+    const index = record.owner.cleanups.indexOf(runCleanup);
+    if (index !== -1) {
+      record.owner.cleanups.splice(index, 1);
+    }
+  };
 }
 
 /**
