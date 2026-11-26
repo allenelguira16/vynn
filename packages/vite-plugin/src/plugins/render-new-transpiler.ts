@@ -1,4 +1,4 @@
-import type { Plugin, Rolldown } from "vite";
+import type { Plugin } from "vite";
 
 import {
   transformVynnRenderNewOxcWithMap,
@@ -40,7 +40,7 @@ export function vynnRenderNewOxcPlugin(
 
       return {
         code: result.code,
-        map: result.map as Rolldown.SourceMapInput | null,
+        map: result.map,
       };
     },
   };
