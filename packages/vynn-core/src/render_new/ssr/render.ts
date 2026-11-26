@@ -1,7 +1,11 @@
 import type { DOMTemplateProgram } from "../dom/program";
 import type { TemplateReference } from "../template/types";
 import { createScope, disposeScope, runWithScope } from "../lifecycle/scope";
-import { isRenderNewComponent, type RenderNewComponent } from "../component";
+import {
+  isRenderNewComponent,
+  resolveRenderNewComponentProgram,
+  type RenderNewComponent,
+} from "../component";
 
 type SSRNodeKind = "root" | "element" | "text" | "comment";
 
@@ -211,7 +215,9 @@ function renderChildValue(value: unknown): string {
   if (isRenderNewComponent(value)) {
     const scope = createScope();
     try {
-      return runWithScope(scope, () => renderProgram(value.render()));
+      return runWithScope(scope, () =>
+        renderProgram(resolveRenderNewComponentProgram(value.render())),
+      );
     } finally {
       disposeScope(scope);
     }
@@ -364,7 +370,7 @@ export function renderTemplateProgramToString(
   try {
     return runWithScope(scope, () =>
       isRenderNewComponent(program)
-        ? renderProgram(program.render())
+        ? renderProgram(resolveRenderNewComponentProgram(program.render()))
         : renderProgram(program),
     );
   } finally {
