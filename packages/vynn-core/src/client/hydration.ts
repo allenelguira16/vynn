@@ -35,8 +35,7 @@ type HydrationCursor = {
 type HydrationScope = {
   id?: string;
   parentId?: string;
-  elementCursor?: HydrationCursor;
-  textCursor?: HydrationCursor;
+  cursor?: HydrationCursor;
   hydrating: boolean;
   finished: boolean;
   start?: Text;
@@ -70,10 +69,8 @@ type AfterHydrationTask = {
 export type HydrationClaimSnapshot = {
   scope: LazyHydrationNodes | undefined;
   rootScope: HydrationScope | undefined;
-  elementCursor: HydrationCursor | undefined;
-  textCursor: HydrationCursor | undefined;
-  elementNode: Node | null;
-  textNode: Node | null;
+  cursor: HydrationCursor | undefined;
+  node: Node | null;
 };
 
 const afterHydrationTasks = new Set<AfterHydrationTask>();
@@ -88,8 +85,7 @@ export function withHydration(callback: () => void, root: Node) {
   for (const scope of serverRenderedLazy.values()) {
     const parent = scope.start?.parentNode;
     if (parent && scope.end?.parentNode === parent) {
-      scope.elementCursor = createHydrationCursor(parent, scope.start.nextSibling, scope.end, scope.id);
-      scope.textCursor = createHydrationCursor(parent, scope.start.nextSibling, scope.end, scope.id);
+      scope.cursor = createHydrationCursor(parent, scope.start.nextSibling, scope.end, scope.id);
     }
   }
 
@@ -115,8 +111,7 @@ function createHydrationCursor(
 
 function createHydrationScope(root: Node): HydrationScope {
   return {
-    elementCursor: createHydrationCursor(root, root.firstChild, null, undefined),
-    textCursor: createHydrationCursor(root, root.firstChild, null, undefined),
+    cursor: createHydrationCursor(root, root.firstChild, null, undefined),
     hydrating: true,
     finished: false,
   };
@@ -177,10 +172,7 @@ function nextHydrationTraversalNode(node: Node, cursor: HydrationCursor): Node |
   return nextSiblingWithinHydrationScope(node, cursor);
 }
 
-function findNextHydrationNode(
-  cursor: HydrationCursor | undefined,
-  kind: "element" | "text",
-): Element | Text | undefined {
+function findNextHydrationNode(cursor: HydrationCursor | undefined): Element | Text | undefined {
   if (!cursor) return undefined;
 
   let node = cursor.current;
@@ -209,11 +201,7 @@ function findNextHydrationNode(
       continue;
     }
 
-    const matches = kind === "element"
-      ? node.nodeType === Node.ELEMENT_NODE
-      : node.nodeType === Node.TEXT_NODE;
-
-    if (matches) {
+    if (node.nodeType === Node.ELEMENT_NODE || node.nodeType === Node.TEXT_NODE) {
       cursor.current = node;
       return node as Element | Text;
     }
@@ -230,8 +218,14 @@ function claimNextHydrationNode(
   cursor: HydrationCursor | undefined,
   kind: "element" | "text",
 ): Element | Text | undefined {
-  const node = findNextHydrationNode(cursor, kind);
+  const node = findNextHydrationNode(cursor);
   if (!node || !cursor) return undefined;
+
+  const matches = kind === "element"
+    ? node.nodeType === Node.ELEMENT_NODE
+    : node.nodeType === Node.TEXT_NODE;
+
+  if (!matches) return undefined;
 
   cursor.current = nextHydrationTraversalNode(node, cursor);
   return node;
@@ -239,10 +233,7 @@ function claimNextHydrationNode(
 
 function scopeHasUnclaimedNodes(scope: HydrationScope | undefined): boolean {
   if (!scope?.hydrating) return false;
-  return (
-    !!findNextHydrationNode(scope.elementCursor, "element") ||
-    !!findNextHydrationNode(scope.textCursor, "text")
-  );
+  return !!findNextHydrationNode(scope.cursor);
 }
 
 function hasUnclaimedHydrationNodes(): boolean {
@@ -254,8 +245,7 @@ function finishRootIfClaimed(): void {
   if (scopeHasUnclaimedNodes(rootHydrationScope)) return;
 
   rootHydrationScope.hydrating = false;
-  rootHydrationScope.elementCursor = undefined;
-  rootHydrationScope.textCursor = undefined;
+  rootHydrationScope.cursor = undefined;
   rootHydrationScope = undefined;
 }
 
@@ -341,8 +331,7 @@ function scheduleAfterHydrationCheck(): void {
 function finishIfClaimed(scope: LazyHydrationNodes): void {
   if (scope.finished && !scopeHasUnclaimedNodes(scope)) {
     scope.hydrating = false;
-    scope.elementCursor = undefined;
-    scope.textCursor = undefined;
+    scope.cursor = undefined;
     scope.start = undefined;
     scope.end = undefined;
     scope.parentId = undefined;
@@ -359,7 +348,7 @@ function finishIfClaimed(scope: LazyHydrationNodes): void {
  */
 export function claimHydrationElement<T extends Element>() {
   const scope = getOwnerContext<LazyHydrationNodes>(LAZY_HYDRATION);
-  const cursor = scope ? scope.elementCursor : rootHydrationScope?.elementCursor;
+  const cursor = scope ? scope.cursor : rootHydrationScope?.cursor;
   const node = claimNextHydrationNode(cursor, "element") as T | undefined;
 
   if (scope) finishIfClaimed(scope);
@@ -373,7 +362,7 @@ export function claimHydrationElement<T extends Element>() {
 
 export function claimHydrationText() {
   const scope = getOwnerContext<LazyHydrationNodes>(LAZY_HYDRATION);
-  const cursor = scope ? scope.textCursor : rootHydrationScope?.textCursor;
+  const cursor = scope ? scope.cursor : rootHydrationScope?.cursor;
   const node = claimNextHydrationNode(cursor, "text");
 
   if (scope) finishIfClaimed(scope);
@@ -423,16 +412,13 @@ export function withServerRenderedLazy<T>(lazyID: string | number, callback: () 
 export function beginHydrationClaim(): HydrationClaimSnapshot {
   const scope = getOwnerContext<LazyHydrationNodes>(LAZY_HYDRATION);
   const rootScope = scope ? undefined : rootHydrationScope;
-  const elementCursor = scope ? scope.elementCursor : rootScope?.elementCursor;
-  const textCursor = scope ? scope.textCursor : rootScope?.textCursor;
+  const cursor = scope ? scope.cursor : rootScope?.cursor;
 
   return {
     scope,
     rootScope,
-    elementCursor,
-    textCursor,
-    elementNode: elementCursor?.current ?? null,
-    textNode: textCursor?.current ?? null,
+    cursor,
+    node: cursor?.current ?? null,
   };
 }
 
@@ -443,14 +429,12 @@ export function beginHydrationClaim(): HydrationClaimSnapshot {
  */
 export function rollbackHydrationClaim(snapshot: HydrationClaimSnapshot): void {
   if (snapshot.scope) {
-    if (snapshot.elementCursor) snapshot.elementCursor.current = snapshot.elementNode;
-    if (snapshot.textCursor) snapshot.textCursor.current = snapshot.textNode;
+    if (snapshot.cursor) snapshot.cursor.current = snapshot.node;
     return;
   }
 
   if (snapshot.rootScope) rootHydrationScope = snapshot.rootScope;
-  if (snapshot.elementCursor) snapshot.elementCursor.current = snapshot.elementNode;
-  if (snapshot.textCursor) snapshot.textCursor.current = snapshot.textNode;
+  if (snapshot.cursor) snapshot.cursor.current = snapshot.node;
 }
 
 /**
