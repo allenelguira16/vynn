@@ -359,6 +359,8 @@ describe("render_new DOM node ranges", () => {
 
     expect(() => getDOMRangeNodes(range))
       .toThrow("must share the same parent");
+    expect(() => isDOMRangeAttached(range))
+      .toThrow("must share the same parent");
   });
 
   it("rejects a reversed range whose end is not reachable", () => {
