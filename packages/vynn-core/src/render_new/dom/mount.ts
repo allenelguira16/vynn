@@ -99,8 +99,14 @@ export function mountTemplate<TNode extends Node>(
         throw new TypeError("[vynn]: A template factory returned an invalid template instance.");
       }
 
-      // Register before insertion so every successfully created root belongs
-      // to the scope even if the host rejects the final DOM operation.
+      // Compiler-emitted bindings must be installed before insertion so the
+      // first observable DOM state is already reactive and event-ready.
+      // Their cleanups are registered first, ensuring listeners/effects stop
+      // before the root nodes are removed during scope disposal.
+      initialize?.(created, scope);
+
+      // Register before insertion so every successfully initialized root
+      // belongs to the scope even if the host rejects the final DOM operation.
       onScopeDispose(() => {
         try {
           removeDOMNodes(created.roots);
@@ -108,10 +114,6 @@ export function mountTemplate<TNode extends Node>(
           mounted = false;
         }
       });
-
-      // Compiler-emitted bindings must be installed before insertion so the
-      // first observable DOM state is already reactive and event-ready.
-      initialize?.(created, scope);
 
       return created;
     });
