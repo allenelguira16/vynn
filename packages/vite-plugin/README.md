@@ -272,7 +272,7 @@ The legacy renderer remains the default. Do not install
 files. The standalone adapter remains available for projects that want to
 mount the renderer themselves.
 
-A working integrated client sandbox is available in `sandbox/render-new-app`:
+A working integrated SSR sandbox is available in `sandbox/render-new-app`:
 
 ```sh
 pnpm --filter render-new-app dev
