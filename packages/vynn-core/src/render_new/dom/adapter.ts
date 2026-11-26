@@ -56,7 +56,7 @@ function parseHTMLDocument(document: Document, markup: string): DocumentFragment
 }
 
 function parseHTML(document: Document, markup: string): DocumentFragment {
-  if (/^\\s*<html(?:\\s|>)/i.test(markup)) {
+  if (/^\s*<html(?:\s|>)/i.test(markup)) {
     return parseHTMLDocument(document, markup);
   }
 
