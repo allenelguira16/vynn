@@ -15,3 +15,5 @@ export {
 } from "./lifecycle/scope";
 
 export * from "./template";
+
+export * from "./dom";
