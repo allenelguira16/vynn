@@ -2533,7 +2533,11 @@ class TransformState {
    */
   private getMapCallbackKey(
     callback: Node,
-  ): { expression: ExpressionNode; attribute: Node } | null {
+  ): {
+    expression: ExpressionNode;
+    attribute: Node;
+    root: NodeOfType<"JSXElement">;
+  } | null {
     if (!isFunctionLike(callback)) {
       return null;
     }
