@@ -214,6 +214,47 @@ describe("render_new JSX compiler target", () => {
     expect(code).toContain("__vynn_render_new_child_0_start__");
   });
 
+  it("compiles conditional JSX branches into replaceable child programs", () => {
+    const code = transformVynnRenderNewOxc(
+      `function View(props) {
+        return <main>{props.ready ? <strong>Ready</strong> : <i>Waiting</i>}</main>;
+      }`,
+      "view.jsx",
+    );
+
+    expect(code).toContain('markup: "<strong>Ready</strong>"');
+    expect(code).toContain('markup: "<i>Waiting</i>"');
+    expect(code).toContain('kind: "child"');
+    expect(code).toContain("props.ready ? ({");
+  });
+
+  it("compiles mapped JSX into arrays of child template programs", () => {
+    const code = transformVynnRenderNewOxc(
+      `function List(props) {
+        return <ul>{props.items.map((item) => <li>{item.label}</li>)}</ul>;
+      }`,
+      "list.jsx",
+    );
+
+    expect(code).toContain('markup: "<li><!--__vynn_render_new_child_0_start__--><!--__vynn_render_new_child_0_end__--></li>"');
+    expect(code).toContain("props.items.map");
+    expect(code).toContain("item.label");
+    expect(code).toContain('kind: "child"');
+  });
+
+  it("passes nested JSX through a component's children prop", () => {
+    const code = transformVynnRenderNewOxc(
+      `function Page(props) {
+        return <Panel title={props.title}><strong>{props.message}</strong></Panel>;
+      }`,
+      "page.jsx",
+    );
+
+    expect(code).toContain('get "title"() { return (props.title); }');
+    expect(code).toContain('get "children"() { return [({ template:');
+    expect(code).toContain('markup: "<strong><!--__vynn_render_new_child_0_start__--><!--__vynn_render_new_child_0_end__--></strong>"');
+  });
+
   it("rejects spread attributes with a targeted diagnostic", () => {
     expect(() =>
       transformVynnRenderNewOxc(
