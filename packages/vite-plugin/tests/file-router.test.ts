@@ -117,7 +117,7 @@ describe("Vynn App Router transform", () => {
     const source = [
       'import { toFileRouter } from "vynn-router/render_new";',
       'export const routes = toFileRouter("/src/app");',
-    ].join("\\n");
+    ].join("\n");
 
     const transformed = transformFileRouterCalls(
       source,
