@@ -71,7 +71,7 @@ async function prepareValue(
 
   if (Array.isArray(value)) {
     for (const item of value) {
-      await prepareValue(item, parentScope, visited);
+      await prepareValue(item, parentScope, visited, components, readers);
     }
     return;
   }
