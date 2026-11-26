@@ -1,7 +1,11 @@
 import type { DOMTemplateProgram } from "../dom/program";
 import type { TemplateReference } from "../template/types";
 import { createDOMTemplateKeyMarkerData } from "../dom/keyed";
-import { createScope, disposeScope, runWithScope } from "../lifecycle/scope";
+import { createRootScope, createScope, disposeScope, runWithScope } from "../lifecycle/scope";
+import { ASYNC_DATA_SSR_KEY } from "../../const";
+import { getAsyncResourceValues } from "../../runtime/async/runtime";
+import { initializeAsyncHydrationRuntime } from "../../runtime/async/hydration";
+import { serializeAsyncHydrationValue } from "../../runtime/async/serialization";
 import {
   consumePreparedRenderNewChildValue,
   consumePreparedRenderNewComponent,
@@ -422,6 +426,40 @@ function renderProgram(program: DOMTemplateProgram): string {
   return renderNode(root, childOutput);
 }
 
+function renderAsyncResourceBootstrap(): string {
+  if (!import.meta.env.SSR) return "";
+
+  const values = getAsyncResourceValues();
+  if (!values || Object.keys(values).length === 0) return "";
+
+  const encoded = Object.fromEntries(
+    Object.entries(values).map(([key, value]) => [
+      key,
+      serializeAsyncHydrationValue(value),
+    ]),
+  );
+  const payload = (JSON.stringify(encoded) ?? "{}")
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e")
+    .replace(/&/g, "\\u0026")
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029");
+
+  return "<!--vynn:internal:start--><script>window[" +
+    JSON.stringify(ASYNC_DATA_SSR_KEY) +
+    "]=" + payload +
+    ";document.currentScript.remove();</script><!--vynn:internal:end-->";
+}
+
+function insertAsyncResourceBootstrap(html: string, bootstrap: string): string {
+  if (!bootstrap) return html;
+
+  const bodyEnd = html.toLowerCase().lastIndexOf("</body>");
+  if (bodyEnd === -1) return html + bootstrap;
+
+  return html.slice(0, bodyEnd) + bootstrap + html.slice(bodyEnd);
+}
+
 /**
  * Renders one render_new component program to an HTML string.
  *
@@ -433,22 +471,29 @@ export function renderTemplateProgramToString(
   program: DOMTemplateProgram | RenderNewComponent,
 ): string {
   const preparedRoot = consumePreparedRenderNewRootScope(program);
-  const scope = preparedRoot ?? createScope(null);
+  const scope = preparedRoot ?? createRootScope();
   try {
     return runWithScope(scope, () => {
-      if (!isRenderNewComponent(program)) return renderProgram(program);
+      if (!preparedRoot) initializeAsyncHydrationRuntime();
 
-      const prepared = consumePreparedRenderNewComponent(program);
-      const componentScope = prepared?.scope ?? createScope(scope);
-      try {
-        const componentProgram = prepared?.program ??
-          runWithScope(componentScope, () =>
-            resolveRenderNewComponentProgram(program.render()),
-          );
-        return runWithScope(componentScope, () => renderProgram(componentProgram));
-      } finally {
-        if (!prepared) disposeScope(componentScope);
+      let html: string;
+      if (!isRenderNewComponent(program)) {
+        html = renderProgram(program);
+      } else {
+        const prepared = consumePreparedRenderNewComponent(program);
+        const componentScope = prepared?.scope ?? createScope(scope);
+        try {
+          const componentProgram = prepared?.program ??
+            runWithScope(componentScope, () =>
+              resolveRenderNewComponentProgram(program.render()),
+            );
+          html = runWithScope(componentScope, () => renderProgram(componentProgram));
+        } finally {
+          if (!prepared) disposeScope(componentScope);
+        }
       }
+
+      return insertAsyncResourceBootstrap(html, renderAsyncResourceBootstrap());
     });
   } finally {
     disposeScope(scope);

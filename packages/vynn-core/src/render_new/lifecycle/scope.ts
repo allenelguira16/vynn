@@ -87,7 +87,7 @@ function assertActive(scope: RenderScope, operation: string): ScopeRecord {
  * Render scopes use transparent Vynn Owners: they inherit reactive and runtime
  * context, but do not allocate hydration identity slots.
  */
-export function createScope(parent?: RenderScope | null): RenderScope {
+function createScopeInternal(parent: RenderScope | null | undefined, identity: boolean): RenderScope {
   const parentScope = parent === undefined ? getCurrentScope() : parent;
   const parentRecord = parentScope ? assertActive(parentScope, "create a child in") : undefined;
   const activeOwner = getOwner();
@@ -96,7 +96,7 @@ export function createScope(parent?: RenderScope | null): RenderScope {
     : parent !== undefined
       ? parentRecord?.owner ?? null
       : activeOwner ?? parentRecord?.owner ?? null;
-  const owner = createOwner(parentOwner, { identity: false });
+  const owner = createOwner(parentOwner, { identity });
 
   const record: ScopeRecord = {
     owner,
@@ -137,6 +137,16 @@ export function createScope(parent?: RenderScope | null): RenderScope {
   }
 
   return scope;
+}
+
+/** Creates the identity-bearing root scope for one render/hydration tree. */
+export function createRootScope(): RenderScope {
+  return createScopeInternal(null, true);
+}
+
+/** Creates a transparent child scope under the current or supplied scope. */
+export function createScope(parent?: RenderScope | null): RenderScope {
+  return createScopeInternal(parent, false);
 }
 
 /**

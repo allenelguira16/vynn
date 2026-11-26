@@ -289,10 +289,39 @@ Open [http://localhost:3001](http://localhost:3001).
 
 This mode is still experimental. The native router entry point is
 `vynn-router/render_new`; it supports initial-route SSR/hydration, lazy route
-modules, and async route guards through the preparation phase. It does not
-yet support Vynn's general async resources or `Await` during SSR, true
-streaming of unresolved render_new boundaries, dynamic `<title>` content,
-or the legacy reactive head-metadata runtime.
+modules, and async route guards through the preparation phase.
+
+The `vynn/render_new` entry point exports a resource-aware `Await` boundary.
+Pass one async `$state`, `$computed`, or `$store` value through `when`,
+or pass an array to wait for several resources:
+
+```tsx
+import { $computed } from "vynn";
+import { Await } from "vynn/render_new";
+
+const user = $computed(async () => loadUser());
+
+export function UserPage() {
+  return (
+    <Await when={user} fallback={<p>Loading user…</p>}>
+      <p>{user.value.name}</p>
+    </Await>
+  );
+}
+```
+
+Server preparation waits for those resources before serializing the boundary.
+Resolved values are included in the new renderer's hydration payload, so the
+browser can adopt the server output without immediately repeating the request.
+During client rendering, the fallback reacts to the resource's pending state
+and is replaced by the children when all resources settle.
+
+This is an explicit resource boundary, not implicit suspension for arbitrary
+child reads. Rejected resources propagate as render errors; renderer-native
+error boundaries are still pending. True streaming of unresolved render_new
+boundaries, dynamic `<title>` content, and the legacy reactive head-metadata
+runtime are also not supported yet.
+
 The compiler also retains its documented restrictions on spreads, refs,
 raw-HTML bindings, dynamic style objects, member-expression component tags,
 and parser-sensitive contexts such as tables, selects, and textareas.

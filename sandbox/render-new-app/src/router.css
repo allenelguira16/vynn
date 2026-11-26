@@ -43,9 +43,10 @@
   line-height: 1.8;
 }
 
-.route-card {
+.route-card,
+.async-resource-card {
   display: flex;
-  max-width: 420px;
+  max-width: 520px;
   flex-direction: column;
   gap: 10px;
   margin: 28px 0;
@@ -64,6 +65,16 @@
 .route-note {
   color: #8d93a3;
   font-size: 12px;
+}
+
+.async-resource-card strong {
+  color: #f0eef6;
+  font: 500 19px "Space Grotesk", sans-serif;
+}
+
+.async-resource-pending {
+  border-color: rgba(118, 217, 232, 0.28);
+  background: rgba(35, 55, 62, 0.32);
 }
 
 .route-actions {

@@ -10,6 +10,7 @@ export type {
 
 export {
   createScope,
+  createRootScope,
   disposeScope,
   getCurrentScope,
   onScopeDispose,
@@ -25,3 +26,5 @@ export * from "./binding";
 export * from "./ssr";
 
 export { prepareRenderNewTree } from "./prepare";
+
+export { Await, type RenderNewAwaitProps } from "./components/await";

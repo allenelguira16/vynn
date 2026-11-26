@@ -18,6 +18,9 @@ export default function AppLayout(props: PropsWithChildren) {
           <Link href="/users/42?tab=overview" class="route-link" activeClass="route-link-active">
             Route params
           </Link>
+          <Link href="/async" class="route-link" activeClass="route-link-active">
+            Async resources
+          </Link>
         </nav>
         <div className="topbar-meta">
           <span className="status-dot"></span>

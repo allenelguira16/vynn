@@ -319,9 +319,32 @@ matched route's `beforeLoad` guard. Client redirects during preparation
 resolve before hydration; subsequent client navigations continue to run
 guards with abortable signals.
 
-The new serializer remains synchronous after preparation. General async
-resources, `Await` boundaries, and true streaming of unresolved
-render_new components are not supported by this initial SSR integration.
+The serializer remains synchronous after preparation. The renderer-native
+`Await` export is available from `vynn/render_new` and accepts an explicit
+`when` resource:
+
+```tsx
+import { $computed } from "vynn";
+import { Await } from "vynn/render_new";
+
+const record = $computed(async () => loadRecord());
+
+export function RecordPage() {
+  return (
+    <Await when={record} fallback={<p>Loading…</p>}>
+      <p>{record.value.name}</p>
+    </Await>
+  );
+}
+```
+
+It accepts async `$state`, `$computed`, or `$store` values, including an
+array of resources. SSR preparation waits for them and writes resolved values
+into the hydration payload; client rendering shows the fallback while a
+resource is pending. The boundary is explicit and does not catch arbitrary
+pending reads from children. Rejected resources propagate as render errors.
+True streaming of unresolved render_new components and renderer-native error
+boundaries are not supported yet.
 
 
 The existing `vynn-router` entry point remains unchanged and continues to

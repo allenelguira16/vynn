@@ -5,7 +5,8 @@ import {
   updateRenderNewComponentProps,
   type RenderNewComponent,
 } from "./component";
-import { createScope, disposeScope, runWithScope } from "./lifecycle/scope";
+import { createRootScope, createScope, disposeScope, runWithScope } from "./lifecycle/scope";
+import { initializeAsyncHydrationRuntime } from "../runtime/async/hydration";
 import type { DOMTemplateProgram } from "./dom/program";
 import type { RenderScope } from "./types";
 
@@ -214,7 +215,8 @@ export async function prepareRenderNewTree(
     throw new Error("[vynn render_new]: This render tree has already been prepared.");
   }
 
-  const rootScope = createScope(null);
+  const rootScope = createRootScope();
+  runWithScope(rootScope, initializeAsyncHydrationRuntime);
   const components: RenderNewComponent[] = [];
   const readers: Array<() => unknown> = [];
   try {
