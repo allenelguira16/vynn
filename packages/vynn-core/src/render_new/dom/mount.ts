@@ -74,6 +74,7 @@ export function mountTemplate<TNode extends Node>(
   factory: TemplateFactory<TNode>,
   before: Node | null = null,
   initialize?: TemplateInitializer<TNode>,
+  removeRootsOnDispose = true,
 ): MountedTemplate<TNode> {
   assertFactory(factory);
 
@@ -114,7 +115,7 @@ export function mountTemplate<TNode extends Node>(
       initialize?.(created, scope);
       onScopeDispose(() => {
         try {
-          removeDOMNodes(created.roots);
+          if (removeRootsOnDispose) removeDOMNodes(created.roots);
         } finally {
           mounted = false;
         }
