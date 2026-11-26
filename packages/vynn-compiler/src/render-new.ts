@@ -505,6 +505,18 @@ function serializeElement(
     }
 
     if (
+      sourceName === "dangerouslySetInnerHTML" ||
+      sourceName === "innerHTML" ||
+      sourceName === "outerHTML"
+    ) {
+      fail(
+        "Raw HTML property bindings are not supported by the first render_new target.",
+        filename,
+        attribute,
+      );
+    }
+
+    if (
       sourceName.toLowerCase() === "html" ||
       sourceName.toLowerCase().startsWith("data-vynn-bind-") ||
       !/^[A-Za-z_:][A-Za-z0-9:._-]*$/.test(sourceName)
@@ -916,6 +928,19 @@ export function transformVynnRenderNewOxcWithMap(
   const coveredRanges: Array<[number, number]> = [];
 
   for (const component of collectComponentFunctions(program)) {
+    const metadata = component as unknown as {
+      async?: boolean;
+      generator?: boolean;
+    };
+
+    if (metadata.async || metadata.generator) {
+      fail(
+        "Async and generator components are not supported by the first render_new target.",
+        filename,
+        component,
+      );
+    }
+
     const roots: Node[] = [];
 
     if (
