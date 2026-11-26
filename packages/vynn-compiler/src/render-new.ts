@@ -1291,7 +1291,9 @@ export function transformVynnRenderNewOxcWithMap(
     return { code: source, map: null };
   }
 
-  replacements.sort((left, right) => right.start - left.start);
+  replacements.sort((left, right) =>
+    right.start - left.start || right.end - left.end,
+  );
 
   let code = source;
   let previousStart = source.length + 1;
