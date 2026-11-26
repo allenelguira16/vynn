@@ -144,7 +144,21 @@ const booleanAttributes = new Set([
 
 const propertyBindings = new Set([
   "value", "checked", "selected", "muted", "indeterminate",
+  "disabled", "required", "multiple", "hidden", "autofocus",
+  "readonly", "autoplay", "controls", "open", "loop",
+  "novalidate", "formnovalidate", "allowfullscreen",
+  "itemscope", "ismap", "nomodule", "playsinline",
 ]);
+
+const propertyAliases: Record<string, string> = {
+  autofocus: "autofocus",
+  readonly: "readOnly",
+  formnovalidate: "formNoValidate",
+  allowfullscreen: "allowFullscreen",
+  itemscope: "itemScope",
+  nomodule: "noModule",
+  playsinline: "playsInline",
+};
 
 const attributeAliases: Record<string, string> = {
   autoCapitalize: "autocapitalize",
@@ -496,12 +510,8 @@ function serializeElement(
     const staticValue = getStaticAttributeValue(attribute);
 
     if (event) {
-      if (staticValue !== DYNAMIC) {
-        fail("Event attributes must use an expression, for example onClick={handler}.", filename, attribute);
-      }
-
       if (!isJSXExpressionContainer(attribute.value) || !isExpression(attribute.value.expression)) {
-        fail("An event binding requires an expression value.", filename, attribute);
+        fail("An event binding requires an expression value, for example onClick={handler}.", filename, attribute);
       }
 
       bindings.push({
@@ -525,7 +535,16 @@ function serializeElement(
         fail("JSX cannot be used as a dynamic attribute value.", filename, attribute);
       }
 
-      const kind = propertyBindings.has(sourceName) ? "property" : "attribute";
+      if (
+        attribute.value !== null &&
+        !isLiteralString(attribute.value) &&
+        !isJSXExpressionContainer(attribute.value)
+      ) {
+        fail("Unsupported JSX attribute value.", filename, attribute);
+      }
+
+      const lowerSourceName = sourceName.toLowerCase();
+      const kind = propertyBindings.has(lowerSourceName) ? "property" : "attribute";
       if (sourceName === "style") {
         fail(
           "Dynamic style objects are not supported yet. Use a static style string or individual style attributes.",
@@ -537,14 +556,23 @@ function serializeElement(
       bindings.push({
         kind,
         name: kind === "property"
-          ? sourceName
+          ? propertyAliases[lowerSourceName] ?? sourceName
           : JSON.stringify(normalizedAttributeBindingName(sourceName, inSVG)),
         expression: attribute.value.expression,
       } as PendingBinding);
       continue;
     }
 
-    if (staticValue === undefined || staticValue === null) continue;
+    if (staticValue === undefined || staticValue === null) {
+      if (
+        attribute.value !== null &&
+        !isLiteralString(attribute.value) &&
+        !isJSXExpressionContainer(attribute.value)
+      ) {
+        fail("Unsupported JSX attribute value.", filename, attribute);
+      }
+      continue;
+    }
 
     const outputName = serializedAttributeName(sourceName, inSVG);
     let outputValue: string;
