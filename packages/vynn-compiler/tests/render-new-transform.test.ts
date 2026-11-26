@@ -390,6 +390,16 @@ describe("render_new JSX compiler target", () => {
     expect(calls).toBe(1);
   });
 
+  it("rejects script mode when a component helper import is required", () => {
+    expect(() =>
+      transformVynnRenderNewOxc(
+        "function Page() { return <main />; }",
+        "page.jsx",
+        { sourceType: "script" },
+      ),
+    ).toThrow("requires module source type");
+  });
+
   it("returns original source when the module contains no JSX", () => {
     const source = "export const value: number = 42;";
     expect(transformVynnRenderNewOxc(source, "value.ts")).toBe(source);
