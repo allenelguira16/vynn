@@ -82,6 +82,7 @@ describe("Vynn render_new application entries", () => {
       clientEntryUrl: "/assets/client.js",
       css: ["assets/app.css"],
       dev: false,
+      preserveRendererAssets: true,
     });
 
     expect(shell).toContain(
