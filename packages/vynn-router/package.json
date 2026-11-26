@@ -10,6 +10,10 @@
   "exports": {
     ".": {
       "import": "./src/index.tsx"
+    },
+    "./render_new": {
+      "types": "./src/render-new.ts",
+      "import": "./src/render-new.ts"
     }
   },
   "scripts": {
