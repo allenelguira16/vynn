@@ -3,6 +3,7 @@ import type { RenderNewComponent } from "../component";
 import {
   isRenderNewComponent,
   resolveRenderNewComponentProgram,
+  updateRenderNewComponentProps,
 } from "../component";
 import type { DOMTemplateAdapter } from "./adapter";
 import type { DOMTemplateProgram } from "./program";
@@ -13,6 +14,11 @@ import {
 } from "./hydrate";
 import type { MountedTemplate } from "./mount";
 
+export interface MountedRenderNewComponent extends MountedTemplate<Node> {
+  /** Updates reactive props while retaining the component scope. */
+  update(component: RenderNewComponent): boolean;
+}
+
 export interface HydrationRange {
   readonly start: Comment;
   readonly end: Comment;
@@ -21,7 +27,8 @@ export interface HydrationRange {
 function wrapComponentMount(
   scope: ReturnType<typeof createScope>,
   mounted: MountedTemplate<Node>,
-): MountedTemplate<Node> {
+  component: RenderNewComponent,
+): MountedRenderNewComponent {
   return Object.freeze({
     instance: mounted.instance,
     scope,
@@ -30,6 +37,10 @@ function wrapComponentMount(
     },
     dispose() {
       disposeScope(scope);
+    },
+    update(next: RenderNewComponent) {
+      if (scope.state !== "active") return false;
+      return updateRenderNewComponentProps(component, next);
     },
   });
 }
@@ -72,7 +83,7 @@ export function mountRenderNewComponent(
   adapter: DOMTemplateAdapter,
   before: Node | null = null,
   hydrationRange?: HydrationRange,
-): MountedTemplate<Node> {
+): MountedRenderNewComponent {
   assertComponent(component);
   const scope = createScope();
 
@@ -96,7 +107,7 @@ export function mountRenderNewComponent(
       return mountTemplateProgram(parent, program, adapter, before);
     });
 
-    return wrapComponentMount(scope, mounted);
+    return wrapComponentMount(scope, mounted, component);
   } catch (error) {
     return disposeAfterFailure(scope, error);
   }
@@ -111,7 +122,7 @@ export function hydrateRenderNewComponent(
   parent: Node,
   component: RenderNewComponent,
   adapter: DOMTemplateAdapter,
-): MountedTemplate<Node> {
+): MountedRenderNewComponent {
   assertComponent(component);
   const scope = createScope();
 
@@ -121,7 +132,7 @@ export function hydrateRenderNewComponent(
       return hydrateTemplateProgram(parent, program, adapter);
     });
 
-    return wrapComponentMount(scope, mounted);
+    return wrapComponentMount(scope, mounted, component);
   } catch (error) {
     return disposeAfterFailure(scope, error);
   }
