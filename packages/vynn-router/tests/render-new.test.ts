@@ -62,6 +62,14 @@ function routeComponent(
   return render as unknown as Route["component"];
 }
 
+function routerDispose(
+  router: ReturnType<typeof createRouter>,
+  scope: ReturnType<typeof createScope>,
+) {
+  router.dispose();
+  disposeScope(scope);
+}
+
 function mountRouter(
   routes: Route[],
   initialEntry: string,
@@ -113,6 +121,51 @@ describe("render_new router adapter", () => {
     expect(renders).toBe(1);
 
     app.dispose();
+  });
+
+  it("hydrates the prepared initial route into existing server DOM", async () => {
+    const HomePage = routeComponent(() =>
+      textProgram(() => `Route ${$params.id ?? "home"}`),
+    );
+    const routes: Route[] = [{ path: "/", component: HomePage }];
+    const serverScope = createScope(null);
+    const serverRouter = runWithScope(
+      serverScope,
+      () => createRouter({ routes, url: "/" }),
+    );
+    const serverApp = runWithScope(
+      serverScope,
+      () => Router({ router: serverRouter }) as unknown as RenderNewComponent,
+    );
+    const html = await renderTemplateProgramToStringAsync(serverApp);
+
+    expect(html).toContain("Route home");
+
+    const host = window.document.createElement("div");
+    host.innerHTML = html;
+    const serverParagraph = host.querySelector("p");
+
+    routerDispose(serverRouter, serverScope);
+
+    const clientScope = createScope(null);
+    const clientRouter = runWithScope(
+      clientScope,
+      () => createRouter({ routes, url: "/" }),
+    );
+    const clientApp = runWithScope(
+      clientScope,
+      () => Router({ router: clientRouter }) as unknown as RenderNewComponent,
+    );
+
+    await prepareRenderNewTree(clientApp);
+    const mounted = hydrateRenderNew(host, clientApp);
+
+    expect(host.querySelector("p")).toBe(serverParagraph);
+    expect(host.textContent).toBe("Route home");
+
+    mounted.dispose();
+    clientRouter.dispose();
+    disposeScope(clientScope);
   });
 
   it("preserves an unchanged nested layout while replacing its child route", () => {
