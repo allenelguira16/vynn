@@ -19,3 +19,5 @@ export * from "./template";
 export * from "./dom";
 
 export * from "./binding";
+
+export * from "./ssr";
