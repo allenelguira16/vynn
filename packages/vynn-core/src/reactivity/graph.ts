@@ -69,7 +69,9 @@ function flushUnobservedStoreSources(): void {
 }
 
 export function node(storeTarget?: object, storeKey?: unknown): Source {
-  return { observers: new Set(), storeTarget, storeKey };
+  return storeTarget === undefined
+    ? { observers: new Set() }
+    : { observers: new Set(), storeTarget, storeKey };
 }
 
 function getActiveExecution(): ExecutionContext | undefined {
