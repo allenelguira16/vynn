@@ -269,6 +269,41 @@ describe("render_new JSX compiler target", () => {
     expect(code).toContain('kind: "child"');
   });
 
+  it("emits stable keys on host template programs created inside arrays", () => {
+    const code = transformVynnRenderNewOxc(
+      `function List(props) {
+        return <ul>{props.items.map((item) => <li key={item.id}>{item.label}</li>)}</ul>;
+      }`,
+      "list.jsx",
+    );
+
+    expect(code).toContain('key: (item.id)');
+    expect(code).toContain('markup: "<li><!--__vynn_render_new_child_0_start__--><!--__vynn_render_new_child_0_end__--></li>"');
+  });
+
+  it("supports static string keys on nested host templates", () => {
+    const code = transformVynnRenderNewOxc(
+      `function List() {
+        return <ul>{[<li key="first">First</li>]}</ul>;
+      }`,
+      "list.jsx",
+    );
+
+    expect(code).toContain('key: ("first")');
+    expect(code).not.toContain('key="first"');
+  });
+
+  it("rejects keyed component entries until component prop updates are supported", () => {
+    expect(() =>
+      transformVynnRenderNewOxc(
+        `function List(props) {
+          return <ul>{props.items.map((item) => <Row key={item.id} item={item} />)}</ul>;
+        }`,
+        "list.jsx",
+      ),
+    ).toThrow("Keyed component entries are not supported yet");
+  });
+
   it("passes nested JSX through a component's children prop", () => {
     const code = transformVynnRenderNewOxc(
       `function Page(props) {
