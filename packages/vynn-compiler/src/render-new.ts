@@ -6,6 +6,7 @@
  * DOMTemplateProgram-shaped objects consumed by vynn/render_new.
  */
 
+import { decodeHTML } from "entities";
 import { parseSync } from "oxc-parser";
 
 import type { Node } from "./ast.ts";
@@ -50,7 +51,12 @@ type EventAttribute = {
 
 type PendingBinding =
   | {
-      kind: "attribute" | "property";
+      kind: "attribute";
+      name: string | { namespaceURI: string; qualifiedName: string };
+      expression: Node;
+    }
+  | {
+      kind: "property";
       name: string;
       expression: Node;
     }
@@ -310,7 +316,7 @@ function getStaticAttributeValue(
 ): string | number | boolean | null | undefined | typeof DYNAMIC {
   if (!isJSXAttribute(attribute)) return undefined;
   if (attribute.value === null) return true;
-  if (isLiteralString(attribute.value)) return attribute.value.value;
+  if (isLiteralString(attribute.value)) return decodeHTML(attribute.value.value);
 
   if (!isJSXExpressionContainer(attribute.value)) return undefined;
   const expression = attribute.value.expression;
@@ -553,13 +559,19 @@ function serializeElement(
         );
       }
 
-      bindings.push({
-        kind,
-        name: kind === "property"
-          ? propertyAliases[lowerSourceName] ?? sourceName
-          : JSON.stringify(normalizedAttributeBindingName(sourceName, inSVG)),
-        expression: attribute.value.expression,
-      } as PendingBinding);
+      if (kind === "property") {
+        bindings.push({
+          kind: "property",
+          name: propertyAliases[lowerSourceName] ?? sourceName,
+          expression: attribute.value.expression,
+        });
+      } else {
+        bindings.push({
+          kind: "attribute",
+          name: normalizedAttributeBindingName(sourceName, inSVG),
+          expression: attribute.value.expression,
+        });
+      }
       continue;
     }
 
@@ -720,11 +732,11 @@ function serializeProgram(
             name: binding.name,
             read,
           });
-        } else {
+        } else if (binding.kind === "attribute") {
           bindings.push({
             kind: "attribute",
             reference,
-            name: JSON.parse(binding.name) as string | { namespaceURI: string; qualifiedName: string },
+            name: binding.name,
             read,
           });
         }
