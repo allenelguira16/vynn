@@ -350,6 +350,8 @@ export function hydrateTemplateProgram(
     if (!(error instanceof HydrationMismatch)) throw error;
   }
 
-  removeDOMNodes(roots);
+  // A document mount transfers framework-owned CSS, script, and preload
+  // ranges from the old root before replacing it. Do not detach that root here.
+  if (!isDocument) removeDOMNodes(roots);
   return mountTemplateProgram(parent, program, adapter);
 }
