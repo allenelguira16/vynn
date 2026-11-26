@@ -307,7 +307,7 @@ function normalizedAttributeBindingName(
 
 function getStaticAttributeValue(
   attribute: Node,
-): string | boolean | null | undefined | typeof DYNAMIC {
+): string | number | boolean | null | undefined | typeof DYNAMIC {
   if (!isJSXAttribute(attribute)) return undefined;
   if (attribute.value === null) return true;
   if (isLiteralString(attribute.value)) return attribute.value.value;
@@ -324,7 +324,7 @@ function getStaticAttributeValue(
       typeof expression.value === "number" ||
       typeof expression.value === "boolean"
     ) {
-      return expression.value as string | boolean | null;
+      return expression.value as string | number | boolean | null;
     }
   }
 
@@ -748,7 +748,10 @@ function serializeProgram(
   };
 }
 
-function renderProgramExpression(program: SerializedProgram): string {
+function renderProgramExpression(
+  program: SerializedProgram,
+  useConstAssertions: boolean,
+): string {
   const references = program.references.map((reference) => (
     "{ id: " + reference.id +
     ', kind: "' + reference.kind +
@@ -782,7 +785,8 @@ function renderProgramExpression(program: SerializedProgram): string {
   return "({ template: { markup: " + JSON.stringify(program.markup) +
     ', namespace: "' + program.namespace +
     '", references: [' + references.join(", ") +
-    '] }, bindings: [' + bindings.join(", ") + "] } as const)";
+    '] }, bindings: [' + bindings.join(", ") + "]" +
+    (useConstAssertions ? " } as const)" : " })");
 }
 
 function isComponentFunction(node: Node): boolean {
@@ -878,8 +882,9 @@ export function transformVynnRenderNewOxcWithMap(
   filename = "module.tsx",
   options: RenderNewCompilerOptions = {},
 ): RenderNewTransformResult {
+  const lang = options.lang ?? inferLang(filename);
   const parsed = parseSync(filename, source, {
-    lang: options.lang ?? inferLang(filename),
+    lang,
     sourceType: options.sourceType ?? "module",
     astType: "ts",
     preserveParens: false,
@@ -920,7 +925,10 @@ export function transformVynnRenderNewOxcWithMap(
       replacements.push({
         start: root.start!,
         end: root.end!,
-        value: renderProgramExpression(serialized),
+        value: renderProgramExpression(
+          serialized,
+          lang === "ts" || lang === "tsx",
+        ),
       });
       coveredRanges.push([root.start!, root.end!]);
     }
