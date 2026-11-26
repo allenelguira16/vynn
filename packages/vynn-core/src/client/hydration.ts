@@ -359,10 +359,8 @@ function finishIfClaimed(scope: LazyHydrationNodes): void {
  */
 export function claimHydrationElement<T extends Element>() {
   const scope = getOwnerContext<LazyHydrationNodes>(LAZY_HYDRATION);
-  const node = claimNextHydrationNode(
-    scope?.elementCursor ?? rootHydrationScope?.elementCursor,
-    "element",
-  ) as T | undefined;
+  const cursor = scope ? scope.elementCursor : rootHydrationScope?.elementCursor;
+  const node = claimNextHydrationNode(cursor, "element") as T | undefined;
 
   if (scope) finishIfClaimed(scope);
   else {
@@ -375,10 +373,8 @@ export function claimHydrationElement<T extends Element>() {
 
 export function claimHydrationText() {
   const scope = getOwnerContext<LazyHydrationNodes>(LAZY_HYDRATION);
-  const node = claimNextHydrationNode(
-    scope?.textCursor ?? rootHydrationScope?.textCursor,
-    "text",
-  );
+  const cursor = scope ? scope.textCursor : rootHydrationScope?.textCursor;
+  const node = claimNextHydrationNode(cursor, "text");
 
   if (scope) finishIfClaimed(scope);
   else {
@@ -427,8 +423,8 @@ export function withServerRenderedLazy<T>(lazyID: string | number, callback: () 
 export function beginHydrationClaim(): HydrationClaimSnapshot {
   const scope = getOwnerContext<LazyHydrationNodes>(LAZY_HYDRATION);
   const rootScope = scope ? undefined : rootHydrationScope;
-  const elementCursor = scope?.elementCursor ?? rootScope?.elementCursor;
-  const textCursor = scope?.textCursor ?? rootScope?.textCursor;
+  const elementCursor = scope ? scope.elementCursor : rootScope?.elementCursor;
+  const textCursor = scope ? scope.textCursor : rootScope?.textCursor;
 
   return {
     scope,
