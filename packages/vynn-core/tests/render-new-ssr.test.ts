@@ -3,9 +3,13 @@ import { JSDOM } from "jsdom";
 
 import { $state } from "../src/reactivity/state";
 import { createRenderNewComponent } from "../src/render_new/component";
-import { hydrateRenderNew } from "../src/render_new/dom/hydrate-client";
+import {
+  createDOMTemplateAdapter,
+  hydrateRenderNew,
+  mountTemplateProgram,
+  renderTemplateProgramToString,
+} from "../src/render_new";
 import type { DOMTemplateProgram } from "../src/render_new/dom/program";
-import { renderTemplateProgramToString } from "../src/render_new/ssr/render";
 
 function createDocument(): Document {
   return new JSDOM("<!doctype html><html><body></body></html>").window.document;
@@ -482,6 +486,84 @@ describe("render_new SSR and hydration", () => {
 
     mounted.dispose();
     expect(container.childNodes).toHaveLength(0);
+  });
+
+  it("mounts a complete HTML document by replacing the existing document root", () => {
+    const document = createDocument();
+    const originalRoot = document.documentElement;
+    const message = $state("Mounted document content");
+    const language = $state("en-PH");
+    const program: DOMTemplateProgram = {
+      template: {
+        namespace: "html",
+        markup: '<html><head><title>Vynn test</title></head><body><main><!--__vynn_render_new_child_0_start__--><!--__vynn_render_new_child_0_end__--></main></body></html>',
+        references: [
+          { id: 0, kind: "element", path: [0] },
+          { id: 1, kind: "anchor", path: [0, 1, 0, 0] },
+        ],
+      },
+      bindings: [
+        { kind: "attribute", reference: 0, name: "lang", read: () => language.value },
+        { kind: "child", reference: 1, read: () => message.value },
+      ],
+    };
+
+    const mounted = mountTemplateProgram(
+      document,
+      program,
+      createDOMTemplateAdapter(document),
+    );
+
+    expect(document.documentElement).not.toBe(originalRoot);
+    expect(document.documentElement?.getAttribute("lang")).toBe("en-PH");
+    expect(document.querySelector("title")?.textContent).toBe("Vynn test");
+    expect(document.querySelector("main")?.textContent).toBe("Mounted document content");
+
+    language.value = "en-US";
+    message.value = "Updated document content";
+
+    expect(document.documentElement?.getAttribute("lang")).toBe("en-US");
+    expect(document.querySelector("main")?.textContent).toBe("Updated document content");
+
+    mounted.dispose();
+    expect(document.documentElement).toBeNull();
+  });
+
+  it("hydrates a full HTML document in place and leaves the document root on dispose", () => {
+    const message = $state("Server document content");
+    const language = $state("en-PH");
+    const program: DOMTemplateProgram = {
+      template: {
+        namespace: "html",
+        markup: '<html><head><title>Hydrated Vynn</title></head><body><main><!--__vynn_render_new_child_0_start__--><!--__vynn_render_new_child_0_end__--></main></body></html>',
+        references: [
+          { id: 0, kind: "element", path: [0] },
+          { id: 1, kind: "anchor", path: [0, 1, 0, 0] },
+        ],
+      },
+      bindings: [
+        { kind: "attribute", reference: 0, name: "lang", read: () => language.value },
+        { kind: "child", reference: 1, read: () => message.value },
+      ],
+    };
+
+    const html = renderTemplateProgramToString(program);
+    const hydratedDocument = new JSDOM("<!doctype html>" + html).window.document;
+    const originalRoot = hydratedDocument.documentElement;
+
+    const mounted = hydrateRenderNew(hydratedDocument, program);
+
+    expect(hydratedDocument.documentElement).toBe(originalRoot);
+    expect(hydratedDocument.querySelector("main")?.textContent).toBe("Server document content");
+
+    message.value = "Hydrated document update";
+    language.value = "en-US";
+
+    expect(hydratedDocument.querySelector("main")?.textContent).toBe("Hydrated document update");
+    expect(hydratedDocument.documentElement.getAttribute("lang")).toBe("en-US");
+
+    mounted.dispose();
+    expect(hydratedDocument.documentElement).toBe(originalRoot);
   });
 
 });
