@@ -19,6 +19,7 @@ import {
   createRouter,
   Link,
   Router,
+  toFileRouter,
   type Route,
 } from "../src/render-new";
 
@@ -181,6 +182,89 @@ describe("render_new router adapter", () => {
     expect(click.defaultPrevented).toBe(true);
     expect(app.host.querySelector("a")).toBeNull();
     expect(app.host.textContent).toBe("Next route");
+
+    app.dispose();
+  });
+
+
+  it("waits for async beforeLoad and aborts stale guards on same-route navigation", async () => {
+    const pending: Array<{
+      resolve: () => void;
+      signal: AbortSignal;
+      params: Readonly<Record<string, string | undefined>>;
+      search: URLSearchParams;
+    }> = [];
+    const GuardedPage = routeComponent(() =>
+      textProgram(() => `${$params.id}:${$search.tab ?? "none"}`),
+    );
+    const app = mountRouter(
+      [{
+        path: "/users/:id",
+        component: GuardedPage,
+        beforeLoad: ({ signal, params, search }) =>
+          new Promise<void>((resolve) => {
+            pending.push({ resolve, signal, params, search });
+          }),
+      }],
+      "/users/1?tab=profile",
+    );
+
+    expect(app.host.textContent).toBe("");
+    expect(pending).toHaveLength(1);
+    expect(pending[0]?.params.id).toBe("1");
+    expect(pending[0]?.search.get("tab")).toBe("profile");
+
+    app.history.push("/users/2?tab=activity");
+
+    expect(pending).toHaveLength(2);
+    expect(pending[0]?.signal.aborted).toBe(true);
+    expect(pending[1]?.signal.aborted).toBe(false);
+    expect(pending[1]?.params.id).toBe("2");
+    expect(pending[1]?.search.get("tab")).toBe("activity");
+
+    pending[0]?.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(app.host.textContent).toBe("");
+
+    pending[1]?.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(app.host.textContent).toBe("2:activity");
+
+    app.dispose();
+  });
+
+  it("renders a file route through the render_new lazy module loader", async () => {
+    let moduleLoads = 0;
+    let guardCalls = 0;
+    const filePath = "/src/app/users/[id]/page.tsx";
+    const UserPage = routeComponent(() =>
+      textProgram(() => `Lazy user ${$params.id}`),
+    );
+    const routes = toFileRouter("/src/app", {
+      [filePath]: async () => {
+        moduleLoads += 1;
+        return {
+          default: UserPage,
+          beforeLoad: async ({ params }) => {
+            guardCalls += 1;
+            expect(params.id).toBe("42");
+          },
+        };
+      },
+    }, [{
+      path: filePath,
+      kind: "page",
+      beforeLoad: true,
+    }]);
+    const app = mountRouter(routes, "/users/42");
+
+    expect(app.host.textContent).toBe("");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(moduleLoads).toBe(1);
+    expect(guardCalls).toBe(1);
+    expect(app.host.textContent).toBe("Lazy user 42");
 
     app.dispose();
   });
