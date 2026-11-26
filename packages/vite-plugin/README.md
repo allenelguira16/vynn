@@ -255,6 +255,13 @@ This plugin does not change the default `vynn()` application pipeline.
 It is a standalone compiler adapter, and the new runtime is mounted explicitly.
 Do not install it alongside the legacy JSX transform for the same source files.
 
+A runnable client-only browser example is available in
+`sandbox/render-new-app`. From the workspace root, run
+`pnpm --filter render-new-app dev` and open
+[http://localhost:3001](http://localhost:3001). That sandbox installs only
+`vynnRenderNewOxcPlugin()` and manually mounts its root with
+`mountRenderNew()`.
+
 The same component descriptor can be serialized on the server and hydrated in the browser.
 The server serializer is synchronous and uses its own markup renderer, not
 Vynn's legacy SSR implementation:
