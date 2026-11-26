@@ -1,4 +1,8 @@
 export {
+  hydrateRenderNew,
+} from "./hydrate-client";
+
+export {
   mountRenderNew,
   type MountRenderNewOptions,
 } from "./client";
