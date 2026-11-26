@@ -176,7 +176,7 @@ export function updateRenderNewComponentProps(
   if (
     !isRenderNewComponent(current) ||
     !isRenderNewComponent(next) ||
-    current.key !== next.key
+    !(current.key === next.key || Object.is(current.key, next.key))
   ) {
     return false;
   }
