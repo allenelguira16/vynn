@@ -49,20 +49,28 @@ creates fresh accessors while reusing the same static definition. It does not
 import or call the legacy `vynn/render` helpers and does not change the output
 of `transformVynnOxc()`.
 
-The initial target intentionally supports a limited subset: named function
-components returning host JSX, static host elements and text, standalone
-dynamic text nodes, dynamic attributes, common form-control properties, and
-event handlers. Dynamic text is stringified and must occupy its own text node;
-wrap it in an element when mixing it with static text. It currently rejects
-component children, spreads, refs, conditional/list children, mixed
-static/dynamic text in one text node, and parser-sensitive HTML contexts such
-as tables, selects, and textareas.
+The current target supports named function components with direct JSX
+returns, static host markup, reactive attributes and properties, event handlers,
+comment-ranged dynamic children, nested component programs, conditional JSX
+expressions, and array expressions such as `.map(item => <Row />)`. Component
+props are emitted as lazy getters so reactive values remain live. Component
+children are available through a `children` getter.
 
-Generated component functions return a template program rather than mounting
-it. The caller supplies a DOM parent and adapter to
-`mountTemplateProgram(parent, program, adapter)` from the new renderer's
-internal DOM program module. The runtime is not exposed as a public
-`vynn/render_new` package export yet.
+Dynamic slots accept nullish/boolean values, strings, numbers, bigints, DOM
+nodes on the client, arrays, and nested component template programs. Array
+updates currently replace the contents of the slot; keyed identity and
+incremental list reconciliation are not implemented. The compiler still
+rejects JSX spreads, refs, raw-HTML bindings, dynamic style objects,
+member-expression component tags, and parser-sensitive contexts such as
+tables, selects, and textareas. JSX must be returned directly from a named
+component function or appear inside one of its compiled JSX expressions.
+
+Generated components return a `DOMTemplateProgram`; they do not mount
+themselves. Use `mountRenderNew(parent, App())` for client rendering,
+`renderTemplateProgramToString(App())` for synchronous HTML serialization,
+and `hydrateRenderNew(parent, App())` for DOM hydration. The matching Vite
+adapter is `vynnRenderNewOxcPlugin()` from `vite-plugin-vynn`.
+
 
 This target is experimental. It does not yet emit source maps, SSR output,
 hydration instructions, structural child instructions, or an automatic Vite
