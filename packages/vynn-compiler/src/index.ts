@@ -2820,9 +2820,11 @@ class TransformState {
       !isComponentElement(callbackSource.body);
     // An omitted map index cannot be observed by the callback. Avoid creating
     // one reactive state cell per row when the callback has only an item arg.
-    const trackIndex = isFunctionLike(callbackSource)
-      ? callbackSource.params.length > 1
-      : true;
+    const trackIndex = !(
+      isArrowFunctionExpression(callbackSource) &&
+      callbackSource.params.length === 1 &&
+      isIdentifier(callbackSource.params[0])
+    );
     if (!listKey && isFunctionLike(callbackSource) && this.containsJSXKey(callbackSource)) {
       throw new Error(
         "[Vynn compiler] A list key must be placed on the single JSX element directly returned by the .map() callback. Conditional and multiple roots are not supported yet.",
