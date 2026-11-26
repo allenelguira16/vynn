@@ -7,10 +7,7 @@ import {
   createScope,
   disposeScope,
 } from "../src/render_new/lifecycle/scope";
-import {
-  bindAttribute,
-  type AttributeBinding,
-} from "../src/render_new/binding/attribute";
+import { bindAttribute } from "../src/render_new/binding/attribute";
 
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 const XLINK_NAMESPACE = "http://www.w3.org/1999/xlink";
