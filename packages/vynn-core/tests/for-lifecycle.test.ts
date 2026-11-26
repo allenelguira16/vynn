@@ -92,6 +92,42 @@ describe("$for row lifecycle", () => {
     disposeOwner(owner);
   });
 
+  it("updates tracked indexes when keyed rows are reordered", async () => {
+    const rows = $state([{ id: 1 }, { id: 2 }]);
+    const owner = createOwner(null);
+    const host = document.createElement("div");
+
+    runWithOwner(owner, () => {
+      $insert(
+        host,
+        () =>
+          $for(
+            () => rows.value,
+            (_item, index) => {
+              const element = $template("<p></p>")();
+              $insert(element, () => index.value);
+              return element as unknown as JSX.Element;
+            },
+            (row) => row.id,
+          ),
+      );
+    });
+
+    document.body.append(host);
+    await flushEffects();
+
+    expect(host.textContent).toBe("01");
+
+    const first = rows.value[0]!;
+    const second = rows.value[1]!;
+    rows.value = [second, first];
+    await flushEffects();
+
+    expect(host.textContent).toBe("10");
+
+    disposeOwner(owner);
+  });
+
   it("disposes removed row effects while preserving keyed rows that are reordered", async () => {
     const first: Row = { id: 1, value: $state(0) };
     const second: Row = { id: 2, value: $state(0) };
@@ -138,6 +174,11 @@ describe("$for row lifecycle", () => {
 
     expect(firstOwner).toBeDefined();
     expect(secondOwner).toBeDefined();
+    expect(
+      Object.getOwnPropertySymbols(firstOwner).some(
+        (symbol) => symbol.description === "vynn.for.item-state",
+      ),
+    ).toBe(true);
     expect(owner.children).toContain(firstOwner);
     expect(owner.children).toContain(secondOwner);
     expect(runs.get(1)).toBe(1);
@@ -167,6 +208,13 @@ describe("$for row lifecycle", () => {
 
     expect(firstOwner.disposed).toBe(true);
     expect(secondOwner.disposed).not.toBe(true);
+    // Disposed Owners may be retained by debugging tools or application code.
+    // They must not keep the removed row's node or reactive item alive.
+    expect(
+      Object.getOwnPropertySymbols(firstOwner).some(
+        (symbol) => symbol.description?.startsWith("vynn.for."),
+      ),
+    ).toBe(false);
     expect(owner.children).toEqual([secondOwner]);
     expect(
       [...host.querySelectorAll("p")].map((element) => element.dataset.id),
@@ -181,6 +229,11 @@ describe("$for row lifecycle", () => {
     // Disposing the parent still disposes the remaining row scope.
     disposeOwner(owner);
     expect(secondOwner.disposed).toBe(true);
+    expect(
+      Object.getOwnPropertySymbols(secondOwner).some(
+        (symbol) => symbol.description?.startsWith("vynn.for."),
+      ),
+    ).toBe(false);
 
     second.value.value = 2;
     expect(runs.get(2)).toBe(2);

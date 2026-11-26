@@ -6,6 +6,7 @@ import {
   disposeOwner,
   getOwner,
   runWithOwner,
+  setOwnerDisposeCallback,
   type Owner,
 } from "../life-cycle/owner";
 import { $computed } from "../reactivity/computed";
@@ -14,18 +15,27 @@ import { createStateValue, type State } from "../reactivity/state";
 import { $nodes } from "./$nodes";
 import { getCurrentDOMNamespace, withDOMNamespace } from "./namespace";
 
-type ForEntry<T> = {
-  identity: unknown;
-  itemState?: State<T>;
-  node: JSX.Element;
-  index?: State<number>;
-  owner: Owner;
+const FOR_IDENTITY = Symbol("vynn.for.identity");
+const FOR_ITEM_STATE = Symbol("vynn.for.item-state");
+const FOR_INDEX_STATE = Symbol("vynn.for.index-state");
+
+type ForRow<T> = Owner & {
+  [FOR_IDENTITY]?: unknown;
+  [FOR_ITEM_STATE]?: State<T>;
+  [FOR_INDEX_STATE]?: State<number>;
 };
 
-type ForBucket<T> = {
-  entries: ForEntry<T>[];
+type ForBucket = {
+  entries: number[];
   nextIndex: number;
 };
+
+function releaseForRow(owner: Owner): void {
+  const entry = owner as ForRow<unknown>;
+  delete entry[FOR_IDENTITY];
+  delete entry[FOR_ITEM_STATE];
+  delete entry[FOR_INDEX_STATE];
+}
 
 // Map uses SameValueZero, while the existing identity behavior uses Object.is.
 // Keep -0 and +0 distinct without penalizing the common object/string/number path.
@@ -122,11 +132,22 @@ export function $for<T>(
       return renderEach(item, index);
     });
 
-  const createEntry = (item: T, identity: unknown, index: number): ForEntry<T> => {
+  const createRow = (
+    item: T,
+    identity: unknown,
+    index: number,
+    outputNodes: JSX.Element[],
+  ): ForRow<T> => {
     // A row is a lifecycle boundary. Its renderer effects, nested components,
     // and user-created effects must not outlive the entry when it is removed.
     // Transparent owners do not consume an additional hydration identity slot.
+    //
+    // Keep row state on the Owner and the rendered node in the list's existing
+    // output array. This avoids both a separate ForRow object and a duplicate
+    // per-row node reference.
     const owner = createOwner(parentOwner, { identity: false });
+    const entry = owner as ForRow<T>;
+    setOwnerDisposeCallback(owner, releaseForRow);
 
     try {
       return runWithOwner(owner, () => {
@@ -134,15 +155,16 @@ export function $for<T>(
         const itemState = keyed ? createStateValue(item) : undefined;
         const renderedItem = itemState ?? item;
 
-        return {
-          identity,
-          itemState,
-          node: stableRow
+        entry[FOR_IDENTITY] = identity;
+        entry[FOR_ITEM_STATE] = itemState;
+        entry[FOR_INDEX_STATE] = indexState;
+        outputNodes.push(
+          stableRow
             ? renderEach(renderedItem, indexState)
             : createRowNode(renderedItem, indexState),
-          index: indexState,
-          owner,
-        };
+        );
+
+        return entry;
       });
     } catch (cause) {
       try {
@@ -174,7 +196,9 @@ export function $for<T>(
   }
 
   let result: JSX.Element[] = [];
-  let oldEntries: ForEntry<T>[] = [];
+  // These arrays stay aligned: row Owners retain lifecycle/key state, while
+  // the output array retains their DOM/JSX nodes without duplicating references.
+  let oldEntries: ForRow<T>[] = [];
   let initialized = false;
 
   const value = $computed(() => {
@@ -214,17 +238,18 @@ export function $for<T>(
        * First render.
        */
       if (!initialized) {
-        const entries: ForEntry<T>[] = [];
+        const entries: ForRow<T>[] = [];
+        const nodes: JSX.Element[] = [];
 
         try {
           for (let index = 0; index < newItems.length; index++) {
-            entries.push(createEntry(newItems[index], newIdentities[index], index));
+            entries.push(createRow(newItems[index], newIdentities[index], index, nodes));
           }
         } catch (cause) {
           const cleanupErrors: unknown[] = [];
           for (const entry of entries) {
             try {
-              disposeOwner(entry.owner);
+              disposeOwner(entry);
             } catch (cleanupCause) {
               cleanupErrors.push(cleanupCause);
             }
@@ -240,7 +265,7 @@ export function $for<T>(
         }
 
         oldEntries = entries;
-        result = entries.map((entry) => entry.node);
+        result = nodes;
         initialized = true;
 
         return;
@@ -250,10 +275,11 @@ export function $for<T>(
        * Index old entries by identity. Buckets preserve deterministic FIFO
        * matching for duplicate values while ensuring an entry is reused once.
        */
-      const oldByIdentity = new Map<unknown, ForBucket<T>>();
+      const oldByIdentity = new Map<unknown, ForBucket>();
 
-      for (const entry of oldEntries) {
-        const identity = normalizeIdentity(entry.identity);
+      for (let index = 0; index < oldEntries.length; index++) {
+        const entry = oldEntries[index];
+        const identity = normalizeIdentity(entry[FOR_IDENTITY]);
         let bucket = oldByIdentity.get(identity);
 
         if (!bucket) {
@@ -261,35 +287,38 @@ export function $for<T>(
           oldByIdentity.set(identity, bucket);
         }
 
-        bucket.entries.push(entry);
+        bucket.entries.push(index);
       }
 
-      const newEntries: ForEntry<T>[] = [];
-      const createdEntries: ForEntry<T>[] = [];
+      const newEntries: ForRow<T>[] = [];
+      const createdEntries: ForRow<T>[] = [];
+      const nodes: JSX.Element[] = [];
 
       try {
         for (let i = 0; i < newItems.length; i++) {
           const newItem = newItems[i];
           const identity = newIdentities[i];
           const bucket = oldByIdentity.get(normalizeIdentity(identity));
-          const entry =
+          const oldIndex =
             bucket && bucket.nextIndex < bucket.entries.length
               ? bucket.entries[bucket.nextIndex++]
               : undefined;
+          if (oldIndex !== undefined) {
+            const entry = oldEntries[oldIndex]!;
 
-          if (entry) {
             // Preserve the existing DOM and reactive subtree.
-            entry.identity = identity;
+            entry[FOR_IDENTITY] = identity;
 
             // Keyed rows read the current item through this stable reactive cell.
-            if (entry.itemState) {
-              entry.itemState.value = newItem;
+            if (entry[FOR_ITEM_STATE]) {
+              entry[FOR_ITEM_STATE].value = newItem;
             }
 
-            if (entry.index) entry.index.value = i;
+            if (entry[FOR_INDEX_STATE]) entry[FOR_INDEX_STATE].value = i;
             newEntries.push(entry);
+            nodes.push(result[oldIndex]!);
           } else {
-            const created = createEntry(newItem, identity, i);
+            const created = createRow(newItem, identity, i, nodes);
             createdEntries.push(created);
             newEntries.push(created);
           }
@@ -298,7 +327,7 @@ export function $for<T>(
         const cleanupErrors: unknown[] = [];
         for (const entry of createdEntries) {
           try {
-            disposeOwner(entry.owner);
+            disposeOwner(entry);
           } catch (cleanupCause) {
             cleanupErrors.push(cleanupCause);
           }
@@ -316,20 +345,20 @@ export function $for<T>(
       // Entries not consumed from the identity buckets no longer belong to
       // the rendered list. Dispose their complete reactive subtree now rather
       // than leaving its effects attached to the parent component owner.
-      const removedEntries: ForEntry<T>[] = [];
+      const removedEntries: ForRow<T>[] = [];
       for (const bucket of oldByIdentity.values()) {
         for (let index = bucket.nextIndex; index < bucket.entries.length; index++) {
-          removedEntries.push(bucket.entries[index]);
+          removedEntries.push(oldEntries[bucket.entries[index]]!);
         }
       }
 
       oldEntries = newEntries;
-      result = newEntries.map((entry) => entry.node);
+      result = nodes;
 
       const cleanupErrors: unknown[] = [];
       for (const entry of removedEntries) {
         try {
-          disposeOwner(entry.owner);
+          disposeOwner(entry);
         } catch (cause) {
           cleanupErrors.push(cause);
         }

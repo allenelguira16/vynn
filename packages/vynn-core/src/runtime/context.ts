@@ -1,8 +1,6 @@
 export interface RuntimeContext {
   parent: RuntimeContext | null;
   values?: Map<string | symbol, unknown>;
-  /** The owner active in this frame. Kept outside the general context Map. */
-  currentOwner?: unknown;
 }
 
 export interface RuntimeContextStorage {
@@ -152,24 +150,4 @@ export function modifyContext<T>(key: string | symbol, updater: (current: T) => 
   }
 
   return false;
-}
-
-
-/** Reads the nearest active owner without allocating a general context Map. */
-export function getRuntimeOwner<T>(): T | undefined {
-  let context: RuntimeContext | null = getRuntimeContext();
-
-  while (context) {
-    if (Object.prototype.hasOwnProperty.call(context, "currentOwner")) {
-      return context.currentOwner as T;
-    }
-    context = context.parent;
-  }
-
-  return undefined;
-}
-
-/** Sets the active owner in the current runtime frame. */
-export function setRuntimeOwner(owner: unknown): void {
-  getRuntimeContext().currentOwner = owner;
 }
