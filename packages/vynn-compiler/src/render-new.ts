@@ -363,12 +363,17 @@ function appendSerialized(nodes: SerializedNode[], next: SerializedNode): void {
   nodes.push(next);
 }
 
+type CompileNestedJSX = (node: Node) => string;
+type CompileJSXExpression = (node: Node) => string;
+
 function serializeChildren(
   children: readonly Node[],
   source: string,
   filename: string,
   inSVG: boolean,
   textIndex: { value: number },
+  compileNestedJSX: CompileNestedJSX,
+  compileExpression: CompileJSXExpression,
 ): SerializedNode[] {
   const result: SerializedNode[] = [];
 
@@ -386,6 +391,8 @@ function serializeChildren(
         filename,
         inSVG,
         textIndex,
+        compileNestedJSX,
+        compileExpression,
       );
       for (const node of nested) appendSerialized(result, node);
       continue;
@@ -407,18 +414,11 @@ function serializeChildren(
         fail("Unsupported JSX child expression.", filename, child);
       }
 
-      if (containsJSX(expression)) {
-        fail(
-          "JSX inside a dynamic child expression is not supported by the first render_new target.",
-          filename,
-          expression,
-        );
-      }
-
       const index = textIndex.value++;
       result.push({
         kind: "dynamic-child",
         expression,
+        expressionSource: compileExpression(expression),
         placeholder: "<!--__vynn_render_new_child_" + index + "_start__-->" +
           "<!--__vynn_render_new_child_" + index + "_end__-->",
       });
@@ -428,8 +428,8 @@ function serializeChildren(
     if (isJSXElement(child)) {
       result.push(
         isComponentJSXElement(child)
-          ? serializeComponentChild(child, source, filename, textIndex)
-          : serializeElement(child, source, filename, textIndex, inSVG),
+          ? serializeComponentChild(child, source, filename, textIndex, compileNestedJSX, compileExpression)
+          : serializeElement(child, source, filename, textIndex, inSVG, compileNestedJSX, compileExpression),
       );
       continue;
     }
@@ -457,6 +457,8 @@ function serializeComponentChild(
   source: string,
   filename: string,
   textIndex: { value: number },
+  compileNestedJSX: CompileNestedJSX,
+  compileExpression: CompileJSXExpression,
 ): DynamicChildNode {
   if (!isJSXElement(node) || !isJSXIdentifier(node.openingElement.name)) {
     fail("A component child must use a simple JSX identifier.", filename, node);
@@ -490,13 +492,17 @@ function serializeComponentChild(
     if (isJSXExpressionContainer(attribute.value)) {
       const expression = attribute.value.expression;
       if (isJSXEmptyExpression(expression)) continue;
-      if (!isExpression(expression) || containsJSX(expression)) {
-        fail("Nested JSX expressions in component props are not supported by this target yet.", filename, attribute);
+      if (
+        !isExpression(expression) &&
+        !isJSXElement(expression) &&
+        !isJSXFragment(expression)
+      ) {
+        fail("Unsupported expression in a component prop.", filename, attribute);
       }
 
       properties.push(
         "get " + JSON.stringify(propName) + "() { return (" +
-          sourceOf(source, expression, filename) + "); }",
+          compileExpression(expression) + "); }",
       );
       continue;
     }
@@ -515,15 +521,19 @@ function serializeComponentChild(
     if (isJSXExpressionContainer(child)) {
       const expression = child.expression;
       if (isJSXEmptyExpression(expression)) continue;
-      if (!isExpression(expression) || containsJSX(expression)) {
-        fail("Nested JSX component children are not supported by this target yet.", filename, child);
+      if (
+        !isExpression(expression) &&
+        !isJSXElement(expression) &&
+        !isJSXFragment(expression)
+      ) {
+        fail("Unsupported expression in component children.", filename, child);
       }
-      childValues.push("(" + sourceOf(source, expression, filename) + ")");
+      childValues.push("(" + compileExpression(expression) + ")");
       continue;
     }
 
     if (isJSXElement(child) || isJSXFragment(child)) {
-      fail("Host JSX inside a component children prop is not supported by this target yet.", filename, child);
+      childValues.push(compileNestedJSX(child));
     }
   }
 
@@ -549,6 +559,8 @@ function serializeElement(
   filename: string,
   textIndex: { value: number },
   parentInSVG: boolean,
+  compileNestedJSX: CompileNestedJSX,
+  compileExpression: CompileJSXExpression,
 ): SerializedElement {
   if (!isJSXElement(node)) {
     fail("Expected a JSX element.", filename, node);
@@ -720,6 +732,8 @@ function serializeElement(
         filename,
         childrenInSVG,
         textIndex,
+        compileNestedJSX,
+        compileExpression,
       );
 
   if (voidElements.has(lowerTag) && node.children.length > 0) {
@@ -771,6 +785,8 @@ function serializeProgram(
   root: Node,
   source: string,
   filename: string,
+  compileNestedJSX: CompileNestedJSX,
+  compileExpression: CompileJSXExpression,
 ): SerializedProgram {
   const textIndex = { value: 0 };
   const roots: SerializedNode[] = [];
@@ -783,13 +799,15 @@ function serializeProgram(
         filename,
         false,
         textIndex,
+        compileNestedJSX,
+        compileExpression,
       ),
     );
   } else if (isJSXElement(root)) {
     roots.push(
       isComponentJSXElement(root)
-        ? serializeComponentChild(root, source, filename, textIndex)
-        : serializeElement(root, source, filename, textIndex, false),
+        ? serializeComponentChild(root, source, filename, textIndex, compileNestedJSX, compileExpression)
+        : serializeElement(root, source, filename, textIndex, false, compileNestedJSX, compileExpression),
     );
   } else {
     fail("Expected a JSX element or fragment return.", filename, root);
@@ -834,7 +852,7 @@ function serializeProgram(
       const reference = addReference("element", path);
 
       for (const binding of node.bindings) {
-        const read = "() => (" + expressionSource(source, binding.expression, filename) + ")";
+        const read = "() => (" + compileExpression(binding.expression) + ")";
 
         if (binding.kind === "event") {
           bindings.push({
