@@ -61,8 +61,11 @@ function markScopeTreeDisposed(scope: RenderScope): void {
 function assertActive(scope: RenderScope, operation: string): ScopeRecord {
   const record = getRecord(scope);
 
-  if (record.owner.disposed && record.state !== "disposed") {
-    markScopeTreeDisposed(scope);
+  if (record.owner.disposed && record.state === "active") {
+    // Owner disposal starts before its child owners and cleanup callbacks are
+    // processed. Reflect that in the scope state without marking it fully
+    // disposed until the parent-owner hook runs after teardown completes.
+    record.state = "disposing";
   }
 
   if (record.state !== "active") {
@@ -109,8 +112,8 @@ export function createScope(parent?: RenderScope | null): RenderScope {
       return record.parent;
     },
     get state() {
-      if (record.owner.disposed && record.state !== "disposed") {
-        markScopeTreeDisposed(scope);
+      if (record.owner.disposed && record.state === "active") {
+        record.state = "disposing";
       }
 
       return record.state;
