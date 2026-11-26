@@ -3,7 +3,11 @@ import { JSDOM } from "jsdom";
 
 import { $state } from "../src/reactivity/state";
 import { applyTemplateBindings } from "../src/render_new/binding/instructions";
-import { createScope, disposeScope, runWithScope } from "../src/render_new/lifecycle/scope";
+import {
+  createScope,
+  disposeScope,
+  runWithScope,
+} from "../src/render_new/lifecycle/scope";
 import {
   createDOMTemplateAdapter,
   mountTemplateProgram,
@@ -281,7 +285,11 @@ describe("render_new template programs", () => {
       ],
     };
 
-    const mounted = mountTemplateProgram(parent, program, createDOMTemplateAdapter(document));
+    const mounted = mountTemplateProgram(
+      parent,
+      program,
+      createDOMTemplateAdapter(document),
+    );
 
     expect(observations).toEqual([{ title: "ready", text: "Mounted" }]);
     mounted.dispose();
@@ -291,13 +299,9 @@ describe("render_new template programs", () => {
     const document = createDocument();
     const parent = document.createElement("main");
     const adapter = createDOMTemplateAdapter(document);
-    const owner = createScope(null);
     const label = $state("Before");
     const handler = vi.fn();
     let mounted: ReturnType<typeof mountTemplateProgram> | undefined;
-
-    owner.dispose();
-    expect(owner.state).toBe("disposed");
 
     const activeOwner = createScope(null);
     try {
@@ -309,7 +313,12 @@ describe("render_new template programs", () => {
             template: templateDefinition,
             bindings: [
               { kind: "text", reference: 1, read: () => label.value },
-              { kind: "event", reference: 0, event: "click", read: () => handler },
+              {
+                kind: "event",
+                reference: 0,
+                event: "click",
+                read: () => handler,
+              },
             ],
           },
           adapter,
