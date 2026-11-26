@@ -51,7 +51,7 @@ component helper from `vynn/render_new/internal`; it does not call the legacy
 `vynn/render` helpers or change the output of `transformVynnOxc()`.
 
 The current target supports named function components with direct JSX
-returns and conditional return expressions, static host markup, reactive
+returns and conditional return expressions, complete HTML document roots with a constrained `<head>` and `<body>`, static host markup, reactive
 attributes and properties, event handlers, comment-ranged dynamic children,
 nested component programs, conditional JSX expressions, and array expressions
 such as `.map(item => <Row />)`. Component
@@ -68,7 +68,7 @@ item DOM is adopted in place; missing, stale, and structurally incompatible
 items are reconciled individually. Keyed component entries also retain their
 component scope and DOM range when their component type and simple object-props
 shape match. Their prop cells update reactively. Components with destructured
-or otherwise non-simple parameter shapes are safely remounted on keyed updates. The compiler still
+or otherwise non-simple parameter shapes are safely remounted on keyed updates. A document root must contain one `<head>` followed by one `<body>`; `<title>` text is currently static. The compiler still
 rejects JSX spreads, refs, raw-HTML bindings, dynamic style objects,
 member-expression component tags, and parser-sensitive contexts such as
 tables, selects, and textareas. JSX must occur in a named component's direct
@@ -85,7 +85,9 @@ and `hydrateRenderNew(parent, App())` for DOM hydration. The matching Vite
 adapter is `vynnRenderNewOxcPlugin()` from `vite-plugin-vynn`.
 
 
-This target remains experimental. It does not yet emit source maps, support
-async/streaming resources, preserve keyed component identity, or integrate
-with Vynn's automatic document, router, and server-function application
-pipeline.
+This target remains experimental. It does not yet emit source maps or support
+async/streaming resources, the legacy `vynn-router` `Router` component, dynamic
+`<title>` content, or the legacy reactive head-metadata runtime. The integrated
+Vite app entry supports `vynn({ renderer: "new" })` for synchronous full-document
+SSR and document-root hydration, while the default application renderer remains
+legacy.
