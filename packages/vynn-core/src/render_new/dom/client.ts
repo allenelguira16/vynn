@@ -13,9 +13,9 @@ export interface MountRenderNewOptions {
 /**
  * Mounts the result of a render_new-compiled component into a DOM parent.
  *
- * This is the small public client entry. Components remain plain functions:
- * call the component first, then pass its DOMTemplateProgram to this function.
- * The returned handle owns the mounted template and can be disposed manually.
+ * Compiler-generated component calls return deferred descriptors, so their
+ * bodies execute inside an owned render scope. The returned handle owns the
+ * complete component and template lifetime.
  */
 export function mountRenderNew(
   parent: Node,
