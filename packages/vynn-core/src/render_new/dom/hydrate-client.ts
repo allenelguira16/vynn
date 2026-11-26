@@ -4,6 +4,10 @@ import type { DOMTemplateProgram } from "./program";
 import type { MountedTemplate } from "./mount";
 import { isRenderNewComponent, type RenderNewComponent } from "../component";
 import { hydrateRenderNewComponent } from "./component";
+import {
+  consumePreparedRenderNewRootScope,
+} from "../prepare";
+import { runWithScope, disposeScope } from "../lifecycle/scope";
 
 /**
  * Hydrates a DOM tree previously rendered by renderTemplateProgramToString().
@@ -32,9 +36,34 @@ export function hydrateRenderNew(
   }
 
   const adapter = createDOMTemplateAdapter(document);
-  if (isRenderNewComponent(program)) {
-    return hydrateRenderNewComponent(parent, program, adapter);
+  const preparedRoot = consumePreparedRenderNewRootScope(program);
+
+  const hydrate = () => isRenderNewComponent(program)
+    ? hydrateRenderNewComponent(parent, program, adapter)
+    : hydrateTemplateProgram(parent, program, adapter);
+
+  let mounted: MountedTemplate<Node>;
+  try {
+    mounted = preparedRoot ? runWithScope(preparedRoot, hydrate) : hydrate();
+  } catch (error) {
+    if (preparedRoot) disposeScope(preparedRoot);
+    throw error;
   }
 
-  return hydrateTemplateProgram(parent, program, adapter);
+  if (!preparedRoot) return mounted;
+
+  return Object.freeze({
+    instance: mounted.instance,
+    scope: mounted.scope,
+    get mounted() {
+      return mounted.mounted && preparedRoot.state === "active";
+    },
+    dispose() {
+      try {
+        mounted.dispose();
+      } finally {
+        disposeScope(preparedRoot);
+      }
+    },
+  });
 }
