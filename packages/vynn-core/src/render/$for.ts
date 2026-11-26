@@ -1,9 +1,16 @@
 import type { JSX } from "../types/jsx";
 
 
+import {
+  createOwner,
+  disposeOwner,
+  getOwner,
+  runWithOwner,
+  type Owner,
+} from "../life-cycle/owner";
 import { $computed } from "../reactivity/computed";
 import { untrack } from "../reactivity/effect";
-import { $state, createStateValue, type State } from "../reactivity/state";
+import { createStateValue, type State } from "../reactivity/state";
 import { $nodes } from "./$nodes";
 import { getCurrentDOMNamespace, withDOMNamespace } from "./namespace";
 
@@ -11,7 +18,8 @@ type ForEntry<T> = {
   identity: unknown;
   itemState?: State<T>;
   node: JSX.Element;
-  index: State<number>;
+  index?: State<number>;
+  owner: Owner;
 };
 
 type ForBucket<T> = {
@@ -56,6 +64,17 @@ export function $for<T, K>(
   warnMissingKey: true,
 ): JSX.Element;
 
+export function $for<T, K>(
+  items: () => T[],
+  each:
+    | ((item: T, index: State<number>) => JSX.Element)
+    | ((item: State<T>, index: State<number>) => JSX.Element),
+  getKey: ((item: T, index: number) => K) | undefined,
+  warnMissingKey: boolean,
+  stableRow?: boolean,
+  trackIndex?: boolean,
+): JSX.Element;
+
 export function $for<T>(
   items: () => T[],
   each:
@@ -63,9 +82,12 @@ export function $for<T>(
     | ((item: State<T>, index: State<number>) => JSX.Element),
   getKey?: (item: T, index: number) => unknown,
   warnMissingKey = false,
+  stableRow = false,
+  trackIndex = true,
 ): JSX.Element {
   const namespace = getCurrentDOMNamespace();
   const keyed = getKey !== undefined;
+  const parentOwner = getOwner();
   let warnedAboutMissingKey = false;
 
   const warnAboutMissingKey = (length: number): void => {
@@ -85,10 +107,10 @@ export function $for<T>(
     item: T | State<T>,
     index: State<number>,
   ) => JSX.Element;
-  const renderEach = (item: T | State<T>, index: State<number>): JSX.Element =>
-    withDOMNamespace(namespace, () => invokeEach(item, index));
+  const renderEach = (item: T | State<T>, index?: State<number>): JSX.Element =>
+    withDOMNamespace(namespace, () => invokeEach(item, index as State<number>));
 
-  const createRowNode = (item: T | State<T>, index: State<number>): JSX.Element =>
+  const createRowNode = (item: T | State<T>, index?: State<number>): JSX.Element =>
     $nodes(() => {
       // Keep each row associated with its matched item, not its current array
       // position. Reordering then moves the existing row without invoking its
@@ -100,13 +122,50 @@ export function $for<T>(
       return renderEach(item, index);
     });
 
+  const createEntry = (item: T, identity: unknown, index: number): ForEntry<T> => {
+    // A row is a lifecycle boundary. Its renderer effects, nested components,
+    // and user-created effects must not outlive the entry when it is removed.
+    // Transparent owners do not consume an additional hydration identity slot.
+    const owner = createOwner(parentOwner, { identity: false });
+
+    try {
+      return runWithOwner(owner, () => {
+        const indexState = trackIndex ? createStateValue(index) : undefined;
+        const itemState = keyed ? createStateValue(item) : undefined;
+        const renderedItem = itemState ?? item;
+
+        return {
+          identity,
+          itemState,
+          node: stableRow
+            ? renderEach(renderedItem, indexState)
+            : createRowNode(renderedItem, indexState),
+          index: indexState,
+          owner,
+        };
+      });
+    } catch (cause) {
+      try {
+        disposeOwner(owner);
+      } catch (cleanupCause) {
+        throw new AggregateError(
+          [cause, cleanupCause],
+          "[Vynn] A list entry failed to render and its cleanup also failed.",
+        );
+      }
+      throw cause;
+    }
+  };
+
   if (import.meta.env.SSR) {
     return $nodes(() => {
       const values = items();
       warnAboutMissingKey(values.length);
 
       return values.map((item, i) => {
-        const indexState = $state(() => i);
+        // List indexes are synchronous cells, not async resources. Avoid
+        // allocating resource slots/controllers for every rendered item.
+        const indexState = trackIndex ? createStateValue(i) : undefined;
         return keyed
           ? renderEach(createStateValue(item), indexState)
           : renderEach(item, indexState);
@@ -155,18 +214,30 @@ export function $for<T>(
        * First render.
        */
       if (!initialized) {
-        const entries = newItems.map((item, index) => {
-          const indexState = $state(() => index);
-          const itemState = keyed ? createStateValue(item) : undefined;
-          const renderedItem = itemState ?? item;
+        const entries: ForEntry<T>[] = [];
 
-          return {
-            identity: newIdentities[index],
-            itemState,
-            node: createRowNode(renderedItem, indexState),
-            index: indexState,
-          };
-        });
+        try {
+          for (let index = 0; index < newItems.length; index++) {
+            entries.push(createEntry(newItems[index], newIdentities[index], index));
+          }
+        } catch (cause) {
+          const cleanupErrors: unknown[] = [];
+          for (const entry of entries) {
+            try {
+              disposeOwner(entry.owner);
+            } catch (cleanupCause) {
+              cleanupErrors.push(cleanupCause);
+            }
+          }
+
+          if (cleanupErrors.length > 0) {
+            throw new AggregateError(
+              [cause, ...cleanupErrors],
+              "[Vynn] A list failed to render and cleanup of earlier entries also failed.",
+            );
+          }
+          throw cause;
+        }
 
         oldEntries = entries;
         result = entries.map((entry) => entry.node);
@@ -194,43 +265,83 @@ export function $for<T>(
       }
 
       const newEntries: ForEntry<T>[] = [];
+      const createdEntries: ForEntry<T>[] = [];
 
-      for (let i = 0; i < newItems.length; i++) {
-        const newItem = newItems[i];
-        const identity = newIdentities[i];
-        const bucket = oldByIdentity.get(normalizeIdentity(identity));
-        const entry =
-          bucket && bucket.nextIndex < bucket.entries.length
-            ? bucket.entries[bucket.nextIndex++]
-            : undefined;
+      try {
+        for (let i = 0; i < newItems.length; i++) {
+          const newItem = newItems[i];
+          const identity = newIdentities[i];
+          const bucket = oldByIdentity.get(normalizeIdentity(identity));
+          const entry =
+            bucket && bucket.nextIndex < bucket.entries.length
+              ? bucket.entries[bucket.nextIndex++]
+              : undefined;
 
-        if (entry) {
-          // Preserve the existing DOM and reactive subtree.
-          entry.identity = identity;
+          if (entry) {
+            // Preserve the existing DOM and reactive subtree.
+            entry.identity = identity;
 
-          // Keyed rows read the current item through this stable reactive cell.
-          if (entry.itemState) {
-            entry.itemState.value = newItem;
+            // Keyed rows read the current item through this stable reactive cell.
+            if (entry.itemState) {
+              entry.itemState.value = newItem;
+            }
+
+            if (entry.index) entry.index.value = i;
+            newEntries.push(entry);
+          } else {
+            const created = createEntry(newItem, identity, i);
+            createdEntries.push(created);
+            newEntries.push(created);
           }
+        }
+      } catch (cause) {
+        const cleanupErrors: unknown[] = [];
+        for (const entry of createdEntries) {
+          try {
+            disposeOwner(entry.owner);
+          } catch (cleanupCause) {
+            cleanupErrors.push(cleanupCause);
+          }
+        }
 
-          entry.index.value = i;
-          newEntries.push(entry);
-        } else {
-          const indexState = $state(() => i);
-          const itemState = keyed ? createStateValue(newItem) : undefined;
-          const renderedItem = itemState ?? newItem;
+        if (cleanupErrors.length > 0) {
+          throw new AggregateError(
+            [cause, ...cleanupErrors],
+            "[Vynn] A list update failed and cleanup of newly created entries also failed.",
+          );
+        }
+        throw cause;
+      }
 
-          newEntries.push({
-            identity,
-            itemState,
-            node: createRowNode(renderedItem, indexState),
-            index: indexState,
-          });
+      // Entries not consumed from the identity buckets no longer belong to
+      // the rendered list. Dispose their complete reactive subtree now rather
+      // than leaving its effects attached to the parent component owner.
+      const removedEntries: ForEntry<T>[] = [];
+      for (const bucket of oldByIdentity.values()) {
+        for (let index = bucket.nextIndex; index < bucket.entries.length; index++) {
+          removedEntries.push(bucket.entries[index]);
         }
       }
 
       oldEntries = newEntries;
       result = newEntries.map((entry) => entry.node);
+
+      const cleanupErrors: unknown[] = [];
+      for (const entry of removedEntries) {
+        try {
+          disposeOwner(entry.owner);
+        } catch (cause) {
+          cleanupErrors.push(cause);
+        }
+      }
+
+      if (cleanupErrors.length === 1) throw cleanupErrors[0];
+      if (cleanupErrors.length > 1) {
+        throw new AggregateError(
+          cleanupErrors,
+          "[Vynn] Multiple removed list entry cleanups failed.",
+        );
+      }
     });
 
     return result;
