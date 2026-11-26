@@ -222,7 +222,9 @@ function createRouteView<TContext>(
   );
 }
 
-function createNotFoundView<TContext>(): RenderNewComponent | null {
+function createNotFoundView<TContext>(
+  router: RouterInstance<TContext>,
+): RenderNewComponent | null {
   if (!router.notFound) return null;
 
   const component = router.notFound as unknown as (
@@ -258,7 +260,7 @@ function createRouteOutlet<TContext>(
         return createRouteView(router, match, depth);
       }
 
-      return createNotFoundView();
+      return createNotFoundView(router);
     });
   });
 }
