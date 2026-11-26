@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import type { JSX } from "../src/types/jsx";
 
+import { allocateAsyncResourceID } from "../src/runtime/async/runtime";
 import { createOwner, disposeOwner, getOwner, runWithOwner } from "../src/life-cycle/owner";
 import { $effect } from "../src/reactivity/effect";
 import { $state, type State } from "../src/reactivity/state";
@@ -27,6 +28,25 @@ afterEach(() => {
 });
 
 describe("$for row lifecycle", () => {
+  it("does not allocate async resource slots for synchronous list indexes", () => {
+    const owner = createOwner(null);
+    let nextResourceID: string | undefined;
+
+    runWithOwner(owner, () => {
+      $for(
+        () => [1, 2, 3],
+        (item) => item,
+      );
+
+      nextResourceID = allocateAsyncResourceID();
+    });
+
+    // The list computed value owns the first slot. Per-row indexes are plain
+    // synchronous cells and must not consume three more resource identities.
+    expect(nextResourceID).toBe("0:1");
+    disposeOwner(owner);
+  });
+
   it("disposes removed row effects while preserving keyed rows that are reordered", async () => {
     const first: Row = { id: 1, value: $state(0) };
     const second: Row = { id: 2, value: $state(0) };
