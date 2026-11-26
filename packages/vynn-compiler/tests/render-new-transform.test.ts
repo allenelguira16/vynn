@@ -228,6 +228,33 @@ describe("render_new JSX compiler target", () => {
     expect(code).toContain("props.ready ? ({");
   });
 
+  it("compiles a conditional component return into a root child slot", () => {
+    const code = transformVynnRenderNewOxc(
+      `function View(props) {
+        return props.ready ? <strong>Ready</strong> : null;
+      }`,
+      "view.jsx",
+    );
+
+    expect(code).toContain('markup: "<!--__vynn_render_new_child_0_start__--><!--__vynn_render_new_child_0_end__-->"');
+    expect(code).toContain('read: () => (props.ready ? ({');
+    expect(code).toContain('markup: "<strong>Ready</strong>"');
+  });
+
+  it("compiles direct JSX returns with null early-return branches", () => {
+    const code = transformVynnRenderNewOxc(
+      `function View(props) {
+        if (!props.ready) return null;
+        return <strong>Ready</strong>;
+      }`,
+      "view.jsx",
+    );
+
+    expect(code).toContain('markup: "<strong>Ready</strong>"');
+    expect(code).toContain("if (!props.ready) return null");
+    expect(code).toContain("_vynnCreateRenderNewComponent");
+  });
+
   it("compiles mapped JSX into arrays of child template programs", () => {
     const code = transformVynnRenderNewOxc(
       `function List(props) {
