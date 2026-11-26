@@ -1,6 +1,10 @@
 import { getRuntimeContext, runWithRuntimeContext } from "../runtime/context";
 
-export type Source = { observers: Set<Computation> };
+export type Source = {
+  observers: Set<Computation>;
+  storeTarget?: object;
+  storeKey?: unknown;
+};
 
 export type Computation = {
   dependencies: Set<Source>;
@@ -43,9 +47,29 @@ let flushing = false;
 const derivedQueue = new Set<Computation>();
 const renderQueue = new Set<Computation>();
 const effectQueue = new Set<Computation>();
+const unobservedStoreSources = new Set<Source>();
+let sourceUnobservedHandler: ((source: Source) => void) | undefined;
 
-export function node(): Source {
-  return { observers: new Set() };
+export function setSourceUnobservedHandler(
+  handler: (source: Source) => void,
+): void {
+  sourceUnobservedHandler = handler;
+}
+
+function flushUnobservedStoreSources(): void {
+  if (unobservedStoreSources.size === 0) return;
+
+  if (sourceUnobservedHandler) {
+    for (const source of unobservedStoreSources) {
+      if (source.observers.size === 0) sourceUnobservedHandler(source);
+    }
+  }
+
+  unobservedStoreSources.clear();
+}
+
+export function node(storeTarget?: object, storeKey?: unknown): Source {
+  return { observers: new Set(), storeTarget, storeKey };
 }
 
 function getActiveExecution(): ExecutionContext | undefined {
@@ -228,9 +252,19 @@ export function untrack<T>(callback: () => T): T {
   }
 }
 
-export function cleanup(computation: Computation): void {
+export function cleanup(
+  computation: Computation,
+  deferStoreSources = false,
+): void {
   for (const source of computation.dependencies) {
-    source.observers.delete(computation);
+    if (
+      source.observers.delete(computation) &&
+      source.observers.size === 0 &&
+      source.storeTarget !== undefined
+    ) {
+      if (deferStoreSources) unobservedStoreSources.add(source);
+      else sourceUnobservedHandler?.(source);
+    }
   }
   computation.dependencies.clear();
 }
@@ -243,7 +277,7 @@ export function execute<T>(computation: Computation, fn: () => T): T {
     throw new Error("Reactive cycle detected while executing a computation.");
   }
 
-  cleanup(computation);
+  cleanup(computation, true);
 
   const previous = active;
   const execution = {
@@ -262,6 +296,7 @@ export function execute<T>(computation: Computation, fn: () => T): T {
     active = previous;
     computation.running = false;
     executionDepth--;
+    if (executionDepth === 0) flushUnobservedStoreSources();
   }
 }
 
