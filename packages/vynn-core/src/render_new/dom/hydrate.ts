@@ -5,7 +5,7 @@ import type { TemplateInstance } from "../template/types";
 import { applyTemplateBindings } from "../binding/instructions";
 import { createScope, disposeScope, onScopeDispose, runWithScope } from "../lifecycle/scope";
 import { removeDOMNodes } from "./remove";
-import { mountTemplateProgram } from "./program";
+import { isDocumentRootProgram, mountTemplateProgram } from "./program";
 
 class HydrationMismatch extends Error {
   constructor() {
@@ -188,6 +188,7 @@ function createHydratedMount(
   program: DOMTemplateProgram,
   instance: TemplateInstance<Node>,
   adapter: DOMTemplateAdapter,
+  removeRootsOnDispose = true,
 ): MountedTemplateProgram {
   const scope = createScope();
   let mounted = true;
@@ -199,7 +200,7 @@ function createHydratedMount(
       bindings = applyTemplateBindings(scope, instance, program.bindings, adapter, { hydrate: true });
       onScopeDispose(() => {
         try {
-          removeDOMNodes(instance.roots);
+          if (removeRootsOnDispose) removeDOMNodes(instance.roots);
         } finally {
           mounted = false;
         }
@@ -295,10 +296,24 @@ export function hydrateTemplateProgram(
     throw new TypeError("[vynn render_new]: Hydration expects a DOM parent node.");
   }
 
-  const roots = Array.from(parent.childNodes);
+  const isDocument = parent.nodeType === 9;
+  if (isDocument && !isDocumentRootProgram(program)) {
+    throw new TypeError(
+      "[vynn render_new]: Hydrating a Document requires one complete <html> root program.",
+    );
+  }
+
+  const roots = isDocument
+    ? (parent as Document).documentElement
+      ? [(parent as Document).documentElement!]
+      : []
+    : Array.from(parent.childNodes);
+
   try {
     const instance = createHydratedInstance(program, roots, adapter);
-    return createHydratedMount(program, instance, adapter);
+    // Disposing a document-root hydration tears down effects and listeners but
+    // deliberately leaves the browser's document element in place.
+    return createHydratedMount(program, instance, adapter, !isDocument);
   } catch (error) {
     if (!(error instanceof HydrationMismatch)) throw error;
   }
