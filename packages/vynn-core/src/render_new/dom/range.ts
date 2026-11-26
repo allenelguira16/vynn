@@ -104,12 +104,10 @@ export function getDOMRangeContentNodes(range: DOMNodeRange): readonly Node[] {
 
 /** Returns whether both range boundaries are attached to the same parent. */
 export function isDOMRangeAttached(range: DOMNodeRange): boolean {
-  assertRange(range);
-
-  return (
-    range.start.parentNode !== null &&
-    range.start.parentNode === range.end.parentNode
-  );
+  // Reuse the complete range validation so partial or reversed attachment
+  // cannot be mistaken for an ordinary detached range.
+  getDOMRangeNodes(range);
+  return range.start.parentNode !== null;
 }
 
 /** Inserts a detached range or moves an attached range to a new position. */
