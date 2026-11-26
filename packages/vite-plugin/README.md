@@ -250,9 +250,57 @@ if (!root) throw new Error("Missing #app mount element");
 mountRenderNew(root, App());
 ```
 
-This plugin does not enable Vynn's integrated document/SSR application mode.
-The render_new runtime currently supports client mounting of static templates,
-reactive attributes/properties/events, dynamic child slots, arrays, and child
-components. Server rendering and hydration are being developed against the same
-program contract and are not enabled by this plugin yet. Do not combine this
-plugin with the default legacy JSX transform in the same module graph.
+This plugin does not change the default `vynn()` application pipeline.
+It is a standalone compiler adapter, and the new runtime is mounted explicitly.
+Do not install it alongside the legacy JSX transform for the same source files.
+
+The generated component returns a `DOMTemplateProgram`. For client-only
+rendering, mount it directly:
+
+```tsx
+import { mountRenderNew } from "vynn/render_new";
+
+const root = document.querySelector("#app");
+if (!root) throw new Error("Missing #app mount element");
+
+mountRenderNew(root, App());
+```
+
+The same program can be serialized on the server and hydrated in the browser.
+The server serializer is synchronous and uses its own markup renderer, not
+Vynn's legacy SSR implementation:
+
+```ts
+// src/entry-server.ts
+import { renderTemplateProgramToString } from "vynn/render_new/server";
+import { App } from "./App";
+
+export function render() {
+  return renderTemplateProgramToString(App());
+}
+```
+
+Place that HTML inside the same mount element on the server. The browser can
+then adopt it:
+
+```tsx
+import { hydrateRenderNew } from "vynn/render_new";
+import { App } from "./App";
+
+const root = document.querySelector("#app");
+if (!root) throw new Error("Missing #app mount element");
+
+hydrateRenderNew(root, App());
+```
+
+Hydration preserves compatible static elements and recursively adopts
+compatible nested component programs and primitive child ranges. A static
+structure mismatch falls back to a fresh mount of that subtree. Mixed arrays
+of component programs currently remount their dynamic range, and keyed list
+identity is not implemented.
+
+This is not yet connected to the integrated `vynn({ ssr: true })` document
+pipeline, file router, or server-function request handling. The standalone
+server API is synchronous, does not yet coordinate async resources or
+streaming, and the compiler currently returns `map: null`. Keep this target
+isolated from the legacy renderer while those framework-level pieces are built.
