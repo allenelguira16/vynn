@@ -9,7 +9,9 @@ import {
   beginHydrationClaim,
   claimHydrationElement,
   claimHydrationText,
+  finishServerRenderedLazy,
   getServerRenderedLazyRange,
+  isHydrating,
   rollbackHydrationClaim,
   withHydration,
   withServerRenderedLazy,
@@ -101,6 +103,36 @@ describe("lazy hydration text anchors", () => {
       expect(claimHydrationElement()).toBe(rootElement);
     });
     disposeOwner(rootOwner);
+  });
+});
+
+describe("lazy hydration reference cleanup", () => {
+  it("releases completed lazy DOM ranges and node queues", () => {
+    const root = document.createElement("div");
+    root.innerHTML = '<!--l:7--><section id="lazy">content</section><!--/l:7--><footer id="root">root</footer>';
+
+    const lazyElement = root.querySelector("#lazy");
+    const lazyText = lazyElement?.firstChild;
+    const rootElement = root.querySelector("#root");
+
+    withHydration(() => {}, root);
+    expect(isHydrating()).toBe(true);
+    expect(getServerRenderedLazyRange("7")).toBeDefined();
+
+    const owner = createOwner(null);
+    runWithOwner(owner, () => {
+      withServerRenderedLazy("7", () => {
+        expect(claimHydrationElement()).toBe(lazyElement);
+        expect(claimHydrationText()).toBe(lazyText);
+        finishServerRenderedLazy("7");
+      });
+
+      expect(claimHydrationElement()).toBe(rootElement);
+    });
+
+    expect(getServerRenderedLazyRange("7")).toBeUndefined();
+    expect(isHydrating()).toBe(false);
+    disposeOwner(owner);
   });
 });
 

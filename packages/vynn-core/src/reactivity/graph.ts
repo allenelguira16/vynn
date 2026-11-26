@@ -4,6 +4,8 @@ export type Source = {
   firstObserver: Computation | null;
   secondObserver: Computation | null;
   observers?: Set<Computation>;
+  storeTarget?: object;
+  storeKey?: unknown;
 };
 
 export type Computation = {
@@ -49,9 +51,35 @@ let flushing = false;
 const derivedQueue = new Set<Computation>();
 const renderQueue = new Set<Computation>();
 const effectQueue = new Set<Computation>();
+const unobservedStoreSources = new Set<Source>();
+let sourceUnobservedHandler: ((source: Source) => void) | undefined;
 
-export function node(): Source {
-  return { firstObserver: null, secondObserver: null };
+export function setSourceUnobservedHandler(
+  handler: (source: Source) => void,
+): void {
+  sourceUnobservedHandler = handler;
+}
+
+function flushUnobservedStoreSources(): void {
+  if (unobservedStoreSources.size === 0) return;
+
+  for (const source of unobservedStoreSources) {
+    if (
+      source.firstObserver === null &&
+      source.secondObserver === null &&
+      source.observers === undefined
+    ) {
+      sourceUnobservedHandler?.(source);
+    }
+  }
+
+  unobservedStoreSources.clear();
+}
+
+export function node(storeTarget?: object, storeKey?: unknown): Source {
+  return storeTarget === undefined
+    ? { firstObserver: null, secondObserver: null }
+    : { firstObserver: null, secondObserver: null, storeTarget, storeKey };
 }
 
 function getActiveExecution(): ExecutionContext | undefined {
@@ -313,15 +341,33 @@ export function untrack<T>(callback: () => T): T {
   }
 }
 
-export function cleanup(computation: Computation): void {
+export function cleanup(computation: Computation, deferStoreSources = false): void {
   const dependencies = computation.dependencies;
   if (!dependencies) return;
 
+  const releaseIfUnobserved = (source: Source): void => {
+    if (
+      source.storeTarget === undefined ||
+      source.firstObserver !== null ||
+      source.secondObserver !== null ||
+      source.observers !== undefined
+    ) {
+      return;
+    }
+
+    if (deferStoreSources) unobservedStoreSources.add(source);
+    else sourceUnobservedHandler?.(source);
+  };
+
   if (dependencies instanceof Set) {
-    for (const source of dependencies) removeObserver(source, computation);
+    for (const source of dependencies) {
+      removeObserver(source, computation);
+      releaseIfUnobserved(source);
+    }
     dependencies.clear();
   } else {
     removeObserver(dependencies, computation);
+    releaseIfUnobserved(dependencies);
   }
 
   computation.dependencies = undefined;
@@ -335,7 +381,9 @@ export function execute<T>(computation: Computation, fn: () => T): T {
     throw new Error("Reactive cycle detected while executing a computation.");
   }
 
-  cleanup(computation);
+  // Delay source eviction until this computation has finished collecting
+  // its new dependencies. A source that is immediately re-read stays cached.
+  cleanup(computation, true);
 
   const previous = active;
   const execution = {
@@ -354,6 +402,7 @@ export function execute<T>(computation: Computation, fn: () => T): T {
     active = previous;
     computation.running = false;
     executionDepth--;
+    if (executionDepth === 0) flushUnobservedStoreSources();
   }
 }
 
