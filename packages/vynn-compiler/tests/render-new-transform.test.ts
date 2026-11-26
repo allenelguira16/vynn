@@ -348,7 +348,7 @@ describe("render_new JSX compiler target", () => {
       'import { createRenderNewComponent as _vynnCreateRenderNewComponent } from "vynn/render_new/internal";',
       "const _vynnCreateRenderNewComponent = (render) => ({ render });",
     );
-    const createPage = new Function(executable + "\\nreturn Page;") as () => (
+    const createPage = new Function(executable + "\nreturn Page;") as () => (
       props: { label: string; onRender: () => void },
     ) => { render: () => unknown };
 
