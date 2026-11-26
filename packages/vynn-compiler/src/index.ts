@@ -2533,11 +2533,7 @@ class TransformState {
    */
   private getMapCallbackKey(
     callback: Node,
-  ): {
-    expression: ExpressionNode;
-    attribute: Node;
-    root: NodeOfType<"JSXElement">;
-  } | null {
+  ): { expression: ExpressionNode; attribute: Node } | null {
     if (!isFunctionLike(callback)) {
       return null;
     }
@@ -2575,12 +2571,11 @@ class TransformState {
       return {
         expression: cloneNode(value.expression) as ExpressionNode,
         attribute: keyAttribute,
-        root,
       };
     }
 
     if (isLiteralString(value)) {
-      return { expression: stringLiteral(value.value), attribute: keyAttribute, root };
+      return { expression: stringLiteral(value.value), attribute: keyAttribute };
     }
 
     throw new Error(
