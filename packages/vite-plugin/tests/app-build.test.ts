@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import vynn from "../src/index.ts";
 import { vynnAppPlugin } from "../src/plugins/app/index.ts";
-import { createClientEntry, createServerEntry, createSsrHandlerCode } from "../src/plugins/app/documents.ts";
+import { createClientEntry, createClientShell, createServerEntry, createSsrHandlerCode } from "../src/plugins/app/documents.ts";
 
 describe("Vynn app build orchestration", () => {
   it("leaves environment scheduling to Vite's builder", () => {
@@ -74,6 +74,25 @@ describe("Vynn render_new application entries", () => {
     expect(code).toContain('head: { render: () => "" }');
     expect(code).toContain("modules: []");
     expect(code).not.toContain('from "vynn/server"');
+  });
+
+  it("marks starter document assets as internal ranges for renderer preservation", () => {
+    const shell = createClientShell({
+      base: "/",
+      clientEntryUrl: "/assets/client.js",
+      css: ["assets/app.css"],
+      dev: false,
+    });
+
+    expect(shell).toContain(
+      '<!--vynn:internal:start--><meta charset="UTF-8" key="meta:charset"><!--vynn:internal:end-->',
+    );
+    expect(shell).toContain(
+      '<!--vynn:internal:start--><link rel="stylesheet" href="/assets/app.css"><!--vynn:internal:end-->',
+    );
+    expect(shell).toContain(
+      '<!--vynn:internal:start--><script type="module" src="/assets/client.js"></script><!--vynn:internal:end-->',
+    );
   });
 
   it("selects the render_new compiler only when explicitly requested", () => {
