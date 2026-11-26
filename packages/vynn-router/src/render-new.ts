@@ -194,7 +194,9 @@ export function Router<TContext = undefined>(
   props: RouterProps<TContext>,
 ): JSX.Element {
   const ownsRouter = !("router" in props);
-  const router = ownsRouter ? createRouter(props) : props.router;
+  const router: RouterInstance<TContext> = "router" in props
+    ? props.router
+    : createRouter(props);
 
   if (ownsRouter) {
     onScopeDispose(() => router.dispose());
