@@ -5,7 +5,7 @@ export default function AppLayout(props: PropsWithChildren) {
   return (
     <>
       <header className="topbar page-shell">
-        <Link href="/" class="brand" aria-label="Vynn render new home">
+        <Link href="/" class="brand">
           <span className="brand-mark">v</span>
           <span>
             vynn <span className="brand-muted">/ render_new</span>
