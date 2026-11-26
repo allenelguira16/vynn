@@ -561,7 +561,11 @@ export function createClientShell(options: {
   clientEntryUrl: string;
   css?: string[];
   dev: boolean;
+  preserveRendererAssets?: boolean;
 }): string {
+  const wrap = (value: string) => options.preserveRendererAssets
+    ? wrapClientShellInternal(value)
+    : value;
   const css = options.dev
     ? ""
     : (options.css ?? [])
@@ -580,12 +584,12 @@ export function createClientShell(options: {
     "<!doctype html>",
     "<html>",
     "<head>",
-    wrapClientShellInternal('<meta charset="UTF-8" key="meta:charset">'),
-    wrapClientShellInternal(css),
-    wrapClientShellInternal(viteClient),
+    wrap('<meta charset="UTF-8" key="meta:charset">'),
+    wrap(css),
+    wrap(viteClient),
     "</head>",
     "<body>",
-    wrapClientShellInternal(clientEntry),
+    wrap(clientEntry),
     "</body>",
     "</html>",
   ].join("");
