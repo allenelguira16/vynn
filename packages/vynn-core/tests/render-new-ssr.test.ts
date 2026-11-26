@@ -550,7 +550,7 @@ describe("render_new SSR and hydration", () => {
     const html = renderTemplateProgramToString(program)
       .replace(
         "</head>",
-        '<!--vynn:internal:start--><link rel="stylesheet" href="/assets/app.css"><!--vynn:internal:end--></head>',
+        '<!--vynn:internal:start--><link rel="stylesheet" href="/assets/app.css"><!--vynn:internal:end--><!--vynn:internal:start--><meta charset="UTF-8"><!--vynn:internal:end--></head>',
       )
       .replace(
         "</body>",
