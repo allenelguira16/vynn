@@ -1,4 +1,4 @@
-import { $state, type JSX, type PropsWithChildren } from "vynn";
+import { $effect, $state, untrack, type JSX, type PropsWithChildren } from "vynn";
 import {
   createRenderNewComponent,
   type RenderNewComponent,
@@ -14,13 +14,15 @@ import { LocationProvider, RoutePathProvider } from "./context";
 import { createRouter } from "./create-router";
 import { isServer } from "./environment";
 import { currentLocation, navigate } from "./location";
-import { matchRoute } from "./path";
+import { getRouteParams, matchRoute } from "./path";
+import { commitClientRedirect, isClientRedirect } from "./redirect";
 import {
   getRouterMatchState,
   subscribeRouterMatchState,
 } from "./router-state";
 import type { MatchedRoute } from "./matcher";
 import type {
+  BeforeLoadContext,
   Location,
   Route,
   RouterInstance,
@@ -102,6 +104,88 @@ function renderRoutePathBoundary(props: {
   return createChildSlotProgram(() => props.children);
 }
 
+type RouteGuardState =
+  | { status: "pending" }
+  | { status: "allowed" }
+  | { status: "redirect" }
+  | { status: "error"; error: unknown };
+
+function createGuardedRoute<TContext>(
+  router: RouterInstance<TContext>,
+  match: MatchedRoute<TContext>,
+  child: RenderNewComponent,
+): RenderNewComponent {
+  const beforeLoad = match.route.beforeLoad;
+  if (!beforeLoad) return child;
+
+  return createRenderNewComponent(() => {
+    const state = $state<RouteGuardState>({ status: "pending" });
+    let revision = 0;
+
+    $effect(() => {
+      const location = {
+        pathname: router.state.location.pathname,
+        search: router.state.location.search,
+      };
+      const currentRevision = ++revision;
+      const controller = new AbortController();
+      state.value = { status: "pending" };
+
+      const isCurrent = () =>
+        currentRevision === revision && !controller.signal.aborted;
+
+      const complete = () => {
+        if (isCurrent()) state.value = { status: "allowed" };
+      };
+
+      const fail = (error: unknown) => {
+        if (!isCurrent()) return;
+
+        if (isClientRedirect(error)) {
+          state.value = { status: "redirect" };
+          commitClientRedirect(error, isCurrent, router.state.location);
+          return;
+        }
+
+        state.value = { status: "error", error };
+      };
+
+      const context: BeforeLoadContext<TContext> = {
+        context: router.context,
+        location,
+        params: getRouteParams(match.fullPath, location),
+        search: new URLSearchParams(location.search),
+        signal: controller.signal,
+      };
+
+      try {
+        const result = untrack(() => beforeLoad(context));
+        if (
+          result !== null &&
+          (typeof result === "object" || typeof result === "function") &&
+          "then" in result &&
+          typeof result.then === "function"
+        ) {
+          void Promise.resolve(result).then(complete, fail);
+        } else {
+          complete();
+        }
+      } catch (error) {
+        fail(error);
+      }
+
+      return () => controller.abort();
+    });
+
+    return createChildSlotProgram(() => {
+      const current = state.value;
+      if (current.status === "pending" || current.status === "redirect") return null;
+      if (current.status === "error") throw current.error;
+      return child;
+    });
+  });
+}
+
 function createRouteView<TContext>(
   router: RouterInstance<TContext>,
   match: MatchedRoute<TContext>,
@@ -122,9 +206,10 @@ function createRouteView<TContext>(
   ) as PropsWithChildren;
 
   const routeComponent = createComponentDescriptor(component, componentProps);
+  const guardedRoute = createGuardedRoute(router, match, routeComponent);
   const boundaryProps = {
     path: match.fullPath,
-    children: routeComponent,
+    children: guardedRoute,
   };
 
   return createRenderNewComponent(
@@ -169,12 +254,6 @@ function createRouteOutlet<TContext>(
       const match = activeMatch.value;
 
       if (match) {
-        if (match.route.beforeLoad) {
-          throw new Error(
-            "[vynn-router/render_new]: Route beforeLoad is not supported by this adapter yet.",
-          );
-        }
-
         return createRouteView(router, match, depth);
       }
 
