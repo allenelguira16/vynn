@@ -165,7 +165,12 @@ export function $insert<E extends Element>(
             current = current.nextSibling;
           }
         } else {
-          initialTitleNodes.push(...Array.from(element.childNodes));
+          let current = element.firstChild;
+
+          while (current) {
+            initialTitleNodes.push(current);
+            current = current.nextSibling;
+          }
         }
       }
 

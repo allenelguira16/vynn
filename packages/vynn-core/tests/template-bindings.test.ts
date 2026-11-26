@@ -211,6 +211,58 @@ describe("$template", () => {
     disposeOwner(owner);
   });
 
+  it("hydrates dynamic templates without materializing childNodes collections", () => {
+    const owner = createTestOwner();
+    const host = document.createElement("div");
+    host.innerHTML = "<main><section>nested</section><footer>after</footer></main>";
+    const factory = $template("<main><section>nested</section><footer>after</footer></main>");
+    let root!: Element;
+
+    const childNodesGetter = vi
+      .spyOn(Node.prototype, "childNodes", "get")
+      .mockImplementation(() => {
+        throw new Error("Dynamic template hydration must not read childNodes.");
+      });
+
+    try {
+      runWithOwner(owner, () => {
+        withHydration(() => {
+          root = factory();
+          $finishTemplate(root);
+        }, host);
+      });
+    } finally {
+      childNodesGetter.mockRestore();
+    }
+
+    expect(root).toBe(host.firstElementChild);
+    disposeOwner(owner);
+  });
+
+  it("hydrates static templates without materializing childNodes collections", () => {
+    const host = document.createElement("div");
+    host.innerHTML = "<main><section>static</section><footer>after</footer></main>";
+    const factory = $staticTemplate("<main><section>static</section><footer>after</footer></main>");
+    let unmount!: () => void;
+
+    const childNodesGetter = vi
+      .spyOn(Node.prototype, "childNodes", "get")
+      .mockImplementation(() => {
+        throw new Error("Static template hydration must not read childNodes.");
+      });
+
+    try {
+      expect(() => {
+        unmount = hydrateToDOM(() => factory() as unknown as JSX.Element, host);
+      }).not.toThrow();
+    } finally {
+      childNodesGetter.mockRestore();
+    }
+
+    expect(host.firstElementChild?.textContent).toBe("staticafter");
+    unmount();
+  });
+
   it("hydrates dynamic children before continuing from the returned slot marker", () => {
     const owner = createTestOwner();
     const host = document.createElement("div");

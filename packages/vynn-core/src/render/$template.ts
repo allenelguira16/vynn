@@ -239,13 +239,24 @@ function ensureTitleHydrationSlots(descriptor: TemplateElementDescriptor, elemen
   if (!start) return;
 
   const endId = start.id.slice("start-".length);
-  const hasStart = Array.from(element.childNodes).some(
-    (child) => child.nodeType === 8 && getTemplateAnchorId((child as Comment).data) === start.id,
-  );
-  const hasEnd = Array.from(element.childNodes).some(
-    (child) => child.nodeType === 8 && getTemplateAnchorId((child as Comment).data) === endId,
-  );
-  if (hasStart && hasEnd) return;
+  const hasAnchor = (id: string): boolean => {
+    let child = element.firstChild;
+
+    while (child) {
+      if (
+        child.nodeType === Node.COMMENT_NODE &&
+        getTemplateAnchorId((child as Comment).data) === id
+      ) {
+        return true;
+      }
+
+      child = child.nextSibling;
+    }
+
+    return false;
+  };
+
+  if (hasAnchor(start.id) && hasAnchor(endId)) return;
 
   // A streamed or route-level title can replace the template's original
   // title markup before hydration. Recreate the template's static prefix and
@@ -415,6 +426,14 @@ function describeDOMNode(node: Node): TemplateNodeDescriptor {
 
   const element = node as Element;
 
+  const children: TemplateNodeDescriptor[] = [];
+  let child = element.firstChild;
+
+  while (child) {
+    children.push(describeDOMNode(child));
+    child = child.nextSibling;
+  }
+
   return {
     kind: "element",
     tag: element.localName,
@@ -422,7 +441,7 @@ function describeDOMNode(node: Node): TemplateNodeDescriptor {
       attribute.name,
       attribute.value,
     ]),
-    children: Array.from(element.childNodes, describeDOMNode),
+    children,
   };
 }
 
@@ -1255,10 +1274,14 @@ export function $claimTemplateAnchor(parent: Element | SSR_ELEMENT, id: string):
   if (hydrated) return hydrated;
 
   const marker = getTemplateAnchorMarker(id);
-  for (const child of Array.from(element.childNodes)) {
+  let child = element.firstChild;
+
+  while (child) {
     if (child.nodeType === Node.COMMENT_NODE && (child as Comment).data === marker) {
       return child;
     }
+
+    child = child.nextSibling;
   }
 
   throw new Error("[vynn]: Missing dynamic child anchor " + JSON.stringify(marker) + ".");

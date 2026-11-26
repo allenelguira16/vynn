@@ -33,7 +33,11 @@ function hydrateStaticTemplate(root: Element): Element {
   );
 
   const claimChildren = (expectedParent: Node): void => {
-    for (const child of Array.from(expectedParent.childNodes)) {
+    let child = expectedParent.firstChild;
+
+    while (child) {
+      const next = child.nextSibling;
+
       if (child.nodeType === Node.ELEMENT_NODE) {
         const expected = child as Element;
         const claimed = claimHydrationElement<Element>();
@@ -59,6 +63,8 @@ function hydrateStaticTemplate(root: Element): Element {
       ) {
         if (!claimHydrationText()) compatible = false;
       }
+
+      child = next;
     }
   };
 
