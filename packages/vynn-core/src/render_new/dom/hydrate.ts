@@ -1,4 +1,4 @@
-import type { DOMTemplateProgram } from "./program";
+import type { DOMTemplateProgram, MountedTemplateProgram } from "./program";
 import type { DOMTemplateAdapter } from "./adapter";
 import { createTemplateFactory } from "../template/factory";
 import type { TemplateInstance } from "../template/types";
@@ -189,13 +189,15 @@ function createHydratedMount(
   program: DOMTemplateProgram,
   instance: TemplateInstance<Node>,
   adapter: DOMTemplateAdapter,
-): MountedTemplate<Node> {
+): MountedTemplateProgram {
   const scope = createScope();
   let mounted = true;
+  let currentProgram = program;
+  let bindings: ReturnType<typeof applyTemplateBindings>;
 
   try {
     runWithScope(scope, () => {
-      applyTemplateBindings(scope, instance, program.bindings, adapter, { hydrate: true });
+      bindings = applyTemplateBindings(scope, instance, program.bindings, adapter, { hydrate: true });
       onScopeDispose(() => {
         try {
           removeDOMNodes(instance.roots);
@@ -225,6 +227,15 @@ function createHydratedMount(
     dispose() {
       disposeScope(scope);
     },
+    update(next: DOMTemplateProgram) {
+      if (next.template !== currentProgram.template) {
+        throw new TypeError(
+          "[vynn render_new]: A hydrated template program can only update from the same static template definition.",
+        );
+      }
+      bindings.update(next.bindings);
+      currentProgram = next;
+    },
   });
 }
 
@@ -239,7 +250,7 @@ export function hydrateTemplateProgramInRange(
   end: Comment,
   program: DOMTemplateProgram,
   adapter: DOMTemplateAdapter,
-): MountedTemplate<Node> | null {
+): MountedTemplateProgram | null {
   if (
     !start ||
     !end ||
@@ -277,7 +288,7 @@ export function hydrateTemplateProgram(
   parent: Node,
   program: DOMTemplateProgram,
   adapter: DOMTemplateAdapter,
-): MountedTemplate<Node> {
+): MountedTemplateProgram {
   if (!parent || typeof parent !== "object" || !parent.childNodes) {
     throw new TypeError("[vynn render_new]: Hydration expects a DOM parent node.");
   }
