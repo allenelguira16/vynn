@@ -1,3 +1,5 @@
+export type { RenderNewComponent } from "./component";
+
 export type {
   Accessor,
   Cleanup,
