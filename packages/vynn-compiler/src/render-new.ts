@@ -142,10 +142,9 @@ const voidElements = new Set([
 // These parsing contexts need dedicated compiler rules. Rejecting them is
 // safer than emitting reference paths that the HTML fragment parser rewrites.
 const unsupportedElements = new Set([
-  "body", "col", "colgroup", "head", "html", "iframe", "noembed", "noframes",
-  "noscript", "optgroup", "option", "plaintext", "pre", "script", "select",
-  "style", "template", "textarea", "title", "xmp", "table", "thead", "tbody",
-  "tfoot", "tr", "td", "th",
+  "col", "colgroup", "iframe", "noembed", "noframes", "noscript", "optgroup",
+  "option", "plaintext", "pre", "script", "select", "style", "template",
+  "textarea", "xmp", "table", "thead", "tbody", "tfoot", "tr", "td", "th",
 ]);
 
 const booleanAttributes = new Set([
@@ -805,6 +804,103 @@ function expressionSource(
   return sourceOf(source, expression, filename);
 }
 
+function validateDocumentRoot(
+  roots: readonly SerializedNode[],
+  filename: string,
+  sourceNode: Node,
+): void {
+  const documentTags = new Set(["html", "head", "body", "title"]);
+  const documentNodes: SerializedElement[] = [];
+
+  const visit = (node: SerializedNode): void => {
+    if (node.kind !== "element") return;
+    if (documentTags.has(node.tag.toLowerCase())) documentNodes.push(node);
+    for (const child of node.children) visit(child);
+  };
+
+  for (const root of roots) visit(root);
+  if (documentNodes.length === 0) return;
+
+  if (
+    roots.length !== 1 ||
+    roots[0]?.kind !== "element" ||
+    roots[0].tag.toLowerCase() !== "html"
+  ) {
+    fail(
+      "Document elements must be returned as one complete <html><head>...</head><body>...</body></html> root.",
+      filename,
+      sourceNode,
+    );
+  }
+
+  const html = roots[0];
+  const headElements = html.children.filter(
+    (child): child is SerializedElement =>
+      child.kind === "element" && child.tag.toLowerCase() === "head",
+  );
+  const bodyElements = html.children.filter(
+    (child): child is SerializedElement =>
+      child.kind === "element" && child.tag.toLowerCase() === "body",
+  );
+
+  if (
+    html.children.length !== 2 ||
+    headElements.length !== 1 ||
+    bodyElements.length !== 1 ||
+    html.children[0] !== headElements[0] ||
+    html.children[1] !== bodyElements[0]
+  ) {
+    fail(
+      "A document root must contain exactly one <head> followed by one <body>.",
+      filename,
+      sourceNode,
+    );
+  }
+
+  const head = headElements[0]!;
+  const body = bodyElements[0]!;
+  const allowedHeadTags = new Set(["base", "link", "meta", "title"]);
+
+  for (const child of head.children) {
+    if (
+      child.kind !== "element" ||
+      !allowedHeadTags.has(child.tag.toLowerCase())
+    ) {
+      fail(
+        "The document <head> currently supports only <title>, <base>, <link>, and <meta> elements.",
+        filename,
+        sourceNode,
+      );
+    }
+
+    if (
+      child.tag.toLowerCase() === "title" &&
+      child.children.some((titleChild) => titleChild.kind !== "text")
+    ) {
+      fail(
+        "Dynamic or nested content inside <title> is not supported yet. Use static title text in the document root.",
+        filename,
+        sourceNode,
+      );
+    }
+  }
+
+  const visitBody = (node: SerializedNode): void => {
+    if (node.kind !== "element") return;
+    const tag = node.tag.toLowerCase();
+    if (tag === "html" || tag === "head" || tag === "body" || tag === "title") {
+      fail(
+        "Document-only elements cannot be nested inside the document <body>.",
+        filename,
+        sourceNode,
+      );
+    }
+    for (const child of node.children) visitBody(child);
+  };
+
+  for (const child of body.children) visitBody(child);
+}
+
 function serializeProgram(
   root: Node,
   source: string,
@@ -836,6 +932,8 @@ function serializeProgram(
   } else {
     fail("Expected a JSX element or fragment return.", filename, root);
   }
+
+  validateDocumentRoot(roots, filename, root);
 
   const namespace: SerializedProgram["namespace"] =
     roots.length === 1 && roots[0].kind === "element" && roots[0].tag.toLowerCase() === "svg"
