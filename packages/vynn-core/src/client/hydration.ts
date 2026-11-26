@@ -569,7 +569,7 @@ function getServerRenderedNodes(root: Node) {
 
     // Walk sibling links directly. Reading childNodes creates and caches a
     // live NodeList for every node visited by this scanner in Chromium.
-    let child = node.firstChild;
+    let child: Node | null = node.firstChild;
     while (child) {
       child = flattenNode(child);
     }
@@ -577,7 +577,7 @@ function getServerRenderedNodes(root: Node) {
     return nextSibling;
   }
 
-  let child = root.firstChild;
+  let child: Node | null = root.firstChild;
   while (child) {
     child = flattenNode(child);
   }
