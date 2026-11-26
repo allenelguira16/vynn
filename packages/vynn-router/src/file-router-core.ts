@@ -32,6 +32,11 @@ type RouteDirectory<TContext> = {
 };
 
 const FileRouteOutlet: Route["component"] = (props) => props.children ?? null;
+const fileRouteOutlets = new WeakSet<Function>([FileRouteOutlet]);
+
+export function isFileRouteOutlet(value: unknown): boolean {
+  return typeof value === "function" && fileRouteOutlets.has(value);
+}
 
 function normalizeDirectory(directory: string): string {
   const normalized = directory.replace(/\\/g, "/").replace(/\/+$/, "");
