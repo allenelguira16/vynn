@@ -491,7 +491,7 @@ describe("render_new SSR and hydration", () => {
   it("mounts a complete HTML document and preserves framework asset ranges", () => {
     const document = createDocument();
     document.head.innerHTML =
-      '<!--vynn:internal:start--><link id="app-css" rel="stylesheet" href="/assets/app.css"><!--vynn:internal:end-->';
+      '<!--vynn:internal:start--><link id="app-css" rel="stylesheet" href="/assets/app.css"><!--vynn:internal:end--><!--vynn:internal:start--><meta charset="UTF-8" id="shell-charset"><!--vynn:internal:end-->';
     document.body.innerHTML =
       '<!--vynn:internal:start--><script id="vite-client" type="module" src="/@vite/client"></script><!--vynn:internal:end-->';
     const originalRoot = document.documentElement;
@@ -500,7 +500,7 @@ describe("render_new SSR and hydration", () => {
     const program: DOMTemplateProgram = {
       template: {
         namespace: "html",
-        markup: '<html><head><title>Vynn test</title></head><body><main><!--__vynn_render_new_child_0_start__--><!--__vynn_render_new_child_0_end__--></main></body></html>',
+        markup: '<html><head><meta charset="UTF-8"><title>Vynn test</title></head><body><main><!--__vynn_render_new_child_0_start__--><!--__vynn_render_new_child_0_end__--></main></body></html>',
         references: [
           { id: 0, kind: "element", path: [0] },
           { id: 1, kind: "anchor", path: [0, 1, 0, 0] },
@@ -524,6 +524,8 @@ describe("render_new SSR and hydration", () => {
     expect(document.querySelector("main")?.textContent).toBe("Mounted document content");
     expect(document.querySelector("#app-css")).not.toBeNull();
     expect(document.querySelector("#vite-client")).not.toBeNull();
+    expect(document.querySelectorAll("meta[charset]")).toHaveLength(1);
+    expect(document.querySelector("#shell-charset")).toBeNull();
 
     language.value = "en-US";
     message.value = "Updated document content";
