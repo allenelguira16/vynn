@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { JSDOM } from "jsdom";
 
 import { $state } from "../src/reactivity/state";
+import { createRenderNewComponent } from "../src/render_new/component";
 import { hydrateRenderNew } from "../src/render_new/dom/hydrate-client";
 import type { DOMTemplateProgram } from "../src/render_new/dom/program";
 import { renderTemplateProgramToString } from "../src/render_new/ssr/render";
@@ -382,6 +383,105 @@ describe("render_new SSR and hydration", () => {
     expect(rows[1]?.textContent).toBe("Beta client");
 
     mounted.dispose();
+  });
+
+  it("serializes, hydrates, and updates keyed component instances", () => {
+    const document = createDocument();
+    const container = document.createElement("div");
+    const listTemplate = {
+      namespace: "html" as const,
+      markup: "<ul><!--__vynn_render_new_child_0_start__--><!--__vynn_render_new_child_0_end__--></ul>",
+      references: [{ id: 0, kind: "anchor" as const, path: [0, 0] }],
+    };
+    const rowTemplate = {
+      namespace: "html" as const,
+      markup: "<li><!--__vynn_render_new_child_0_start__--><!--__vynn_render_new_child_0_end__--></li>",
+      references: [{ id: 0, kind: "anchor" as const, path: [0, 0] }],
+    };
+
+    function Row(props: { label: string }) {
+      return createRenderNewComponent(
+        () => ({
+          template: rowTemplate,
+          bindings: [{
+            kind: "child" as const,
+            reference: 0,
+            read: () => props.label,
+          }],
+        }),
+        props,
+        Row,
+      );
+    }
+
+    const createListProgram = (
+      readItems: () => Array<{ id: string; label: string }>,
+    ): DOMTemplateProgram => ({
+      template: listTemplate,
+      bindings: [{
+        kind: "child",
+        reference: 0,
+        read: () => readItems().map((item) =>
+          Object.assign(Row({ label: item.label }), { key: item.id }),
+        ),
+      }],
+    });
+
+    const serverItems = [
+      { id: "alpha", label: "Alpha from server" },
+      { id: "beta", label: "Beta from server" },
+    ];
+    const html = renderTemplateProgramToString(
+      createListProgram(() => serverItems),
+    );
+
+    expect(html).toContain(
+      "<!--__vynn_render_new_keyed_item_s_0061006c007000680061_start__--><li>",
+    );
+    expect(html).toContain(
+      "<!--__vynn_render_new_keyed_item_s_0062006500740061_start__--><li>",
+    );
+
+    container.innerHTML = html;
+    const originalAlpha = container.querySelectorAll("li")[0]!;
+    const originalBeta = container.querySelectorAll("li")[1]!;
+
+    const clientItems = $state([
+      { id: "beta", label: "Beta from client" },
+      { id: "alpha", label: "Alpha from client" },
+      { id: "gamma", label: "Gamma from client" },
+    ]);
+    const mounted = hydrateRenderNew(
+      container,
+      createListProgram(() => clientItems.value),
+    );
+
+    const list = container.querySelector("ul")!;
+    expect(list.children[0]).toBe(originalBeta);
+    expect(list.children[1]).toBe(originalAlpha);
+    expect(list.children[2]).not.toBe(originalAlpha);
+    expect(Array.from(list.children).map((node) => node.textContent)).toEqual([
+      "Beta from client",
+      "Alpha from client",
+      "Gamma from client",
+    ]);
+
+    const originalGamma = list.children[2]!;
+    clientItems.value = [
+      { id: "alpha", label: "Alpha updated" },
+      { id: "gamma", label: "Gamma updated" },
+    ];
+
+    expect(list.children).toHaveLength(2);
+    expect(list.children[0]).toBe(originalAlpha);
+    expect(list.children[1]).toBe(originalGamma);
+    expect(Array.from(list.children).map((node) => node.textContent)).toEqual([
+      "Alpha updated",
+      "Gamma updated",
+    ]);
+
+    mounted.dispose();
+    expect(container.childNodes).toHaveLength(0);
   });
 
 });
