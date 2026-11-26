@@ -1220,6 +1220,7 @@ export function transformVynnRenderNewOxcWithMap(
       roots.push(component.body);
     } else if (
       (isType(component, "ArrowFunctionExpression") || isType(component, "FunctionExpression")) &&
+      !isType(component.body, "BlockStatement") &&
       containsJSX(component.body)
     ) {
       dynamicReturns.push(component.body);
