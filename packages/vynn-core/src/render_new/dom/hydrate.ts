@@ -353,5 +353,7 @@ export function hydrateTemplateProgram(
   // A document mount transfers framework-owned CSS, script, and preload
   // ranges from the old root before replacing it. Do not detach that root here.
   if (!isDocument) removeDOMNodes(roots);
-  return mountTemplateProgram(parent, program, adapter);
+  return mountTemplateProgram(parent, program, adapter, null, {
+    removeRootsOnDispose: !isDocument,
+  });
 }
