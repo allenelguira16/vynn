@@ -4,7 +4,12 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { JSX } from "../src/types/jsx";
 
 import { allocateAsyncResourceID } from "../src/runtime/async/runtime";
-import { createOwner, disposeOwner, getOwner, runWithOwner } from "../src/life-cycle/owner";
+import {
+  createOwner,
+  disposeOwner,
+  getOwner,
+  runWithOwner,
+} from "../src/life-cycle/owner";
 import { $effect } from "../src/reactivity/effect";
 import { $state, type State } from "../src/reactivity/state";
 import { $attr } from "../src/render/$attr";
@@ -94,7 +99,9 @@ describe("$for row lifecycle", () => {
     expect(owner.children).toContain(secondOwner);
     expect(runs.get(1)).toBe(1);
     expect(runs.get(2)).toBe(1);
-    expect([...host.querySelectorAll("p")].map((element) => element.dataset.id)).toEqual(["1", "2"]);
+    expect(
+      [...host.querySelectorAll("p")].map((element) => element.dataset.id),
+    ).toEqual(["1", "2"]);
 
     // Moving keyed items must preserve their row owners and computations.
     rows.value = [second, first];
@@ -104,7 +111,9 @@ describe("$for row lifecycle", () => {
     expect(rowOwners.get(second.id)).toBe(secondOwner);
     expect(firstOwner.disposed).not.toBe(true);
     expect(secondOwner.disposed).not.toBe(true);
-    expect([...host.querySelectorAll("p")].map((element) => element.dataset.id)).toEqual(["2", "1"]);
+    expect(
+      [...host.querySelectorAll("p")].map((element) => element.dataset.id),
+    ).toEqual(["2", "1"]);
 
     // Removing one entry disposes all work owned by that row only.
     rows.value = [second];
@@ -113,7 +122,9 @@ describe("$for row lifecycle", () => {
     expect(firstOwner.disposed).toBe(true);
     expect(secondOwner.disposed).not.toBe(true);
     expect(owner.children).toEqual([secondOwner]);
-    expect([...host.querySelectorAll("p")].map((element) => element.dataset.id)).toEqual(["2"]);
+    expect(
+      [...host.querySelectorAll("p")].map((element) => element.dataset.id),
+    ).toEqual(["2"]);
 
     first.value.value = 1;
     second.value.value = 1;
