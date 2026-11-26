@@ -91,14 +91,26 @@ function preserveInternalDocumentRanges(
 ): void {
   if (!currentRoot) return;
 
-  moveInternalDOMRanges(
-    getDirectChildElement(currentRoot, "head"),
-    getDirectChildElement(nextRoot, "head"),
-  );
-  moveInternalDOMRanges(
-    getDirectChildElement(currentRoot, "body"),
-    getDirectChildElement(nextRoot, "body"),
-  );
+  const currentHead = getDirectChildElement(currentRoot, "head");
+  const nextHead = getDirectChildElement(nextRoot, "head");
+  const currentBody = getDirectChildElement(currentRoot, "body");
+  const nextBody = getDirectChildElement(nextRoot, "body");
+
+  moveInternalDOMRanges(currentHead, nextHead);
+  moveInternalDOMRanges(currentBody, nextBody);
+
+  // Vite's dev CSS client inserts style elements directly into document.head.
+  // They are not inside the app-plugin asset marker ranges.
+  if (currentHead && nextHead) {
+    for (const style of Array.from(currentHead.children)) {
+      if (
+        style.localName === "style" &&
+        style.hasAttribute("data-vite-dev-id")
+      ) {
+        nextHead.appendChild(style);
+      }
+    }
+  }
 }
 
 function mountDocumentProgram(
