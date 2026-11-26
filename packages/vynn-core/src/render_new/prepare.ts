@@ -51,24 +51,38 @@ function syncPreparedComponentProps(previous: unknown, next: unknown): boolean {
   }
 
   if (Array.isArray(previous) && Array.isArray(next)) {
-    const nextByKey = new Map<unknown, RenderNewComponent>();
-    for (const item of next) {
-      if (
-        isRenderNewComponent(item) &&
-        Object.prototype.hasOwnProperty.call(item, "key")
-      ) {
-        nextByKey.set(item.key, item);
+    if (previous.length !== next.length) return false;
+
+    const previousHasKeys = previous.some((item) =>
+      !!item && typeof item === "object" &&
+      Object.prototype.hasOwnProperty.call(item, "key"),
+    );
+    const nextHasKeys = next.some((item) =>
+      !!item && typeof item === "object" &&
+      Object.prototype.hasOwnProperty.call(item, "key"),
+    );
+
+    if (previousHasKeys !== nextHasKeys) return false;
+
+    for (let index = 0; index < previous.length; index++) {
+      const before = previous[index];
+      const after = next[index];
+
+      if (previousHasKeys) {
+        const beforeKey = before && typeof before === "object" && "key" in before
+          ? before.key
+          : undefined;
+        const afterKey = after && typeof after === "object" && "key" in after
+          ? after.key
+          : undefined;
+        if (!Object.is(beforeKey, afterKey)) return false;
+      }
+
+      if (isRenderNewComponent(before) && isRenderNewComponent(after)) {
+        updateRenderNewComponentProps(before, after);
       }
     }
 
-    for (const item of previous) {
-      if (
-        !isRenderNewComponent(item) ||
-        !Object.prototype.hasOwnProperty.call(item, "key")
-      ) continue;
-      const updated = nextByKey.get(item.key);
-      if (updated) updateRenderNewComponentProps(item, updated);
-    }
     return true;
   }
 
