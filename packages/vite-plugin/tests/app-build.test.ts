@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
+import vynn from "../src/index.ts";
 import { vynnAppPlugin } from "../src/plugins/app/index.ts";
-import { createSsrHandlerCode } from "../src/plugins/app/documents.ts";
+import { createClientEntry, createServerEntry, createSsrHandlerCode } from "../src/plugins/app/documents.ts";
 
 describe("Vynn app build orchestration", () => {
   it("leaves environment scheduling to Vite's builder", () => {
@@ -48,6 +49,41 @@ describe("Vynn app build orchestration", () => {
     expect(config.environments?.ssr?.build?.ssrManifest).toBe(false);
     expect(config.environments?.client?.build?.ssrManifest).toBe(true);
     expect(config.environments?.client?.build?.copyPublicDir).toBeUndefined();
+  });
+});
+
+describe("Vynn render_new application entries", () => {
+  it("generates a document-root mount or hydration client entry", () => {
+    const client = createClientEntry("/project/src/App.tsx", false, "new");
+    const hydrated = createClientEntry("/project/src/App.tsx", true, "new");
+
+    expect(client).toContain('import { mountRenderNew } from "vynn/render_new";');
+    expect(client).toContain("mountRenderNew(document, App({ url:");
+    expect(hydrated).toContain('import { hydrateRenderNew } from "vynn/render_new";');
+    expect(hydrated).toContain("hydrateRenderNew(document, App({ url:");
+    expect(createClientEntry("/project/src/App.tsx", true)).toContain(
+      'import { hydrateToDOM } from "vynn/client";',
+    );
+  });
+
+  it("generates synchronous document SSR output for render_new", () => {
+    const code = createServerEntry("/project/src/App.tsx", "stream", "new");
+
+    expect(code).toContain('import { renderTemplateProgramToString } from "vynn/render_new/server";');
+    expect(code).toContain("body: renderTemplateProgramToString(App({ url }))");
+    expect(code).toContain('head: { render: () => "" }');
+    expect(code).toContain("modules: []");
+    expect(code).not.toContain('from "vynn/server"');
+  });
+
+  it("selects the render_new compiler only when explicitly requested", () => {
+    const legacyNames = vynn().map((plugin) => plugin.name);
+    const newNames = vynn({ renderer: "new" }).map((plugin) => plugin.name);
+
+    expect(legacyNames).toContain("vynn-jsx-transpiler");
+    expect(legacyNames).not.toContain("vynn-render-new-jsx");
+    expect(newNames).toContain("vynn-render-new-jsx");
+    expect(newNames).not.toContain("vynn-jsx-transpiler");
   });
 });
 
