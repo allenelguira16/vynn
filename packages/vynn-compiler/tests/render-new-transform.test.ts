@@ -356,7 +356,7 @@ describe("render_new JSX compiler target", () => {
       'import { createRenderNewComponent as _vynnCreateRenderNewComponent } from "vynn/render_new/internal";',
       "const _vynnCreateRenderNewComponent = (render, props, type) => ({ render, props, type });",
     );
-    const createList = new Function(executable + "\\nreturn List;") as () => (
+    const createList = new Function(executable + "\nreturn List;") as () => (
       props: { items: Array<{ id: string; label: string }> },
     ) => { render: () => { bindings: Array<{ read: () => unknown }> } };
 
