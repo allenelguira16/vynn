@@ -551,6 +551,28 @@ importers:
         specifier: 8.3.6
         version: 8.3.6(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)
 
+  sandbox/render-new-app:
+    dependencies:
+      vite-plugin-vynn:
+        specifier: workspace:*
+        version: link:../../packages/vite-plugin
+      vynn:
+        specifier: workspace:*
+        version: link:../../packages/vynn-core
+      vynn-router:
+        specifier: workspace:*
+        version: link:../../packages/vynn-router
+    devDependencies:
+      '@types/node':
+        specifier: ^26.6.3
+        version: 26.6.6
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vite:
+        specifier: ^8.3.5
+        version: 8.3.6(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)
+
   sandbox/solidjs2-app:
     dependencies:
       '@solidjs/router':
