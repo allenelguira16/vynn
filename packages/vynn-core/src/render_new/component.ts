@@ -28,6 +28,7 @@ interface RenderNewComponentInternals {
   readonly props: Map<PropertyKey, State<unknown>>;
   readonly componentType: Function | undefined;
   readonly canUpdateProps: boolean;
+  readonly prepare?: () => void | boolean | Promise<void | boolean>;
 }
 
 const componentInternals = new WeakMap<RenderNewComponent, RenderNewComponentInternals>();
@@ -81,6 +82,7 @@ export function createRenderNewComponent(
   render: () => RenderNewComponentResult,
   props?: object | null,
   componentType?: Function,
+  prepare?: () => void | boolean | Promise<void | boolean>,
 ): RenderNewComponent {
   if (typeof render !== "function") {
     throw new TypeError("[vynn render_new]: A component descriptor requires a render function.");
@@ -130,9 +132,24 @@ export function createRenderNewComponent(
     props: propValues,
     componentType,
     canUpdateProps,
+    prepare,
   });
 
   return component;
+}
+
+/**
+ * Runs a component's optional asynchronous preparation hook.
+ *
+ * A true result means the hook has already prepared the complete component
+ * subtree, so tree preparation can skip evaluating its render callback.
+ */
+export async function prepareRenderNewComponent(
+  component: RenderNewComponent,
+): Promise<boolean> {
+  const prepare = componentInternals.get(component)?.prepare;
+  if (!prepare) return false;
+  return (await prepare()) === true;
 }
 
 /** Adds list identity to a compiler-created component descriptor. */
