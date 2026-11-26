@@ -4,7 +4,7 @@ import { transformVynnOxc } from "../src/index";
 import { transformVynnRenderNewOxc } from "../src/render-new";
 
 describe("render_new JSX compiler target", () => {
-  it("compiles a named component's dynamic text into a text reference", () => {
+  it("compiles a named component's dynamic child into a comment range", () => {
     const code = transformVynnRenderNewOxc(
       `function Greeting(props: { name: string }) {
         return <h1>{props.name}</h1>;
@@ -12,10 +12,10 @@ describe("render_new JSX compiler target", () => {
       "greeting.tsx",
     );
 
-    expect(code).toContain('markup: "<h1>__vynn_render_new_text_0__</h1>"');
+    expect(code).toContain('markup: "<h1><!--__vynn_render_new_child_0_start__--><!--__vynn_render_new_child_0_end__--></h1>"');
     expect(code).toContain('namespace: "html"');
-    expect(code).toContain('kind: "text", path: [0, 0]');
-    expect(code).toContain('kind: "text", reference: 0');
+    expect(code).toContain('kind: "anchor", path: [0, 0]');
+    expect(code).toContain('kind: "child", reference: 0');
     expect(code).toContain("read: () => (props.name)");
     expect(code).toContain("as const");
     expect(code).not.toContain("vynn/render");
@@ -68,7 +68,7 @@ describe("render_new JSX compiler target", () => {
     );
 
     expect(code).toContain('kind: "element", path: [0, 0]');
-    expect(code).toContain('kind: "text", path: [0, 1, 0]');
+    expect(code).toContain('kind: "anchor", path: [0, 1]');
   });
 
   it("compiles fragments as multiple template roots", () => {
@@ -84,7 +84,7 @@ describe("render_new JSX compiler target", () => {
       "fragment.tsx",
     );
 
-    expect(code).toContain('markup: "<h1>Heading</h1><p>__vynn_render_new_text_0__</p>"');
+    expect(code).toContain('markup: "<h1>Heading</h1><p><!--__vynn_render_new_child_0_start__--><!--__vynn_render_new_child_0_end__--></p>"');
     expect(code).toContain('path: [0]');
     expect(code).toContain('path: [1, 0]');
   });
@@ -140,7 +140,7 @@ describe("render_new JSX compiler target", () => {
       "greeting.tsx",
     );
 
-    expect(code).toContain('markup: "<strong>__vynn_render_new_text_0__</strong>"');
+    expect(code).toContain('markup: "<strong><!--__vynn_render_new_child_0_start__--><!--__vynn_render_new_child_0_end__--></strong>"');
     expect(code).toContain("read: () => (props.name)");
   });
 
@@ -201,15 +201,17 @@ describe("render_new JSX compiler target", () => {
     expect(code).toContain('markup: "<p title=\\\"a &quot;quote&quot;\\\">A &amp; B <em>safe</em></p>"');
   });
 
-  it("rejects component children until structural child instructions exist", () => {
-    expect(() =>
-      transformVynnRenderNewOxc(
-        `function Page() {
-          return <main><Child /></main>;
-        }`,
-        "page.tsx",
-      ),
-    ).toThrow("Component element <Child>");
+  it("compiles component children into nested template programs", () => {
+    const code = transformVynnRenderNewOxc(
+      `function Page() {
+        return <main><Child /></main>;
+      }`,
+      "page.tsx",
+    );
+
+    expect(code).toContain('kind: "child"');
+    expect(code).toContain("Child({  })");
+    expect(code).toContain("__vynn_render_new_child_0_start__");
   });
 
   it("rejects spread attributes with a targeted diagnostic", () => {
@@ -223,15 +225,16 @@ describe("render_new JSX compiler target", () => {
     ).toThrow("spread attributes are not supported");
   });
 
-  it("rejects mixed static and dynamic text that the DOM parser would merge", () => {
-    expect(() =>
-      transformVynnRenderNewOxc(
-        `function Greeting(props: { name: string }) {
-          return <p>Hello {props.name}</p>;
-        }`,
-        "greeting.tsx",
-      ),
-    ).toThrow("must occupy its own text node");
+  it("supports static text beside a dynamic child slot", () => {
+    const code = transformVynnRenderNewOxc(
+      `function Greeting(props: { name: string }) {
+        return <p>Hello {props.name}</p>;
+      }`,
+      "greeting.tsx",
+    );
+
+    expect(code).toContain('markup: "<p>Hello <!--__vynn_render_new_child_0_start__--><!--__vynn_render_new_child_0_end__--></p>"');
+    expect(code).toContain('kind: "child"');
   });
 
   it("rejects JSX outside a direct named component return", () => {
@@ -276,7 +279,7 @@ describe("render_new JSX compiler target", () => {
     const program = Page({ title: "First title", label: "First label" });
 
     expect(program.template.markup).toBe(
-      '<button>__vynn_render_new_text_0__</button>',
+      '<button><!--__vynn_render_new_child_0_start__--><!--__vynn_render_new_child_0_end__--></button>',
     );
     expect(program.template.namespace).toBe("html");
     expect(program.bindings).toHaveLength(2);
