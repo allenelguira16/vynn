@@ -46,6 +46,23 @@ describe("render_new property binding", () => {
     disposeScope(scope);
   });
 
+  it("creates an absent custom property when its initial value is undefined", () => {
+    const document = createDocument();
+    const element = document.createElement("div");
+    const scope = createScope(null);
+
+    bindProperty(scope, element, "customValue", () => undefined);
+
+    expect(Object.prototype.hasOwnProperty.call(element, "customValue")).toBe(
+      true,
+    );
+    expect(
+      (element as unknown as { customValue: unknown }).customValue,
+    ).toBeUndefined();
+
+    disposeScope(scope);
+  });
+
   it("assigns object and nullish values directly to custom properties", () => {
     const document = createDocument();
     const element = document.createElement("div");
