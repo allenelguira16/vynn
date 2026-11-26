@@ -1355,6 +1355,13 @@ export function transformVynnRenderNewOxcWithMap(
     previousStart = replacement.start;
   }
 
+  if (needsComponentHelper && options.sourceType === "script") {
+    fail(
+      "The render_new compiler emits an internal ESM import and therefore requires module source type.",
+      filename,
+    );
+  }
+
   if (templateDeclarations.length > 0 || needsComponentHelper) {
     const insertionOffset = getTemplateInsertionOffset(program, source);
     const prefix = code.slice(0, insertionOffset);
