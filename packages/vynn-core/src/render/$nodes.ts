@@ -126,3 +126,40 @@ export function $nodes(
 
   return [start, ...nodes, end];
 }
+
+/**
+ * Removes a rendered node and, when it is the start of a managed $nodes
+ * region, the complete live range owned by that region.
+ *
+ * $insert uses this when its owner is disposed so asynchronously inserted
+ * descendants inside nested $nodes regions cannot be left behind.
+ */
+export function removeRenderedNode(parent: Node, node: Node): void {
+  if (node.parentNode !== parent) return;
+
+  const rangeEnd = rangeEndByStart.get(node);
+
+  if (rangeEnd && rangeEnd.parentNode === parent) {
+    let cursor: Node | null = node;
+
+    while (cursor && cursor !== rangeEnd) {
+      cursor = cursor.nextSibling;
+    }
+
+    if (cursor === rangeEnd) {
+      let current: Node | null = node;
+
+      while (current) {
+        const next: Node | null = current.nextSibling;
+        parent.removeChild(current);
+
+        if (current === rangeEnd) break;
+        current = next;
+      }
+
+      return;
+    }
+  }
+
+  parent.removeChild(node);
+}

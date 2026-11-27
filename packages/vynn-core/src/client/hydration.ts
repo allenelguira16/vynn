@@ -4,6 +4,8 @@ import {
   INTERNAL_RANGE_START_MARKER,
   LAZY_END_SSR_MARKER,
   LAZY_START_SSR_MARKER,
+  PORTAL_END_SSR_MARKER,
+  PORTAL_START_SSR_MARKER,
   RAW_HTML_SSR_ATTRIBUTE,
   TEXT_SSR_SEPARATOR,
 } from "../const";
@@ -515,6 +517,29 @@ function getServerRenderedNodes(root: Node) {
 
     if (isCommentNode(node)) {
       const value = node.data;
+      const portalStartPrefix = PORTAL_START_SSR_MARKER + ":";
+
+      if (value.startsWith(portalStartPrefix)) {
+        const portalID = value.slice(portalStartPrefix.length);
+        const portalEndValue = PORTAL_END_SSR_MARKER + ":" + portalID;
+        let portalEnd: Node | null = node.nextSibling;
+
+        while (
+          portalEnd &&
+          (!isCommentNode(portalEnd) || portalEnd.data !== portalEndValue)
+        ) {
+          portalEnd = portalEnd.nextSibling;
+        }
+
+        if (!portalEnd) {
+          throw new Error("[vynn] Unclosed Portal range during hydration: " + portalID);
+        }
+
+        // Portal content has its own client mount pass. Exclude the server
+        // range from the root hydration queues so it cannot shift later claims.
+        return portalEnd.nextSibling;
+      }
+
       const start = LAZY_START_REGEX.exec(value);
 
       if (start) {

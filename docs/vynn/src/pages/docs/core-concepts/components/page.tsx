@@ -180,14 +180,15 @@ const ComponentsPage = () => (
 
     <h2>Render into another DOM node with Portal</h2>
     <p>
-      <code>Portal</code> inserts its children into a supplied DOM element after the component
-      mounts. It is useful for overlays and dialogs whose DOM needs to live outside the current
-      layout. Portals do not render their children during SSR.
+      <code>Portal</code> inserts its children into a supplied DOM element. It is useful for
+      overlays and dialogs whose DOM needs to live outside the current layout. During SSR, the
+      mount must be an element rendered before the Portal in the same app tree. Vynn renders the
+      portal content there and remounts it on the client after the main hydration pass.
     </p>
     <CodeBlock
       lang="ts"
       code={
-        'import { Portal } from "vynn";\n\nfunction DialogLayer(props: { mount: Element }) {\n  return (\n    <Portal mount={props.mount}>\n      <div role="dialog" aria-modal="true">\n        <p>Dialog content</p>\n      </div>\n    </Portal>\n  );\n}'
+        'import { Portal } from "vynn";\n\nfunction App() {\n  const portalTarget = <div id="portal-root" /> as Element;\n\n  return (\n    <>\n      {portalTarget}\n      <main>\n        <Portal mount={portalTarget}>\n          <div role="dialog" aria-modal="true">\n            <p>Dialog content</p>\n          </div>\n        </Portal>\n      </main>\n    </>\n  );\n}'
       }
     />
     <p>

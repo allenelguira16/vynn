@@ -12,6 +12,7 @@ import {
 import { serverFunctionsPlugin } from "../../vite-plugin/src/plugins/server-functions/index.ts";
 import { Catch } from "../src/components/catch";
 import { lazy } from "../src/components/lazy";
+import { Portal } from "../src/components/portal";
 import { registerSsrModule } from "../src/context/ssr-modules";
 import { createOwner, disposeOwner, getOwner, runWithOwner } from "../src/life-cycle/owner";
 import { $registerHead } from "../src/render/head-runtime";
@@ -168,6 +169,87 @@ describe("renderToServer modes", () => {
     expect(rendered.body).toContain("Synchronous content");
     expect(rendered.head.render()).toBe("");
     expect(rendered.modules.size).toBe(0);
+  });
+
+  it("renders Portal children into an SSR mount element", () => {
+    const rendered = renderToServer(() => {
+      const target = createSSRNode("div");
+      target.attributes.id = "portal-root";
+
+      Portal({
+        mount: target as unknown as Element,
+        children: "Portal content",
+      });
+
+      return target as unknown as JSX.Element;
+    }, "sync");
+
+    expect(rendered.body).toContain(
+      '<div id="portal-root"><!--vynn:portal:start:00-->Portal content<!--vynn:portal:end:00--></div>',
+    );
+  });
+
+  it("resolves async Portal children in async SSR mode", async () => {
+    const rendered = await renderToServer(() => {
+      const target = createSSRNode("div");
+      target.attributes.id = "portal-root";
+
+      Portal({
+        mount: target as unknown as Element,
+        children: createSSRAsync(
+          () => [createSSRText("Portal loading")],
+          () => [createSSRText("Resolved portal content")],
+          [Promise.resolve()],
+        ) as unknown as JSX.Element,
+      });
+
+      return target as unknown as JSX.Element;
+    }, "async");
+
+    expect(rendered.body).toContain("Resolved portal content");
+    expect(rendered.body).toContain("<!--vynn:portal:start:00-->");
+    expect(rendered.body).toContain("<!--vynn:portal:end:00-->");
+  });
+
+  it("streams async Portal children into their SSR mount", async () => {
+    let resolvePending!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      resolvePending = resolve;
+    });
+
+    const rendered = renderToServer(() => {
+      const target = createSSRNode("div");
+      target.attributes.id = "portal-root";
+
+      Portal({
+        mount: target as unknown as Element,
+        children: createSSRAsync(
+          () => [createSSRText("Portal loading")],
+          () => [createSSRText("Portal resolved")],
+          [pending],
+        ) as unknown as JSX.Element,
+      });
+
+      return target as unknown as JSX.Element;
+    }, "stream");
+
+    const reader = rendered.body.getReader();
+    const initial = await reader.read();
+    const initialHTML = new TextDecoder().decode(initial.value);
+
+    expect(initialHTML).toContain("<!--vynn:portal:start:00-->");
+    expect(initialHTML).toContain("Portal loading");
+
+    resolvePending();
+
+    const patches: string[] = [];
+    while (true) {
+      const result = await reader.read();
+      if (result.done) break;
+      patches.push(new TextDecoder().decode(result.value));
+    }
+
+    expect(patches.join("")).toContain("Portal resolved");
   });
 
   it("catches synchronous lazy-child errors in sync SSR mode", () => {

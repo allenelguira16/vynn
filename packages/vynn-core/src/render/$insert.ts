@@ -10,6 +10,8 @@ import { $claimTemplateAnchor } from "./$template";
 import { withHeadElementCreation } from "./head-element-context";
 
 import { $renderEffect } from "../reactivity/effect";
+import { getOwner, getOwnerCleanups } from "../life-cycle/owner";
+import { removeRenderedNode } from "./$nodes";
 import { hasRawHTMLContent } from "./$attr";
 import { getChildDOMNamespace, withDOMNamespace } from "./namespace";
 import {
@@ -145,6 +147,7 @@ export function $insert<E extends Element>(
   let oldText: Text | undefined;
   let rendered = false;
 
+  const owner = getOwner();
   const dispose = $renderEffect(() => {
     const initialHydration = !rendered && isHydrating();
     const childNamespace = getChildDOMNamespace(element.namespaceURI, element.localName);
@@ -318,5 +321,36 @@ export function $insert<E extends Element>(
     rendered = true;
   });
 
-  return typeof before === "string" ? slotAnchor! : dispose;
+  let disposed = false;
+
+  const cleanup = () => {
+    if (disposed) return;
+    disposed = true;
+
+    if (owner?.cleanups) {
+      const index = owner.cleanups.indexOf(cleanup);
+      if (index !== -1) owner.cleanups.splice(index, 1);
+    }
+
+    try {
+      dispose();
+    } finally {
+      for (const node of oldNodes ?? []) {
+        removeRenderedNode(element, node);
+      }
+
+      if (oldText) {
+        removeRenderedNode(element, oldText);
+      }
+
+      oldNodes = undefined;
+      oldText = undefined;
+    }
+  };
+
+  if (owner) {
+    getOwnerCleanups(owner).push(cleanup);
+  }
+
+  return typeof before === "string" ? slotAnchor! : cleanup;
 }

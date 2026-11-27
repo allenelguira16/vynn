@@ -6,6 +6,8 @@ export const ERROR_BOUNDARY_END_SSR_MARKER = "/eb";
 export const TEXT_SSR_SEPARATOR = "/";
 export const LAZY_START_SSR_MARKER = "l";
 export const LAZY_END_SSR_MARKER = "/l";
+export const PORTAL_START_SSR_MARKER = "p";
+export const PORTAL_END_SSR_MARKER = "/p";
 
 export const INTERNAL_RANGE_START_MARKER = "vynn:internal:start";
 export const INTERNAL_RANGE_END_MARKER = "vynn:internal:end";
