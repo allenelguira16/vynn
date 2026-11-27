@@ -206,11 +206,11 @@ describe("SSR async Catch", () => {
 
     // The rejected resource correctly has no fulfilled value in $AD, but its
     // allocated ID is reserved so the following sibling keeps owner ID 01.
-    expect(asyncValues).not.toHaveProperty("000");
+    expect(asyncValues).not.toHaveProperty("0..");
     expect(asyncValues["01"]).toBe("after boundary");
     expect(errorBoundaries[0]).toMatchObject({
       status: "fallback",
-      ownerIDs: { "00": 1 },
+      ownerIDs: { "0.": 1 },
     });
   });
 
@@ -221,8 +221,8 @@ describe("SSR async Catch", () => {
 
     const rendered = await renderToServer(() => LazyPage(), "async");
 
-    expect(rendered.body).toContain("<!--l:00-->");
-    expect(rendered.body).toContain("<!--/l:00-->");
+    expect(rendered.body).toContain("<!--l:0.-->");
+    expect(rendered.body).toContain("<!--/l:0.-->");
     expect(rendered.body).toContain("Loaded lazy page");
   });
 
@@ -272,11 +272,11 @@ describe("SSR async Catch", () => {
     expect(rendered.body).toContain("Caught: " + error.message);
     expect(rendered.body).toContain("Fallback component");
     expect(rendered.body).toContain("Following sibling");
-    expect(fallbackComponentID).toBe("001");
+    expect(fallbackComponentID).toBe("0.1");
     expect(followingSiblingID).toBe("01");
     expect(errorBoundaries[0]).toMatchObject({
       status: "fallback",
-      ownerIDs: { "00": 1 },
+      ownerIDs: { "0.": 1 },
     });
   });
 
@@ -307,7 +307,7 @@ describe("SSR async Catch", () => {
 
     // Async resources created inside the boundary must keep the IDs they
     // receive during normal component traversal, before following siblings.
-    expect(values["000"]).toBe("inside boundary");
+    expect(values["0.."]).toBe("inside boundary");
     expect(values["01"]).toBe("after boundary");
   });
 });

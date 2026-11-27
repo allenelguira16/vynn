@@ -114,9 +114,9 @@ describe("Portal hydration", () => {
   it("remounts SSR portal content after the root hydration pass", () => {
     const root = document.createElement("div");
     root.innerHTML =
-      '<div id="portal-target"><!--p:00--><div class="server-portal">' +
+      '<div id="portal-target"><!--p:0.--><div class="server-portal">' +
       "<h1>Server portal content</h1>" +
-      "</div><!--/p:00--></div><main></main>";
+      "</div><!--/p:0.--></div><main></main>";
 
     let mount: HTMLDivElement | undefined;
     const scheduledFrames: FrameRequestCallback[] = [];

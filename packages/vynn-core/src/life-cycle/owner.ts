@@ -65,16 +65,90 @@ export function setOwnerDisposeCallback(
 }
 
 /**
- * Encode one child index so hierarchical owner IDs can be concatenated
- * without separators. Single-digit indexes use one character; multi-digit
- * indexes carry a width marker (a=2 digits, b=3 digits, etc.).
+ * Encode one child index for a hierarchical Owner ID. Nonzero indexes use
+ * base36 with uppercase width markers. Zero indexes use ".", and runs of
+ * three or more zero indexes collapse into "~" plus a width-marked base36
+ * count. The count is self-delimiting, so path segments still need no
+ * separators.
  */
-export function appendOwnerIdentityID(parentID: string, index: number): string {
-  const value = String(index);
+function encodeOwnerIdentityIndex(index: number): string {
+  const value = index.toString(36);
   const width = value.length - 1;
-  const marker = width > 0 ? String.fromCharCode(96 + width) : "";
+  const marker = width > 0 ? String.fromCharCode(64 + width) : "";
 
-  return parentID + marker + value;
+  return marker + value;
+}
+
+/** Read a compressed zero run only when its count token reaches the ID end. */
+function readTrailingOwnerIDZeroRun(parentID: string): number | undefined {
+  const length = parentID.length;
+
+  // The existing width markers make the count token self-delimiting:
+  // one base36 digit, or A + 2 digits, B + 3 digits, and so on.
+  for (let width = 0; width <= 26; width++) {
+    const digitStart = length - (width + 1);
+    const markerIndex = digitStart - 1;
+
+    if (markerIndex <= 0) return undefined;
+
+    if (width === 0) {
+      if (parentID.charCodeAt(markerIndex) !== 126) continue;
+    } else if (
+      parentID.charCodeAt(markerIndex) !== 64 + width ||
+      parentID.charCodeAt(markerIndex - 1) !== 126
+    ) {
+      continue;
+    }
+
+    for (let index = digitStart; index < length; index++) {
+      const code = parentID.charCodeAt(index);
+      if (!((code >= 48 && code <= 57) || (code >= 97 && code <= 122))) {
+        return undefined;
+      }
+    }
+
+    const count = Number.parseInt(parentID.slice(digitStart), 36);
+    return Number.isSafeInteger(count) && count >= 3 ? count : undefined;
+  }
+
+  return undefined;
+}
+
+/** Append one identity slot, compressing consecutive zero-valued path segments. */
+export function appendOwnerIdentityID(parentID: string, index: number): string {
+  if (index !== 0) {
+    return parentID + encodeOwnerIdentityIndex(index);
+  }
+
+  const zeroRun = readTrailingOwnerIDZeroRun(parentID);
+
+  if (zeroRun !== undefined) {
+    const previousCount = encodeOwnerIdentityIndex(zeroRun);
+    return (
+      parentID.slice(0, -(previousCount.length + 1)) +
+      "~" +
+      encodeOwnerIdentityIndex(zeroRun + 1)
+    );
+  }
+
+  let trailingZeros = 0;
+  for (
+    let cursor = parentID.length - 1;
+    cursor >= 0 && parentID.charCodeAt(cursor) === 46;
+    cursor--
+  ) {
+    trailingZeros++;
+  }
+
+  if (trailingZeros >= 2) {
+    return (
+      parentID.slice(0, -trailingZeros) +
+      "~" +
+      encodeOwnerIdentityIndex(trailingZeros + 1)
+    );
+  }
+
+  return parentID + ".";
 }
 
 function getOwnerIDReservations(owner: Owner | null): OwnerIDReservations | undefined {

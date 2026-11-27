@@ -38,10 +38,10 @@ describe("runtime-owned async resources", () => {
         nestedSecond = withAsyncResourceScope(first, () => allocateAsyncResourceID()!);
       });
 
-      expect(first).toBe("00");
+      expect(first).toBe("0.");
       expect(second).toBe("01");
-      expect(nestedFirst).toBe("000");
-      expect(nestedSecond).toBe("000");
+      expect(nestedFirst).toBe("0..");
+      expect(nestedSecond).toBe("0..");
       expect(owner.children).toBeUndefined();
       expect(owner.nodeCount).toBe(2);
     } finally {
@@ -63,7 +63,7 @@ describe("runtime-owned async resources", () => {
         resourceAfter = allocateAsyncResourceID()!;
       });
 
-      expect(resourceBefore).toBe("00");
+      expect(resourceBefore).toBe("0.");
       expect(childOwner?.id).toBe("01");
       expect(resourceAfter).toBe("02");
       expect(owner.nodeCount).toBe(3);
@@ -81,8 +81,8 @@ describe("runtime-owned async resources", () => {
       const firstID = runWithOwner(firstRoot, () => allocateAsyncResourceID());
       const secondID = runWithOwner(secondRoot, () => allocateAsyncResourceID());
 
-      expect(firstID).toBe("00");
-      expect(secondID).toBe("00");
+      expect(firstID).toBe("0.");
+      expect(secondID).toBe("0.");
     } finally {
       disposeOwner(firstRoot);
       disposeOwner(secondRoot);
@@ -91,8 +91,8 @@ describe("runtime-owned async resources", () => {
 
   it("hydrates one-shot state values and recreates nested resource slots", () => {
     globalWindow[ASYNC_DATA_SSR_KEY] = {
-      "00": 42,
-      "000": 7,
+      "0.": 42,
+      "0..": 7,
     };
 
     const owner = createOwner(null);
@@ -130,7 +130,7 @@ describe("runtime-owned async resources", () => {
 
   it("hydrates computed values while retaining their synchronous dependencies", async () => {
     globalWindow[ASYNC_DATA_SSR_KEY] = {
-      "00": 10,
+      "0.": 10,
     };
 
     const owner = createOwner(null);

@@ -226,15 +226,15 @@ describe("lazy hydration cursor isolation", () => {
 
 
 describe("Owner identity marker parsing", () => {
-  it("accepts compact Owner IDs with multi-digit width markers", () => {
+  it("accepts compressed zero runs and base36 width markers in Owner IDs", () => {
     const root = document.createElement("div");
     root.innerHTML =
-      '<!--l:00--><div id="parent"><!--l:00a10--><span id="nested">ten</span><!--/l:00a10--></div><!--/l:00-->';
+      '<!--l:0~3--><div id="parent"><!--l:0~A10a--><span id="nested">ten</span><!--/l:0~A10a--></div><!--/l:0~3-->';
 
     withHydration(() => {}, root);
 
-    const parentRange = getServerRenderedLazyRange("00");
-    const nestedRange = getServerRenderedLazyRange("00a10");
+    const parentRange = getServerRenderedLazyRange("0~3");
+    const nestedRange = getServerRenderedLazyRange("0~A10a");
 
     expect(parentRange).toBeDefined();
     expect(nestedRange).toBeDefined();
