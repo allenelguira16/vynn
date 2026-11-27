@@ -66,6 +66,18 @@ export default function BlogPostPage() {
 The page module is loaded with Vynn's `lazy()`. It is not eagerly imported
 just because the route table is created.
 
+## Navigation lifecycle
+
+The router compiles route patterns when `createRouter()` is called. Each
+navigation resolves one complete route branch from that compiled tree. Lazy
+modules in the destination branch are loaded before the new branch is
+published to the renderer.
+
+Until the destination is ready, the previously committed route remains
+mounted. Once the branch changes, nested outlets update independently, so
+layouts whose route identity has not changed keep their component owners.
+Already-loaded lazy modules do not introduce an asynchronous preload step.
+
 ### Layouts
 
 A `layout.tsx` file wraps the page and nested routes in its folder. Layouts

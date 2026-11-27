@@ -127,11 +127,11 @@ export default function Layout({ children }: PropsWithChildren) {
           <nav aria-label="Documentation">
             <ul class="menu gap-1 p-0 mb-6 w-full">
               {sections.map(({ title, items }) => (
-                <li>
+                <li key={title}>
                   <h2 class="menu-title">{title}</h2>
                   <ul>
                     {items.map(({ label, href }) => (
-                      <li>
+                      <li key={label}>
                         {isActiveRoute(href) && <title>{label} | Vynn</title>}
                         <Link href={href} activeClass="menu-active font-medium" class="">
                           {label}

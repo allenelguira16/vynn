@@ -1,13 +1,24 @@
 import { fileURLToPath } from "node:url";
+import { clientChunkReportPlugin } from "../../scripts/client-chunks.mjs";
 import { defineConfig } from "vite";
 import vynn from "vite-plugin-vynn";
 
 export default defineConfig(({ mode }) => ({
-  plugins: [vynn()],
+  logLevel: "silent",
+  plugins: [vynn(), clientChunkReportPlugin("vynn", "Vynn")],
   resolve: {
     alias: {
       "@benchmark-app": fileURLToPath(
-        new URL(mode === "counter" ? "./src/Counter.tsx" : "./src/Minimal.tsx", import.meta.url),
+        new URL(
+          mode === "state"
+            ? "./src/State.tsx"
+            : mode === "counter"
+              ? "./src/Counter.tsx"
+              : mode === "async"
+                ? "./src/Async.tsx"
+                : "./src/Minimal.tsx",
+          import.meta.url,
+        ),
       ),
     },
   },

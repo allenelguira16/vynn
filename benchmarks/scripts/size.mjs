@@ -7,14 +7,17 @@ import {
 } from "node:zlib";
 import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { printSsrChunkReport } from "./ssr-chunks.mjs";
+import { printClientChunkComparison } from "./client-chunks.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-const scenarios = ["minimal", "counter"];
+const scenarios = ["minimal", "state", "counter", "async"];
 const apps = [
   { id: "vynn", label: "Vynn", packageName: "@vynn-bench/vynn" },
   { id: "solid", label: "Solid 2", packageName: "@vynn-bench/solid" },
   { id: "svelte", label: "Svelte 5", packageName: "@vynn-bench/svelte" },
   { id: "react", label: "React 19", packageName: "@vynn-bench/react" },
+  { id: "preact", label: "Preact 11", packageName: "@vynn-bench/preact" },
 ];
 
 function selectedScenarios(args) {
@@ -172,9 +175,85 @@ function printTable(results, scenario) {
   for (const row of values) console.log(line(row));
 }
 
+
+function printStateDelta(results) {
+  const rows = results.flatMap((item) => {
+    if (item.scenario !== "state") return [];
+
+    const baseline = results.find(
+      (candidate) => candidate.id === item.id && candidate.scenario === "minimal",
+    );
+    if (!baseline) return [];
+
+    return [[
+      item.framework,
+      formatDelta(item.initial.javascript.gzip - baseline.initial.javascript.gzip),
+      formatDelta(item.allEmitted.total.gzip - baseline.allEmitted.total.gzip),
+    ]];
+  });
+
+  if (rows.length === 0) return;
+
+  const headers = ["Framework", "State initial JS delta", "State all-emitted delta"];
+  const widths = headers.map((header, index) =>
+    Math.max(header.length, ...rows.map((row) => row[index].length)),
+  );
+  const line = (row) => row.map((value, index) => value.padEnd(widths[index])).join("  ");
+
+  console.log("");
+  console.log("STATE INCREMENT OVER MINIMAL (gzip)");
+  console.log(line(headers));
+  console.log(widths.map((width) => "-".repeat(width)).join("  "));
+  for (const row of rows) console.log(line(row));
+}
+
+function printAsyncDelta(results) {
+  const rows = results.flatMap((item) => {
+    if (item.scenario !== "async") return [];
+
+    const baseline = results.find(
+      (candidate) => candidate.id === item.id && candidate.scenario === "counter",
+    );
+    if (!baseline) return [];
+
+    return [[
+      item.framework,
+      formatDelta(item.initial.javascript.gzip - baseline.initial.javascript.gzip),
+      formatDelta(item.allEmitted.total.gzip - baseline.allEmitted.total.gzip),
+    ]];
+  });
+
+  if (rows.length === 0) return;
+
+  const headers = ["Framework", "Async initial JS delta", "Async all-emitted delta"];
+  const values = rows;
+  const widths = headers.map((header, index) =>
+    Math.max(header.length, ...values.map((row) => row[index].length)),
+  );
+  const line = (row) => row.map((value, index) => value.padEnd(widths[index])).join("  ");
+
+  console.log("");
+  console.log("ASYNC INCREMENT OVER COUNTER (gzip)");
+  console.log(line(headers));
+  console.log(widths.map((width) => "-".repeat(width)).join("  "));
+  for (const row of values) console.log(line(row));
+}
+
+function formatDelta(bytes) {
+  const sign = bytes > 0 ? "+" : "";
+  return `${sign}${(bytes / 1000).toFixed(2)} kB`;
+}
+
 async function main() {
-  const selected = selectedScenarios(process.argv.slice(2));
+  const args = process.argv.slice(2);
+  const ssrOnly = args.includes("--ssr");
+  const selected = ssrOnly ? [] : selectedScenarios(args);
   const results = [];
+
+  if (ssrOnly) {
+    await printSsrChunkReport(root);
+    return;
+  }
 
   for (const scenario of selected) {
     for (const app of apps) {
@@ -202,6 +281,8 @@ async function main() {
     }
 
     printTable(results, scenario);
+    if (scenario === "state") printStateDelta(results);
+    if (scenario === "async") printAsyncDelta(results);
   }
 
   const report = {
@@ -217,6 +298,7 @@ async function main() {
         solid: "2.0.0-rc.18",
         svelte: "5.59.1",
         react: "19.3.1",
+        preact: "11.2.0",
       },
       minifier: "oxc",
       target: "es2022",
@@ -232,6 +314,8 @@ async function main() {
   await writeFile(output, JSON.stringify(report, null, 2) + String.fromCharCode(10));
   console.log("");
   console.log(`Wrote ${relative(root, output).replaceAll("\\", "/")}.`);
+  await printClientChunkComparison(root);
+  await printSsrChunkReport(root);
 }
 
 main().catch((error) => {

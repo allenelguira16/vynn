@@ -1,11 +1,16 @@
 # SolidJS 2 sandbox
 
 This sandbox mirrors the application demos in `sandbox/vynn-app` using
-SolidJS 2 and the `@solidjs/vite-plugin` integrated application mode.
+stable SolidJS 2.0 and the `@solidjs/vite-plugin` integrated application mode.
 
 It uses Solid's own reactive primitives, router, async boundaries, and
 server-function transform. The two sandboxes share the same demo scenarios,
 while keeping their framework-specific implementations independent.
+
+## Requirements
+
+- Node.js 22.12.0 or newer.
+- Install workspace dependencies from the repository root with `pnpm install`.
 
 ## Run
 

@@ -1,4 +1,9 @@
 export { renderToServer, type SsrRenderResult } from "./render-to-server";
+export {
+  createMiddlewareHandler,
+  type VynnMiddleware,
+  type VynnRequestHandler,
+} from "../runtime/server/middleware";
 export type { SsrHeadManager } from "./head";
 
 export {
@@ -6,7 +11,7 @@ export {
   type RequestContext,
   type ServerFunctionCookieOptions,
   RequestContextLocals,
-} from "./server-function-context";
+} from "../runtime/server/function-context";
 
 export { injectSsrPreloadLinks } from "./preload.inject-links";
 

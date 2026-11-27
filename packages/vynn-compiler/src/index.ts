@@ -111,6 +111,7 @@ type RuntimeHelperName =
   | "$nodes"
   | "$text"
   | "$template"
+  | "$staticTemplate"
   | "$child"
   | "$sibling"
   | "$finishTemplate"
@@ -256,13 +257,19 @@ class TransformState {
   private readonly generatedForExpressions = new WeakSet<object>();
   private readonly generatedIfExpressions = new WeakSet<object>();
   private readonly generatedForIndexReferences = new WeakSet<object>();
+  private readonly generatedForItemReferences = new WeakSet<object>();
+  private readonly jsxKeyAttributes = new WeakSet<object>();
+  private readonly keyedForCallbacks = new WeakSet<object>();
   /**
    * Named .map() calls that must use a callback variant with a reactive index.
    */
   private readonly namedMapCallbacks = new WeakMap<object, Node>();
+  private readonly namedMapCallbackKeys = new WeakMap<object, Node>();
+  private readonly namedMapCallbackSources = new WeakMap<object, Node>();
   /** Function nodes cloned specifically for a named Vynn list callback. */
   private readonly specializedForCallbacks = new WeakSet<object>();
   private activeForIndexNames: string[] = [];
+  private activeForItemNames: string[] = [];
   private readonly usedNames = new Set<string>();
   private readonly svgDescendants = new WeakSet<object>();
   private readonly documentHeadNodes = new WeakSet<object>();
@@ -274,6 +281,22 @@ class TransformState {
     this.collectUsedNames(program);
     this.collectSvgDescendants(program, false);
     this.collectDocumentHeadNodes(program);
+    this.collectJSXKeyAttributes(program);
+  }
+
+  private collectJSXKeyAttributes(node: Node): void {
+    if (isJSXElement(node)) {
+      for (const attribute of node.openingElement.attributes) {
+        if (
+          isJSXAttribute(attribute) &&
+          getJSXAttributeName(attribute.name) === "key"
+        ) {
+          this.jsxKeyAttributes.add(attribute);
+        }
+      }
+    }
+
+    forEachChild(node, (child) => this.collectJSXKeyAttributes(child));
   }
 
   private collectSvgDescendants(node: Node, insideSvg: boolean): void {
@@ -460,23 +483,17 @@ class TransformState {
   }
 
   /**
-   * Resolve local named callbacks passed to JSX-producing .map() calls.
+   * Resolve named callbacks passed to JSX-producing .map() calls.
    *
-   * Example:
-   *   function renderItem(item, index) {
-   *     return <span>{index}</span>;
-   *   }
-   *   items.map(renderItem)
-   *
-   * The original callback keeps ordinary JavaScript semantics. A cloned
-   * variant is inserted next to its declaration, and only the relevant list
-   * expression points to that variant. The clone is later compiled with
-   * withForCallback(), so references to its second parameter read .value.
+   * Local callbacks get a specialized sibling beside their declaration.
+   * Exported callbacks also expose compiler-generated render and key-selector
+   * companions, allowing importing modules to consume the same metadata
+   * without inspecting another module's source AST.
    *
    * Resolution follows lexical scopes and stops when a parameter, import, or
-   * other local binding shadows a candidate function. This pass intentionally
-   * specializes local function declarations and direct function-valued
-   * variable initializers; unresolved callbacks retain normal .map() behavior.
+   * other local binding shadows a candidate function. Imported companion
+   * resolution is limited to local ESM module specifiers; unresolved callbacks
+   * retain normal .map() behavior.
    */
   private prepareNamedMapCallbacks(): void {
     type ImportedBinding = {
@@ -489,6 +506,7 @@ class TransformState {
       >;
       typeOnly: boolean;
       companionLocal?: Node;
+      companionKeyLocal?: Node;
     };
 
     type CallbackBinding = {
@@ -752,6 +770,7 @@ class TransformState {
       specifier.startsWith("~/");
 
     const companionName = (exportName: string): string => "__vynn_for_" + exportName;
+    const companionKeyName = (exportName: string): string => "__vynn_key_" + exportName;
 
     const createExportSpecifier = (localName: string, exportedName: string): Node =>
       generatedNode({
@@ -773,23 +792,53 @@ class TransformState {
         attributes: [],
       });
 
+    const createCompanionKeyExport = (localName: string, exportNames: string[]): Node =>
+      generatedNode({
+        type: "ExportNamedDeclaration",
+        declaration: null,
+        specifiers: exportNames.map((name) =>
+          createExportSpecifier(localName, companionKeyName(name)),
+        ),
+        source: null,
+        exportKind: "value",
+        attributes: [],
+      });
+
     const createVariant = (binding: CallbackBinding): string | null => {
       // A default-exported named component can expose its existing $cmpnt
       // wrapper as the default companion. Other components aren't list callbacks.
       if (isComponentName(binding.name)) {
-        if (binding.exportNames.includes("default") && binding.statement && binding.statementList) {
+        // Components already have a compiled $cmpnt wrapper. It can serve as
+        // the render callback directly; component-internal JSX keys are not
+        // keys for the parent array, so this companion remains unkeyed.
+        if (binding.variantName) return binding.variantName;
+
+        if (
+          binding.exportNames.length > 0 &&
+          binding.statement &&
+          binding.statementList
+        ) {
           let byAnchor = insertions.get(binding.statementList);
           if (!byAnchor) {
             byAnchor = new Map<Node, Node[]>();
             insertions.set(binding.statementList, byAnchor);
           }
           const added = byAnchor.get(binding.statement) ?? [];
-          if (!added.some((node) => isType(node, "ExportNamedDeclaration"))) {
-            added.push(createCompanionExport(binding.name, ["default"]));
-          }
+          const exportNames = [...new Set(binding.exportNames)];
+          const selectorId = this.generateUidIdentifier(binding.name + "Key");
+
+          added.push(
+            createCompanionExport(binding.name, exportNames),
+            variableDeclaration("const", [
+              variableDeclarator(cloneNode(selectorId), voidZero()),
+            ]),
+            createCompanionKeyExport(selectorId.name, exportNames),
+          );
           byAnchor.set(binding.statement, added);
         }
-        return null;
+
+        binding.variantName = binding.name;
+        return binding.variantName;
       }
 
       if (
@@ -809,6 +858,50 @@ class TransformState {
       const variantId = this.generateUidIdentifier(binding.name + "For");
       const variantName = variantId.name;
       const clonedCallback = cloneNode(binding.callback);
+      const listKey = this.getMapCallbackKey(clonedCallback);
+      let keySelectorStatement: Node | null = null;
+      let keySelectorName: string | null = null;
+
+      if (listKey) {
+        const itemParameter = binding.callback.params[0];
+        if (!this.isSupportedForItemParameter(itemParameter)) {
+          throw new Error(
+            "[Vynn compiler] Keyed named callbacks support identifier and object-pattern item parameters.",
+          );
+        }
+
+        this.jsxKeyAttributes.add(listKey.attribute);
+        this.keyedForCallbacks.add(clonedCallback);
+
+        // The original callback remains an ordinary function in the module.
+        // Treat its key as compiler metadata too, even though the list uses
+        // the specialized sibling for reactive item/index parameters.
+        const originalListKey = this.getMapCallbackKey(binding.callback);
+        if (originalListKey) this.jsxKeyAttributes.add(originalListKey.attribute);
+
+        // Export a raw-item key selector beside the specialized render callback.
+        // The importing module cannot inspect this function's source AST, so the
+        // selector must cross the module boundary as compiler metadata.
+        if (binding.exportNames.length > 0) {
+          const selectorId = this.generateUidIdentifier(binding.name + "Key");
+          keySelectorName = selectorId.name;
+          const selector = this.createMapKeySelector(binding.callback, listKey.expression);
+
+          keySelectorStatement = variableDeclaration("const", [
+            variableDeclarator(cloneNode(selectorId), selector),
+          ]);
+        }
+      } else if (binding.exportNames.length > 0) {
+        // Every exported callback has a companion slot. An undefined selector
+        // lets the importing module keep the normal unkeyed behavior and still
+        // issue the missing-key warning in development.
+        const selectorId = this.generateUidIdentifier(binding.name + "Key");
+        keySelectorName = selectorId.name;
+        keySelectorStatement = variableDeclaration("const", [
+          variableDeclarator(cloneNode(selectorId), voidZero()),
+        ]);
+      }
+
       let variantStatement: Node;
 
       if (isFunctionDeclaration(clonedCallback)) {
@@ -832,8 +925,13 @@ class TransformState {
 
       const added = byAnchor.get(binding.statement) ?? [];
       added.push(variantStatement);
+      if (keySelectorStatement) added.push(keySelectorStatement);
       if (binding.exportNames.length > 0) {
-        added.push(createCompanionExport(variantName, [...new Set(binding.exportNames)]));
+        const exportNames = [...new Set(binding.exportNames)];
+        added.push(createCompanionExport(variantName, exportNames));
+        if (keySelectorName) {
+          added.push(createCompanionKeyExport(keySelectorName, exportNames));
+        }
       }
       byAnchor.set(binding.statement, added);
 
@@ -847,49 +945,60 @@ class TransformState {
         imported.typeOnly ||
         imported.namespace ||
         !imported.importedName ||
-        isComponentName(imported.importedName) ||
         !isLocalModuleSource(imported.source)
       ) {
         return null;
       }
 
-      if (imported.companionLocal) {
-        return cloneNode(imported.companionLocal);
-      }
-
-      const local = this.generateUidIdentifier(binding.name + "For");
-      const addedSpecifier = generatedNode({
-        type: "ImportSpecifier",
-        imported: identifier(companionName(imported.importedName)),
-        local: cloneNode(local),
-        importKind: "value",
-      });
-
-      const hasNamespaceSpecifier = (imported.statement.specifiers ?? []).some((specifier: Node) =>
-        isType(specifier, "ImportNamespaceSpecifier"),
-      );
       const canAppend =
         imported.statement.importKind !== "type" &&
         getNodeProperty(imported.specifier, "importKind") !== "type" &&
-        !hasNamespaceSpecifier;
+        !(imported.statement.specifiers ?? []).some((specifier: Node) =>
+          isType(specifier, "ImportNamespaceSpecifier"),
+        );
 
-      if (canAppend) {
-        imported.statement.specifiers.push(addedSpecifier);
-      } else {
-        extraImports.push(
-          generatedNode({
-            type: "ImportDeclaration",
-            specifiers: [addedSpecifier],
-            source: stringLiteral(imported.source),
-            importKind: "value",
-            assertions: [],
-            attributes: [],
-          }),
+      const addCompanionImport = (exportedName: string, hint: string): Node => {
+        const local = this.generateUidIdentifier(hint);
+        const addedSpecifier = generatedNode({
+          type: "ImportSpecifier",
+          imported: identifier(exportedName),
+          local: cloneNode(local),
+          importKind: "value",
+        });
+
+        if (canAppend) {
+          imported.statement.specifiers.push(addedSpecifier);
+        } else {
+          extraImports.push(
+            generatedNode({
+              type: "ImportDeclaration",
+              specifiers: [addedSpecifier],
+              source: stringLiteral(imported.source),
+              importKind: "value",
+              assertions: [],
+              attributes: [],
+            }),
+          );
+        }
+
+        return local;
+      };
+
+      if (!imported.companionLocal) {
+        imported.companionLocal = addCompanionImport(
+          companionName(imported.importedName),
+          binding.name + "For",
         );
       }
 
-      imported.companionLocal = local;
-      return cloneNode(local);
+      if (!imported.companionKeyLocal) {
+        imported.companionKeyLocal = addCompanionImport(
+          companionKeyName(imported.importedName),
+          binding.name + "Key",
+        );
+      }
+
+      return cloneNode(imported.companionLocal);
     };
 
     const visitStatements = (statements: Node[], parent: Scope | null, isRoot = false): void => {
@@ -964,11 +1073,20 @@ class TransformState {
             const variantName = createVariant(binding);
             if (variantName) {
               this.namedMapCallbacks.set(node, identifier(variantName));
+              if (!isComponentName(binding.name)) {
+                this.namedMapCallbackSources.set(node, binding.callback);
+              }
             }
           } else if (renderChild && binding?.imported) {
             const importedCallback = getImportedCompanion(binding);
             if (importedCallback) {
               this.namedMapCallbacks.set(node, importedCallback);
+              if (binding.imported?.companionKeyLocal) {
+                this.namedMapCallbackKeys.set(
+                  node,
+                  cloneNode(binding.imported.companionKeyLocal),
+                );
+              }
             }
           }
         } else if (
@@ -987,14 +1105,20 @@ class TransformState {
             namespace?.imported?.namespace &&
             namespace.imported.source &&
             isLocalModuleSource(namespace.imported.source) &&
-            propertyName &&
-            !isComponentName(propertyName)
+            propertyName
           ) {
             this.namedMapCallbacks.set(
               node,
               memberExpression(
                 identifier(callbackArgument.object.name),
                 identifier(companionName(propertyName)),
+              ),
+            );
+            this.namedMapCallbackKeys.set(
+              node,
+              memberExpression(
+                identifier(callbackArgument.object.name),
+                identifier(companionKeyName(propertyName)),
               ),
             );
           }
@@ -1132,14 +1256,27 @@ class TransformState {
       // transformBlockStatement lowers return expressions, callbacks,
       // variable initializers, and nested JSX expressions.
       const allocator = this.createIdentifierAllocator();
+      const body = node.body;
+      if (!isBlockStatement(body)) {
+        throw new Error("[Vynn compiler] Expected a function declaration body to be a block statement.");
+      }
+
       setNodeProperty(
         node,
         "body",
         this.specializedForCallbacks.has(node)
-          ? this.withForCallback(node.params ?? [], () =>
-              this.transformBlockStatement(node.body, allocator),
+          ? this.withForCallback(
+              node.params ?? [],
+              () =>
+                this.transformBlockStatement(
+                  this.keyedForCallbacks.has(node)
+                    ? this.transformForCallbackItemParameter(node.params ?? [], body)
+                    : body,
+                  allocator,
+                ),
+              this.keyedForCallbacks.has(node),
             )
-          : this.transformBlockStatement(node.body, allocator),
+          : this.transformBlockStatement(body, allocator),
       );
 
       return node;
@@ -1293,7 +1430,11 @@ class TransformState {
    * parameter. Lazy accessors are generated only where destructuring semantics
    * need state (defaults, computed keys, and object rest).
    */
-  private transformComponentPropsParameter(params: Node[], body: Node): Node {
+  private transformComponentPropsParameter(
+    params: Node[],
+    body: Node,
+    options: { allowAdditionalParameters?: boolean; stateItem?: boolean } = {},
+  ): Node {
     const parameter = params[0];
     if (!parameter) return body;
 
@@ -1304,7 +1445,7 @@ class TransformState {
     // Vynn components receive a single props object. If a function declares
     // later positional parameters, keep native destructuring so parameter
     // initializers can still reference the original parameter bindings.
-    if (params.length > 1) return body;
+    if (params.length > 1 && !options.allowAdditionalParameters) return body;
 
     const propsName = this.usedNames.has("props")
       ? this.generateUidIdentifier("props").name
@@ -1322,9 +1463,12 @@ class TransformState {
     }
 
     const props = identifier(propsName);
+    const propSource = options.stateItem
+      ? memberExpression(cloneNode(props), identifier("value"))
+      : props;
     const replacements = new Map<string, Node>();
     const prologue: NodeOfType<"VariableDeclaration">[] = [];
-    if (!this.collectComponentPropBindings(pattern, props, replacements, prologue)) return body;
+    if (!this.collectComponentPropBindings(pattern, propSource, replacements, prologue)) return body;
 
     const functionVars = new Set<string>();
     if (isBlockStatement(body)) this.collectFunctionVarBindings(body, functionVars);
@@ -2325,6 +2469,189 @@ class TransformState {
     return null;
   }
 
+  private getForItemName(parameter: Node | null | undefined): string | null {
+    return isIdentifier(parameter) ? parameter.name : null;
+  }
+
+  private isSupportedForItemParameter(parameter: Node | null | undefined): boolean {
+    return (
+      isIdentifier(parameter) ||
+      (isObjectPattern(parameter) && this.isSupportedComponentPropPattern(parameter))
+    );
+  }
+
+  private createMapKeySelector(callback: Node, expression: ExpressionNode): Node {
+    if (!isFunctionLike(callback) || !callback.params[0]) {
+      throw new Error("[Vynn compiler] A keyed list callback must declare an item parameter.");
+    }
+
+    const parameters: Node[] = [cloneNode(callback.params[0])];
+    const indexName = this.getForIndexName(callback.params[1]);
+    if (
+      callback.params[1] &&
+      indexName &&
+      this.referencesIdentifier(expression, indexName)
+    ) {
+      parameters.push(cloneNode(callback.params[1]));
+    }
+
+    let body: Node = blockStatement([returnStatement(cloneNode(expression))]);
+    body = this.transformComponentPropsParameter(parameters, body, {
+      allowAdditionalParameters: true,
+    });
+
+    return isArrowFunctionExpression(callback)
+      ? arrowFunctionExpression(parameters, body)
+      : functionExpression(null, parameters, body);
+  }
+
+  private transformForCallbackItemParameter(
+    parameters: Node[],
+    body: NodeOfType<"BlockStatement">,
+  ): NodeOfType<"BlockStatement">;
+  private transformForCallbackItemParameter(parameters: Node[], body: Node): Node;
+  private transformForCallbackItemParameter(parameters: Node[], body: Node): Node {
+    const pattern = parameters[0];
+    if (!isObjectPattern(pattern)) return body;
+
+    if (!this.isSupportedComponentPropPattern(pattern)) {
+      throw new Error(
+        "[Vynn compiler] Keyed list callbacks support identifier and object-pattern item parameters.",
+      );
+    }
+
+    return this.transformComponentPropsParameter(parameters, body, {
+      allowAdditionalParameters: true,
+      stateItem: true,
+    });
+  }
+
+  /**
+   * Event handlers and refs are attached during callback evaluation rather
+   * than through a reactive attribute effect. Keep the normal row range for
+   * callbacks that declare either so item replacement can reevaluate them.
+   */
+  private hasRowLifecycleBindings(node: Node): boolean {
+    let found = false;
+
+    const visit = (current: Node): void => {
+      if (found) return;
+
+      if (isJSXElement(current)) {
+        // Nested components must be reevaluated when a keyed row's item cell
+        // changes. Keep those callbacks on the ordinary reactive row range.
+        if (isComponentElement(current)) {
+          found = true;
+          return;
+        }
+
+        for (const attribute of current.openingElement.attributes) {
+          if (!isJSXAttribute(attribute)) continue;
+
+          const name = getJSXAttributeName(attribute.name);
+          if (name === "ref" || this.getEventAttribute(name)) {
+            found = true;
+            return;
+          }
+        }
+      }
+
+      forEachChild(current, visit);
+    };
+
+    visit(node);
+    return found;
+  }
+
+  /**
+   * Extract a key only when the map callback directly returns one JSX element.
+   * Conditional roots and fragments need a separate identity model, so they
+   * are deliberately rejected rather than guessed.
+   */
+  private getMapCallbackKey(
+    callback: Node,
+  ): { expression: ExpressionNode; attribute: Node } | null {
+    if (!isFunctionLike(callback)) {
+      return null;
+    }
+
+    let root: NodeOfType<"JSXElement"> | null = null;
+    if (isBlockStatement(callback.body)) {
+      const returns = callback.body.body.filter(isReturnStatement);
+      if (returns.length === 1 && isJSXElement(returns[0].argument)) {
+        root = returns[0].argument;
+      }
+    } else if (isJSXElement(callback.body)) {
+      root = callback.body;
+    }
+
+    if (!root) return null;
+
+    let keyAttribute: Node | undefined;
+    for (const attribute of root.openingElement.attributes) {
+      if (!isJSXAttribute(attribute) || getJSXAttributeName(attribute.name) !== "key") {
+        continue;
+      }
+      if (keyAttribute) {
+        throw new Error("[Vynn compiler] A list row can only declare one key attribute.");
+      }
+      keyAttribute = attribute;
+    }
+
+    if (!keyAttribute || !isJSXAttribute(keyAttribute)) return null;
+
+    const value = keyAttribute.value;
+    if (isJSXExpressionContainer(value)) {
+      if (isJSXEmptyExpression(value.expression) || !isExpression(value.expression)) {
+        throw new Error("[Vynn compiler] A list row key must contain an expression.");
+      }
+      return {
+        expression: cloneNode(value.expression) as ExpressionNode,
+        attribute: keyAttribute,
+      };
+    }
+
+    if (isLiteralString(value)) {
+      return { expression: stringLiteral(value.value), attribute: keyAttribute };
+    }
+
+    throw new Error(
+      "[Vynn compiler] A list row key must be a string literal or a JSX expression.",
+    );
+  }
+
+  private referencesIdentifier(node: Node, name: string): boolean {
+    if (isIdentifier(node) && node.name === name) return true;
+
+    let found = false;
+    forEachChild(node, (child) => {
+      if (!found && this.referencesIdentifier(child, name)) found = true;
+    });
+    return found;
+  }
+
+  private containsJSXKey(node: Node): boolean {
+    let found = false;
+
+    const visit = (current: Node, isRoot = false): void => {
+      if (found || (!isRoot && isFunctionLike(current))) return;
+
+      if (isJSXElement(current)) {
+        for (const attribute of current.openingElement.attributes) {
+          if (isJSXAttribute(attribute) && getJSXAttributeName(attribute.name) === "key") {
+            found = true;
+            return;
+          }
+        }
+      }
+
+      forEachChild(current, (child) => visit(child));
+    };
+
+    visit(node, true);
+    return found;
+  }
+
   private collectBindingNames(
     node: Node | null | undefined,
     names = new Set<string>(),
@@ -2351,30 +2678,56 @@ class TransformState {
     return names;
   }
 
-  private withForCallback<T>(parameters: Node[], callback: () => T): T {
-    const previous = this.activeForIndexNames;
+  private withForCallback<T>(
+    parameters: Node[],
+    callback: () => T,
+    keyed = false,
+  ): T {
+    const previousIndices = this.activeForIndexNames;
+    const previousItems = this.activeForItemNames;
     const shadowed = new Set<string>();
     for (const parameter of parameters) this.collectBindingNames(parameter, shadowed);
-    const next = previous.filter((name) => !shadowed.has(name));
+
+    const nextIndices = previousIndices.filter((name) => !shadowed.has(name));
+    const nextItems = previousItems.filter((name) => !shadowed.has(name));
     const indexName = this.getForIndexName(parameters[1]);
-    this.activeForIndexNames = indexName ? [...next, indexName] : next;
+    const itemName = keyed ? this.getForItemName(parameters[0]) : null;
+
+    this.activeForIndexNames = indexName ? [...nextIndices, indexName] : nextIndices;
+    this.activeForItemNames = itemName ? [...nextItems, itemName] : nextItems;
+
     try {
       return callback();
     } finally {
-      this.activeForIndexNames = previous;
+      this.activeForIndexNames = previousIndices;
+      this.activeForItemNames = previousItems;
     }
   }
 
   private withShadowedForIndices<T>(parameters: Node[], callback: () => T): T {
-    const previous = this.activeForIndexNames;
+    const previousIndices = this.activeForIndexNames;
+    const previousItems = this.activeForItemNames;
     const shadowed = new Set<string>();
     for (const parameter of parameters) this.collectBindingNames(parameter, shadowed);
-    this.activeForIndexNames = previous.filter((name) => !shadowed.has(name));
+
+    this.activeForIndexNames = previousIndices.filter((name) => !shadowed.has(name));
+    this.activeForItemNames = previousItems.filter((name) => !shadowed.has(name));
+
     try {
       return callback();
     } finally {
-      this.activeForIndexNames = previous;
+      this.activeForIndexNames = previousIndices;
+      this.activeForItemNames = previousItems;
     }
+  }
+
+  private transformForItemReference(expression: ExpressionNode): ExpressionNode {
+    if (!isIdentifier(expression) || !this.activeForItemNames.includes(expression.name)) {
+      return expression;
+    }
+    const result = memberExpression(identifier(expression.name), identifier("value"));
+    this.generatedForItemReferences.add(result);
+    return result;
   }
 
   private transformForIndexReference(expression: ExpressionNode): ExpressionNode {
@@ -2492,6 +2845,76 @@ class TransformState {
 
     const transformedSource = this.transformEmbeddedExpression(source, allocator);
 
+    // Local named callbacks retain their source node so the selector can be
+    // generated even though the call site points at a specialized variant.
+    const callbackSource = this.namedMapCallbackSources.get(expression) ?? callback;
+    const listKey = this.getMapCallbackKey(callbackSource);
+    // Determine this before transforming the callback body into runtime calls.
+    const stableIntrinsicRow =
+      !!listKey &&
+      isArrowFunctionExpression(callbackSource) &&
+      isJSXElement(callbackSource.body) &&
+      !isComponentElement(callbackSource.body) &&
+      !this.hasRowLifecycleBindings(callbackSource.body);
+    // An omitted map index cannot be observed by the callback. Avoid creating
+    // one reactive state cell per row when the callback has only an item arg.
+    const trackIndex = !(
+      isArrowFunctionExpression(callbackSource) &&
+      callbackSource.params.length === 1 &&
+      isIdentifier(callbackSource.params[0])
+    );
+    if (!listKey && isFunctionLike(callbackSource) && this.containsJSXKey(callbackSource)) {
+      throw new Error(
+        "[Vynn compiler] A list key must be placed on the single JSX element directly returned by the .map() callback. Conditional and multiple roots are not supported yet.",
+      );
+    }
+    const importedKeySelector = this.namedMapCallbackKeys.get(expression);
+    let keySelector: Node | undefined = importedKeySelector
+      ? cloneNode(importedKeySelector)
+      : undefined;
+
+    if (listKey) {
+      if (
+        !isFunctionLike(callbackSource) ||
+        !this.isSupportedForItemParameter(callbackSource.params[0])
+      ) {
+        throw new Error(
+          "[Vynn compiler] Keyed list callbacks support identifier and object-pattern item parameters.",
+        );
+      }
+
+      this.jsxKeyAttributes.add(listKey.attribute);
+      keySelector = this.createMapKeySelector(callbackSource, listKey.expression);
+      if (
+        expression.arguments.length > 1 &&
+        !isType(callbackSource, "ArrowFunctionExpression") &&
+        isExpression(expression.arguments[1])
+      ) {
+        // Array#map's thisArg applies to ordinary function callbacks, not
+        // arrows. Preserve the same receiver for the generated key selector.
+        keySelector = callExpression(
+          memberExpression(keySelector, identifier("bind")),
+          [this.transformEmbeddedExpression(expression.arguments[1], allocator)],
+        );
+      }
+    } else if (keySelector && expression.arguments.length > 1) {
+      const thisArg = expression.arguments[1];
+      if (isExpression(thisArg)) {
+        const transformedThisArg = this.transformEmbeddedExpression(
+          cloneNode(thisArg) as ExpressionNode,
+          allocator,
+        );
+        keySelector = conditionalExpression(
+          binaryExpression("!==", cloneNode(keySelector), voidZero()),
+          callExpression(
+            memberExpression(cloneNode(keySelector), identifier("bind")),
+            [transformedThisArg],
+          ),
+          voidZero(),
+        );
+      }
+    }
+
     // Named callbacks use a specialized sibling so ordinary calls to the
     // original function continue receiving ordinary numeric map indices.
     const namedCallback = this.namedMapCallbacks.get(expression);
@@ -2505,6 +2928,14 @@ class TransformState {
       }
 
       transformedCallback = this.withForCallback(callback.params, () => {
+        if (listKey) {
+          setNodeProperty(
+            callback,
+            "body",
+            this.transformForCallbackItemParameter(callback.params, callback.body),
+          );
+        }
+
         if (isArrowFunctionExpression(callback)) {
           const callbackBody = callback.body;
           if (isBlockStatement(callbackBody)) {
@@ -2524,7 +2955,7 @@ class TransformState {
           setNodeProperty(callback, "body", this.transformBlockStatement(callback.body, allocator));
         }
         return callback;
-      });
+      }, listKey !== null);
     }
 
     if (expression.arguments.length > 1) {
@@ -2537,10 +2968,24 @@ class TransformState {
       }
     }
 
-    const result = callExpression(this.getRuntimeHelper("$for"), [
+    const args = [
       arrowFunctionExpression([], transformedSource),
       transformedCallback,
-    ]);
+    ];
+    args.push(keySelector ?? voidZero());
+    // The runtime decides whether the imported selector is defined. Keeping
+    // this enabled for every compiler-generated map makes imported callbacks
+    // participate in the same development-only missing-key warning.
+    args.push(booleanLiteral(true));
+
+    // A direct intrinsic JSX root has no callback-level reactive work outside
+    // its own compiled bindings. Those bindings already subscribe to keyed
+    // item state, so the runtime can render the row directly without allocating
+    // a second $nodes range, two marker nodes, and an extra render computation.
+    args.push(booleanLiteral(stableIntrinsicRow));
+    args.push(booleanLiteral(trackIndex));
+
+    const result = callExpression(this.getRuntimeHelper("$for"), args);
     this.generatedForExpressions.add(result);
     return result;
   }
@@ -2754,23 +3199,55 @@ class TransformState {
     if (!serialized) return null;
 
     const { markup, bindings } = serialized;
-    const existingTemplate = this.templateFactories.get(markup);
+    const isDocumentTemplate = /^<(?:html|head|body|title|meta|link)(?:\s|>)/i.test(markup);
+    const useStaticTemplate = bindings.length === 0 && !isDocumentTemplate;
+    const templateKey = (useStaticTemplate ? "static:" : "dynamic:") + markup;
+    const existingTemplate = this.templateFactories.get(templateKey);
     const templateName = existingTemplate ?? this.generateUidIdentifier("tmpl");
+    const templateHelper = useStaticTemplate ? "$staticTemplate" : "$template";
 
     if (!existingTemplate) {
       this.templateStatements.push(
         variableDeclaration("const", [
           variableDeclarator(
             templateName,
-            callExpression(this.getRuntimeHelper("$template"), [stringLiteral(markup)]),
+            callExpression(this.getRuntimeHelper(templateHelper), [stringLiteral(markup)]),
           ),
         ]),
       );
-      this.templateFactories.set(markup, templateName);
+      this.templateFactories.set(templateKey, templateName);
     }
 
     if (bindings.length === 0) {
-      return inheritSourceLocation(callExpression(cloneNode(templateName), []), node);
+      if (useStaticTemplate) {
+        return inheritSourceLocation(callExpression(cloneNode(templateName), []), node);
+      }
+
+      // Full-document templates remain hydration-aware even when all of
+      // their markup is static. They still need to release the hydration
+      // descriptor map after the initial document nodes have been claimed.
+      const statements = outerStatements ?? [];
+      const root = this.generateUidIdentifier("root");
+
+      statements.push(
+        variableDeclaration("const", [
+          variableDeclarator(root, callExpression(cloneNode(templateName), [])),
+        ]),
+        expressionStatement(
+          callExpression(this.getRuntimeHelper("$finishTemplate"), [cloneNode(root)]),
+        ),
+      );
+
+      if (outerStatements) {
+        return inheritSourceLocation(cloneNode(root), node);
+      }
+
+      statements.push(returnStatement(cloneNode(root)));
+
+      return inheritSourceLocation(
+        callExpression(arrowFunctionExpression([], blockStatement(statements)), []),
+        node,
+      );
     }
 
     const statements = outerStatements ?? [];
@@ -3361,6 +3838,7 @@ class TransformState {
         }
 
         if (!isJSXAttribute(attribute)) return undefined;
+        if (this.jsxKeyAttributes.has(attribute)) continue;
 
         const sourceName = getJSXAttributeName(attribute.name);
         const lowerName = sourceName.toLowerCase();
@@ -3694,6 +4172,7 @@ class TransformState {
       }
 
       if (!isJSXAttribute(attribute)) continue;
+      if (this.jsxKeyAttributes.has(attribute)) continue;
 
       const name = getJSXAttributeName(attribute.name);
       if (name === "ref") continue;
@@ -4001,6 +4480,11 @@ class TransformState {
       return expression;
     if (isMemberExpression(expression) && this.generatedForIndexReferences.has(expression))
       return expression;
+    if (isMemberExpression(expression) && this.generatedForItemReferences.has(expression))
+      return expression;
+
+    const transformedForItem = this.transformForItemReference(expression);
+    if (transformedForItem !== expression) return transformedForItem;
 
     const transformedForIndex = this.transformForIndexReference(expression);
     if (transformedForIndex !== expression) return transformedForIndex;
@@ -4125,7 +4609,10 @@ class TransformState {
     }
     if (isArrowFunctionExpression(expression)) {
       const transformBody = () => {
-        const body = expression.body;
+        const body = this.specializedForCallbacks.has(expression) &&
+          this.keyedForCallbacks.has(expression)
+          ? this.transformForCallbackItemParameter(expression.params, expression.body)
+          : expression.body;
         if (isBlockStatement(body)) {
           setNodeProperty(expression, "body", this.transformBlockStatement(body, allocator));
         } else if (isExpression(body)) {
@@ -4135,21 +4622,33 @@ class TransformState {
       };
 
       return this.specializedForCallbacks.has(expression)
-        ? this.withForCallback(expression.params, transformBody)
+        ? this.withForCallback(
+            expression.params,
+            transformBody,
+            this.keyedForCallbacks.has(expression),
+          )
         : this.withShadowedForIndices(expression.params, transformBody);
     }
     if (isFunctionExpression(expression)) {
       const transformBody = () => {
-        setNodeProperty(
-          expression,
-          "body",
-          this.transformBlockStatement(expression.body, allocator),
-        );
+        const body = this.specializedForCallbacks.has(expression) &&
+          this.keyedForCallbacks.has(expression)
+          ? this.transformForCallbackItemParameter(expression.params, expression.body)
+          : expression.body;
+        if (!isBlockStatement(body)) {
+          throw new Error("[Vynn compiler] Expected a function expression body to be a block statement.");
+        }
+
+        setNodeProperty(expression, "body", this.transformBlockStatement(body, allocator));
         return expression;
       };
 
       return this.specializedForCallbacks.has(expression)
-        ? this.withForCallback(expression.params, transformBody)
+        ? this.withForCallback(
+            expression.params,
+            transformBody,
+            this.keyedForCallbacks.has(expression),
+          )
         : this.withShadowedForIndices(expression.params, transformBody);
     }
     if (isArrayExpression(expression)) {
@@ -4425,14 +4924,30 @@ class TransformState {
       }
 
       const nestedAllocator = this.createIdentifierAllocator();
+      const body = statement.body;
+      if (!isBlockStatement(body)) {
+        throw new Error("[Vynn compiler] Expected a function declaration body to be a block statement.");
+      }
+
       setNodeProperty(
         statement,
         "body",
         this.specializedForCallbacks.has(statement)
-          ? this.withForCallback(statement.params ?? [], () =>
-              this.transformBlockStatement(statement.body, nestedAllocator),
+          ? this.withForCallback(
+              statement.params ?? [],
+              () =>
+                this.transformBlockStatement(
+                  this.keyedForCallbacks.has(statement)
+                    ? this.transformForCallbackItemParameter(
+                        statement.params ?? [],
+                        body,
+                      )
+                    : body,
+                  nestedAllocator,
+                ),
+              this.keyedForCallbacks.has(statement),
             )
-          : this.transformBlockStatement(statement.body, nestedAllocator),
+          : this.transformBlockStatement(body, nestedAllocator),
       );
       return statement;
     }
@@ -4526,6 +5041,7 @@ class TransformState {
         continue;
       }
       if (!isJSXAttribute(attribute)) continue;
+      if (this.jsxKeyAttributes.has(attribute)) continue;
       const name = getJSXAttributeName(attribute.name);
 
       if (name === "ref") {
@@ -4743,6 +5259,7 @@ class TransformState {
         continue;
       }
       if (!isJSXAttribute(attribute)) continue;
+      if (this.jsxKeyAttributes.has(attribute)) continue;
       const name = getJSXAttributeName(attribute.name);
 
       if (name === "ref") {

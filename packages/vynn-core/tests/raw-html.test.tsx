@@ -5,7 +5,7 @@ import type { JSX } from "../src/types/jsx";
 
 import { hydrateToDOM } from "../src/client/hydrate-to-dom";
 import { renderToDOM } from "../src/client/render-to-dom";
-import { $state } from "../src/reactivity/$state";
+import { $state } from "../src/reactivity/state";
 import { $attr } from "../src/render/$attr";
 import { $insert } from "../src/render/$insert";
 import { $template } from "../src/render/$template";

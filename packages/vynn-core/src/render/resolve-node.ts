@@ -1,10 +1,14 @@
-import { claimHydrationText, isHydrationClaimActive } from "../client/hydration";
-import { synchronizeHydrationText } from "../client/hydration-diagnostics";
-import { getErrorBoundary } from "../context/error-boundary-context";
+import {
+  claimHydrationText,
+  isHydrationClaimActive,
+  synchronizeHydrationText,
+} from "../client/hydration-runtime";
+import { getErrorBoundary } from "../context/error-boundary";
+import { getRuntimeContext, runWithRuntimeContext } from "../runtime/context";
 
 import { JSX } from "../jsx-runtime";
 import { getOwner, runWithOwner } from "../life-cycle/owner";
-import { NotReadyError } from "../reactivity/not-ready-error";
+import { NotReadyError } from "../reactivity/async/not-ready-error";
 import { getCurrentDOMNamespace, getElementNamespace, withDOMNamespace } from "./namespace";
 
 /**
@@ -187,8 +191,12 @@ export class SSR_ERROR_BOUNDARY extends SSR_NODE {
 function captureSSRRender(render: () => SSR_NODE[]): () => SSR_NODE[] {
   const owner = getOwner();
   const namespace = getCurrentDOMNamespace();
+  const runtimeContext = getRuntimeContext();
 
-  return () => runWithOwner(owner, () => withDOMNamespace(namespace, render));
+  return () =>
+    runWithRuntimeContext(runtimeContext, () =>
+      runWithOwner(owner, () => withDOMNamespace(namespace, render)),
+    );
 }
 
 export function createSSRErrorBoundary(

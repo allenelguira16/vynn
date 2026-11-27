@@ -28,7 +28,7 @@ function warnHydrationMismatch(
 export function isHydrationElementCompatible(
   node: Element | undefined,
   expectedTag: string,
-  expectedNamespace: string,
+  expectedNamespace: string | null,
 ): boolean {
   if (!node) {
     warnHydrationMismatch("element", `<${expectedTag}>`, "no server-rendered element");

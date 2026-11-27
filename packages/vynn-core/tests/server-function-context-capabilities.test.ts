@@ -4,7 +4,7 @@ import { getRequestContext } from "../src/server/index.ts";
 import {
   createServerFunctionContext,
   runWithServerFunctionContext,
-} from "../src/server/server-function-context.ts";
+} from "../src/runtime/server/function-context.ts";
 
 describe("request context capabilities", () => {
   it("exposes request headers, cookies, response metadata, locals, and cancellation", async () => {

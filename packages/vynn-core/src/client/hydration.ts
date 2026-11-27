@@ -8,14 +8,21 @@ import {
   TEXT_SSR_SEPARATOR,
 } from "../const";
 
+import {
+  diagnoseHydrationAttribute,
+  isHydrationElementCompatible,
+  synchronizeHydrationText,
+} from "./hydration-diagnostics";
+import { installHydrationRuntime } from "./hydration-runtime";
+import { installDynamicTemplateHydration } from "../render/$template";
+
 import { removeInternalRangeMarkers } from "../dom/internal-range";
+import { getOwnerContext, setOwnerContext } from "../context/owner-context";
 import {
   type Owner,
   createOwner,
-  getContext,
   getOwner,
   runWithOwner,
-  setContext,
 } from "../life-cycle/owner";
 
 let serverRenderedElements: Element[] = [];
@@ -47,6 +54,7 @@ const afterHydrationTasks = new Set<AfterHydrationTask>();
 let hydrationCheckScheduled = false;
 
 export function withHydration(callback: () => void, root: Node) {
+  installDynamicTemplateHydration();
   [serverRenderedElements, serverRenderedTexts, serverRenderedLazy] = getServerRenderedNodes(root);
 
   hydrationElementIndex = 0;
@@ -60,6 +68,7 @@ export function withHydration(callback: () => void, root: Node) {
     callback();
   } finally {
     rootHydrationDepth = Math.max(0, rootHydrationDepth - 1);
+    releaseRootHydrationNodes();
     scheduleAfterHydrationCheck();
   }
 }
@@ -72,13 +81,26 @@ function hasUnclaimedHydrationNodes(): boolean {
 }
 
 /**
+ * Drop the root claim queues once the initial pass has consumed every node.
+ * Lazy ranges own separate queues and are released by finishIfClaimed().
+ */
+function releaseRootHydrationNodes(): void {
+  if (rootHydrationDepth > 0 || hasUnclaimedHydrationNodes()) return;
+
+  serverRenderedElements = [];
+  serverRenderedTexts = [];
+  hydrationElementIndex = 0;
+  hydrationTextIndex = 0;
+}
+
+/**
  * Returns whether the current render belongs to an initial hydration pass.
  *
  * Lazy components use their own scope so unrelated pending lazy boundaries
  * cannot make later client-side updates look like hydration work.
  */
 export function isHydrationClaimActive(): boolean {
-  const scope = getContext<LazyHydrationNodes>(LAZY_HYDRATION);
+  const scope = getOwnerContext<LazyHydrationNodes>(LAZY_HYDRATION);
 
   return scope ? scope.hydrating : rootHydrationDepth > 0;
 }
@@ -157,8 +179,18 @@ function finishIfClaimed(scope: LazyHydrationNodes): void {
     scope.elementIndex >= scope.elements.length &&
     scope.textIndex >= scope.texts.length
   ) {
+    const id = scope.id;
     scope.hydrating = false;
-    pendingLazyHydration.delete(scope.id);
+
+    // The lazy Owner may remain alive for later reactive updates, but it no
+    // longer needs to retain the server DOM through its hydration scope.
+    scope.elements = [];
+    scope.texts = [];
+    scope.start = undefined;
+    scope.end = undefined;
+
+    pendingLazyHydration.delete(id);
+    serverRenderedLazy.delete(id);
     scheduleAfterHydrationCheck();
   }
 }
@@ -169,7 +201,7 @@ function finishIfClaimed(scope: LazyHydrationNodes): void {
  * dynamic imports resolve.
  */
 export function claimHydrationElement<T extends Element>() {
-  const scope = getContext<LazyHydrationNodes>(LAZY_HYDRATION);
+  const scope = getOwnerContext<LazyHydrationNodes>(LAZY_HYDRATION);
 
   try {
     if (scope) {
@@ -183,13 +215,14 @@ export function claimHydrationElement<T extends Element>() {
       finishIfClaimed(scope);
     } else {
       hydrationElementIndex++;
+      releaseRootHydrationNodes();
       scheduleAfterHydrationCheck();
     }
   }
 }
 
 export function claimHydrationText() {
-  const scope = getContext<LazyHydrationNodes>(LAZY_HYDRATION);
+  const scope = getOwnerContext<LazyHydrationNodes>(LAZY_HYDRATION);
 
   try {
     if (scope) {
@@ -203,6 +236,7 @@ export function claimHydrationText() {
       finishIfClaimed(scope);
     } else {
       hydrationTextIndex++;
+      releaseRootHydrationNodes();
       scheduleAfterHydrationCheck();
     }
   }
@@ -237,14 +271,14 @@ export function withServerRenderedLazy<T>(lazyID: string | number, callback: () 
   const owner = createOwner(undefined, { identity: false });
 
   return runWithOwner(owner, () => {
-    setContext(LAZY_HYDRATION, scope);
+    setOwnerContext(LAZY_HYDRATION, scope);
     return callback();
   });
 }
 
 /** Capture the current cursor before a render-effect attempt. */
 export function beginHydrationClaim(): HydrationClaimSnapshot {
-  const scope = getContext<LazyHydrationNodes>(LAZY_HYDRATION);
+  const scope = getOwnerContext<LazyHydrationNodes>(LAZY_HYDRATION);
 
   return {
     scope,
@@ -388,8 +422,6 @@ function getServerRenderedNodes(root: Node) {
   const doms: Node[] = [];
   const lazy = new Map<string, LazyHydrationNodes>();
   const boundaryStack: string[] = [];
-  const internalRangeNodes = new WeakSet<Node>();
-
   function getOrCreateLazyNodes(id: string): LazyHydrationNodes {
     let nodes = lazy.get(id);
 
@@ -418,8 +450,8 @@ function getServerRenderedNodes(root: Node) {
     }
   }
 
-  function flattenNode(node: Node) {
-    if (internalRangeNodes.has(node)) return;
+  function flattenNode(node: Node): Node | null {
+    const nextSibling = node.nextSibling;
 
     if (isCommentNode(node) && node.data === INTERNAL_RANGE_START_MARKER) {
       const end = findInternalRangeEnd(node);
@@ -428,11 +460,13 @@ function getServerRenderedNodes(root: Node) {
         throw new Error("[vynn] Unclosed internal SSR range during hydration.");
       }
 
+      // Consume the internal range as one unit. Preserve the sibling after
+      // its end before removing range markers and their managed contents.
+      const afterRange = end.nextSibling;
       let current: Node | null = node.nextSibling;
 
       while (current) {
-        const next = current.nextSibling;
-        internalRangeNodes.add(current);
+        const next: Node | null = current.nextSibling;
 
         if (
           isCommentNode(current) &&
@@ -450,13 +484,13 @@ function getServerRenderedNodes(root: Node) {
 
       node.parentNode?.removeChild(node);
       end.parentNode?.removeChild(end);
-      return;
+      return afterRange;
     }
 
     if (isCommentNode(node) && node.data === INTERNAL_RANGE_END_MARKER) {
       node.parentNode?.removeChild(node);
       console.warn("[vynn] Unmatched internal SSR range end marker.");
-      return;
+      return nextSibling;
     }
 
     if (isElement(node) && node.hasAttribute(RAW_HTML_SSR_ATTRIBUTE)) {
@@ -464,7 +498,7 @@ function getServerRenderedNodes(root: Node) {
       // of its unmanaged descendants to the hydration queues.
       node.removeAttribute(RAW_HTML_SSR_ATTRIBUTE);
       addNode(node);
-      return;
+      return nextSibling;
     }
 
     if (isElement(node)) {
@@ -475,7 +509,7 @@ function getServerRenderedNodes(root: Node) {
           (node.localName === "title" || node.localName === "meta" || node.localName === "link")) ||
         (node.localName === "template" && node.hasAttribute("data-vynn-head-fallback"))
       ) {
-        return;
+        return nextSibling;
       }
     }
 
@@ -491,7 +525,7 @@ function getServerRenderedNodes(root: Node) {
 
         getOrCreateLazyNodes(id).start = anchor;
         boundaryStack.push(id);
-        return;
+        return nextSibling;
       }
 
       const end = LAZY_END_REGEX.exec(value);
@@ -512,7 +546,7 @@ function getServerRenderedNodes(root: Node) {
           console.warn(`[vynn] Unmatched lazy boundary end marker: ${value}`);
         }
 
-        return;
+        return nextSibling;
       }
 
       if (value === EMPTY_TEXT_SSR_MARKER) {
@@ -520,12 +554,12 @@ function getServerRenderedNodes(root: Node) {
 
         node.parentNode?.replaceChild(empty, node);
         addNode(empty);
-        return;
+        return nextSibling;
       }
 
       if (value === TEXT_SSR_SEPARATOR) {
         node.parentNode?.removeChild(node);
-        return;
+        return nextSibling;
       }
     }
 
@@ -533,14 +567,36 @@ function getServerRenderedNodes(root: Node) {
       addNode(node);
     }
 
-    for (const child of [...node.childNodes]) {
-      flattenNode(child);
+    // Walk sibling links directly. Reading childNodes creates and caches a
+    // live NodeList for every node visited by this scanner in Chromium.
+    let child: Node | null = node.firstChild;
+    while (child) {
+      child = flattenNode(child);
     }
+
+    return nextSibling;
   }
 
-  for (const child of [...root.childNodes]) {
-    flattenNode(child);
+  let child: Node | null = root.firstChild;
+  while (child) {
+    child = flattenNode(child);
   }
 
   return [doms.filter(isElement), doms.filter(isTextNode), lazy] as const;
 }
+
+// Make the real implementation available only to bundles that include the
+// hydration entrypoint. Ordinary client rendering imports the lightweight bridge.
+installHydrationRuntime({
+  isClaimActive: isHydrationClaimActive,
+  isHydrating,
+  claimElement: <T extends Element>() => claimHydrationElement<T>(),
+  claimText: claimHydrationText,
+  isElementCompatible: isHydrationElementCompatible,
+  synchronizeText: synchronizeHydrationText,
+  diagnoseAttribute: diagnoseHydrationAttribute,
+  withServerRenderedLazy,
+  getServerRenderedLazyRange,
+  finishServerRenderedLazy,
+  runAfterHydration,
+});

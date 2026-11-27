@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   addBaseToRequestUrl,
+  createWebRequest,
   isHtmlNavigation,
   joinAssetBase,
   negotiateResponseEncoding,
@@ -115,6 +116,88 @@ describe("HTTP URL helpers", () => {
   });
 });
 
+
+describe("Vite request adapter", () => {
+  it("uses the shared Node adapter with the Vite-resolved URL", async () => {
+    const server = createServer((incoming, outgoing) => {
+      void (async () => {
+        const request = createWebRequest(incoming, "/rewritten?from=vite");
+        const body = await request.text();
+
+        outgoing.setHeader("content-type", "application/json");
+        outgoing.end(
+          JSON.stringify({
+            url: request.url,
+            method: request.method,
+            body,
+            connectionHeader: request.headers.has("connection"),
+            nominatedHeader: request.headers.has("x-hop-by-hop"),
+            contentType: request.headers.get("content-type"),
+          }),
+        );
+      })().catch((error: unknown) => {
+        outgoing.destroy(error instanceof Error ? error : new Error(String(error)));
+      });
+    });
+
+    server.listen(0, "127.0.0.1");
+    await new Promise<void>((resolveListen) => server.once("listening", resolveListen));
+
+    try {
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        throw new Error("Test server did not bind a TCP port");
+      }
+
+      const responseBody = await new Promise<string>((resolveResponse, rejectResponse) => {
+        const outgoing = httpRequest(
+          {
+            host: "127.0.0.1",
+            port: address.port,
+            path: "/original",
+            method: "POST",
+            headers: {
+              connection: "x-hop-by-hop",
+              "x-hop-by-hop": "must-not-reach-fetch",
+              "content-type": "text/plain",
+            },
+          },
+          (response) => {
+            const chunks: Buffer[] = [];
+            response.on("data", (chunk: Buffer) => chunks.push(chunk));
+            response.on("end", () => resolveResponse(Buffer.concat(chunks).toString()));
+            response.on("error", rejectResponse);
+          },
+        );
+        outgoing.on("error", rejectResponse);
+        outgoing.end("request body");
+      });
+
+      const result = JSON.parse(responseBody) as {
+        url: string;
+        method: string;
+        body: string;
+        connectionHeader: boolean;
+        nominatedHeader: boolean;
+        contentType: string | null;
+      };
+
+      expect(result).toEqual({
+        url: `http://127.0.0.1:${address.port}/rewritten?from=vite`,
+        method: "POST",
+        body: "request body",
+        connectionHeader: false,
+        nominatedHeader: false,
+        contentType: "text/plain",
+      });
+    } finally {
+      await new Promise<void>((resolveClose, rejectClose) => {
+        server.close((error) => (error ? rejectClose(error) : resolveClose()));
+      });
+    }
+  });
+});
+
 describe("Vite response headers", () => {
   it("applies configured headers as defaults and lets response headers override them", async () => {
     const server = createServer((_req, res) => {
@@ -166,6 +249,79 @@ describe("SSR response compression", () => {
     expect(negotiateResponseEncoding("br;q=0, gzip;q=0")).toBeNull();
     expect(negotiateResponseEncoding(undefined)).toBeNull();
   });
+
+
+  it.each(["gzip", "br"] as const)(
+    "treats a client disconnect during %s compression as a normal abort",
+    async (encoding) => {
+      let finishWriter!: (error: unknown) => void;
+      const writerFinished = new Promise<unknown>((resolveWriter) => {
+        finishWriter = resolveWriter;
+      });
+      let bodyCancelled = false;
+      let receivedCompressedChunk = false;
+
+      const server = createServer((_req, res) => {
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            // Keep the response open after the first chunk so the client can
+            // disconnect while the compression pipeline is still active.
+            controller.enqueue(Buffer.from("Vynn SSR content ".repeat(4096)));
+          },
+          cancel() {
+            bodyCancelled = true;
+          },
+        });
+
+        void writeResponse(
+          res,
+          new Response(body, {
+            headers: { "content-type": "text/html; charset=utf-8" },
+          }),
+          { acceptEncoding: encoding },
+        ).then(
+          () => finishWriter(null),
+          (error: unknown) => finishWriter(error),
+        );
+      });
+
+      server.listen(0, "127.0.0.1");
+      await new Promise<void>((resolveListen) => server.once("listening", resolveListen));
+
+      try {
+        const address = server.address();
+        if (!address || typeof address === "string") {
+          throw new Error("Test server did not bind a TCP port");
+        }
+
+        const client = httpRequest({
+          host: "127.0.0.1",
+          port: address.port,
+          path: "/",
+          headers: { "accept-encoding": encoding },
+        });
+        client.on("error", () => undefined);
+        client.on("response", (response) => {
+          response.on("error", () => undefined);
+          response.once("data", () => {
+            receivedCompressedChunk = true;
+            response.destroy();
+          });
+        });
+        client.end();
+
+        const writerError = await writerFinished;
+        expect(writerError).toBeNull();
+        expect(receivedCompressedChunk).toBe(true);
+        expect(bodyCancelled).toBe(true);
+      } finally {
+        await new Promise<void>((resolveClose, rejectClose) => {
+          server.close((error) => (error ? rejectClose(error) : resolveClose()));
+          server.closeAllConnections();
+        });
+      }
+    },
+  );
 
   it.each([
     ["gzip", "gzip"],

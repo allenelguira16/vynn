@@ -10,6 +10,8 @@ const SERVER_ENTRY_NAMES = ["entry-server"];
 export function resolveEntries(root: string, ssr: boolean): ResolvedEntries {
   const clientFile = findConventionalFile(root, CLIENT_ENTRY_NAMES);
   const serverFile = ssr ? findConventionalFile(root, SERVER_ENTRY_NAMES) : null;
+  const middlewarePath = resolve(root, "src", "middleware.ts");
+  const middlewareFile = existsSync(middlewarePath) ? middlewarePath : null;
 
   const needsApp = !clientFile || (ssr && !serverFile);
   const appSpecifier = needsApp ? findAppSpecifier(root) : null;
@@ -24,6 +26,7 @@ export function resolveEntries(root: string, ssr: boolean): ResolvedEntries {
     appSpecifier,
     clientFile,
     serverFile,
+    middlewareFile,
     clientInput: clientFile ?? CLIENT_ENTRY_ID,
     clientIsGenerated: !clientFile,
     serverIsGenerated: ssr && !serverFile,

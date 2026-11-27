@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
-import { lazy, type JSX } from "vynn";
+import { $renderEffect, lazy, type JSX } from "vynn";
 import { renderToDOM } from "vynn/client";
 
-import { navigate, Router, type Route } from "../src";
+import { navigate, Router, toFileRouter, type Route } from "../src";
+import { $location } from "../src/location";
 
 afterEach(() => {
   document.body.innerHTML = "";
@@ -11,6 +12,53 @@ afterEach(() => {
 });
 
 describe("client router layout navigation", () => {
+  it("does not rerun outgoing or destination location effects during navigation", () => {
+    let homeLocationRuns = 0;
+    let destinationLocationRuns = 0;
+
+    const HomePage: Route["component"] = () => {
+      $renderEffect(() => {
+        void $location.pathname;
+        homeLocationRuns++;
+      });
+
+      return <p>home content</p>;
+    };
+
+    const DestinationPage: Route["component"] = () => {
+      $renderEffect(() => {
+        expect($location.pathname).toBe("/other-page");
+        destinationLocationRuns++;
+      });
+
+      return <p>other-page content</p>;
+    };
+
+    const routes: Route[] = [
+      { path: "/", component: HomePage },
+      { path: "/other-page", component: DestinationPage },
+    ];
+
+    const host = document.createElement("div");
+    document.body.append(host);
+
+    const unmount = renderToDOM(
+      () => Router({ url: "/", routes }) as unknown as JSX.Element,
+      host,
+    );
+
+    expect(homeLocationRuns).toBe(1);
+
+    navigate("/other-page");
+
+    expect(host.textContent).toContain("other-page content");
+    expect(homeLocationRuns).toBe(1);
+    expect(destinationLocationRuns).toBe(1);
+
+    unmount();
+  });
+
+
   it("keeps layout children mounted until a lazy descendant route is ready", async () => {
     let resolveDestination!: () => void;
     let destinationLoads = 0;
@@ -130,6 +178,103 @@ describe("client router layout navigation", () => {
     expect(window.location.pathname).toBe("/");
     expect(host.textContent).toContain("home content");
     expect(host.textContent).not.toContain("stale destination content");
+
+    unmount();
+  });
+
+  it("keeps the current page visible while a flat lazy route is loading", async () => {
+    let resolveDestination!: () => void;
+    let destinationLoads = 0;
+
+    const DestinationPage = lazy(async () => {
+      destinationLoads++;
+      await new Promise<void>((resolve) => {
+        resolveDestination = resolve;
+      });
+      return { default: () => <p>flat destination content</p> };
+    });
+
+    const routes: Route[] = [
+      { path: "/", component: () => <p>flat home content</p> },
+      { path: "/other-page", component: DestinationPage },
+    ];
+
+    const host = document.createElement("div");
+    document.body.append(host);
+
+    const unmount = renderToDOM(
+      () => Router({ url: "/", routes }) as unknown as JSX.Element,
+      host,
+    );
+
+    expect(host.textContent).toContain("flat home content");
+
+    navigate("/other-page");
+
+    expect(destinationLoads).toBe(1);
+    expect(host.textContent).toContain("flat home content");
+    expect(host.textContent).not.toContain("flat destination content");
+
+    resolveDestination();
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    expect(host.textContent).toContain("flat destination content");
+    expect(host.textContent).not.toContain("flat home content");
+
+    // Once the destination module is warm, navigating back to it is synchronous.
+    navigate("/");
+    expect(host.textContent).toContain("flat home content");
+
+    navigate("/other-page");
+    expect(destinationLoads).toBe(1);
+    expect(host.textContent).toContain("flat destination content");
+    expect(host.textContent).not.toContain("flat home content");
+
+    unmount();
+  });
+
+  it("uses the same pending-navigation behavior for file-based lazy pages", async () => {
+    let resolveDestination!: () => void;
+    let destinationLoads = 0;
+
+    const routes = toFileRouter("/src/app", {
+      "/src/app/page.tsx": async () => ({
+        default: () => <p>file home content</p>,
+      }),
+      "/src/app/other/page.tsx": async () => {
+        destinationLoads++;
+        await new Promise<void>((resolve) => {
+          resolveDestination = resolve;
+        });
+        return { default: () => <p>file destination content</p> };
+      },
+    }, [
+      { path: "/src/app/page.tsx", kind: "page", beforeLoad: false },
+      { path: "/src/app/other/page.tsx", kind: "page", beforeLoad: false },
+    ]);
+
+    const host = document.createElement("div");
+    document.body.append(host);
+
+    const unmount = renderToDOM(
+      () => Router({ url: "/", routes }) as unknown as JSX.Element,
+      host,
+    );
+
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    expect(host.textContent).toContain("file home content");
+
+    navigate("/other");
+
+    expect(destinationLoads).toBe(1);
+    expect(host.textContent).toContain("file home content");
+    expect(host.textContent).not.toContain("file destination content");
+
+    resolveDestination();
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    expect(host.textContent).toContain("file destination content");
+    expect(host.textContent).not.toContain("file home content");
 
     unmount();
   });

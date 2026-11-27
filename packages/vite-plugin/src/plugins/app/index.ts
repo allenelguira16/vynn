@@ -149,6 +149,11 @@ export function vynnAppPlugin({
               consumer: "server",
               build: {
                 outDir: "dist/server",
+                // The SSR handler consumes the client environment's manifest.
+                // Emitting another copy in dist/server only adds deployment weight.
+                ssrManifest: false,
+                // Public assets belong to the client output, not the SSR server bundle.
+                copyPublicDir: false,
                 minify: "oxc",
                 rolldownOptions: {
                   input: {
@@ -306,6 +311,9 @@ export function vynnAppPlugin({
           serverFunctions: serverFunctions !== undefined && serverFunctions.enabled !== false,
           ssrManifest,
           devCssLinks,
+          middlewareSpecifier: entries.middlewareFile
+            ? toAbsoluteSpecifier(entries.middlewareFile)
+            : null,
         });
       }
 
@@ -412,6 +420,7 @@ export function vynnAppPlugin({
               headers: server.config.server.headers,
             });
           })().catch((error: unknown) => {
+            if (res.destroyed || res.writableEnded) return;
             if (res.headersSent) {
               res.destroy(error instanceof Error ? error : undefined);
               return;
@@ -468,6 +477,7 @@ export function vynnAppPlugin({
               headers: server.config.preview.headers,
             });
           })().catch((error: unknown) => {
+            if (res.destroyed || res.writableEnded) return;
             if (res.headersSent) {
               res.destroy(error instanceof Error ? error : undefined);
               return;

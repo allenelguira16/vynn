@@ -7,7 +7,12 @@
     "lint:fix": "oxlint --fix",
     "fmt": "oxfmt",
     "fmt:check": "oxfmt --check",
-    "bench:size": "node benchmarks/scripts/size.mjs"
+    "test": "pnpm -r --if-present test",
+    "typecheck": "pnpm --filter \"./packages/**\" exec tsc --noEmit",
+    "build": "pnpm --filter app build",
+    "check": "pnpm lint && pnpm --filter vynn test:memory && pnpm bench:runtime && pnpm typecheck && pnpm build",
+    "bench:size": "node benchmarks/scripts/size.mjs",
+    "bench:runtime": "pnpm --filter vynn bench:runtime"
   },
   "devDependencies": {
     "oxfmt": "^0.75.0",

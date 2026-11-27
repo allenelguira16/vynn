@@ -34,8 +34,10 @@ describe("Vynn Oxc JSX compiler", () => {
       "page.tsx",
     );
 
-    expect(code).toContain("_$template(");
-    expect(code).toMatch(/const _tmpl\d* = _\$template\(/);
+    expect(code).toContain("_$staticTemplate(");
+    expect(code).toContain("$staticTemplate as _$staticTemplate");
+    expect(code).not.toContain("$template as _$template");
+    expect(code).toMatch(/const _tmpl\d* = _\$staticTemplate\(/);
     expect(code).not.toContain("TemplateDescriptor");
     expect(code).not.toContain("_$child(");
     expect(code.indexOf("const _tmpl")).toBeLessThan(code.indexOf("function Page"));
@@ -102,7 +104,7 @@ describe("Vynn Oxc JSX compiler", () => {
     );
 
     expect(code).toContain(
-      '_$template("<table><tbody><tr><td>First row</td></tr><tr><td>Second row</td></tr></tbody></table>")',
+      '_$staticTemplate("<table><tbody><tr><td>First row</td></tr><tr><td>Second row</td></tr></tbody></table>")',
     );
     expect(code).not.toContain("$txt");
   });
@@ -115,7 +117,7 @@ describe("Vynn Oxc JSX compiler", () => {
       "repeated.tsx",
     );
 
-    expect(code.match(/_\$template\(/g)).toHaveLength(1);
+    expect(code.match(/_\$staticTemplate\(/g)).toHaveLength(1);
     expect(code.match(/_tmpl\d*\(/g)).toHaveLength(2);
   });
 
@@ -204,6 +206,29 @@ describe("Vynn Oxc JSX compiler", () => {
 
     expect(code).toMatch(/aria-hidden=\\?"true\\?"/);
     expect(code).not.toContain('disabled=""');
+  });
+
+  it("keeps full-document templates on the hydration-aware path", () => {
+    const code = transformVynnOxc(
+      "function DocumentPage() { return <html><head><title>Page</title></head><body><main>Content</main></body></html>; }",
+      "document.tsx",
+    );
+
+    expect(code).toContain("_$template(");
+    expect(code).not.toContain("_$staticTemplate(");
+    expect(code).toContain("_$finishTemplate(");
+  });
+
+  it("keeps static and dynamic template factories separate when their markup matches", () => {
+    const code = transformVynnOxc(
+      `function Buttons(props: { title: string }) {
+        return <><button /><button title={props.title} /></>;
+      }`,
+      "buttons.tsx",
+    );
+
+    expect(code).toContain('_$staticTemplate("<button></button>")');
+    expect(code).toContain('_$template("<button></button>")');
   });
 
   it("uses one mixed template for reactive attributes, events, and children", () => {
@@ -456,8 +481,8 @@ describe("Vynn Oxc JSX compiler", () => {
     );
 
     expect(code).toContain("_$cmpnt(function Status");
-    expect(code).toContain('_$template("<div");
-    expect(code).toContain('_$template("<section");
+    expect(code).toContain('_$staticTemplate("<div');
+    expect(code).toContain('_$staticTemplate("<section');
   });
 
   it("wraps function components whose returns are nested in switch cases", () => {
@@ -474,8 +499,8 @@ describe("Vynn Oxc JSX compiler", () => {
     );
 
     expect(code).toContain("_$cmpnt(function Status");
-    expect(code).toContain('_$template("<strong");
-    expect(code).toContain('_$template("<em");
+    expect(code).toContain('_$staticTemplate("<strong');
+    expect(code).toContain('_$staticTemplate("<em');
   });
 
   it("wraps PascalCase function-expression component variables", () => {
@@ -488,8 +513,8 @@ describe("Vynn Oxc JSX compiler", () => {
     );
 
     expect(code).toContain("const Button = _$cmpnt(function Button");
-    expect(code).toContain('_$template("<span");
-    expect(code).toContain('_$template("<button");
+    expect(code).toContain('_$staticTemplate("<span');
+    expect(code).toContain('_$template("<button');
   });
 
   it("wraps anonymous default function declarations", () => {
@@ -501,14 +526,14 @@ describe("Vynn Oxc JSX compiler", () => {
     );
 
     expect(code).toMatch(/export default _$cmpnt\(function\s*\(/);
-    expect(code).toContain('_$template("<main");
+    expect(code).toContain('_$staticTemplate("<main');
   });
 
   it("wraps anonymous default arrow components", () => {
     const code = transformVynnOxc(`export default () => <main>Anonymous</main>;`, "app.tsx");
 
     expect(code).toMatch(/export default _$cmpnt\(function\s*\(/);
-    expect(code).toContain('_$template("<main");
+    expect(code).toContain('_$staticTemplate("<main');
   });
 
   it("lowers JSX returned from nested named map callbacks", () => {
@@ -526,6 +551,35 @@ describe("Vynn Oxc JSX compiler", () => {
 
     expect(code).toContain("_$for(");
     expect(code).toContain("_renderItemFor");
+  });
+
+  it("marks direct intrinsic keyed rows for the stable-row runtime path", () => {
+    const code = transformVynnOxc(
+      `function Rows(props: { rows: Array<{ id: number; value: number }> }) {
+        return <tbody>{props.rows.map((row) => (
+          <tr key={row.id}><td>{row.value}</td></tr>
+        ))}</tbody>;
+      }`,
+      "rows.tsx",
+    );
+
+    expect(code).toContain("_$for(");
+    expect(code).toMatch(/, true, true, false\)/);
+  });
+
+  it("keeps keyed rows with nested components on the reactive row path", () => {
+    const code = transformVynnOxc(
+      `function Rows(props: { rows: Array<{ id: number; value: number }> }) {
+        return <ul>{props.rows.map((row) => (
+          <li key={row.id}><RowDetails value={row.value} /></li>
+        ))}</ul>;
+      }`,
+      "rows-components.tsx",
+    );
+
+    expect(code).toContain("_$for(");
+    // Nested components must be reevaluated when the keyed item is replaced.
+    expect(code).toMatch(/, true, false, false\)/);
   });
 
   it("preserves Array.map thisArg when lowering a JSX callback", () => {
@@ -630,7 +684,7 @@ describe("Vynn compiler output", () => {
       "page.tsx",
     );
 
-    expect(result.code).toContain("_$template");
+    expect(result.code).toMatch(/_\$staticTemplate\(/);
     expect(result.map).toMatchObject({
       version: expect.any(Number),
       sources: expect.any(Array),

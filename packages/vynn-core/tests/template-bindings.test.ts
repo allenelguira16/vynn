@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { withHydration } from "../src/client/hydration";
+import { hydrateToDOM } from "../src/client/hydrate-to-dom";
 import { initializeHeadContext } from "../src/context/head-context";
 import { createOwner, disposeOwner, runWithOwner } from "../src/life-cycle/owner";
 import { $attr } from "../src/render/$attr";
 import { $insert } from "../src/render/$insert";
-import { $child, $finishTemplate, $sibling, $template } from "../src/render/$template";
+import { $child, $finishTemplate, $sibling, $staticTemplate, $template } from "../src/render/$template";
 import { SVG_NAMESPACE, withDOMNamespace } from "../src/render/namespace";
 import { $state } from "../src/reactivity/state";
 import { renderToServer } from "../src/server/render-to-server";
@@ -20,6 +21,83 @@ function createTestOwner() {
 
 afterEach(() => {
   document.body.innerHTML = "";
+});
+
+describe("$staticTemplate", () => {
+  it("clones static markup into independent DOM trees", () => {
+    const factory = $staticTemplate("<section><h1>Static heading</h1><p>Static content</p></section>");
+    const first = factory();
+    const second = factory();
+
+    expect(first).not.toBe(second);
+    expect(first.innerHTML).toBe("<h1>Static heading</h1><p>Static content</p>");
+    expect(second.innerHTML).toBe(first.innerHTML);
+  });
+
+  it("hydrates an existing server-rendered static subtree", () => {
+    const host = document.createElement("div");
+    host.innerHTML = "<main><h1>Static heading</h1><p>Static content</p></main>";
+    document.body.append(host);
+    const serverRoot = host.firstElementChild;
+    const factory = $staticTemplate("<main><h1>Static heading</h1><p>Static content</p></main>");
+
+    const unmount = hydrateToDOM(
+      () => factory() as unknown as JSX.Element,
+      host,
+    );
+
+    expect(host.firstElementChild).toBe(serverRoot);
+    expect(host.textContent).toBe("Static headingStatic content");
+
+    unmount();
+    host.remove();
+  });
+
+  it("replaces a static subtree when a nested server element is incompatible", () => {
+    const host = document.createElement("div");
+    host.innerHTML = "<main><h2>Wrong heading</h2><p>Static content</p></main>";
+    document.body.append(host);
+    const serverRoot = host.firstElementChild;
+    const factory = $staticTemplate("<main><h1>Static heading</h1><p>Static content</p></main>");
+
+    const unmount = hydrateToDOM(
+      () => factory() as unknown as JSX.Element,
+      host,
+    );
+
+    expect(host.firstElementChild).not.toBe(serverRoot);
+    expect(host.innerHTML).toBe("<main><h1>Static heading</h1><p>Static content</p></main>");
+
+    unmount();
+    host.remove();
+  });
+
+  it("clones static templates in the active SVG namespace", () => {
+    const factory = $staticTemplate('<path d="M0 0L10 10"></path>');
+    const path = withDOMNamespace(SVG_NAMESPACE, () => factory());
+
+    expect(path.localName).toBe("path");
+    expect(path.namespaceURI).toBe(SVG_NAMESPACE);
+    expect(path.getAttribute("d")).toBe("M0 0L10 10");
+  });
+
+  it("creates complete static document roots", () => {
+    const factory = $staticTemplate(
+      '<html lang="en"><head><title>Static document</title></head><body><main>Content</main></body></html>',
+    );
+    const root = factory();
+
+    expect(root.localName).toBe("html");
+    expect(root.querySelector("title")?.textContent).toBe("Static document");
+    expect(root.querySelector("main")?.textContent).toBe("Content");
+  });
+
+  it("builds static SSR nodes directly from the markup", () => {
+    const factory = $staticTemplate("<main><h1>Static heading</h1><p>Static content</p></main>");
+    const result = renderToServer(() => factory() as unknown as JSX.Element, "sync");
+
+    expect(result.body).toBe("<main><h1>Static heading</h1><p>Static content</p></main>");
+  });
 });
 
 describe("$template", () => {
@@ -61,6 +139,42 @@ describe("$template", () => {
     expect(root.childNodes[0].nodeType).toBe(Node.TEXT_NODE);
     expect(root.childNodes[0].textContent).toBe("");
     expect(root.childNodes[1]).toBe(root.querySelector("span"));
+
+    disposeOwner(owner);
+  });
+
+  it("updates scalar dynamic children in place without a Node array", async () => {
+    const owner = createTestOwner();
+    const value = $state<string | null>("first");
+    const factory = $template("<main><!--$v0--></main>");
+
+    let root!: Element;
+
+    runWithOwner(owner, () => {
+      root = factory();
+      $insert(root, () => value.value, "0");
+      $finishTemplate(root);
+    });
+
+    const text = root.firstChild;
+    expect(text).toBeInstanceOf(Text);
+    expect((text as Text).data).toBe("first");
+    expect(root.lastChild).toBeInstanceOf(Comment);
+
+    value.value = "second";
+    await Promise.resolve();
+    expect(root.firstChild).toBe(text);
+    expect((text as Text).data).toBe("second");
+
+    value.value = null;
+    await Promise.resolve();
+    expect(root.firstChild).toBe(text);
+    expect((text as Text).data).toBe("");
+
+    value.value = "third";
+    await Promise.resolve();
+    expect(root.firstChild).toBe(text);
+    expect((text as Text).data).toBe("third");
 
     disposeOwner(owner);
   });
@@ -133,6 +247,58 @@ describe("$template", () => {
     disposeOwner(owner);
   });
 
+  it("hydrates dynamic templates without materializing childNodes collections", () => {
+    const owner = createTestOwner();
+    const host = document.createElement("div");
+    host.innerHTML = "<main><section>nested</section><footer>after</footer></main>";
+    const factory = $template("<main><section>nested</section><footer>after</footer></main>");
+    let root!: Element;
+
+    const childNodesGetter = vi
+      .spyOn(Node.prototype, "childNodes", "get")
+      .mockImplementation(() => {
+        throw new Error("Dynamic template hydration must not read childNodes.");
+      });
+
+    try {
+      runWithOwner(owner, () => {
+        withHydration(() => {
+          root = factory();
+          $finishTemplate(root);
+        }, host);
+      });
+    } finally {
+      childNodesGetter.mockRestore();
+    }
+
+    expect(root).toBe(host.firstElementChild);
+    disposeOwner(owner);
+  });
+
+  it("hydrates static templates without materializing childNodes collections", () => {
+    const host = document.createElement("div");
+    host.innerHTML = "<main><section>static</section><footer>after</footer></main>";
+    const factory = $staticTemplate("<main><section>static</section><footer>after</footer></main>");
+    let unmount!: () => void;
+
+    const childNodesGetter = vi
+      .spyOn(Node.prototype, "childNodes", "get")
+      .mockImplementation(() => {
+        throw new Error("Static template hydration must not read childNodes.");
+      });
+
+    try {
+      expect(() => {
+        unmount = hydrateToDOM(() => factory() as unknown as JSX.Element, host);
+      }).not.toThrow();
+    } finally {
+      childNodesGetter.mockRestore();
+    }
+
+    expect(host.firstElementChild?.textContent).toBe("staticafter");
+    unmount();
+  });
+
   it("hydrates dynamic children before continuing from the returned slot marker", () => {
     const owner = createTestOwner();
     const host = document.createElement("div");
@@ -171,6 +337,125 @@ describe("$template", () => {
     disposeOwner(owner);
   });
 
+  it("claims pre-mapped static nodes before returning a hydration anchor", () => {
+    const owner = createTestOwner();
+    const host = document.createElement("div");
+    host.innerHTML = "<main><span>server text</span><!--$v0--></main>";
+
+    const factory = $template("<main><span>client text</span><!--$v0--></main>");
+
+    let root!: Element;
+    let slot!: Comment;
+
+    runWithOwner(owner, () => {
+      withHydration(() => {
+        root = factory();
+        slot = $insert(root, "dynamic child", "0") as Comment;
+      }, host);
+    });
+
+    expect(root).toBe(host.firstElementChild);
+    expect(root.querySelector("span")?.textContent).toBe("client text");
+    expect(slot).toBe(root.lastChild);
+
+    disposeOwner(owner);
+  });
+
+  it("releases per-instance hydration indexes after finishing a template", () => {
+    const owner = createTestOwner();
+    const host = document.createElement("div");
+    host.innerHTML = "<main><section><span>nested</span></section><footer>after</footer></main>";
+
+    const factory = $template(
+      "<main><section><span>nested</span></section><footer>after</footer></main>",
+    );
+    const deleteSpy = vi.spyOn(WeakMap.prototype, "delete");
+
+    let root!: Element;
+    let section!: Element;
+
+    try {
+      runWithOwner(owner, () => {
+        withHydration(() => {
+          root = factory();
+          section = $child(root);
+          $finishTemplate(root);
+        }, host);
+      });
+
+      // Every mapped DOM node must stop retaining the finished template instance.
+      expect(deleteSpy).toHaveBeenCalledWith(root);
+      expect(deleteSpy).toHaveBeenCalledWith(section);
+      expect($child(root)).toBe(section);
+      expect($sibling(section)).toBe(root.lastElementChild);
+    } finally {
+      deleteSpy.mockRestore();
+    }
+
+    // The cached template factory remains usable after a previous instance retires.
+    const secondHost = document.createElement("div");
+    secondHost.innerHTML =
+      "<main><section><span>nested</span></section><footer>after</footer></main>";
+
+    let secondRoot!: Element;
+    runWithOwner(owner, () => {
+      withHydration(() => {
+        secondRoot = factory();
+        $finishTemplate(secondRoot);
+      }, secondHost);
+    });
+
+    expect(secondRoot).toBe(secondHost.firstElementChild);
+
+    disposeOwner(owner);
+  });
+
+  it("retires anchor-free hydration metadata before dynamic bindings initialize", async () => {
+    const owner = createTestOwner();
+    const host = document.createElement("div");
+    host.innerHTML = "<main><button>server</button></main>";
+
+    const title = $state("client");
+    const factory = $template("<main><button>server</button></main>");
+    const deleteSpy = vi.spyOn(WeakMap.prototype, "delete");
+
+    let root!: Element;
+    let button!: Element;
+
+    try {
+      runWithOwner(owner, () => {
+        withHydration(() => {
+          root = factory();
+
+          // Anchor-free templates are fully claimed and retired before the
+          // factory returns, so bindings can safely use native DOM traversal.
+          expect(deleteSpy).toHaveBeenCalledWith(root);
+
+          button = $child(root);
+          expect(button).toBe(root.firstElementChild);
+          expect(deleteSpy).toHaveBeenCalledWith(button);
+
+          $attr(button, "title", () => title.value);
+          $finishTemplate(root);
+        }, host);
+      });
+
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(button.getAttribute("title")).toBe("client");
+
+      title.value = "updated";
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(button.getAttribute("title")).toBe("updated");
+    } finally {
+      deleteSpy.mockRestore();
+      disposeOwner(owner);
+    }
+  });
+
   it("navigates nested template children and then continues at a sibling", () => {
     const owner = createTestOwner();
     const host = document.createElement("div");
@@ -202,6 +487,47 @@ describe("$template", () => {
     expect(footer).toBe(root.lastElementChild);
 
     disposeOwner(owner);
+  });
+
+  it("resolves authored head children when injected stylesheet links precede them", () => {
+    document.documentElement.innerHTML = [
+      "<head>",
+      '<link rel="stylesheet" href="/assets/main.css">',
+      "<title>Server title</title>",
+      '<meta name="description" content="Server description">',
+      "</head>",
+      "<body><p>Application text</p></body>",
+    ].join("");
+
+    const stylesheet = document.head.querySelector('link[rel="stylesheet"]');
+    const owner = createTestOwner();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    let title!: Element;
+
+    try {
+      runWithOwner(owner, () => {
+        withHydration(() => {
+          const html = $template(
+            '<html><head><title></title><meta name="description" content="Server description"></head><body><p>Application text</p></body></html>',
+          )();
+          const head = $child(html);
+          title = $child(head);
+
+          $insert(title, () => ["Vynn SSR Sandbox ", "0"]);
+          $finishTemplate(html);
+        }, document);
+      });
+
+      expect(title.localName).toBe("title");
+      expect(title.textContent).toBe("Vynn SSR Sandbox 0");
+      expect(document.head.querySelector('link[rel="stylesheet"]')).toBe(stylesheet);
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+      disposeOwner(owner);
+      document.head.innerHTML = "";
+      document.body.innerHTML = "";
+    }
   });
 
   it("builds the SSR node tree from markup and inserts dynamic content at its slot", () => {

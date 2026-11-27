@@ -14,6 +14,7 @@ const Lazy = lazy(() => import("./pages/lazy"));
 const NonAsyncSuspense = lazy(() => import("./pages/non-async-suspense"));
 const PokeDex = lazy(() => import("./pages/poke-dex"));
 const PokeDexAwait = lazy(() => import("./pages/poke-dex-await"));
+const RowsPage = lazy(() => import("./pages/rows"));
 const StackedSuspense = lazy(() => import("./pages/stacked-suspense"));
 const ComponentError = lazy(() => import("./pages/component-error"));
 const Params = lazy(() => import("./pages/params"));
@@ -100,6 +101,10 @@ const Router = createRouter({
     {
       path: "/stacked-suspense",
       component: () => <StackedSuspense />,
+    },
+    {
+      path: "/rows",
+      component: () => <RowsPage />,
     },
     {
       path: "/redirect",

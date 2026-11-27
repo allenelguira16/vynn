@@ -1,5 +1,6 @@
+import { bindRuntimeContext } from "../runtime/context";
 
-import { getOwner } from "./owner";
+import { getOwner, getOwnerMounts } from "./owner";
 
 /**
  * Registers a callback to run when the current component is mounted.
@@ -26,5 +27,5 @@ export function onMount(callback: () => void | (() => void)): void {
     throw new Error("onMount must be called within a component");
   }
 
-  owner.mount.push(callback);
+  getOwnerMounts(owner).push(bindRuntimeContext(callback));
 }

@@ -1,5 +1,6 @@
+import { bindRuntimeContext } from "../runtime/context";
 
-import { getOwner, runWithOwner } from "../life-cycle/owner";
+import { getOwner, getOwnerCleanups, runWithOwner } from "../life-cycle/owner";
 
 type VynnEvent<E extends Element, K extends keyof HTMLElementEventMap> = HTMLElementEventMap[K] & {
   readonly currentTarget: E;
@@ -34,15 +35,19 @@ export function $on<E extends Element, K extends keyof HTMLElementEventMap>(
     throw new Error(`[vynn]: $on must be used inside component`);
   }
 
-  function handle(event: Event) {
+  const invoke = bindRuntimeContext((event: Event) => {
     runWithOwner(owner, () => {
       handler(event as VynnEvent<E, K>);
     });
+  });
+
+  function handle(event: Event) {
+    invoke(event);
   }
 
   element.addEventListener(event, handle, capture);
 
-  owner.cleanups.push(() => {
+  getOwnerCleanups(owner).push(() => {
     element.removeEventListener(event, handle, capture);
   });
 }

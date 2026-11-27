@@ -8,9 +8,10 @@ import {
   getErrorBoundaryID,
   getErrorBoundaryValue,
   getErrorBoundaryValues,
-} from "../context/error-boundary-context";
+} from "../context/error-boundary";
 
 import { createOwner, disposeOwner, getOwner, runWithOwner } from "../life-cycle/owner";
+import { createRuntimeContext, runWithRuntimeContext } from "../runtime/context";
 import { $state } from "../reactivity/state";
 import { $cmpnt, $nodes } from "../render";
 import { createSSRErrorBoundary, resolveNode } from "../render/resolve-node";
@@ -35,8 +36,14 @@ export const Catch = $cmpnt(function Catch(props: {
     throw new Error("Catch requires an owner.");
   }
 
+  const runtimeContext = createRuntimeContext();
+
   if (import.meta.env.SSR) {
     const values = getErrorBoundaryValues();
+    const parentErrorBoundary = getErrorBoundary();
+    const fallbackOwner = props.fallback
+      ? createOwner(currentOwner, { identity: false })
+      : undefined;
     // oxlint-disable-next-line prefer-const
     let boundary: SSR_ERROR_BOUNDARY;
 
@@ -57,10 +64,24 @@ export const Catch = $cmpnt(function Catch(props: {
     boundary = createSSRErrorBoundary(
       errorBoundaryID,
       () =>
-        resolveNode(() =>
-          props.fallback?.(boundary.error!, () => undefined),
-        ) as unknown as SSR_NODE[],
-      () => resolveNode(() => props.children) as unknown as SSR_NODE[],
+        runWithRuntimeContext(runtimeContext, () => {
+          const renderFallback = () =>
+            resolveNode(() =>
+              props.fallback?.(boundary.error!, () => undefined),
+            ) as unknown as SSR_NODE[];
+
+          if (!fallbackOwner) return renderFallback();
+
+          return runWithOwner(fallbackOwner, () => {
+            enterErrorBoundary(parentErrorBoundary);
+            return renderFallback();
+          });
+        }),
+      () =>
+        runWithRuntimeContext(
+          runtimeContext,
+          () => resolveNode(() => props.children) as unknown as SSR_NODE[],
+        ),
       undefined,
       handleError,
     );
@@ -70,31 +91,27 @@ export const Catch = $cmpnt(function Catch(props: {
     // Async boundaries created while rendering these children must retain
     // this Catch boundary so failures can be routed back to it after the
     // initial component traversal has completed.
-    const parentErrorBoundary = getErrorBoundary();
-    enterErrorBoundary(handleError);
+    runWithRuntimeContext(runtimeContext, () => {
+      enterErrorBoundary(handleError);
 
-    // Resolve children during the component traversal so async resources
-    // retain their normal hydration IDs. The owner-scoped tracker also sees
-    // resources created later by deferred SSR retries without including
-    // allocations made by following siblings.
-    try {
-      const children = resolveNode(() => props.children) as unknown as SSR_NODE[];
-      boundary.setChildren(children);
-    } catch (error) {
-      if (!(error instanceof Error)) throw error;
-      handleError(error);
-    } finally {
-      enterErrorBoundary(parentErrorBoundary);
-    }
+      try {
+        const children = resolveNode(() => props.children) as unknown as SSR_NODE[];
+        boundary.setChildren(children);
+      } catch (error) {
+        if (!(error instanceof Error)) throw error;
+        handleError(error);
+      }
+    });
 
     return boundary as unknown as JSX.Element;
   }
 
   const error = $state<Error | undefined>();
 
-  enterErrorBoundary((newError) => {
-    error.value = newError;
-  });
+  return runWithRuntimeContext(runtimeContext, () => {
+    enterErrorBoundary((newError) => {
+      error.value = newError;
+    });
 
   let viewOwner: Owner | undefined;
 
@@ -118,5 +135,6 @@ export const Catch = $cmpnt(function Catch(props: {
 
       return props.fallback?.(error.value!, () => (error.value = undefined));
     });
+  });
   });
 });

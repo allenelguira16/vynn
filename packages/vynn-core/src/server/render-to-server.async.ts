@@ -12,10 +12,12 @@ import {
   resolveNode,
 } from "../render/resolve-node";
 import {
+  flattenSSRNodes,
   joinHTMLElements,
   renderAsyncUtilities,
-  renderErrorBoundaryRange,
-  renderNode,
+  renderComment,
+  renderElement,
+  renderErrorBoundaryAsync,
   renderText,
 } from "./render-to-server.util";
 
@@ -30,44 +32,17 @@ export async function resolveAsync(App: () => JSX.Element, owner: Owner): Promis
     return await resolve(node.children());
   }
 
-  async function resolveErrorBoundary(node: SSR_ERROR_BOUNDARY): Promise<string> {
-    if (node.error) {
-      return renderErrorBoundaryRange(node.id, await resolve(node.fallback()));
-    }
-
-    try {
-      return renderErrorBoundaryRange(node.id, await resolve(node.children()));
-    } catch (error) {
-      if (!(error instanceof Error) || node.errorBoundary?.(error) !== node) {
-        throw error;
-      }
-
-      return renderErrorBoundaryRange(node.id, await resolve(node.fallback()));
-    }
-  }
-
-  async function resolveElement(node: SSR_ELEMENT): Promise<string> {
-    const children = await resolve(node.children);
-
-    return renderNode({
-      type: node.type,
-      attributes: node.attributes,
-      innerHTML: node.innerHTML,
-      children,
-    });
-  }
-
   async function resolve(app: SSR_NODE[]): Promise<string> {
     const html: string[] = [];
 
-    for (const node of app.flat(Infinity).filter(Boolean)) {
+    for (const node of flattenSSRNodes(app)) {
       if (node instanceof SSR_ASYNC || node instanceof SSR_DEFERRED) {
         html.push(await resolveAsyncBoundary(node));
         continue;
       }
 
       if (node instanceof SSR_ERROR_BOUNDARY) {
-        html.push(await resolveErrorBoundary(node));
+        html.push(await renderErrorBoundaryAsync(node, resolve));
         continue;
       }
 
@@ -77,12 +52,12 @@ export async function resolveAsync(App: () => JSX.Element, owner: Owner): Promis
       }
 
       if (node instanceof SSR_COMMENT) {
-        html.push(`<!--${node.value}-->`);
+        html.push(renderComment(node));
         continue;
       }
 
       if (node instanceof SSR_ELEMENT) {
-        html.push(await resolveElement(node));
+        html.push(renderElement(node, await resolve(node.children)));
       }
     }
 

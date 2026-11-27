@@ -1,14 +1,11 @@
-import { EMPTY_TEXT_SSR_MARKER } from "../const";
 import {
   claimHydrationElement,
   claimHydrationText,
   isHydrationClaimActive,
-} from "../client/hydration";
-import {
   isHydrationElementCompatible,
   synchronizeHydrationText,
-} from "../client/hydration-diagnostics";
-
+} from "../client/hydration-runtime";
+import { EMPTY_TEXT_SSR_MARKER } from "../const";
 import {
   getChildDOMNamespace,
   getElementNamespace,
@@ -25,19 +22,24 @@ import {
   type SSR_NODE,
 } from "./resolve-node";
 
-type TemplateElementDescriptor = {
+type TemplateDescriptorPosition = {
+  index?: number;
+  parent?: TemplateElementDescriptor;
+};
+
+type TemplateElementDescriptor = TemplateDescriptorPosition & {
   kind: "element";
   tag: string;
   attributes: Array<[string, string]>;
   children: TemplateNodeDescriptor[];
 };
 
-type TemplateTextDescriptor = {
+type TemplateTextDescriptor = TemplateDescriptorPosition & {
   kind: "text";
   value: string;
 };
 
-type TemplateAnchorDescriptor = {
+type TemplateAnchorDescriptor = TemplateDescriptorPosition & {
   kind: "anchor";
   id: string;
 };
@@ -51,32 +53,67 @@ type TemplateRuntimeNode = Node | SSR_NODE;
 
 type TemplateBlueprint = {
   readonly steps: TemplateNodeDescriptor[];
-  readonly indices: Map<TemplateNodeDescriptor, number>;
-  readonly parents: Map<TemplateNodeDescriptor, TemplateElementDescriptor>;
 };
 
 type TemplateInstance = TemplateBlueprint & {
-  readonly nodes: Map<TemplateNodeDescriptor, TemplateRuntimeNode>;
-  readonly descriptors: WeakMap<object, TemplateNodeDescriptor>;
+  readonly nodes: Array<TemplateRuntimeNode | undefined>;
   cursor: number;
   hydrating: boolean;
 };
 
 type TemplateData = {
-  descriptor: TemplateElementDescriptor;
-  blueprint: TemplateBlueprint;
+  descriptor?: TemplateElementDescriptor;
+  blueprint?: TemplateBlueprint;
+  template?: HTMLTemplateElement;
+  documentRoot?: Element;
+  simpleTag?: string;
+};
+
+type StaticTemplateData = {
+  descriptor?: TemplateElementDescriptor;
   template?: HTMLTemplateElement;
   documentRoot?: Element;
   simpleTag?: string;
 };
 
 const templateInstances = new WeakMap<object, TemplateInstance>();
+const templateDescriptors = new WeakMap<object, TemplateNodeDescriptor>();
 const templateDataCache = new Map<string, TemplateData>();
+const staticTemplateDataCache = new Map<string, StaticTemplateData>();
+
+type StaticTemplateHydrator = (root: Element) => Element;
+type DynamicTemplateHydrator = (
+  root: Element,
+  namespace: string,
+  data: TemplateData,
+) => Element;
+
+let staticTemplateHydrator: StaticTemplateHydrator | undefined;
+let dynamicTemplateHydrator: DynamicTemplateHydrator | undefined;
+let dynamicTemplateNodeResolver: ((node: Node) => Node) | undefined;
+let dynamicTemplateAnchorResolver:
+  | ((parent: Element, id: string) => Node | undefined)
+  | undefined;
+let dynamicTemplateFinisher: ((root: Element) => void) | undefined;
+
+export function setStaticTemplateHydrator(hydrator: StaticTemplateHydrator): void {
+  staticTemplateHydrator = hydrator;
+}
+
+/**
+ * Installs the larger dynamic-template hydration path only for applications
+ * that actually import the hydration entry point. Ordinary CSR rendering keeps
+ * native DOM traversal and does not need template descriptors or node maps.
+ */
+export function installDynamicTemplateHydration(): void {
+  dynamicTemplateHydrator = hydrateDynamicTemplate;
+  dynamicTemplateNodeResolver = resolveHydratedTemplateNode;
+  dynamicTemplateAnchorResolver = claimHydratedTemplateAnchor;
+  dynamicTemplateFinisher = finishHydratedTemplate;
+}
 
 function getTemplateAnchorMarker(id: string): string {
-  return id.startsWith("start-")
-    ? "$vs" + id.slice("start-".length)
-    : "$v" + id;
+  return id.startsWith("start-") ? "$vs" + id.slice("start-".length) : "$v" + id;
 }
 
 function getTemplateAnchorId(value: string): string | undefined {
@@ -129,9 +166,7 @@ function normalizeTemplateTextAnchors(root: Node): void {
       found = true;
 
       if (match.index > offset) {
-        replacement.appendChild(
-          ownerDocument.createTextNode(value.slice(offset, match.index)),
-        );
+        replacement.appendChild(ownerDocument.createTextNode(value.slice(offset, match.index)));
       }
 
       replacement.appendChild(ownerDocument.createComment(match[1]));
@@ -193,10 +228,7 @@ function findHydrationHeadElement(
   let current = start;
 
   while (current) {
-    if (
-      current.nodeType === 1 &&
-      matchesHydrationHeadElement(descriptor, current as Element)
-    ) {
+    if (current.nodeType === 1 && matchesHydrationHeadElement(descriptor, current as Element)) {
       return current as Element;
     }
 
@@ -206,10 +238,7 @@ function findHydrationHeadElement(
   return undefined;
 }
 
-function ensureTitleHydrationSlots(
-  descriptor: TemplateElementDescriptor,
-  element: Element,
-): void {
+function ensureTitleHydrationSlots(descriptor: TemplateElementDescriptor, element: Element): void {
   const start = descriptor.children.find(
     (child): child is TemplateAnchorDescriptor =>
       child.kind === "anchor" && child.id.startsWith("start-"),
@@ -217,17 +246,24 @@ function ensureTitleHydrationSlots(
   if (!start) return;
 
   const endId = start.id.slice("start-".length);
-  const hasStart = Array.from(element.childNodes).some(
-    (child) =>
-      child.nodeType === 8 &&
-      getTemplateAnchorId((child as Comment).data) === start.id,
-  );
-  const hasEnd = Array.from(element.childNodes).some(
-    (child) =>
-      child.nodeType === 8 &&
-      getTemplateAnchorId((child as Comment).data) === endId,
-  );
-  if (hasStart && hasEnd) return;
+  const hasAnchor = (id: string): boolean => {
+    let child = element.firstChild;
+
+    while (child) {
+      if (
+        child.nodeType === Node.COMMENT_NODE &&
+        getTemplateAnchorId((child as Comment).data) === id
+      ) {
+        return true;
+      }
+
+      child = child.nextSibling;
+    }
+
+    return false;
+  };
+
+  if (hasAnchor(start.id) && hasAnchor(endId)) return;
 
   // A streamed or route-level title can replace the template's original
   // title markup before hydration. Recreate the template's static prefix and
@@ -397,27 +433,32 @@ function describeDOMNode(node: Node): TemplateNodeDescriptor {
 
   const element = node as Element;
 
+  const children: TemplateNodeDescriptor[] = [];
+  let child = element.firstChild;
+
+  while (child) {
+    children.push(describeDOMNode(child));
+    child = child.nextSibling;
+  }
+
   return {
     kind: "element",
     tag: element.localName,
-    attributes: Array.from(
-      element.attributes,
-      (attribute): [string, string] => [attribute.name, attribute.value],
-    ),
-    children: Array.from(element.childNodes, describeDOMNode),
+    attributes: Array.from(element.attributes, (attribute): [string, string] => [
+      attribute.name,
+      attribute.value,
+    ]),
+    children,
   };
 }
 
 function createTemplateBlueprint(root: TemplateElementDescriptor): TemplateBlueprint {
   const steps: TemplateNodeDescriptor[] = [];
-  const indices = new Map<TemplateNodeDescriptor, number>();
-  const parents = new Map<TemplateNodeDescriptor, TemplateElementDescriptor>();
 
   const visit = (node: TemplateNodeDescriptor, parent?: TemplateElementDescriptor): void => {
-    indices.set(node, steps.length);
+    node.index = steps.length;
+    node.parent = parent;
     steps.push(node);
-
-    if (parent) parents.set(node, parent);
 
     if (node.kind === "element") {
       for (const child of node.children) visit(child, node);
@@ -426,17 +467,24 @@ function createTemplateBlueprint(root: TemplateElementDescriptor): TemplateBluep
 
   visit(root);
 
-  return { steps, indices, parents };
+  return { steps };
 }
 
 function createTemplateInstance(blueprint: TemplateBlueprint): TemplateInstance {
   return {
     ...blueprint,
-    nodes: new Map(),
-    descriptors: new WeakMap(),
+    nodes: [],
     cursor: 1,
     hydrating: false,
   };
+}
+
+function getTemplateNode(
+  instance: TemplateInstance,
+  descriptor: TemplateNodeDescriptor,
+): TemplateRuntimeNode | undefined {
+  const index = descriptor.index;
+  return index === undefined ? undefined : instance.nodes[index];
 }
 
 function registerTemplateNode(
@@ -444,8 +492,26 @@ function registerTemplateNode(
   descriptor: TemplateNodeDescriptor,
   node: TemplateRuntimeNode,
 ): void {
-  instance.nodes.set(descriptor, node);
-  instance.descriptors.set(node as object, descriptor);
+  const index = descriptor.index;
+  if (index === undefined) {
+    throw new Error("[vynn]: A template node has no blueprint index.");
+  }
+
+  const previous = instance.nodes[index];
+
+  // Hydration can replace an initially mapped node with the claimed server
+  // node. Do not leave the discarded node retaining this template instance.
+  if (
+    previous &&
+    previous !== node &&
+    templateInstances.get(previous as object) === instance
+  ) {
+    templateInstances.delete(previous as object);
+    templateDescriptors.delete(previous as object);
+  }
+
+  instance.nodes[index] = node;
+  templateDescriptors.set(node as object, descriptor);
   templateInstances.set(node as object, instance);
 }
 
@@ -509,39 +575,6 @@ function createHydratedTemplatePlaceholder(
   }
 
   return element;
-}
-
-function mapDOMTemplateNode(
-  descriptor: TemplateNodeDescriptor,
-  node: Node,
-  instance: TemplateInstance,
-): void {
-  let actual = node;
-
-  if (
-    descriptor.kind === "text" &&
-    node.nodeType === Node.COMMENT_NODE &&
-    (node as Comment).data === EMPTY_TEXT_SSR_MARKER
-  ) {
-    actual = document.createTextNode("");
-    node.parentNode?.replaceChild(actual, node);
-  }
-
-  registerTemplateNode(instance, descriptor, actual);
-
-  if (descriptor.kind !== "element") return;
-
-  for (let index = 0; index < descriptor.children.length; index++) {
-    const child = actual.childNodes[index];
-
-    if (!child) {
-      throw new Error(
-        "[vynn]: The cloned template does not match its parsed markup at child " + index + ".",
-      );
-    }
-
-    mapDOMTemplateNode(descriptor.children[index], child, instance);
-  }
 }
 
 function findHydrationAnchor(
@@ -654,7 +687,7 @@ function insertHydratedNode(
   node: Node,
   instance: TemplateInstance,
 ): void {
-  const parentDescriptor = instance.parents.get(descriptor);
+  const parentDescriptor = descriptor.parent;
 
   if (!parentDescriptor) {
     parent.appendChild(node);
@@ -664,7 +697,7 @@ function insertHydratedNode(
   const index = parentDescriptor.children.indexOf(descriptor);
 
   for (let previousIndex = index - 1; previousIndex >= 0; previousIndex--) {
-    const previous = instance.nodes.get(parentDescriptor.children[previousIndex]);
+    const previous = getTemplateNode(instance, parentDescriptor.children[previousIndex]);
 
     if (previous instanceof Node && previous.parentNode === parent) {
       parent.insertBefore(node, previous.nextSibling);
@@ -673,7 +706,7 @@ function insertHydratedNode(
   }
 
   for (let nextIndex = index + 1; nextIndex < parentDescriptor.children.length; nextIndex++) {
-    const next = instance.nodes.get(parentDescriptor.children[nextIndex]);
+    const next = getTemplateNode(instance, parentDescriptor.children[nextIndex]);
 
     if (next instanceof Node && next.parentNode === parent) {
       parent.insertBefore(node, next);
@@ -684,13 +717,10 @@ function insertHydratedNode(
   parent.insertBefore(node, parent.firstChild);
 }
 
-function claimTemplateNode(
-  descriptor: TemplateNodeDescriptor,
-  instance: TemplateInstance,
-): void {
-  const parentDescriptor = instance.parents.get(descriptor);
+function claimTemplateNode(descriptor: TemplateNodeDescriptor, instance: TemplateInstance): void {
+  const parentDescriptor = descriptor.parent;
   const parent = parentDescriptor
-    ? (instance.nodes.get(parentDescriptor) as Element | undefined)
+    ? (getTemplateNode(instance, parentDescriptor) as Element | undefined)
     : undefined;
 
   if (descriptor.kind === "anchor") {
@@ -706,7 +736,7 @@ function claimTemplateNode(
     const namespace = parent
       ? getChildDOMNamespace(parent.namespaceURI, parentDescriptor!.tag, descriptor.tag)
       : getElementNamespace(descriptor.tag);
-    const existing = instance.nodes.get(descriptor);
+    const existing = getTemplateNode(instance, descriptor);
     const isHeadMetadata =
       parentDescriptor?.tag === "head" &&
       ["title", "meta", "link"].includes(descriptor.tag.toLowerCase());
@@ -724,11 +754,7 @@ function claimTemplateNode(
 
     const claimed = claimHydrationElement<Element>();
 
-    if (
-      !claimed &&
-      existing instanceof Element &&
-      (!parent || existing.parentNode === parent)
-    ) {
+    if (!claimed && existing instanceof Element && (!parent || existing.parentNode === parent)) {
       registerTemplateNode(instance, descriptor, existing);
       return;
     }
@@ -737,11 +763,7 @@ function claimTemplateNode(
     const claimedNext = claimed?.nextSibling ?? null;
     let element: Element;
 
-    const claimedCompatible = isHydrationElementCompatible(
-      claimed,
-      descriptor.tag,
-      namespace,
-    );
+    const claimedCompatible = isHydrationElementCompatible(claimed, descriptor.tag, namespace);
 
     if (claimed && claimedCompatible) {
       element = claimed;
@@ -777,7 +799,7 @@ function claimTemplateNode(
     return;
   }
 
-  const existing = instance.nodes.get(descriptor);
+  const existing = getTemplateNode(instance, descriptor);
 
   // The hydration scanner skips <title> contents together with the metadata
   // element, so static title text must not consume a body text claim.
@@ -795,11 +817,7 @@ function claimTemplateNode(
   const claimedNext = claimed?.nextSibling ?? null;
   let text: Text;
 
-  if (
-    !claimed &&
-    existing instanceof Text &&
-    (!parent || existing.parentNode === parent)
-  ) {
+  if (!claimed && existing instanceof Text && (!parent || existing.parentNode === parent)) {
     synchronizeHydrationText(existing, descriptor.value);
     registerTemplateNode(instance, descriptor, existing);
     return;
@@ -833,11 +851,8 @@ function claimTemplateNode(
   registerTemplateNode(instance, descriptor, text);
 }
 
-function claimTemplateThrough(
-  instance: TemplateInstance,
-  target: TemplateNodeDescriptor,
-): void {
-  const targetIndex = instance.indices.get(target);
+function claimTemplateThrough(instance: TemplateInstance, target: TemplateNodeDescriptor): void {
+  const targetIndex = target.index;
 
   if (targetIndex === undefined) {
     throw new Error("[vynn]: A template node does not belong to its template.");
@@ -860,7 +875,9 @@ function getTemplateData(markup: string, namespace: string): TemplateData {
   // <body>, and <option>, while still using the single $template API.
   const simpleVoid = /^<([A-Za-z][A-Za-z0-9:._-]*)\s*>$/.exec(markup);
   const simplePair = /^<([A-Za-z][A-Za-z0-9:._-]*)>\s*<\/\1\s*>$/.exec(markup);
-  const simpleTag = simplePair?.[1] ?? (simpleVoid && voidElements.has(simpleVoid[1].toLowerCase()) ? simpleVoid[1] : undefined);
+  const simpleTag =
+    simplePair?.[1] ??
+    (simpleVoid && voidElements.has(simpleVoid[1].toLowerCase()) ? simpleVoid[1] : undefined);
 
   if (import.meta.env.SSR) {
     const descriptor: TemplateElementDescriptor = simpleTag
@@ -877,14 +894,7 @@ function getTemplateData(markup: string, namespace: string): TemplateData {
   }
 
   if (simpleTag) {
-    const root = createDOMElement(simpleTag, namespace);
-    const descriptor = describeDOMNode(root) as TemplateElementDescriptor;
-    const data = {
-      descriptor,
-      blueprint: createTemplateBlueprint(descriptor),
-      simpleTag,
-    };
-
+    const data = { simpleTag };
     templateDataCache.set(key, data);
     return data;
   }
@@ -901,20 +911,14 @@ function getTemplateData(markup: string, namespace: string): TemplateData {
 
     normalizeTemplateTextAnchors(documentRoot);
 
-    const descriptor = describeDOMNode(documentRoot) as TemplateElementDescriptor;
-    const data = {
-      descriptor,
-      blueprint: createTemplateBlueprint(descriptor),
-      documentRoot,
-    };
+    const data = { documentRoot };
 
     templateDataCache.set(key, data);
     return data;
   }
 
   const template = document.createElement("template");
-  template.innerHTML =
-    namespace === SVG_NAMESPACE ? "<svg>" + markup + "</svg>" : markup;
+  template.innerHTML = namespace === SVG_NAMESPACE ? "<svg>" + markup + "</svg>" : markup;
 
   const root =
     namespace === SVG_NAMESPACE
@@ -925,108 +929,152 @@ function getTemplateData(markup: string, namespace: string): TemplateData {
     throw new Error("[vynn]: A compiled template must contain exactly one root element.");
   }
 
-  const descriptor = describeDOMNode(root) as TemplateElementDescriptor;
-  const data = {
-    descriptor,
-    blueprint: createTemplateBlueprint(descriptor),
-    template,
-  };
+  const data = { template };
 
   templateDataCache.set(key, data);
   return data;
 }
 
+function getStaticTemplateData(markup: string, namespace: string): StaticTemplateData {
+  const key =
+    (import.meta.env.SSR ? "server-static:" : "client-static:") + namespace + ":" + markup;
+  const cached = staticTemplateDataCache.get(key);
+  if (cached) return cached;
+
+  const simpleVoid = /^<([A-Za-z][A-Za-z0-9:._-]*)\s*>$/.exec(markup);
+  const simplePair = /^<([A-Za-z][A-Za-z0-9:._-]*)>\s*<\/\1\s*>$/.exec(markup);
+  const simpleTag =
+    simplePair?.[1] ??
+    (simpleVoid && voidElements.has(simpleVoid[1].toLowerCase()) ? simpleVoid[1] : undefined);
+
+  if (import.meta.env.SSR) {
+    const descriptor: TemplateElementDescriptor = simpleTag
+      ? { kind: "element", tag: simpleTag, attributes: [], children: [] }
+      : parseServerTemplate(markup);
+    const data: StaticTemplateData = { descriptor };
+    if (simpleTag) data.simpleTag = simpleTag;
+    staticTemplateDataCache.set(key, data);
+    return data;
+  }
+
+  if (simpleTag) {
+    const data = { simpleTag };
+    staticTemplateDataCache.set(key, data);
+    return data;
+  }
+
+  if (/^<html(?:\s|>)/i.test(markup)) {
+    const parsed = new DOMParser().parseFromString(markup, "text/html");
+    const documentRoot = parsed.documentElement;
+
+    if (!documentRoot || documentRoot.localName !== "html") {
+      throw new Error("[vynn]: A document template must have an <html> root.");
+    }
+
+    normalizeTemplateTextAnchors(documentRoot);
+    const data = { documentRoot };
+    staticTemplateDataCache.set(key, data);
+    return data;
+  }
+
+  const template = document.createElement("template");
+  template.innerHTML = namespace === SVG_NAMESPACE ? "<svg>" + markup + "</svg>" : markup;
+  const data = { template };
+  staticTemplateDataCache.set(key, data);
+  return data;
+}
+
+function createSSRStaticTemplateNode(
+  descriptor: TemplateNodeDescriptor,
+  namespace: string,
+): SSR_NODE {
+  if (descriptor.kind === "text") return createSSRText(descriptor.value);
+  if (descriptor.kind === "anchor") {
+    return createSSRComment(getTemplateAnchorMarker(descriptor.id));
+  }
+
+  const element = withDOMNamespace(namespace, () => createSSRNode(descriptor.tag));
+  for (const [name, value] of descriptor.attributes) {
+    element.attributes[name] = value;
+  }
+
+  const childNamespace = getChildDOMNamespace(element.namespaceURI, descriptor.tag);
+  for (const child of descriptor.children) {
+    element.appendChild(createSSRStaticTemplateNode(child, childNamespace));
+  }
+
+  return element;
+}
+
 /**
- * Creates a reusable template factory from static markup. The runtime derives
- * its private SSR and hydration blueprint from the markup. The compiler passes
- * neither a descriptor nor a node-binding callback.
+ * Creates a reusable factory for JSX subtrees with no dynamic bindings.
+ *
+ * This path avoids hydration descriptors, node maps, and per-instance
+ * template state. The compiler selects this path through $staticTemplate().
  */
-export function $template<T extends Element = Element>(markup: string): () => T {
+function createStaticTemplateFactory<T extends Element = Element>(
+  markup: string,
+): () => T {
+  const rootTag = /^<([A-Za-z][A-Za-z0-9:._-]*)/.exec(markup)?.[1] ?? "div";
+
+  return function staticTemplate(): T {
+    const namespace = getElementNamespace(rootTag);
+    const data = getStaticTemplateData(markup, namespace);
+
+    if (import.meta.env.SSR) {
+      return createSSRStaticTemplateNode(data.descriptor!, namespace) as unknown as T;
+    }
+
+    if (data.documentRoot) {
+      return data.documentRoot.cloneNode(true) as T;
+    }
+
+    let root: Element;
+
+    if (data.simpleTag) {
+      root = createDOMElement(data.simpleTag, namespace);
+    } else {
+      const fragment = data.template!.content.cloneNode(true) as DocumentFragment;
+      const templateRoot =
+        namespace === SVG_NAMESPACE
+          ? fragment.firstElementChild?.firstElementChild
+          : fragment.firstElementChild;
+
+      if (!templateRoot) {
+        throw new Error("[vynn]: A compiled template must contain exactly one root element.");
+      }
+
+      normalizeTemplateTextAnchors(templateRoot);
+      root = templateRoot;
+    }
+
+    return (staticTemplateHydrator?.(root) ?? root) as T;
+  };
+}
+
+/**
+ * Creates a reusable template factory for markup with runtime bindings.
+ * The runtime derives its private SSR and hydration blueprint from the markup.
+ */
+function createDynamicTemplateFactory<T extends Element = Element>(
+  markup: string,
+): () => T {
   const rootTag = /^<([A-Za-z][A-Za-z0-9:._-]*)/.exec(markup)?.[1] ?? "div";
 
   return function template(): T {
     const namespace = getElementNamespace(rootTag);
-    const {
-      descriptor,
-      blueprint,
-      template: domTemplate,
-      documentRoot: documentTemplateRoot,
-      simpleTag,
-    } = getTemplateData(markup, namespace);
-    const instance = createTemplateInstance(blueprint);
+    const data = getTemplateData(markup, namespace);
 
     if (import.meta.env.SSR) {
-      return createSSRTemplateNode(descriptor, instance, namespace) as unknown as T;
+      const instance = createTemplateInstance(data.blueprint!);
+      return createSSRTemplateNode(data.descriptor!, instance, namespace) as unknown as T;
     }
 
-    if (isHydrationClaimActive()) {
-      instance.hydrating = true;
-
-      const claimed = claimHydrationElement<Element>();
-      const claimedParent = claimed?.parentNode ?? null;
-      const claimedNext = claimed?.nextSibling ?? null;
-      let root: Element;
-
-      const claimedCompatible = isHydrationElementCompatible(
-        claimed,
-        descriptor.tag,
-        namespace,
-      );
-
-      if (claimed && claimedCompatible) {
-        root = claimed;
-      } else {
-        const fragment = domTemplate?.content.cloneNode(true) as DocumentFragment | undefined;
-        const clone = (
-          documentTemplateRoot
-            ? documentTemplateRoot.cloneNode(true)
-            : simpleTag
-              ? createDOMElement(simpleTag, namespace)
-              : namespace === SVG_NAMESPACE
-                ? fragment?.firstElementChild?.firstElementChild
-                : fragment?.firstElementChild
-        ) as Element | null;
-
-        if (!clone) {
-          throw new Error("[vynn]: A compiled template must contain exactly one root element.");
-        }
-
-        root = clone;
-
-        if (claimed) {
-          root.replaceChildren();
-          while (claimed.firstChild) {
-            root.appendChild(claimed.firstChild);
-          }
-        }
-
-        if (claimedParent instanceof Document) {
-          claimedParent.replaceChild(root, claimed);
-        } else if (claimedParent) {
-          claimedParent.insertBefore(
-            root,
-            claimedNext?.parentNode === claimedParent ? claimedNext : null,
-          );
-        }
-      }
-
-      normalizeTemplateTextAnchors(root);
-      registerTemplateNode(instance, descriptor, root);
-      mapHydratedTemplateNode(descriptor, root, instance);
-
-      if (!instance.steps.some((step) => step.kind === "anchor")) {
-        const last = instance.steps.at(-1);
-        if (last) claimTemplateThrough(instance, last);
-      }
-
-      return root as T;
-    }
-
-    const fragment = domTemplate?.content.cloneNode(true) as DocumentFragment | undefined;
-    const root = documentTemplateRoot
-      ? documentTemplateRoot.cloneNode(true)
-      : simpleTag
-        ? createDOMElement(simpleTag, namespace)
+    const fragment = data.template?.content.cloneNode(true) as DocumentFragment | undefined;
+    const root = data.documentRoot
+      ? data.documentRoot.cloneNode(true)
+      : data.simpleTag
+        ? createDOMElement(data.simpleTag, namespace)
         : namespace === SVG_NAMESPACE
           ? fragment?.firstElementChild?.firstElementChild
           : fragment?.firstElementChild;
@@ -1036,92 +1084,96 @@ export function $template<T extends Element = Element>(markup: string): () => T 
     }
 
     normalizeTemplateTextAnchors(root);
-    mapDOMTemplateNode(descriptor, root, instance);
-    return root as T;
+    return (dynamicTemplateHydrator?.(root as Element, namespace, data) ?? root) as T;
   };
 }
 
 /**
- * Resolves a node reached through compiler-emitted DOM navigation.
- *
- * Normal rendering is just native DOM traversal. During hydration, the
- * template-local cursor claims the static nodes up to this position and
- * returns the repaired node when the server DOM differs from the template.
+ * Hydrates a dynamic template candidate. This function is reachable only from
+ * installDynamicTemplateHydration(), which is installed by the hydration entry.
  */
-function resolveTemplateNavigationNode(node: TemplateRuntimeNode | null): TemplateRuntimeNode {
-  if (!node) {
-    throw new Error("[vynn]: A compiled template node is missing from the DOM.");
+function hydrateDynamicTemplate(
+  root: Element,
+  namespace: string,
+  data: TemplateData,
+): Element {
+  if (!isHydrationClaimActive()) return root;
+
+  // A factory's immutable descriptor graph is built once and shared by every
+  // instance, rather than allocating descriptor Maps for each rendered row.
+  const descriptor =
+    data.descriptor ?? (data.descriptor = describeDOMNode(root) as TemplateElementDescriptor);
+  const blueprint =
+    data.blueprint ?? (data.blueprint = createTemplateBlueprint(descriptor));
+  const instance = createTemplateInstance(blueprint);
+  instance.hydrating = true;
+
+  const claimed = claimHydrationElement<Element>();
+  const claimedParent = claimed?.parentNode ?? null;
+  const claimedNext = claimed?.nextSibling ?? null;
+  let hydratedRoot: Element;
+
+  const claimedCompatible = isHydrationElementCompatible(
+    claimed,
+    descriptor.tag,
+    namespace,
+  );
+
+  if (claimed && claimedCompatible) {
+    hydratedRoot = claimed;
+  } else {
+    hydratedRoot = root;
+
+    if (claimed) {
+      hydratedRoot.replaceChildren();
+      while (claimed.firstChild) {
+        hydratedRoot.appendChild(claimed.firstChild);
+      }
+    }
+
+    if (claimedParent instanceof Document) {
+      claimedParent.replaceChild(hydratedRoot, claimed as Node);
+    } else if (claimedParent) {
+      claimedParent.insertBefore(
+        hydratedRoot,
+        claimedNext?.parentNode === claimedParent ? claimedNext : null,
+      );
+    }
   }
 
+  normalizeTemplateTextAnchors(hydratedRoot);
+  registerTemplateNode(instance, descriptor, hydratedRoot);
+  mapHydratedTemplateNode(descriptor, hydratedRoot, instance);
+
+  if (!instance.steps.some((step) => step.kind === "anchor")) {
+    const last = instance.steps.at(-1);
+    if (last) claimTemplateThrough(instance, last);
+
+    // Anchor-free templates have no dynamic child claims left to coordinate.
+    // Retire their per-instance indexes now instead of keeping them attached
+    // to every hydrated DOM node until a later compiler finalizer runs.
+    finishHydratedTemplate(hydratedRoot);
+  }
+
+  return hydratedRoot;
+}
+
+function resolveHydratedTemplateNode(node: Node): Node {
   const instance = templateInstances.get(node as object);
-  const descriptor = instance?.descriptors.get(node as object);
+  const descriptor = templateDescriptors.get(node as object);
 
   if (!instance?.hydrating || !descriptor) return node;
 
   claimTemplateThrough(instance, descriptor);
-
-  return instance.nodes.get(descriptor) ?? node;
+  return (getTemplateNode(instance, descriptor) as Node | undefined) ?? node;
 }
 
-/** Gets the first child in a template's authored child sequence. */
-export function $child<E extends Element = Element>(parent: Element | SSR_ELEMENT): E {
+function claimHydratedTemplateAnchor(parent: Element, id: string): Node | undefined {
   const instance = templateInstances.get(parent as object);
-  const parentDescriptor = instance?.descriptors.get(parent as object);
-
-  if (instance && parentDescriptor?.kind === "element") {
-    const childDescriptor = parentDescriptor.children[0];
-    const child = childDescriptor ? instance.nodes.get(childDescriptor) : undefined;
-
-    if (child) return resolveTemplateNavigationNode(child) as E;
-  }
-
-  return resolveTemplateNavigationNode(parent.firstChild) as E;
-}
-
-/** Gets a following sibling in the template's authored child sequence. */
-export function $sibling<E extends Element = Element>(
-  node: Node | SSR_NODE,
-  count = 1,
-): E {
-  if (!Number.isInteger(count) || count < 0) {
-    throw new RangeError("[vynn]: $sibling() expects a non-negative integer count.");
-  }
-
-  const instance = templateInstances.get(node as object);
-  const descriptor = instance?.descriptors.get(node as object);
-  const parentDescriptor = descriptor ? instance?.parents.get(descriptor) : undefined;
-
-  if (instance && descriptor && parentDescriptor) {
-    const index = parentDescriptor.children.indexOf(descriptor);
-    const nextDescriptor = parentDescriptor.children[index + count];
-    const next = nextDescriptor ? instance.nodes.get(nextDescriptor) : undefined;
-
-    if (next) return resolveTemplateNavigationNode(next) as E;
-  }
-
-  let sibling: Node | SSR_NODE | null = node;
-
-  while (count-- > 0) {
-    sibling = sibling?.nextSibling ?? null;
-  }
-
-  return resolveTemplateNavigationNode(sibling) as E;
-}
-
-/**
- * Resolves a template slot and claims the static prefix before it. Returning
- * the marker lets generated sibling walks continue from marker.nextSibling,
- * after any server-rendered dynamic children that precede it.
- */
-export function $claimTemplateAnchor(
-  parent: Element | SSR_ELEMENT,
-  id: string,
-): Node | SSR_NODE {
-  const instance = templateInstances.get(parent as object);
-  const parentDescriptor = instance?.descriptors.get(parent as object);
+  const parentDescriptor = templateDescriptors.get(parent as object);
 
   if (!instance || !parentDescriptor || parentDescriptor.kind !== "element") {
-    throw new Error("[vynn]: A dynamic child slot does not belong to a compiled template.");
+    return undefined;
   }
 
   const descriptor = parentDescriptor.children.find(
@@ -1136,32 +1188,133 @@ export function $claimTemplateAnchor(
     claimTemplateThrough(instance, descriptor);
   }
 
-  const node = instance.nodes.get(descriptor);
-  if (node) return node as Node | SSR_NODE;
+  const node = getTemplateNode(instance, descriptor);
+  if (node instanceof Node) return node;
 
-  if (parent instanceof SSR_ELEMENT) {
-    const anchor = parent.children.find(
-      (child): child is SSR_COMMENT =>
-        child instanceof SSR_COMMENT && getTemplateAnchorId(child.value) === id,
-    );
-
-    if (anchor) {
-      registerTemplateNode(instance, descriptor, anchor);
-      return anchor;
-    }
-  } else {
-    return findHydrationAnchor(parent, descriptor);
-  }
-
-  throw new Error("[vynn]: Missing dynamic child anchor for slot " + JSON.stringify(id) + ".");
+  return findHydrationAnchor(parent, descriptor);
 }
 
-/** Completes remaining static hydration claims after the template bindings. */
-export function $finishTemplate(root: Element | SSR_ELEMENT): void {
+function finishHydratedTemplate(root: Element): void {
   const instance = templateInstances.get(root as object);
-
   if (!instance?.hydrating) return;
 
   const last = instance.steps.at(-1);
   if (last) claimTemplateThrough(instance, last);
+
+  // Completed instances no longer need node-to-blueprint associations.
+  instance.hydrating = false;
+
+  for (const node of instance.nodes) {
+    if (node && templateInstances.get(node as object) === instance) {
+      templateInstances.delete(node as object);
+      templateDescriptors.delete(node as object);
+    }
+  }
+
+  instance.nodes.length = 0;
+}
+
+/** Creates a reusable factory for a JSX subtree with no runtime bindings. */
+export function $staticTemplate<T extends Element = Element>(markup: string): () => T {
+  return createStaticTemplateFactory<T>(markup);
+}
+
+/** Creates a reusable factory for a JSX template with runtime bindings. */
+export function $template<T extends Element = Element>(markup: string): () => T {
+  return createDynamicTemplateFactory<T>(markup);
+}
+
+/** Gets the first child in a template's authored child sequence. */
+export function $child<E extends Element = Element>(parent: Element | SSR_ELEMENT): E {
+  if (!import.meta.env.SSR && dynamicTemplateNodeResolver) {
+    const instance = templateInstances.get(parent as object);
+    const parentDescriptor = templateDescriptors.get(parent as object);
+
+    if (instance && parentDescriptor?.kind === "element") {
+      const descriptor = parentDescriptor.children[0];
+      const child = descriptor ? getTemplateNode(instance, descriptor) : undefined;
+      if (child) return (dynamicTemplateNodeResolver?.(child as Node) ?? child) as E;
+    }
+  }
+
+  const node = parent.firstChild;
+  if (!node) {
+    throw new Error("[vynn]: A compiled template child is missing from the DOM.");
+  }
+
+  if (import.meta.env.SSR) return node as E;
+  return (dynamicTemplateNodeResolver?.(node as Node) ?? node) as E;
+}
+
+/** Gets a following sibling in the template's authored child sequence. */
+export function $sibling<E extends Element = Element>(node: Node | SSR_NODE, count = 1): E {
+  if (!Number.isInteger(count) || count < 0) {
+    throw new RangeError("[vynn]: $sibling() expects a non-negative integer count.");
+  }
+
+  if (!import.meta.env.SSR && dynamicTemplateNodeResolver) {
+    const instance = templateInstances.get(node as object);
+    const descriptor = templateDescriptors.get(node as object);
+    const parentDescriptor = descriptor ? descriptor.parent : undefined;
+
+    if (instance && descriptor && parentDescriptor) {
+      const index = parentDescriptor.children.indexOf(descriptor);
+      const nextDescriptor = parentDescriptor.children[index + count];
+      const next = nextDescriptor ? getTemplateNode(instance, nextDescriptor) : undefined;
+      if (next) return (dynamicTemplateNodeResolver?.(next as Node) ?? next) as E;
+    }
+  }
+
+  let sibling: Node | SSR_NODE | null = node;
+  while (count-- > 0) {
+    sibling = sibling?.nextSibling ?? null;
+  }
+
+  if (!sibling) {
+    throw new Error("[vynn]: A compiled template sibling is missing from the DOM.");
+  }
+
+  if (import.meta.env.SSR) return sibling as E;
+  return (dynamicTemplateNodeResolver?.(sibling as Node) ?? sibling) as E;
+}
+
+/**
+ * Resolves a template slot and claims the static prefix before it. Returning
+ * the marker lets generated sibling walks continue from marker.nextSibling,
+ * after any server-rendered dynamic children that precede it.
+ */
+export function $claimTemplateAnchor(parent: Element | SSR_ELEMENT, id: string): Node | SSR_NODE {
+  if (import.meta.env.SSR) {
+    const serverParent = parent as SSR_ELEMENT;
+    const anchor = serverParent.children.find(
+      (child): child is SSR_COMMENT =>
+        child instanceof SSR_COMMENT && getTemplateAnchorId(child.value) === id,
+    );
+
+    if (anchor) return anchor;
+    throw new Error("[vynn]: Missing dynamic child anchor " + JSON.stringify(id) + ".");
+  }
+
+  const element = parent as Element;
+  const hydrated = dynamicTemplateAnchorResolver?.(element, id);
+  if (hydrated) return hydrated;
+
+  const marker = getTemplateAnchorMarker(id);
+  let child = element.firstChild;
+
+  while (child) {
+    if (child.nodeType === Node.COMMENT_NODE && (child as Comment).data === marker) {
+      return child;
+    }
+
+    child = child.nextSibling;
+  }
+
+  throw new Error("[vynn]: Missing dynamic child anchor " + JSON.stringify(marker) + ".");
+}
+
+/** Completes remaining static hydration claims after the template bindings. */
+export function $finishTemplate(root: Element | SSR_ELEMENT): void {
+  if (import.meta.env.SSR) return;
+  dynamicTemplateFinisher?.(root as Element);
 }

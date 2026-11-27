@@ -39,7 +39,9 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "bench:runtime": "vite build --config vite.bench.config.ts && vitest bench --config vitest.bench.config.ts --run benchmarks/runtime.bench.ts",
+    "test:memory": "vitest run tests/lazy-hydration.test.ts tests/store-memory-lifecycle.test.ts"
   },
   "devDependencies": {
     "@types/node": "^26.6.3",

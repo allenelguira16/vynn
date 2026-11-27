@@ -7,16 +7,17 @@ import {
   TEXT_SSR_SEPARATOR,
   RAW_HTML_SSR_ATTRIBUTE,
 } from "../const";
-import {
-  ASYNC_OWNER_ID_RESERVATIONS_KEY,
-  getAsyncOwnerIDReservations,
-  getAsyncValues,
-} from "../context/async-context";
-import { getErrorBoundaryValues } from "../context/error-boundary-context";
-import { getRenderMode } from "../context/render-mode";
+import { getAsyncResourceValues } from "../runtime/async/runtime";
+import { getErrorBoundaryValues } from "../context/error-boundary";
 import { assertSafeAttributeName } from "../render/attribute-name";
-import { SSR_ELEMENT, SSR_TEXT } from "../render/resolve-node";
-import { serializeServerFunctionValue } from "../server-functions/serialization";
+import {
+  SSR_COMMENT,
+  SSR_ELEMENT,
+  SSR_ERROR_BOUNDARY,
+  type SSR_NODE,
+  SSR_TEXT,
+} from "../render/resolve-node";
+import { serializeAsyncHydrationValue } from "../runtime/async/serialization";
 import { escapeHtml } from "../utils/escape-html";
 
 const voidElements = new Set([
@@ -41,6 +42,61 @@ export function renderText(node: SSR_TEXT) {
 
 export function renderErrorBoundaryRange(id: number, html: string): string {
   return `<!--${ERROR_BOUNDARY_START_SSR_MARKER}:${id}-->${html}<!--${ERROR_BOUNDARY_END_SSR_MARKER}:${id}-->`;
+}
+
+export function flattenSSRNodes(nodes: SSR_NODE[]): SSR_NODE[] {
+  return nodes.flat(Infinity).filter(Boolean) as SSR_NODE[];
+}
+
+export function renderComment(node: SSR_COMMENT): string {
+  return "<!--" + node.value + "-->";
+}
+
+export function renderElement(node: SSR_ELEMENT, children: string): string {
+  return renderNode({
+    type: node.type,
+    attributes: node.attributes,
+    innerHTML: node.innerHTML,
+    children,
+  });
+}
+
+export function renderErrorBoundarySync(
+  node: SSR_ERROR_BOUNDARY,
+  resolve: (nodes: SSR_NODE[]) => string,
+): string {
+  if (node.error) {
+    return renderErrorBoundaryRange(node.id, resolve(node.fallback()));
+  }
+
+  try {
+    return renderErrorBoundaryRange(node.id, resolve(node.children()));
+  } catch (error) {
+    if (!(error instanceof Error) || node.errorBoundary?.(error) !== node) {
+      throw error;
+    }
+
+    return renderErrorBoundaryRange(node.id, resolve(node.fallback()));
+  }
+}
+
+export async function renderErrorBoundaryAsync(
+  node: SSR_ERROR_BOUNDARY,
+  resolve: (nodes: SSR_NODE[]) => Promise<string>,
+): Promise<string> {
+  if (node.error) {
+    return renderErrorBoundaryRange(node.id, await resolve(node.fallback()));
+  }
+
+  try {
+    return renderErrorBoundaryRange(node.id, await resolve(node.children()));
+  } catch (error) {
+    if (!(error instanceof Error) || node.errorBoundary?.(error) !== node) {
+      throw error;
+    }
+
+    return renderErrorBoundaryRange(node.id, await resolve(node.fallback()));
+  }
 }
 
 export function renderNode(props: {
@@ -99,8 +155,7 @@ export function hasNoHTMLTags(str: string) {
 }
 
 export function renderAsyncUtilities() {
-  const asyncValues = getAsyncValues();
-  const ownerIDReservations = getAsyncOwnerIDReservations();
+  const asyncValues = getAsyncResourceValues();
   const errorValues = getErrorBoundaryValues();
 
   // Empty hydration registries need no client bootstrap script. The client
@@ -108,7 +163,6 @@ export function renderAsyncUtilities() {
   // an otherwise empty inline script.
   if (
     (!asyncValues || Object.keys(asyncValues).length === 0) &&
-    ownerIDReservations.length === 0 &&
     (!errorValues || errorValues.length === 0)
   ) {
     return "";
@@ -117,17 +171,12 @@ export function renderAsyncUtilities() {
   const encodedAsyncValues: Record<string, unknown> = Object.fromEntries(
     Object.entries(asyncValues ?? {}).map(([key, value]) => [
       key,
-      serializeServerFunctionValue(value),
+      serializeAsyncHydrationValue(value),
     ]),
   );
 
-  if (ownerIDReservations.length > 0) {
-    encodedAsyncValues[ASYNC_OWNER_ID_RESERVATIONS_KEY] = ownerIDReservations;
-  }
-
   const values = {
     async: serializeForInlineScript(encodedAsyncValues),
-    mode: serializeForInlineScript(getRenderMode()),
     error: serializeForInlineScript(errorValues),
   };
   return `<script>${ASYNC_DATA_SSR_KEY}=${values.async};${ERROR_BOUNDARY_DATA_SSR_KEY}=${values.error};document.currentScript.remove();</script>`.replaceAll(

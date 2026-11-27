@@ -1,4 +1,5 @@
-import { getOwner } from "./owner";
+import { bindRuntimeContext } from "../runtime/context";
+import { getOwner, getOwnerCleanups } from "./owner";
 
 export type DestroyFn = () => void;
 
@@ -16,5 +17,5 @@ export function onDestroy(callback: DestroyFn): void {
     throw new Error("onDestroy must be called within a component");
   }
 
-  owner.cleanups.push(callback);
+  getOwnerCleanups(owner).push(bindRuntimeContext(callback));
 }

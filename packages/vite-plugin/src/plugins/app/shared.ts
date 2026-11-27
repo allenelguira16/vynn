@@ -2,6 +2,7 @@ export type ResolvedEntries = {
   appSpecifier: string | null;
   clientFile: string | null;
   serverFile: string | null;
+  middlewareFile: string | null;
   clientInput: string;
   clientIsGenerated: boolean;
   serverIsGenerated: boolean;

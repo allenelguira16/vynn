@@ -1,10 +1,11 @@
 import type { IncomingMessage, OutgoingHttpHeaders, ServerResponse } from "node:http";
 
-import { once } from "node:events";
+import type { Transform } from "node:stream";
 import { isAbsolute, relative, sep } from "node:path";
-import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { constants as zlibConstants, createBrotliCompress, createGzip } from "node:zlib";
+
+import { toWebRequest } from "vynn/server/node";
 
 import { VYNN_SSR_CSS_URL } from "../ssr-css.ts";
 import { CLIENT_ENTRY_ID, type ResolvedEntries } from "./shared.ts";
@@ -110,23 +111,7 @@ export function isWebResponse(value: unknown): value is Response {
 }
 
 export function createWebRequest(req: IncomingMessage, requestUrl: string): Request {
-  const encrypted = Boolean((req.socket as { encrypted?: boolean }).encrypted);
-  const origin = `${encrypted ? "https" : "http"}://${req.headers.host ?? "localhost"}`;
-  const headers = new Headers();
-  for (const [key, value] of Object.entries(req.headers)) {
-    if (Array.isArray(value)) {
-      for (const item of value) headers.append(key, item);
-    } else if (value !== undefined) {
-      headers.set(key, value);
-    }
-  }
-  const method = req.method ?? "GET";
-  const init: RequestInit & { duplex?: "half" } = { method, headers };
-  if (method !== "GET" && method !== "HEAD") {
-    init.body = Readable.toWeb(req) as ReadableStream<Uint8Array>;
-    init.duplex = "half";
-  }
-  return new Request(new URL(requestUrl, origin), init);
+  return toWebRequest(req, { url: requestUrl });
 }
 
 export type ResponseCompressionEncoding = "br" | "gzip";
@@ -216,57 +201,170 @@ function appendVaryHeader(res: ServerResponse, value: string): void {
   res.setHeader("Vary", [...entries, value].join(", "));
 }
 
+function waitForCompressorDrain(
+  compressor: Transform,
+  res: ServerResponse,
+): Promise<void> {
+  if (compressor.destroyed || res.destroyed) return Promise.resolve();
+
+  return new Promise<void>((resolveDrain, rejectDrain) => {
+    let settled = false;
+    const cleanup = () => {
+      compressor.off("drain", onDrain);
+      compressor.off("close", onClose);
+      compressor.off("error", onError);
+      res.off("close", onResponseClose);
+    };
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      if (error) rejectDrain(error);
+      else resolveDrain();
+    };
+    const onDrain = () => finish();
+    const onClose = () => finish();
+    const onResponseClose = () => finish();
+    const onError = (error: Error) => finish(error);
+
+    compressor.once("drain", onDrain);
+    compressor.once("close", onClose);
+    compressor.once("error", onError);
+    res.once("close", onResponseClose);
+
+    if (compressor.destroyed || res.destroyed) finish();
+  });
+}
+
+type FlushableTransform = Transform & {
+  flush(kind: number, callback: (error?: Error | null) => void): void;
+};
+
+function flushCompressor(
+  compressor: FlushableTransform,
+  res: ServerResponse,
+  flushMode: number,
+): Promise<void> {
+  if (compressor.destroyed || res.destroyed) return Promise.resolve();
+
+  return new Promise<void>((resolveFlush, rejectFlush) => {
+    let settled = false;
+    const cleanup = () => {
+      compressor.off("close", onClose);
+      compressor.off("error", onError);
+      res.off("close", onResponseClose);
+    };
+    const finish = (error?: Error | null) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      if (error) rejectFlush(error);
+      else resolveFlush();
+    };
+    const onClose = () => finish();
+    const onResponseClose = () => finish();
+    const onError = (error: Error) => finish(error);
+    const onFlush = (error?: Error | null) => finish(error);
+
+    compressor.once("close", onClose);
+    compressor.once("error", onError);
+    res.once("close", onResponseClose);
+
+    if (compressor.destroyed || res.destroyed) {
+      finish();
+      return;
+    }
+
+    try {
+      compressor.flush(flushMode, onFlush);
+    } catch (error) {
+      finish(error instanceof Error ? error : new Error(String(error)));
+    }
+  });
+}
+
 async function writeCompressedResponse(
   res: ServerResponse,
   body: ReadableStream<Uint8Array>,
   encoding: ResponseCompressionEncoding,
 ): Promise<void> {
-  const compressor =
+  const compressor = (
     encoding === "br"
       ? createBrotliCompress({
           params: { [zlibConstants.BROTLI_PARAM_QUALITY]: 4 },
         })
-      : createGzip();
+      : createGzip()
+  ) as FlushableTransform;
   const reader = body.getReader();
   const flushMode =
     encoding === "br" ? zlibConstants.BROTLI_OPERATION_FLUSH : zlibConstants.Z_SYNC_FLUSH;
 
+  let clientDisconnected = false;
+  let input: Promise<void> | undefined;
+  let output: Promise<void> | undefined;
+
   const cancelOnClose = () => {
     if (res.writableFinished) return;
+
+    clientDisconnected = !res.errored;
     void reader.cancel().catch(() => undefined);
-    compressor.destroy(new Error("Client disconnected during compressed Vynn SSR."));
+
+    // A disconnected client is an expected cancellation, not a compressor
+    // failure. Destroy without an error so it cannot become an unhandled
+    // 'error' event after pipeline() has already settled.
+    if (!compressor.destroyed) compressor.destroy();
   };
+
   res.once("close", cancelOnClose);
 
-  // Vite preview's compression middleware wraps this response before Vynn's
-  // post-hook runs. Content-Encoding is set before the first write so Vite
-  // passes this already-compressed stream through instead of compressing it
-  // again or making a decision from the first small SSR chunk.
-  const output = pipeline(compressor, res);
-  const input = (async () => {
-    while (!res.destroyed) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      if (!compressor.write(value)) await once(compressor, "drain");
-
-      // Flush each SSR chunk so the initial shell reaches the client without
-      // waiting for the compressor's internal buffer to fill.
-      await new Promise<void>((resolveFlush) => {
-        compressor.flush(flushMode, resolveFlush);
-      });
+  try {
+    // The response can be closed while the SSR handler is still producing its
+    // Web Response. Do not attempt to pipe a compressor into a dead socket.
+    if (res.destroyed || res.writableEnded) {
+      clientDisconnected = res.destroyed && !res.writableFinished && !res.errored;
+      await reader.cancel().catch(() => undefined);
+      return;
     }
 
-    if (!res.destroyed) compressor.end();
-  })();
+    // Vite's preview compression middleware wraps this response before Vynn's
+    // post-hook runs. Content-Encoding is set before the first write so Vite
+    // passes this already-compressed stream through instead of compressing it
+    // again or making a decision from the first small SSR chunk.
+    output = pipeline(compressor, res);
+    input = (async () => {
+      while (!res.destroyed && !res.writableEnded && !compressor.destroyed) {
+        const { done, value } = await reader.read();
+        if (done || res.destroyed || res.writableEnded || compressor.destroyed) break;
 
-  try {
+        if (!compressor.write(value)) {
+          await waitForCompressorDrain(compressor, res);
+          if (res.destroyed || res.writableEnded || compressor.destroyed) break;
+        }
+
+        // Flush each SSR chunk so the initial shell reaches the client without
+        // waiting for the compressor's internal buffer to fill.
+        await flushCompressor(compressor, res, flushMode);
+      }
+
+      if (!res.destroyed && !res.writableEnded && !compressor.destroyed) compressor.end();
+    })();
+
     await Promise.all([input, output]);
   } catch (error) {
+    // Reloading or navigating away closes the response while SSR is streaming.
+    // Stop the source and compressor, but do not turn that expected abort into
+    // an application error or a process-level stream error.
+    if (!res.errored && (clientDisconnected || (res.destroyed && !res.writableFinished))) {
+      await reader.cancel().catch(() => undefined);
+      if (!compressor.destroyed) compressor.destroy();
+      await Promise.allSettled([input ?? Promise.resolve(), output ?? Promise.resolve()]);
+      return;
+    }
+
     const cause = error instanceof Error ? error : new Error(String(error));
-    compressor.destroy(cause);
+    if (!compressor.destroyed) compressor.destroy(cause);
     await reader.cancel(cause).catch(() => undefined);
-    await Promise.allSettled([input, output]);
+    await Promise.allSettled([input ?? Promise.resolve(), output ?? Promise.resolve()]);
     if (!res.destroyed) res.destroy(cause);
     throw cause;
   } finally {
@@ -289,6 +387,14 @@ export async function writeResponse(
   options: WriteResponseOptions = {},
 ): Promise<void> {
   const compression = getResponseCompression(response, options.acceptEncoding);
+
+  // Request cancellation can race with SSR completion. The response body still
+  // belongs to this writer, so cancel it without touching an already-closed
+  // ServerResponse.
+  if (res.destroyed || res.writableEnded) {
+    await response.body?.cancel().catch(() => undefined);
+    return;
+  }
 
   res.statusCode = response.status;
 
@@ -326,13 +432,13 @@ export async function writeResponse(
   res.once("close", cancelOnClose);
 
   try {
-    while (!res.destroyed) {
+    while (!res.destroyed && !res.writableEnded) {
       const { done, value } = await reader.read();
-      if (done) break;
+      if (done || res.destroyed || res.writableEnded) break;
       const canContinue = res.write(value);
 
       if (!canContinue) {
-        await new Promise<void>((resolveDrain, reject) => {
+        await new Promise<void>((resolveDrain, rejectDrain) => {
           const cleanup = () => {
             res.off("drain", onDrain);
             res.off("close", onClose);
@@ -342,21 +448,29 @@ export async function writeResponse(
             cleanup();
             resolveDrain();
           };
+          // A closed response is a normal cancellation, not an SSR failure.
           const onClose = () => {
             cleanup();
-            reject(new Error("Client disconnected during Vynn SSR."));
+            resolveDrain();
           };
           const onError = (error: Error) => {
             cleanup();
-            reject(error);
+            rejectDrain(error);
           };
           res.once("drain", onDrain);
           res.once("close", onClose);
           res.once("error", onError);
+
+          if (res.destroyed || res.writableEnded) {
+            cleanup();
+            resolveDrain();
+          }
         });
       }
     }
-    if (!res.destroyed) res.end();
+    if (!res.destroyed && !res.writableEnded) res.end();
+  } catch (error) {
+    if (!res.destroyed && !res.writableEnded) throw error;
   } finally {
     res.off("close", cancelOnClose);
     if (res.destroyed) await reader.cancel().catch(() => undefined);

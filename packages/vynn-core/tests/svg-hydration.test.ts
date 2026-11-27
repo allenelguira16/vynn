@@ -12,7 +12,7 @@ import {
   disposeOwner,
   runWithOwner,
 } from "../src/life-cycle/owner";
-import { $state } from "../src/reactivity/$state";
+import { $state } from "../src/reactivity/state";
 import { $attr } from "../src/render/$attr";
 import { $for } from "../src/render/$for";
 import { $if } from "../src/render/$if";

@@ -9,6 +9,7 @@ import { Await } from "../src/components/await";
 import { Catch } from "../src/components/catch";
 import { lazy } from "../src/components/lazy";
 import { getOwner } from "../src/life-cycle/owner";
+import { onDestroy } from "../src/life-cycle/on-destroy";
 import { $state } from "../src/reactivity/state";
 
 afterEach(() => {
@@ -31,8 +32,13 @@ async function flushUpdates() {
 function createRefreshScenario(suspense: boolean) {
   const source = $state(1);
   const requests = new Map<number, ReturnType<typeof deferred<string>>>();
+  let pageInstances = 0;
+  let pageDestroyed = 0;
 
   function Page(): JSX.Element {
+    pageInstances++;
+    onDestroy(() => pageDestroyed++);
+
     const data = $state(async () => {
       const id = source.value;
       const request = deferred<string>();
@@ -57,7 +63,18 @@ function createRefreshScenario(suspense: boolean) {
     host,
   );
 
-  return { host, requests, source, unmount };
+  return {
+    host,
+    requests,
+    source,
+    unmount,
+    get pageInstances() {
+      return pageInstances;
+    },
+    get pageDestroyed() {
+      return pageDestroyed;
+    },
+  };
 }
 
 describe("client-only boundary identity", () => {
@@ -115,6 +132,26 @@ describe("client-only boundary identity", () => {
 });
 
 describe("Await with lazy components", () => {
+  it("does not schedule another preload after the lazy module is resolved", async () => {
+    let loads = 0;
+    const LazyPage = lazy(async () => {
+      loads++;
+      return { Page: () => <p>Loaded page</p> };
+    });
+    const preloadable = LazyPage as typeof LazyPage & {
+      preload?: () => Promise<unknown> | undefined;
+    };
+
+    const pending = preloadable.preload?.();
+    expect(pending).toBeInstanceOf(Promise);
+
+    await pending;
+
+    expect(loads).toBe(1);
+    expect(preloadable.preload?.()).toBeUndefined();
+    expect(loads).toBe(1);
+  });
+
   it("shows the fallback while a lazy component loads during client-side rendering", async () => {
     const module = deferred<{ Page: () => JSX.Element }>();
     const LazyPage = lazy(() => module.promise, "Page");
@@ -178,7 +215,8 @@ describe("Await with lazy components", () => {
 
 describe("Await suspense mode", () => {
   it("shows the fallback again while an async child refreshes", async () => {
-    const { host, requests, source, unmount } = createRefreshScenario(true);
+    const scenario = createRefreshScenario(true);
+    const { host, requests, source, unmount } = scenario;
 
     try {
       expect(host.textContent).toBe("Loading page");
@@ -192,6 +230,8 @@ describe("Await suspense mode", () => {
       await flushUpdates();
 
       expect(host.textContent).toBe("Loading page");
+      expect(scenario.pageInstances).toBe(1);
+      expect(scenario.pageDestroyed).toBe(0);
 
       requests.get(2)!.resolve("Second result");
       await flushUpdates();

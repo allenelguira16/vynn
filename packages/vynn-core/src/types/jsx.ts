@@ -3,7 +3,12 @@ import { JSXIntrinsicElements } from "./intrinsic-elements";
 export namespace JSX {
   export type Element = false | undefined | null | string | number | Node | Element[];
 
-  export type IntrinsicElements = JSXIntrinsicElements;
+  // IntrinsicAttributes augments component props, but native JSX tags are checked
+  // against IntrinsicElements directly. Add the common JSX-only attributes here
+  // without making them part of the DOM attribute types.
+  export type IntrinsicElements = {
+    [Tag in keyof JSXIntrinsicElements]: JSXIntrinsicElements[Tag] & Attributes;
+  };
 
   export interface ElementChildrenAttribute {
     children: object;
@@ -14,6 +19,10 @@ export namespace JSX {
   }
 
   export interface Attributes {
+    key?: string | number;
+  }
+
+  export interface IntrinsicAttributes {
     key?: string | number;
   }
 

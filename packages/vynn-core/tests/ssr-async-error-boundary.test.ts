@@ -205,7 +205,7 @@ describe("SSR async Catch", () => {
     // The rejected resource correctly has no fulfilled value in $AD, but its
     // allocated ID is reserved so the following sibling keeps owner ID 01.
     expect(asyncValues).not.toHaveProperty("000");
-    expect(asyncValues["01"]).toEqual(["string", "after boundary"]);
+    expect(asyncValues["01"]).toBe("after boundary");
     expect(errorBoundaries[0]).toMatchObject({
       status: "fallback",
       ownerIDs: { "00": 1 },
@@ -278,8 +278,8 @@ describe("SSR async Catch", () => {
 
     // Async resources created inside the boundary must keep the IDs they
     // receive during normal component traversal, before following siblings.
-    expect(values["000"]).toEqual(["string", "inside boundary"]);
-    expect(values["01"]).toEqual(["string", "after boundary"]);
+    expect(values["000"]).toBe("inside boundary");
+    expect(values["01"]).toBe("after boundary");
   });
 });
 

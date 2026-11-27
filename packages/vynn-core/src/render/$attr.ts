@@ -1,7 +1,9 @@
 import type { SSR_ELEMENT } from "./resolve-node";
 
-import { isHydrationClaimActive } from "../client/hydration";
-import { diagnoseHydrationAttribute } from "../client/hydration-diagnostics";
+import {
+  isHydrationClaimActive,
+  diagnoseHydrationAttribute,
+} from "../client/hydration-runtime";
 
 import { $renderEffect } from "../reactivity/effect";
 import { assertSafeAttributeName } from "./attribute-name";
@@ -259,7 +261,7 @@ export function setDOMAttributeValue<E extends Element>(
       next != null &&
       !rawHTMLContentElements.has(element) &&
       !isHydrationClaimActive() &&
-      element.childNodes.length > 0
+      element.firstChild !== null
     ) {
       throw new Error("[vynn]: An element cannot have both the html prop and children.");
     }

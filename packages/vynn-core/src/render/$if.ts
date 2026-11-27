@@ -1,14 +1,17 @@
 import type { JSX } from "../jsx-runtime";
 
-import { isHydrating } from "../client/hydration";
-
+import { isHydrating } from "../client/hydration-runtime";
+import { NotReadyError } from "../reactivity/async/not-ready-error";
 import { $renderEffect } from "../reactivity/effect";
 import { untrack } from "../reactivity/effect";
-import { NotReadyError } from "../reactivity/not-ready-error";
 import { markParked, unmarkParked } from "./$cmpnt.util";
 import { getCurrentDOMNamespace, withDOMNamespace } from "./namespace";
 import { resolveNode, resolveSSRChild } from "./resolve-node";
 
+/**
+ * Inactive branches are disposed by default. Async boundaries may opt into
+ * keeping their content alive while a fallback is displayed.
+ */
 type IfBranch = {
   start: Comment;
   end: Comment;
@@ -21,6 +24,7 @@ export function $if(
   condition: () => unknown,
   consequent: () => JSX.Element,
   alternate?: () => JSX.Element,
+  options: { keepAlive?: boolean } = {},
 ): JSX.Element {
   const namespace = getCurrentDOMNamespace();
   const renderInNamespace = <T>(callback: () => T): T => withDOMNamespace(namespace, callback);
@@ -42,7 +46,8 @@ export function $if(
   }
 
   const marker = document.createTextNode("");
-  const branches = new Map<boolean, IfBranch>();
+  const keepAlive = options.keepAlive ?? false;
+  const branches = keepAlive ? new Map<boolean, IfBranch>() : undefined;
 
   function isShortCircuitText(value: unknown): value is string | number {
     return typeof value === "string" || typeof value === "number";
@@ -98,7 +103,7 @@ export function $if(
       shortCircuitText,
     };
 
-    branches.set(key, branch);
+    branches?.set(key, branch);
 
     return branch;
   }
@@ -155,7 +160,7 @@ export function $if(
     while (node) {
       const next: Node | null = node.nextSibling;
 
-      markParked(node);
+      if (keepAlive) markParked(node);
 
       branch.fragment.appendChild(node);
 
@@ -181,8 +186,14 @@ export function $if(
       return;
     }
 
-    for (const node of [...branch.fragment.childNodes]) {
-      unmarkParked(node);
+    if (keepAlive) {
+      let node = branch.fragment.firstChild;
+
+      while (node) {
+        const next = node.nextSibling;
+        unmarkParked(node);
+        node = next;
+      }
     }
 
     parent.insertBefore(branch.fragment, marker);
@@ -222,7 +233,7 @@ export function $if(
 
     // Resolve/create before modifying the active branch.
     // A thrown NotReadyError leaves the current branch untouched.
-    const nextBranch = branches.get(nextKey) ?? createBranch(nextKey, nextValue);
+    const nextBranch = branches?.get(nextKey) ?? createBranch(nextKey, nextValue);
 
     if (!nextKey && !alternate) {
       updateShortCircuitValue(nextBranch, nextValue);

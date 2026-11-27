@@ -11,6 +11,7 @@ type ServerFunctionDevMiddlewareOptions = {
   exposeErrors?: boolean;
   isDevelopment: boolean;
   refsById: Map<string, ServerFunctionReference>;
+  middlewareModuleId?: string | null;
 };
 
 type ServerFunctionImplementation = (...args: unknown[]) => unknown;
@@ -46,6 +47,7 @@ export function registerServerFunctionDevMiddleware(
     exposeErrors,
     isDevelopment,
     refsById,
+    middlewareModuleId,
   }: ServerFunctionDevMiddlewareOptions,
 ): void {
   const getSsrImport = (): ((id: string) => Promise<Record<string, unknown>>) => {
@@ -72,14 +74,15 @@ export function registerServerFunctionDevMiddleware(
   let handlerPromise: Promise<ServerFunctionHandler> | undefined;
 
   const getHandler = (): Promise<ServerFunctionHandler> => {
-    handlerPromise ??= importSsr("vynn/server-functions/server").then((module) => {
+    handlerPromise ??= (async () => {
+      const module = await importSsr("vynn/server-functions/server");
       const createHandler = module.createServerFunctionHandler;
       if (typeof createHandler !== "function") {
         throw new Error("[Vynn use server] The Vynn server-function runtime is unavailable.");
       }
 
       const handlerFactory = createHandler as ServerFunctionHandlerFactory;
-      return handlerFactory({
+      const handler = handlerFactory({
         endpoint,
         maxRequestBytes,
         allowedOrigins,
@@ -96,17 +99,52 @@ export function registerServerFunctionDevMiddleware(
           const implementation = moduleExports[reference.exportName];
           if (typeof implementation !== "function") {
             throw new Error(
-              `[Vynn use server] The transformed module did not export implementation ${reference.exportName}.`,
+              "[Vynn use server] The transformed module did not export implementation " +
+                reference.exportName +
+                ".",
             );
           }
 
           return implementation as ServerFunctionImplementation;
         },
       });
-    });
+
+      if (!middlewareModuleId) return handler;
+
+      const [middlewareModule, serverModule] = await Promise.all([
+        importSsr(middlewareModuleId),
+        importSsr("vynn/server"),
+      ]);
+      const middleware = middlewareModule.default ?? middlewareModule.middleware;
+      if (middleware === undefined) {
+        throw new TypeError(
+          "[Vynn] src/middleware.ts must default-export a middleware function or array.",
+        );
+      }
+
+      const createMiddlewareHandler = serverModule.createMiddlewareHandler;
+      if (typeof createMiddlewareHandler !== "function") {
+        throw new Error("[Vynn] The request middleware runtime is unavailable.");
+      }
+
+      const compose = createMiddlewareHandler as (
+        middleware: unknown,
+        handler: (request: Request) => Promise<Response | null>,
+      ) => ServerFunctionHandler;
+      return compose(middleware, handler);
+    })();
 
     return handlerPromise;
   };
+
+  if (middlewareModuleId) {
+    const normalizedMiddlewareId = middlewareModuleId.replace(/\\/g, "/");
+    server.watcher.on("change", (file) => {
+      if (file.replace(/\\/g, "/") === normalizedMiddlewareId) {
+        handlerPromise = undefined;
+      }
+    });
+  }
 
   server.middlewares.use((incoming, outgoing, next) => {
     const requestUrl = incoming.url ?? "/";

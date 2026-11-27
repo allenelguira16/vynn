@@ -74,19 +74,19 @@ export default function PokeDex() {
             Array.from({ length: 20 })
               .map((_, i) => i + 1)
               .map((number) => (
-                <tr>
+                <tr key={number}>
                   <td colSpan={3} class="h-6 text-center">
                     {number === 10 ? "loading..." : <>&nbsp;</>}
                   </td>
                 </tr>
               ))}
           {!pokeDex.isLoading &&
-            pokeDex.pokeDexList.map(({ name, url }, index) => (
-              <tr>
+            pokeDex.pokeDexList.map((props, index) => (
+              <tr key={props.name}>
                 <td class="w-1/3 text-center">{index + 1}</td>
-                <td class="w-1/3 text-center truncate">{name}</td>
-                <td class="w-1/3 text-center truncate" onClick={showUrlOnClick(url)}>
-                  {url}
+                <td class="w-1/3 text-center truncate">{props.name}</td>
+                <td class="w-1/3 text-center truncate" onClick={showUrlOnClick(props.url)}>
+                  {props.url}
                 </td>
               </tr>
             ))}

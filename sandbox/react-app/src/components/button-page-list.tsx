@@ -12,6 +12,7 @@ const pages = [
   { path: "/stacked-suspense", label: "Stacked Suspense" },
   { path: "/poke-dex", label: "PokeDex List" },
   { path: "/poke-dex-await", label: "PokeDex List with Await" },
+  { path: "/rows", label: "1,000 Rows" },
   { path: "/redirect", label: "Redirect" },
   { path: "/params/1?id=1", label: "Params" },
 ];

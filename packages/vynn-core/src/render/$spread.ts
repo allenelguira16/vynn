@@ -1,5 +1,6 @@
+import { bindRuntimeContext } from "../runtime/context";
 
-import { getOwner, runWithOwner } from "../life-cycle/owner";
+import { getOwner, getOwnerCleanups, runWithOwner } from "../life-cycle/owner";
 import { $renderEffect } from "../reactivity/effect";
 import { $attr, setDOMAttributeValue, type AttributeValue } from "./$attr";
 
@@ -101,13 +102,13 @@ export function $spread<E extends Element, P extends Record<string, any>>(
       listener: (() => undefined) as EventListener,
     };
 
-    binding.listener = (eventObject: Event) => {
+    binding.listener = bindRuntimeContext((eventObject: Event) => {
       if (typeof binding.handler !== "function") return;
 
       runWithOwner(owner, () => {
         (binding.handler as (event: Event) => void)(eventObject);
       });
-    };
+    });
 
     eventBindings.set(name, binding);
     element.addEventListener(binding.eventName, binding.listener, binding.capture);
@@ -124,7 +125,7 @@ export function $spread<E extends Element, P extends Record<string, any>>(
     clearRef();
   };
 
-  owner?.cleanups.push(disposeSpread);
+  if (owner) getOwnerCleanups(owner).push(disposeSpread);
 
   $renderEffect(() => {
     const next = props() ?? ({} as P);

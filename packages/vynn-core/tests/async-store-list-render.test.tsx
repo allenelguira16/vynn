@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { renderToDOM } from "../src/client/render-to-dom";
 import { Await } from "../src/components/await";
 import { $computed } from "../src/reactivity/computed";
-import { isPending } from "../src/reactivity/pending";
+import { isPending } from "../src/reactivity/async/pending";
 import { $state } from "../src/reactivity/state";
 import { $store } from "../src/reactivity/store";
 import { renderToServer } from "../src/server/render-to-server";
@@ -153,7 +153,7 @@ describe("async store list rendering", () => {
       return (
         <Await fallback={<p>Loading</p>}>
           <ul>
-            {pokedex.results.map(({ name, url }, index) => (
+            {pokedex.results.map(({ name, url }) => (
               <Row name={name} url={url} />
             ))}
           </ul>
@@ -274,7 +274,7 @@ describe("async store list rendering", () => {
       return (
         <Await fallback={<p>Loading</p>}>
           <ul>
-            {pokedex.results.map(({ name, url }, index) => (
+            {pokedex.results.map(({ name, url }) => (
               <Row name={name} url={url} />
             ))}
           </ul>
