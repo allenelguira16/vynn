@@ -1,4 +1,4 @@
-import { $effect, $state, $store } from "vynn";
+import { $state, $store, onDestroy, onMount } from "vynn";
 
 import { Template } from "../../components/template";
 import { name } from "../../utils";
@@ -7,7 +7,6 @@ import { name } from "../../utils";
 type SortDirection = "asc" | "desc";
 
 export default function Dropdowns() {
-  console.log("Dropdown rerender"); // log once
   const dropdownStore = $store({
     showDropdown: true,
     sortDirection: "asc" as SortDirection,
@@ -47,17 +46,13 @@ export default function Dropdowns() {
     },
   });
 
-  $effect(() => {
-    // console.log(dropdownStore.numbers);
+  onMount(() => {
+    console.log("Dropdowns onMount");
   });
 
-  // onMount(async () => {
-  //   console.log("Dropdowns onMount");
-  // });
-
-  // onDestroy(async () => {
-  //   console.log("Dropdowns onDestroy");
-  // });
+  onDestroy(() => {
+    console.log("Dropdowns onDestroy");
+  });
 
   return (
     <Template title="Dropdown List">
@@ -104,50 +99,38 @@ type TDropdownListProps = {
 };
 
 const DropdownList = ({ dropdowns: { numbers } }: TDropdownListProps) => {
-  console.log("DropdownList rerender"); // log twice
-  // onMount(async () => {
-  //   console.log("DropdownList onMount");
-  // });
+  onMount(() => {
+    console.log("DropdownList onMount");
+  });
 
-  // onDestroy(async () => {
-  //   console.log("DropdownList onDestroy");
-  // });
-
-  // console.log("hey");
+  onDestroy(() => {
+    console.log("DropdownList onDestroy");
+  });
 
   return (
     <div class="flex gap-2 flex-col lg:flex-row">
-      {/* {loop(dropdowns.numbers).each((number) => (
-        <Dropdown number={number} />
-      ))} */}
       {numbers.map((number) => (
-        <Dropdown number={number} key={number} />
+        <Dropdown number={number} />
       ))}
-      {/* {$for(
-        () => dropdowns.numbers,
-        (item) => (
-          <Dropdown number={item} />
-        ),
-      )} */}
     </div>
   );
 };
 
 const Dropdown = (props: { number: number }) => {
-  console.log("rerender"); // log thrice
+  console.log("rerender");
   const isOpen = $state(false);
 
   const handleToggle = () => {
     isOpen.value = !isOpen.value;
   };
 
-  // onMount(async () => {
-  //   console.log("Dropdown onMount");
-  // });
+  onMount(() => {
+    console.log("Dropdown onMount");
+  });
 
-  // onDestroy(async () => {
-  //   console.log("Dropdown onDestroy");
-  // });
+  onDestroy(() => {
+    console.log("Dropdown onDestroy");
+  });
 
   return (
     <>

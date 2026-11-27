@@ -6,15 +6,15 @@
   "license": "ISC",
   "author": "",
   "type": "module",
-  "main": "src/index.ts",
+  "main": "./dist/index.js",
   "scripts": {
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "build": "rolldown --config rolldown.config.ts --configLoader native"
   },
   "dependencies": {
     "@types/node": "^26.6.3",
     "oxc-parser": "^0.155.0",
-    "typescript": "^7.0.2",
     "vynn-compiler": "workspace:*"
   },
   "devDependencies": {
@@ -32,5 +32,6 @@
       "version": "^11.17.0",
       "onFail": "download"
     }
-  }
+  },
+  "types": "./dist/index.d.ts"
 }

@@ -3,9 +3,6 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "engines": {
-    "node": ">=22.12.0"
-  },
   "scripts": {
     "start": "vite",
     "dev": "vite",
@@ -30,5 +27,8 @@
     "tsx": "^4.23.15",
     "typescript": "^6.0.2",
     "vite": "^8.3.1"
+  },
+  "engines": {
+    "node": ">=22.12.0"
   }
 }
