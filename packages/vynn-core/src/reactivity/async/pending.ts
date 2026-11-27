@@ -1,11 +1,12 @@
 import { PendingReadError } from "./pending-error";
-import { node, track, notify, type Source } from "../graph";
+import { node, track, notify, untrack, type Source } from "../graph";
 
 type PendingRecord = {
   source: Source;
   value: boolean;
   getPromise?: () => Promise<unknown> | undefined;
   registerBoundary: boolean;
+  refresh?: () => void;
 };
 
 const accessors = new WeakMap<object, PendingRecord>();
@@ -15,8 +16,15 @@ export function registerPending(
   accessor: () => boolean,
   getPromise?: () => Promise<unknown> | undefined,
   registerBoundary = true,
+  refresh?: () => void,
 ): (notifyObservers?: boolean) => void {
-  const record: PendingRecord = { source: node(), value: accessor(), getPromise, registerBoundary };
+  const record: PendingRecord = {
+    source: node(),
+    value: accessor(),
+    getPromise,
+    registerBoundary,
+    refresh,
+  };
   accessors.set(value, record);
 
   return (notifyObservers = true) => {
@@ -41,6 +49,10 @@ export function isPendingInternal(value: object): boolean {
 export function isPending(value: object): boolean {
   const record = accessors.get(value);
   if (!record) return false;
+
+  // Hydration data may only become available when an ownerless resource is
+  // first consumed. Refresh before tracking/returning its cached pending state.
+  if (record.refresh) untrack(record.refresh);
 
   track(record.source);
 

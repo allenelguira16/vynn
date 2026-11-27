@@ -2,19 +2,26 @@ import { getOwner, getOwnerCleanups, runWithOwner } from "../life-cycle/owner";
 import { bindRuntimeContext } from "../runtime/context";
 import {
   allocateAsyncResourceID,
+  allocateAsyncResourceIDFor,
   hasAsyncResourceValue,
   readAsyncResourceValue,
   withAsyncHydrationProbe,
   withAsyncResourceScope,
   writeAsyncResourceValue,
+  getAsyncResourceReadOwner,
 } from "../runtime/async/runtime";
 import {
   batch,
+  createComputation,
+  execute,
+  hasDependency,
   isPromiseLike,
   node,
   notify,
+  runComputation,
   track,
   type Source,
+  assertNotInComputedGetter,
 } from "./graph";
 import { createAbortControllerSlot, settleAsync } from "./async/resource";
 import { PendingReadError } from "./async/pending-error";
@@ -28,6 +35,8 @@ function cell<T>(
   initial: T,
   initialized = true,
   onWrite: () => void = () => {},
+  beforeRead: () => void = () => {},
+  onRead: (value: T) => void = () => {},
 ): {
   state: State<T>;
   fail: (error: unknown) => void;
@@ -43,7 +52,7 @@ function cell<T>(
   let pendingPromise: Promise<unknown> | undefined;
 
   const setValue = (next: T, manual: boolean) => {
-    const changed = hasError || !hasValue || !Object.is(value, next);
+    const changed = hasError || !hasValue || pendingPromise !== undefined || !Object.is(value, next);
     if (!changed) return;
 
     value = next;
@@ -61,9 +70,11 @@ function cell<T>(
   const state = markRef<{ value: T }, T>(
     {
       get value() {
+        beforeRead();
         track(source);
         if (hasError) throw error;
         if (pendingPromise) throw new PendingReadError(pendingPromise, source);
+        onRead(value);
         return value;
       },
       set value(next: T) {
@@ -132,6 +143,8 @@ export function $state<T>(initial?: T): State<T>;
 export function $state<T>(
   input?: T | StateInitializer<T>,
 ): State<T> {
+  assertNotInComputedGetter("$state");
+
   if (typeof input !== "function") return cell(input as T).state;
 
   const owner = getOwner();
@@ -142,9 +155,23 @@ export function $state<T>(
   const resourceID = allocateAsyncResourceID();
   const controllerSlot = createAbortControllerSlot();
   let pending = false;
+  let asyncResource = false;
+  let hydrationRead = false;
+  let resourceReadOwner: ReturnType<typeof getOwner> = null;
+  let resourceReadID: string | undefined;
   let version = 0;
   let updatePending = (_notifyObservers?: boolean) => {};
   let ownerCleanup: (() => void) | undefined;
+  let resolveState = (_value: T) => {};
+  let state!: State<T>;
+  let reactive = false;
+  let computation: ReturnType<typeof createComputation> | undefined;
+
+  const disposeComputation = () => {
+    if (!computation) return;
+    computation.dispose();
+    computation = undefined;
+  };
 
   const releaseOwnerCleanup = () => {
     if (!owner || !ownerCleanup) return;
@@ -164,78 +191,179 @@ export function $state<T>(
       controllerSlot.abort();
       pending = false;
       updatePending(false);
+      disposeComputation();
       ownerCleanup = undefined;
     };
     getOwnerCleanups(owner).push(ownerCleanup);
   };
 
-  const { state, fail, setPending, getPendingPromise, resolve } = cell<T>(
+  const cellValue = cell<T>(
     undefined as T,
     false,
     () => {
+      version++;
       controllerSlot.abort();
       if (pending) {
-        version++;
         pending = false;
         updatePending();
       }
+      disposeComputation();
       releaseOwnerCleanup();
+    },
+    () => {
+      resourceReadOwner = getAsyncResourceReadOwner();
+      resourceReadID = undefined;
+      if (!asyncResource || !resourceReadOwner) return;
+
+      resourceReadID = resourceID ?? allocateAsyncResourceIDFor(state, resourceReadOwner);
+
+      if (
+        !import.meta.env.SSR &&
+        owner === null &&
+        !hydrationRead &&
+        resourceReadID !== undefined &&
+        hasAsyncResourceValue(resourceReadID, resourceReadOwner)
+      ) {
+        const hydrated = readAsyncResourceValue<T>(resourceReadID, resourceReadOwner);
+        if (hydrated.found) {
+          hydrationRead = true;
+          version++;
+          controllerSlot.abort();
+          pending = false;
+          resolveState(hydrated.value as T);
+          updatePending();
+        }
+      }
+    },
+    value => {
+      if (
+        import.meta.env.SSR &&
+        asyncResource &&
+        resourceReadID !== undefined &&
+        resourceReadOwner
+      ) {
+        writeAsyncResourceValue(resourceReadID, value, resourceReadOwner);
+      }
+    },
+  );
+  state = cellValue.state;
+  const { fail, setPending, getPendingPromise, resolve } = cellValue;
+  resolveState = resolve;
+
+  updatePending = registerPending(
+    state,
+    () => pending,
+    getPendingPromise,
+    true,
+    () => {
+      try {
+        void state.value;
+      } catch {
+        // Pending and failed values remain observable through normal value reads.
+      }
+      updatePending();
     },
   );
 
-  updatePending = registerPending(state, () => pending, getPendingPromise);
+  const stopIfUnobserved = (): void => {
+    if (computation?.dependencies !== undefined) return;
+    disposeComputation();
+    releaseOwnerCleanup();
+  };
 
-  // Recreate nested resource slots without repeating async side effects,
-  // then use the server's resolved one-shot value.
-  if (
-    !import.meta.env.SSR &&
-    resourceID !== undefined &&
-    hasAsyncResourceValue(resourceID, owner)
-  ) {
-    const hydrated = readAsyncResourceValue<T>(resourceID, owner);
-
-    if (hydrated.found) {
-      const probeController = new AbortController();
-
-      try {
-        const probeResult = runWithOwner(owner, () =>
-          withAsyncResourceScope(resourceID, () =>
-            withAsyncHydrationProbe(() =>
-              (input as StateInitializer<T>)(probeController.signal),
-            ),
-          ),
-        );
-
-        if (isPromiseLike<T>(probeResult)) {
-          void Promise.resolve(probeResult).catch(() => {});
-        }
-      } catch {
-        // The serialized result remains authoritative if probing suspends.
-      } finally {
-        probeController.abort();
-      }
-
-      resolve(hydrated.value as T);
-      return state;
+  const executeInitializer = (signal: AbortSignal): T | PromiseLike<T> => {
+    const activeComputation = computation;
+    if (!activeComputation) {
+      throw new Error("[vynn]: Cannot execute a disposed async state initializer.");
     }
-  }
+
+    // State initializers may create nested resources. Keep the computation's
+    // scheduling priority derived, but temporarily allow those creations
+    // while the initializer itself is executing.
+    const previousPriority = activeComputation.priority;
+    activeComputation.priority = 1;
+
+    try {
+      return execute(activeComputation, () =>
+        runWithOwner(owner, () =>
+          withAsyncResourceScope(resourceID, () =>
+            (input as StateInitializer<T>)(signal),
+          ),
+        ),
+      );
+    } finally {
+      activeComputation.priority = previousPriority;
+    }
+  };
+
+  const waitFor = (promise: Promise<unknown>): void => {
+    asyncResource = true;
+    reactive = true;
+    if (computation) computation.priority = 0;
+    controllerSlot.abort();
+    registerOwnerCleanup();
+    const current = ++version;
+
+    batch(() => {
+      setPending(promise);
+      pending = true;
+      updatePending();
+    });
+
+    void settleAsync({
+      promise,
+      isCurrent: () => current === version && !!computation && !computation.disposed,
+      resolve: bindRuntimeContext(() => {
+        if (computation) runComputation(computation);
+      }),
+      reject: bindRuntimeContext(cause => {
+        if (cause instanceof PendingReadError && computation && hasDependency(computation, cause.source)) {
+          batch(() => {
+            setPending(cause.promise);
+            pending = true;
+            updatePending();
+          });
+          return;
+        }
+
+        runWithOwner(owner, () => batch(() => {
+          fail(cause);
+          pending = false;
+          updatePending();
+          stopIfUnobserved();
+        }));
+      }),
+    });
+  };
 
   const start = (): void => {
+    const activeComputation = computation;
+    if (!activeComputation || activeComputation.disposed) return;
+
     const current = ++version;
     const controller = controllerSlot.start(input.length > 0);
 
     let result: T | PromiseLike<T>;
     try {
-      result = runWithOwner(owner, () =>
-        withAsyncResourceScope(resourceID, () =>
-          (input as StateInitializer<T>)(controller?.signal as AbortSignal),
-        ),
-      );
+      result = executeInitializer(controller?.signal as AbortSignal);
     } catch (cause) {
       controllerSlot.abortRun(controller);
 
       if (cause instanceof PendingReadError) {
-        waitFor(cause.promise);
+        if (hasDependency(activeComputation, cause.source)) {
+          asyncResource = true;
+          reactive = true;
+          activeComputation.priority = 0;
+          registerOwnerCleanup();
+
+          batch(() => {
+            setPending(cause.promise);
+            pending = true;
+            updatePending();
+          });
+        } else {
+          waitFor(cause.promise);
+        }
         return;
       }
 
@@ -244,7 +372,11 @@ export function $state<T>(
         pending = false;
         updatePending();
       });
-      releaseOwnerCleanup();
+      if (reactive) stopIfUnobserved();
+      else {
+        disposeComputation();
+        releaseOwnerCleanup();
+      }
       return;
     }
 
@@ -258,26 +390,37 @@ export function $state<T>(
         pending = false;
         updatePending();
       });
-      releaseOwnerCleanup();
+      if (reactive) stopIfUnobserved();
+      else {
+        disposeComputation();
+        releaseOwnerCleanup();
+      }
       return;
     }
 
     if (!asyncResult) {
       controllerSlot.finish(controller);
-      const wasPending = pending;
-
-      if (import.meta.env.SSR && wasPending) {
-        writeAsyncResourceValue(resourceID, result, owner);
-      }
 
       batch(() => {
         resolve(result as T);
         pending = false;
         updatePending();
       });
-      releaseOwnerCleanup();
+
+      if (reactive) {
+        stopIfUnobserved();
+      } else {
+        // A synchronous initializer remains a one-shot initializer. Its
+        // reads are deliberately not retained as reactive dependencies.
+        disposeComputation();
+        releaseOwnerCleanup();
+      }
       return;
     }
+
+    asyncResource = true;
+    reactive = true;
+    activeComputation.priority = 0;
 
     const promise = Promise.resolve(result as PromiseLike<T>);
     registerOwnerCleanup();
@@ -289,18 +432,22 @@ export function $state<T>(
 
     void settleAsync({
       promise,
-      isCurrent: () => current === version,
+      isCurrent: () => current === version && !activeComputation.disposed,
       resolve: bindRuntimeContext(value => runWithOwner(owner, () => batch(() => {
         controllerSlot.finish(controller);
-        writeAsyncResourceValue(resourceID, value, owner);
         resolve(value as T);
         pending = false;
         updatePending();
-        releaseOwnerCleanup();
+        stopIfUnobserved();
       }))),
       reject: bindRuntimeContext(cause => {
-        if (cause instanceof PendingReadError) {
-          waitFor(cause.promise);
+        if (cause instanceof PendingReadError && hasDependency(activeComputation, cause.source)) {
+          controllerSlot.finish(controller);
+          batch(() => {
+            setPending(cause.promise);
+            pending = true;
+            updatePending();
+          });
           return;
         }
 
@@ -309,43 +456,49 @@ export function $state<T>(
           fail(cause);
           pending = false;
           updatePending();
-          releaseOwnerCleanup();
+          stopIfUnobserved();
         }));
       }),
     });
   };
 
-  const waitFor = (promise: Promise<unknown>): void => {
-    controllerSlot.abort();
-    registerOwnerCleanup();
-    const current = ++version;
+  const initialComputation = createComputation(start, 0);
+  computation = initialComputation;
 
-    batch(() => {
-      setPending(promise);
-      pending = true;
-      updatePending();
-    });
+  // Recreate nested resource slots without repeating async side effects,
+  // then use the server's resolved one-shot value. The probe also collects
+  // synchronous dependencies so a hydrated async state can refresh later.
+  if (
+    !import.meta.env.SSR &&
+    resourceID !== undefined &&
+    hasAsyncResourceValue(resourceID, owner)
+  ) {
+    const hydrated = readAsyncResourceValue<T>(resourceID, owner);
 
-    void settleAsync({
-      promise,
-      isCurrent: () => current === version,
-      resolve: bindRuntimeContext(() => start()),
-      reject: bindRuntimeContext(cause => {
-        if (cause instanceof PendingReadError) {
-          waitFor(cause.promise);
-          return;
+    if (hydrated.found) {
+      asyncResource = true;
+      reactive = true;
+      const probeController = new AbortController();
+
+      try {
+        const probeResult = executeInitializer(probeController.signal);
+        if (isPromiseLike<T>(probeResult)) {
+          void Promise.resolve(probeResult).catch(() => {});
         }
+      } catch {
+        // The serialized result remains authoritative if probing suspends.
+      } finally {
+        probeController.abort();
+      }
 
-        runWithOwner(owner, () => batch(() => {
-          fail(cause);
-          pending = false;
-          updatePending();
-          releaseOwnerCleanup();
-        }));
-      }),
-    });
-  };
+      if (computation) computation.priority = 0;
+      registerOwnerCleanup();
+      resolve(hydrated.value as T);
+      stopIfUnobserved();
+      return state;
+    }
+  }
 
-  start();
+  runComputation(initialComputation);
   return state;
 }

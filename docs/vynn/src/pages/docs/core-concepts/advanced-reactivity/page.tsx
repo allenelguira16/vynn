@@ -71,12 +71,18 @@ const AdvancedReactivityPage = () => (
       }
     />
 
-    <h2>Computed values evaluate eagerly</h2>
+    <h2>Computed values are always eager</h2>
     <p>
-      A synchronous <code>$computed()</code> getter runs when the computed value is created. Async
-      computed getters also start immediately when created inside an active owner, such as a
-      component. There is no per-computed lazy option, so create expensive derived values only in
-      the parts of the application that need them.
+      Synchronous and asynchronous <code>$computed()</code> getters execute immediately when the
+      computed value is created, whether or not a component Owner is active. There is no lazy
+      reactivity option. An Owner created around the call can dispose the computation, but the
+      getter itself runs without that Owner context.
+    </p>
+    <p>
+      A computed getter is a derivation, so do not create <code>$state()</code>,
+      <code>$store()</code>, another <code>$computed()</code>, or other reactive primitives inside
+      it. Declare those values independently and read them from the getter. This keeps resource
+      creation, identity, and lifecycle separate from dependency evaluation.
     </p>
 
     <h2>Stores track structure as well as values</h2>

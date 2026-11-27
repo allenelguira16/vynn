@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
 
+import { hydrateToDOM } from "../src/client/hydrate-to-dom";
 import { renderToDOM } from "../src/client/render-to-dom";
+import { ASYNC_DATA_SSR_KEY } from "../src/const";
 import { Await } from "../src/components/await";
 import { $computed } from "../src/reactivity/computed";
 import { isPending } from "../src/reactivity/async/pending";
@@ -17,8 +19,18 @@ function Row(props: { name: string; url: string }) {
   );
 }
 
+const globalWindow = window as unknown as Record<string, unknown>;
+const hadPreviousAsyncPayload = Object.prototype.hasOwnProperty.call(globalWindow, ASYNC_DATA_SSR_KEY);
+const previousAsyncPayload = globalWindow[ASYNC_DATA_SSR_KEY];
+
 afterEach(() => {
   document.body.innerHTML = "";
+
+  if (hadPreviousAsyncPayload) {
+    globalWindow[ASYNC_DATA_SSR_KEY] = previousAsyncPayload;
+  } else {
+    delete globalWindow[ASYNC_DATA_SSR_KEY];
+  }
 });
 
 async function flushUpdates(): Promise<void> {
@@ -53,6 +65,123 @@ describe("async store list rendering", () => {
       append();
 
       expect(host.textContent).toBe("01");
+    } finally {
+      unmount();
+    }
+  });
+
+
+  it("renders keyed rows from an ownerless async store", async () => {
+    let resolve!: (value: { results: { name: string; url: string }[] }) => void;
+    const pokedex = $store<{ results: { name: string; url: string }[] }>(
+      () => new Promise<{ results: { name: string; url: string }[] }>((r) => resolve = r),
+    );
+
+    const host = document.createElement("div");
+    document.body.append(host);
+
+    const unmount = renderToDOM(() => (
+      <Await fallback={<p>Loading</p>}>
+        <>
+          <ul>
+            {pokedex.results.map(({ name, url }) => (
+              <Row name={name} url={url} key={name} />
+            ))}
+          </ul>
+          <button disabled={isPending(pokedex)}>Next</button>
+        </>
+      </Await>
+    ), host);
+
+    try {
+      expect(host.textContent).toContain("Loading");
+
+      resolve({
+        results: [
+          { name: "bulbasaur", url: "/pokemon/1" },
+          { name: "ivysaur", url: "/pokemon/2" },
+        ],
+      });
+      await flushUpdates();
+
+      expect(host.querySelectorAll("li")).toHaveLength(2);
+      expect(host.textContent).toContain("bulbasaur|/pokemon/1");
+      expect(host.textContent).toContain("ivysaur|/pokemon/2");
+      expect(host.textContent).not.toContain("Loading");
+      expect((host.querySelector("button") as HTMLButtonElement).disabled).toBe(false);
+    } finally {
+      unmount();
+    }
+  });
+
+
+
+  it("hydrates keyed rows when an ownerless async store is read inside $for", async () => {
+    const serverStore = $store(async () => ({
+      results: [
+        { name: "bulbasaur", url: "/pokemon/1" },
+        { name: "ivysaur", url: "/pokemon/2" },
+      ],
+    }));
+
+    const rendered = await renderToServer(() => (
+      <Await fallback={<p>Loading</p>}>
+        <>
+          <ul>
+            {serverStore.results.map(({ name, url }) => (
+              <Row name={name} url={url} key={name} />
+            ))}
+          </ul>
+          <button disabled={isPending(serverStore)}>Next</button>
+        </>
+      </Await>
+    ), "async");
+
+    expect(rendered.body).toContain("bulbasaur|/pokemon/1");
+    expect(rendered.body).toContain("ivysaur|/pokemon/2");
+
+    const payloadMatch = rendered.body.match(/\$AD=(.*?);\$EBD=/);
+    expect(payloadMatch?.[1]).toBeDefined();
+    globalWindow[ASYNC_DATA_SSR_KEY] = JSON.parse(payloadMatch![1]!);
+
+    let resolveClient!: (value: { results: { name: string; url: string }[] }) => void;
+    let clientSignal!: AbortSignal;
+    const clientStore = $store<{ results: { name: string; url: string }[] }>(signal => {
+      clientSignal = signal;
+      return new Promise<{ results: { name: string; url: string }[] }>(
+        resolve => resolveClient = resolve,
+      );
+    });
+
+    const host = document.createElement("div");
+    host.innerHTML = rendered.body.replace(/<script>[\s\S]*?<\/script>/g, "");
+    document.body.append(host);
+
+    const unmount = hydrateToDOM(() => (
+      <Await fallback={<p>Loading</p>}>
+        <>
+          <ul>
+            {clientStore.results.map(({ name, url }) => (
+              <Row name={name} url={url} key={name} />
+            ))}
+          </ul>
+          <button disabled={isPending(clientStore)}>Next</button>
+        </>
+      </Await>
+    ), host);
+
+    try {
+      expect(host.querySelectorAll("li")).toHaveLength(2);
+      expect(host.textContent).toContain("bulbasaur|/pokemon/1");
+      expect(host.textContent).toContain("ivysaur|/pokemon/2");
+      expect(host.textContent).not.toContain("Loading");
+      expect((host.querySelector("button") as HTMLButtonElement).disabled).toBe(false);
+      expect(clientSignal.aborted).toBe(true);
+
+      resolveClient({ results: [{ name: "stale", url: "/stale" }] });
+      await flushUpdates();
+
+      expect(host.textContent).not.toContain("stale");
     } finally {
       unmount();
     }

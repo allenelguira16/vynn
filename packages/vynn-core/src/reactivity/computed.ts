@@ -8,22 +8,24 @@ import {
   notify,
   runComputation,
   track,
+  assertNotInComputedGetter,
   type Source,
 } from "./graph";
 import {
-  createOwner,
   getOwner,
   getOwnerCleanups,
   runWithOwner,
-  type Owner,
 } from "../life-cycle/owner";
 import {
   allocateAsyncResourceID,
+  allocateAsyncResourceIDFor,
+  peekAsyncResourceID,
   hasAsyncResourceValue,
   readAsyncResourceValue,
   withAsyncHydrationProbe,
-  withAsyncResourceScope,
   writeAsyncResourceValue,
+  getAsyncResourceReadOwner,
+  withAsyncResourceReadOwner,
 } from "../runtime/async/runtime";
 import { bindRuntimeContext } from "../runtime/context";
 import { isAsyncGetterFromLazy, registerPromiseFromLazy } from "../runtime/lazy";
@@ -41,8 +43,6 @@ export function isAsyncComputed(value: object): boolean {
 }
 
 export type ComputedOptions<T> = {
-  /** Defer the first getter execution until .value is read. */
-  lazy?: boolean;
   /** Defaults to Object.is. Set false to notify on every recomputation. */
   equals?: false | ((previous: T, next: T) => boolean);
 };
@@ -63,6 +63,8 @@ export function $computed<T>(
   getter: (signal: AbortSignal) => T | PromiseLike<T>,
   options: ComputedOptions<T> = {},
 ): Computed<T> {
+  assertNotInComputedGetter("$computed");
+
   if (typeof getter !== "function") {
     throw new TypeError("[vynn]: $computed() requires a getter function.");
   }
@@ -73,10 +75,8 @@ export function $computed<T>(
   }
 
   const lazyGetter = isAsyncGetterFromLazy(getter);
-  const executionOwner: Owner | null = owner
-    ? (lazyGetter || options.lazy ? createOwner(owner) : owner)
-    : null;
-  const resourceID = lazyGetter ? undefined : allocateAsyncResourceID(owner);
+  const hydrationResourceID = lazyGetter ? undefined : peekAsyncResourceID(owner);
+  let resourceID: string | undefined;
 
   const source: Source = node();
   let value: T | undefined;
@@ -97,62 +97,82 @@ export function $computed<T>(
     return (options.equals ?? Object.is)(value as T, next);
   };
 
-  const computation = createComputation(() => {
+  const computation = createComputation(() => withAsyncResourceReadOwner(owner, () => {
     dirty = false;
     const current = ++version;
     const controller = controllerSlot.start(getter.length > 0);
 
     let result!: T | PromiseLike<T>;
     try {
-      let usedHydrationProbe = false;
+      let usedProbeResult = false;
 
       if (
-        current === 1 &&
         !hydrationProbeComplete &&
         !import.meta.env.SSR &&
-        !lazyGetter
+        !lazyGetter &&
+        owner &&
+        hasAsyncResourceValue(hydrationResourceID, owner)
       ) {
-        hydrationProbeComplete = true;
+        const probeController = new AbortController();
+        let probeResult: T | PromiseLike<T>;
 
-        const resourceOwner = executionOwner ?? owner;
-        if (hasAsyncResourceValue(resourceID, resourceOwner)) {
-          const hydrated = readAsyncResourceValue<T>(resourceID, resourceOwner);
+        try {
+          probeResult = execute(computation, () =>
+            runWithOwner(null, () =>
+              withAsyncHydrationProbe(() => getter(probeController.signal)),
+            ),
+          );
+        } catch (cause) {
+          probeController.abort();
+
+          // A dependency may itself need to hydrate before this getter can
+          // reveal whether it returns a Promise. Keep the probe available for
+          // the next run rather than assigning this derived value an ID.
+          if (!(cause instanceof PendingReadError && hasDependency(computation, cause.source))) {
+            hydrationProbeComplete = true;
+          }
+
+          throw cause;
+        }
+
+        if (isPromiseLike<T>(probeResult)) {
+          hydrationProbeComplete = true;
+
+          // Dependencies have already claimed their hydration slots during the
+          // probe. Allocate this computed's slot only after those reads.
+          resourceID ??= allocateAsyncResourceID(owner);
+          const hydrated = readAsyncResourceValue<T>(resourceID, owner);
+
+          // The probe uses fake async APIs. It must never settle into the live
+          // computation, whether or not a matching SSR value was available.
+          void Promise.resolve(probeResult).catch(() => {});
+          probeController.abort();
 
           if (hydrated.found) {
             hydratedValue = hydrated;
-            const probeController = new AbortController();
-
-            try {
-              const probeResult = execute(computation, () =>
-                runWithOwner(executionOwner, () =>
-                  withAsyncResourceScope(resourceID, () =>
-                    withAsyncHydrationProbe(() => getter(probeController.signal)),
-                  ),
-                ),
-              );
-
-              if (isPromiseLike<T>(probeResult)) {
-                void Promise.resolve(probeResult).catch(() => {});
-              }
-            } catch {
-              // The serialized value remains authoritative for this hydration pass.
-            } finally {
-              probeController.abort();
-            }
-
             result = hydrated.value as T;
-            usedHydrationProbe = true;
+            usedProbeResult = true;
           }
+        } else {
+          // A synchronous derived getter is its own result. It may have read
+          // and consumed an async dependency, but it must not claim that
+          // dependency's serialized value as its own.
+          hydrationProbeComplete = true;
+          probeController.abort();
+          result = probeResult as T;
+          usedProbeResult = true;
         }
       }
 
-      if (!usedHydrationProbe) {
+      if (!hydrationProbeComplete && !import.meta.env.SSR && !lazyGetter && owner) {
+        // No candidate SSR value exists at the next resource slot. Skip the
+        // hydration probe rather than evaluating this getter twice.
+        hydrationProbeComplete = true;
+      }
+
+      if (!usedProbeResult) {
         result = execute(computation, () =>
-          runWithOwner(executionOwner, () =>
-            withAsyncResourceScope(resourceID, () =>
-              getter(controller?.signal as AbortSignal),
-            ),
-          ),
+          runWithOwner(null, () => getter(controller?.signal as AbortSignal)),
         );
       }
     } catch (cause) {
@@ -227,6 +247,9 @@ export function $computed<T>(
     }
 
     if (asyncResult) {
+      if (!lazyGetter && owner && resourceID === undefined) {
+        resourceID = allocateAsyncResourceID(owner);
+      }
       asyncComputeds.add(computed);
       const promise = Promise.resolve(result as PromiseLike<T>);
       if (lazyGetter) registerPromiseFromLazy(promise);
@@ -240,9 +263,8 @@ export function $computed<T>(
       void settleAsync({
         promise,
         isCurrent: () => current === version && !computation.disposed,
-        resolve: bindRuntimeContext(next => runWithOwner(executionOwner, () => batch(() => {
+        resolve: bindRuntimeContext(next => batch(() => {
           controllerSlot.finish(controller);
-          if (!lazyGetter) writeAsyncResourceValue(resourceID, next, executionOwner ?? owner);
           const valueChanged = pending || hasError || !isEqual(next as T);
           value = next as T;
           hasValue = true;
@@ -252,8 +274,8 @@ export function $computed<T>(
           pending = false;
           updatePending();
           if (valueChanged) notify(source);
-        }))),
-        reject: bindRuntimeContext(cause => runWithOwner(executionOwner, () => batch(() => {
+        })),
+        reject: bindRuntimeContext(cause => batch(() => {
           controllerSlot.finish(controller);
           let errorChanged: boolean;
 
@@ -276,7 +298,7 @@ export function $computed<T>(
 
           updatePending();
           if (errorChanged) notify(source);
-        }))),
+        })),
       });
 
       batch(() => {
@@ -287,12 +309,6 @@ export function $computed<T>(
     }
 
     controllerSlot.finish(controller);
-    const wasPending = pending;
-
-    if (import.meta.env.SSR && wasPending && !lazyGetter) {
-      writeAsyncResourceValue(resourceID, result, executionOwner ?? owner);
-    }
-
     batch(() => {
       const changed = pending || hasError || !isEqual(result as T);
       value = result as T;
@@ -304,7 +320,7 @@ export function $computed<T>(
       updatePending();
       if (changed) notify(source);
     });
-  }, 0);
+  }), 0);
 
   computation.invalidate = () => {
     if (dirty || computation.disposed) return;
@@ -323,6 +339,43 @@ export function $computed<T>(
       if (computation.running) {
         throw new Error("Circular computed dependency detected.");
       }
+
+      const readerOwner = getAsyncResourceReadOwner();
+      const isAsyncResource = asyncComputeds.has(computed);
+      const readResourceID = !lazyGetter && isAsyncResource
+        ? (resourceID ?? (readerOwner
+          ? allocateAsyncResourceIDFor(computed, readerOwner)
+          : undefined))
+        : undefined;
+
+      // Ownerless resources may have started before hydration established the
+      // render runtime. Consume the server snapshot when the first component
+      // reads the resource, invalidating any speculative client settlement.
+      if (
+        owner === null &&
+        !import.meta.env.SSR &&
+        readResourceID !== undefined &&
+        readerOwner &&
+        hasAsyncResourceValue(readResourceID, readerOwner)
+      ) {
+        const hydrated = readAsyncResourceValue<T>(readResourceID, readerOwner);
+        if (hydrated.found) {
+          const next = hydrated.value as T;
+          const changed = pending || hasError || !isEqual(next);
+          version++;
+          controllerSlot.abort();
+          dirty = false;
+          value = next;
+          hasValue = true;
+          pending = false;
+          pendingPromise = undefined;
+          error = undefined;
+          hasError = false;
+          updatePending();
+          if (changed) notify(source);
+        }
+      }
+
       track(source);
       if (dirty) runComputation(computation);
       if (hasError) throw error;
@@ -336,6 +389,14 @@ export function $computed<T>(
       if (!hasValue && pending) {
         throw new Error("Async computation is pending without an associated Promise.");
       }
+      if (
+        import.meta.env.SSR &&
+        readResourceID !== undefined &&
+        readerOwner &&
+        asyncComputeds.has(computed)
+      ) {
+        writeAsyncResourceValue(readResourceID, value, readerOwner);
+      }
       return value as T;
     },
   }) as Computed<T>;
@@ -345,6 +406,14 @@ export function $computed<T>(
     () => pending,
     () => pendingPromise,
     !(lazyGetter && import.meta.env.SSR),
+    () => {
+      try {
+        void computed.value;
+      } catch {
+        // Pending and failed values remain observable through normal value reads.
+      }
+      updatePending();
+    },
   );
 
   if (owner) getOwnerCleanups(owner).push(() => {
@@ -356,7 +425,7 @@ export function $computed<T>(
     updatePending(false);
   });
 
-  if (!options.lazy) runComputation(computation);
+  runComputation(computation);
 
   return computed;
 }

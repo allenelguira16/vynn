@@ -3,8 +3,14 @@ import {
   allocateOwnerIdentityID,
   appendOwnerIdentityID,
   getOwner,
+  getOwnerIdentityID,
   type Owner,
 } from "../../life-cycle/owner";
+import {
+  getContext,
+  runWithRuntimeContextScope,
+  setContext,
+} from "../context";
 
 export type ResourceValue<T = unknown> = {
   found: boolean;
@@ -14,6 +20,7 @@ export type ResourceValue<T = unknown> = {
 type AsyncRuntime = {
   values: Record<string, unknown>;
   hydrationValues: Record<string, unknown>;
+  resourceIDs: WeakMap<object, string>;
 };
 
 type ResourceScope = {
@@ -23,9 +30,42 @@ type ResourceScope = {
 };
 
 const runtimes = new WeakMap<Owner, AsyncRuntime>();
+const ASYNC_RESOURCE_READ_OWNER = Symbol("vynn.async-resource-read-owner");
 let activeScope: ResourceScope | undefined;
 let deserialize: ((value: unknown) => unknown) | undefined;
 let hydrationProbe: (<T>(callback: () => T) => T) | undefined;
+
+
+/**
+ * Resolve the Owner used only to associate nested async resource reads with
+ * the active render root. Computation execution may still run with no
+ * lifecycle Owner.
+ */
+export function getAsyncResourceReadOwner(): Owner | null {
+  const owner = getContext<Owner | null>(ASYNC_RESOURCE_READ_OWNER);
+  return owner === undefined ? getOwner() : owner;
+}
+
+/**
+ * Preserve a render root while an owner-independent derived computation runs.
+ * The runtime context keeps concurrent SSR requests isolated and allows nested
+ * computations to inherit the same resource-read identity without restoring
+ * their lifecycle Owner.
+ */
+export function withAsyncResourceReadOwner<T>(
+  owner: Owner | null,
+  callback: () => T,
+): T {
+  return runWithRuntimeContextScope(() => {
+    const inherited = getContext<Owner | null>(ASYNC_RESOURCE_READ_OWNER);
+    setContext(
+      ASYNC_RESOURCE_READ_OWNER,
+      owner ?? (inherited === undefined ? getOwner() : inherited),
+    );
+
+    return callback();
+  });
+}
 
 function getRootOwner(owner: Owner | null): Owner | undefined {
   if (!owner) return undefined;
@@ -53,6 +93,7 @@ function ensureRuntime(owner = getOwner()): AsyncRuntime | undefined {
     runtime = {
       values: Object.create(null),
       hydrationValues: Object.create(null),
+      resourceIDs: new WeakMap(),
     };
     runtimes.set(root, runtime);
   }
@@ -69,6 +110,7 @@ export function initializeAsyncRuntime(): void {
   runtimes.set(root, {
     values: Object.create(null),
     hydrationValues,
+    resourceIDs: new WeakMap(),
   });
 }
 
@@ -103,6 +145,44 @@ export function allocateAsyncResourceID(owner = getOwner()): string | undefined 
   }
 
   return allocateOwnerIdentityID(owner);
+}
+
+/** Peek at the next resource identity without reserving its slot. */
+export function peekAsyncResourceID(owner = getOwner()): string | undefined {
+  const runtime = ensureRuntime(owner);
+  if (!owner || !runtime) return undefined;
+
+  if (activeScope?.runtime === runtime) {
+    return appendOwnerIdentityID(activeScope.id, activeScope.next);
+  }
+
+  const identityOwner = owner.identityOwner ?? owner;
+  const identityID = getOwnerIdentityID(identityOwner);
+  return identityID === undefined
+    ? undefined
+    : appendOwnerIdentityID(identityID, identityOwner.nodeCount);
+}
+
+/**
+ * Get a stable resource identity for an owner-independent reactive value.
+ *
+ * The mapping belongs to the render-root runtime so a module-level singleton
+ * can be consumed by separate SSR requests without retaining one request's
+ * Owner or resource ID on the shared reactive object.
+ */
+export function allocateAsyncResourceIDFor(
+  resource: object,
+  owner = getOwner(),
+): string | undefined {
+  const runtime = ensureRuntime(owner);
+  if (!owner || !runtime) return undefined;
+
+  const existing = runtime.resourceIDs.get(resource);
+  if (existing !== undefined) return existing;
+
+  const resourceID = allocateAsyncResourceID(owner);
+  if (resourceID !== undefined) runtime.resourceIDs.set(resource, resourceID);
+  return resourceID;
 }
 
 /** Give resources created inside an initializer a stable nested index scope. */

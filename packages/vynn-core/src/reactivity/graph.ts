@@ -98,6 +98,24 @@ export function isTracking(): boolean {
     execution.computation.runID === execution.runID;
 }
 
+/**
+ * Reactive getters are derivations. Creating another reactive primitive from
+ * one would make resource lifetime and identity depend on evaluation order.
+ */
+export function assertNotInComputedGetter(primitive: string): void {
+  const execution = getActiveExecution();
+  if (
+    execution &&
+    !execution.computation.disposed &&
+    execution.computation.runID === execution.runID &&
+    execution.computation.priority === 0
+  ) {
+    throw new Error(
+      `[vynn]: ${primitive}() cannot be created inside a $computed getter. Create it outside the getter and read its value instead.`,
+    );
+  }
+}
+
 export function track(source: Source): void {
   const execution = getActiveExecution();
   if (

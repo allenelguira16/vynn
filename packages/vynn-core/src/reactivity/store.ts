@@ -8,6 +8,7 @@ import {
   setSourceUnobservedHandler,
   track,
   untrack,
+  assertNotInComputedGetter,
   type Source,
 } from "./graph";
 import { PendingReadError } from "./async/pending-error";
@@ -55,6 +56,7 @@ type Collection = Map<unknown, unknown> | Set<unknown> | WeakMap<object, unknown
 const rawToProxy = new WeakMap<object, object>();
 const proxyToRaw = new WeakMap<object, object>();
 const dependencies = new WeakMap<object, Map<unknown, Source>>();
+let suppressedStoreNotifications = 0;
 
 function releaseStoreSource(source: Source): void {
   const target = source.storeTarget;
@@ -120,11 +122,13 @@ function trackKey(target: object, key: unknown): void {
 }
 
 function triggerKey(target: object, key: unknown): void {
+  if (suppressedStoreNotifications > 0) return;
   const source = dependencies.get(target)?.get(key);
   if (source) notify(source);
 }
 
 function triggerAll(target: object): void {
+  if (suppressedStoreNotifications > 0) return;
   for (const source of dependencies.get(target)?.values() ?? []) notify(source);
 }
 
@@ -142,6 +146,7 @@ function toReactive<T>(value: T): T {
 }
 
 function triggerAdded(target: object, key: PropertyKey, oldLength?: number): void {
+  if (suppressedStoreNotifications > 0) return;
   triggerKey(target, key);
   if (Array.isArray(target)) {
     triggerKey(target, ARRAY_ITERATE);
@@ -160,7 +165,7 @@ function triggerChanged(
   previous: unknown,
   oldLength?: number,
 ): void {
-  if (Object.is(next, previous)) return;
+  if (suppressedStoreNotifications > 0 || Object.is(next, previous)) return;
 
   if (Array.isArray(target) && key === "length") {
     const length = Number(next);
@@ -181,6 +186,7 @@ function triggerChanged(
 }
 
 function triggerDeleted(target: object, key: PropertyKey): void {
+  if (suppressedStoreNotifications > 0) return;
   triggerKey(target, key);
   triggerKey(target, Array.isArray(target) ? ARRAY_ITERATE : ITERATE);
 }
@@ -582,18 +588,60 @@ function createAsyncStore<T extends object>(initial: Computed<T>): Store<T> {
   const rootStatus = node();
   let rootError: unknown;
   let hasRootError = false;
+  let hasSyncedValue = false;
+  let syncedValue: T | undefined;
   let updatePending = () => {};
+
+  const syncFromInitial = (notifyObservers: boolean): boolean => {
+    const next = initial.value;
+    if (!isPlainObject(next)) {
+      throw new TypeError("[vynn]: An async $store() initializer must resolve to a plain object.");
+    }
+
+    if (hasSyncedValue && Object.is(syncedValue, next)) return false;
+
+    if (notifyObservers) {
+      reconcile(target, toRaw(next));
+    } else {
+      // A store read can be the first consumer to observe an already-resolved
+      // owner-independent resource. Repair the stable proxy before returning
+      // the requested property, without re-notifying the computation that is
+      // currently performing that read. The computed source itself schedules
+      // every reactive consumer when its async value changes.
+      suppressedStoreNotifications++;
+      try {
+        reconcile(target, toRaw(next));
+      } finally {
+        suppressedStoreNotifications--;
+      }
+    }
+
+    syncedValue = next;
+    hasSyncedValue = true;
+    hasRootError = false;
+    rootError = undefined;
+    return true;
+  };
 
   const store = createReactiveObject(target, () => {
     track(rootStatus);
     if (hasRootError) throw rootError;
-    void initial.value;
+    syncFromInitial(false);
   }) as Store<T>;
 
   updatePending = registerPending(
     store,
     () => isPendingInternal(initial),
     () => getPendingPromise(initial),
+    true,
+    () => {
+      try {
+        if (syncFromInitial(true)) notify(rootStatus);
+      } catch {
+        // Pending and failed values remain observable through normal store reads.
+      }
+      updatePending();
+    },
   );
 
   $renderEffect(() => {
@@ -601,21 +649,16 @@ function createAsyncStore<T extends object>(initial: Computed<T>): Store<T> {
     updatePending();
     if (pending) return;
 
+    let changed = false;
     try {
-      const next = initial.value;
-      if (!isPlainObject(next)) {
-        throw new TypeError("[vynn]: An async $store() initializer must resolve to a plain object.");
-      }
-      reconcile(target, toRaw(next));
-      hasRootError = false;
-      rootError = undefined;
+      changed = syncFromInitial(true);
     } catch (cause) {
       if (cause instanceof PendingReadError) return;
       hasRootError = true;
       rootError = cause;
     }
 
-    notify(rootStatus);
+    if (changed) notify(rootStatus);
   });
 
   return store;
@@ -627,6 +670,8 @@ export function $store<T extends object>(initializer: () => T): Store<T>;
 export function $store<T extends object>(initializer: () => T | PromiseLike<T>): Store<T>;
 export function $store<T extends object>(value: T): Store<T>;
 export function $store<T extends object>(source?: T | ((signal: AbortSignal) => T | PromiseLike<T>)): Store<T> {
+  assertNotInComputedGetter("$store");
+
   if (typeof source === "function") {
     const initial = $computed<T>(source as (signal: AbortSignal) => T | PromiseLike<T>);
     if (isPendingInternal(initial) || isAsyncComputed(initial)) {

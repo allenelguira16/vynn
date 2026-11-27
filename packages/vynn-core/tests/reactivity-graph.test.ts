@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createOwner, disposeOwner, runWithOwner } from "../src/life-cycle/owner";
+import { createOwner, disposeOwner, getOwner, runWithOwner } from "../src/life-cycle/owner";
 import { $computed, type Computed } from "../src/reactivity/computed";
 import { createAbortControllerSlot, settleAsync } from "../src/reactivity/async/resource";
 import { allocateAsyncResourceID, withAsyncResourceScope } from "../src/runtime/async/runtime";
@@ -452,21 +452,23 @@ describe("new reactive graph", () => {
     stop();
   });
 
-  it("supports lazy computed initialization", () => {
-    const count = $state(1);
-    let evaluations = 0;
-    const doubled = $computed(() => {
-      evaluations++;
-      return count.value * 2;
-    }, { lazy: true });
+  it("does not expose the creation Owner while running a computed getter", () => {
+    const owner = createOwner(null);
+    let getterOwner: ReturnType<typeof getOwner> = owner;
+    let doubled!: Computed<number>;
 
-    expect(evaluations).toBe(0);
+    runWithOwner(owner, () => {
+      doubled = $computed(() => {
+        getterOwner = getOwner();
+        return 2;
+      });
+    });
+
+    expect(getterOwner).toBeNull();
     expect(doubled.value).toBe(2);
-    expect(evaluations).toBe(1);
 
-    count.value = 2;
-    expect(doubled.value).toBe(4);
-    expect(evaluations).toBe(2);
+    disposeOwner(owner);
+    expect(doubled.value).toBe(2);
   });
 
   it("supports untracked reads without subscribing the active effect", () => {
@@ -596,6 +598,34 @@ describe("new reactive graph", () => {
 
     stopMembership();
     stopSize();
+  });
+
+  it("never exposes an empty async store snapshot to an effect", async () => {
+    let resolve!: (value: { count: number }) => void;
+    const store = $store(() => new Promise<{ count: number }>(r => resolve = r));
+    const values: number[] = [];
+    const owner = createOwner(null);
+    let stop!: () => void;
+
+    runWithOwner(owner, () => {
+      stop = $effect(() => {
+        try {
+          values.push(store.count);
+        } catch (cause) {
+          if (!(cause instanceof PendingReadError)) throw cause;
+        }
+      });
+    });
+
+    expect(values).toEqual([]);
+
+    resolve({ count: 1351 });
+    await tick();
+
+    expect(values).toEqual([1351]);
+
+    disposeOwner(owner);
+    stop();
   });
 
   it("initializes async stores in place and exposes pending state", async () => {
@@ -735,22 +765,26 @@ describe("new reactive graph", () => {
     stop();
   });
 
-  it("does not evaluate a lazy computed after its owner is disposed", () => {
-    const owner = createOwner(null);
-    const count = $state(1);
-    let evaluations = 0;
-    let doubled!: Computed<number>;
+  it("rejects creating reactive primitives and Owners inside a computed getter", () => {
+    const forbidden = [
+      () => $state(1),
+      () => $store({}),
+      () => $computed(() => 1),
+      () => $effect(() => {}),
+      () => $renderEffect(() => {}),
+      () => createOwner(),
+    ];
 
-    runWithOwner(owner, () => {
-      doubled = $computed(() => {
-        evaluations++;
-        return count.value * 2;
-      }, { lazy: true });
-    });
+    for (const create of forbidden) {
+      const result = $computed(() => {
+        create();
+        return 2;
+      });
 
-    disposeOwner(owner);
-    expect(() => doubled.value).toThrow("disposed before initialization");
-    expect(evaluations).toBe(0);
+      expect(() => result.value).toThrow(
+        "cannot be created inside a $computed getter",
+      );
+    }
   });
 
 
@@ -817,42 +851,27 @@ describe("new reactive graph", () => {
     expect(derived.value).toBe(2);
   });
 
-  it("keeps component-created owners in the component identity tree", () => {
-    const owner = createOwner(null);
+  it("keeps ownerless async computed work alive after a consuming Owner is disposed", async () => {
+    let resolve!: (value: number) => void;
+    const result = $computed(() => new Promise<number>(r => resolve = r));
+    const consumer = createOwner(null);
 
-    runWithOwner(owner, () => {
-      $computed(() => {
-        createOwner();
-        return new Promise<number>(() => {});
-      });
+    runWithOwner(consumer, () => {
+      expect(() => result.value).toThrow(PendingReadError);
     });
 
-    const sibling = createOwner(owner);
+    // The consuming Owner reserves a request-local resource identity, but it
+    // does not become the lifetime owner of this module-level computation.
+    expect(consumer.nodeCount).toBe(1);
+    disposeOwner(consumer);
 
-    expect(sibling.id).toBe("01");
-    disposeOwner(owner);
+    resolve(42);
+    await tick();
+
+    expect(result.value).toBe(42);
   });
 
-  it("allocates component identities independently of computed async transitions", () => {
-    const owner = createOwner(null);
-    const enabled = $state(false);
-
-    runWithOwner(owner, () => {
-      $computed(() => {
-        if (!enabled.value) return 0;
-        createOwner();
-        return new Promise<number>(() => {});
-      });
-    });
-
-    enabled.value = true;
-    const sibling = createOwner(owner);
-
-    expect(sibling.id).toBe("01");
-    disposeOwner(owner);
-  });
-
-  it("does not allocate child Owners for async state or computed resources", () => {
+  it("allocates resource identity slots without creating child Owners", () => {
     const owner = createOwner(null);
 
     runWithOwner(owner, () => {
@@ -861,11 +880,11 @@ describe("new reactive graph", () => {
     });
 
     expect(owner.children).toBeUndefined();
-    expect(owner.nodeCount).toBe(0);
+    expect(owner.nodeCount).toBe(2);
     disposeOwner(owner);
   });
 
-  it("does not consume hydration owner IDs for synchronous state or computed values", () => {
+  it("does not allocate a resource slot for a synchronous computed value", () => {
     const owner = createOwner(null);
 
     const nextOwner = runWithOwner(owner, () => {
@@ -874,7 +893,8 @@ describe("new reactive graph", () => {
       return createOwner(owner);
     });
 
-    expect(nextOwner.id).toBe("00");
+    // Async-capable state reserves its slot; a synchronous computed does not.
+    expect(nextOwner.id).toBe("01");
     disposeOwner(owner);
   });
 

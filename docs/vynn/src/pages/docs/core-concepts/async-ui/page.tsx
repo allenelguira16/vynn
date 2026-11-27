@@ -61,11 +61,16 @@ const AsyncUiPage = () => (
 
     <h2>Create async state</h2>
     <p>
-      Pass an async function to <code>$state()</code> to create writable async-derived state. When
-      the resource is created inside a component, Vynn starts the first request eagerly. A
-      module-level resource without an active owner is deferred until its first read so the
-      consuming render can provide its owner and hydration scope. After the first request resolves,
-      you can read or manually assign the result through <code>.value</code>.
+      Pass an async function to <code>$state()</code> to create writable async-derived state.
+      The initializer starts immediately, even when the resource is created outside a component.
+      A module-level resource is not adopted by the component that reads it; its first render-time
+      read associates the existing value with that request's SSR and hydration scope. After the
+      first request resolves, you can read or manually assign the result through <code>.value</code>.
+    </p>
+    <p>
+      A module-level resource is still a shared singleton, not a per-request resource. Do not use
+      it for user- or session-specific data during concurrent SSR; create those resources inside
+      the request or render scope instead.
     </p>
     <CodeBlock
       lang="ts"

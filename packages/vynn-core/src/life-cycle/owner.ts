@@ -1,4 +1,5 @@
 import { getActiveOwner, runWithOwnerExecution } from "./owner-execution";
+import { assertNotInComputedGetter } from "../reactivity/graph";
 
 export interface Owner {
   parent: Owner | null;
@@ -278,6 +279,8 @@ export function getOwner(): Owner | null {
  * @returns The newly created owner.
  */
 export function createOwner(parent = getOwner(), options: OwnerOptions = {}): Owner {
+  assertNotInComputedGetter("createOwner");
+
   const hasIdentity = options.identity !== false;
   const identityParent = parent?.identityOwner ?? null;
   const identityParentID = getOwnerIdentityID(identityParent);

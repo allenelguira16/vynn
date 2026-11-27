@@ -4,7 +4,7 @@ import { createOwner, disposeOwner, runWithOwner } from "../src/life-cycle/owner
 import { $computed } from "../src/reactivity/computed";
 import { $effect, $renderEffect, batch } from "../src/reactivity/effect";
 import { NotReadyError } from "../src/reactivity/async/not-ready-error";
-import { isPending } from "../src/reactivity/async/pending";
+import { getPendingPromise, isPending } from "../src/reactivity/async/pending";
 import { $state } from "../src/reactivity/state";
 import { $store } from "../src/reactivity/store";
 
@@ -306,6 +306,121 @@ describe("new reactivity API", () => {
 
     expect(state.value).toBe(42);
     expect(isPending(state)).toBe(false);
+  });
+
+  it("restarts async state when a synchronously-read dependency changes", async () => {
+    const url = $state(() => "/first");
+    const resolvers = new Map<string, (value: string) => void>();
+    const signals = new Map<string, AbortSignal>();
+    let runs = 0;
+
+    const state = $state((signal) => {
+      runs++;
+      const requestedUrl = url.value;
+
+      return new Promise<string>((resolve) => {
+        resolvers.set(requestedUrl, resolve);
+        signals.set(requestedUrl, signal);
+      });
+    });
+
+    expect(runs).toBe(1);
+    expect(isPending(state)).toBe(true);
+
+    url.value = "/second";
+
+    expect(runs).toBe(2);
+    expect(signals.get("/first")?.aborted).toBe(true);
+    expect(isPending(state)).toBe(true);
+
+    resolvers.get("/first")?.("stale");
+    await flushEffects();
+
+    expect(isPending(state)).toBe(true);
+
+    resolvers.get("/second")?.("/second");
+    await getPendingPromise(state);
+
+    expect(state.value).toBe("/second");
+    expect(isPending(state)).toBe(false);
+    expect(runs).toBe(2);
+  });
+
+  it("clears pending when an async state refresh resolves to the same value", async () => {
+    const revision = $state(0);
+    const resolvers = new Map<number, (value: string) => void>();
+
+    const state = $state(() => {
+      const currentRevision = revision.value;
+
+      return new Promise<string>((resolve) => {
+        resolvers.set(currentRevision, resolve);
+      });
+    });
+
+    resolvers.get(0)?.("stable");
+    await getPendingPromise(state);
+
+    expect(state.value).toBe("stable");
+    expect(isPending(state)).toBe(false);
+
+    revision.value = 1;
+
+    expect(isPending(state)).toBe(true);
+
+    resolvers.get(1)?.("stable");
+    await getPendingPromise(state);
+
+    expect(state.value).toBe("stable");
+    expect(isPending(state)).toBe(false);
+  });
+
+  it("restarts async state when a reactive resource dependency refreshes", async () => {
+    const url = $state(() => "/first");
+    const resolvers = new Map<string, () => void>();
+
+    const resource = $state(async () => {
+      const requestedUrl = url.value;
+      await new Promise<void>((resolve) => {
+        resolvers.set(requestedUrl, resolve);
+      });
+      return requestedUrl;
+    });
+
+    const derived = $state(async () => `${resource.value}!`);
+
+    expect(isPending(resource)).toBe(true);
+    expect(isPending(derived)).toBe(true);
+
+    resolvers.get("/first")?.();
+    await getPendingPromise(resource);
+    await getPendingPromise(derived);
+
+    expect(resource.value).toBe("/first");
+    expect(derived.value).toBe("/first!");
+
+    url.value = "/second";
+
+    expect(isPending(resource)).toBe(true);
+    expect(isPending(derived)).toBe(true);
+
+    resolvers.get("/second")?.();
+    await getPendingPromise(resource);
+    await getPendingPromise(derived);
+
+    expect(resource.value).toBe("/second");
+    expect(derived.value).toBe("/second!");
+    expect(isPending(resource)).toBe(false);
+    expect(isPending(derived)).toBe(false);
+  });
+
+  it("keeps synchronous state initializers one-shot", () => {
+    const source = $state(1);
+    const snapshot = $state(() => source.value);
+
+    source.value = 2;
+
+    expect(snapshot.value).toBe(1);
   });
 
   it("reconciles an async store into a stable reactive object", async () => {

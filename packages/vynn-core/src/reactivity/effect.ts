@@ -2,7 +2,14 @@ import { getRuntimeContext, runWithRuntimeContext } from "../runtime/context";
 import { getErrorBoundary } from "../context/error-boundary";
 import { getOwner, getOwnerCleanups, runWithOwner } from "../life-cycle/owner";
 import { NotReadyError } from "../reactivity/async/not-ready-error";
-import { batch, createComputation, execute, runComputation, untrack } from "./graph";
+import {
+  assertNotInComputedGetter,
+  batch,
+  createComputation,
+  execute,
+  runComputation,
+  untrack,
+} from "./graph";
 
 type EffectCallback = () => void | (() => void);
 
@@ -19,6 +26,8 @@ function reportError(error: unknown, owner: ReturnType<typeof getOwner>): void {
 }
 
 function createEffect(callback: EffectCallback, priority: 1 | 2): () => void {
+  assertNotInComputedGetter(priority === 1 ? "$renderEffect" : "$effect");
+
   const owner = getOwner();
   const runtimeContext = getRuntimeContext();
   if (owner?.disposed) {
