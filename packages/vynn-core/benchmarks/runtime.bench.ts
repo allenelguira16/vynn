@@ -16,7 +16,15 @@ const {
 
 let benchmarkSink: unknown;
 
+function assertBenchmarkSink(): void {
+  if (benchmarkSink === undefined) {
+    throw new Error("The benchmark did not produce a result.");
+  }
+}
+
 test("store dependency churn and cleanup", async ({ bench }) => {
+  benchmarkSink = undefined;
+
   await bench("64 dynamic keys × 256 updates", () => {
     const owner = createOwner(null);
 
@@ -36,13 +44,13 @@ test("store dependency churn and cleanup", async ({ bench }) => {
 
     disposeOwner(owner);
   }).run();
+
+  assertBenchmarkSink();
 });
 
 test("nested store reads across 1k items", async ({ bench }) => {
   const owner = createOwner(null);
-  let recomputeNestedRecords = () => {};
-
-  runWithOwner(owner, () => {
+  const recomputeNestedRecords = runWithOwner(owner, () => {
     const items = $store(
       Array.from({ length: 1_000 }, (_, index) => ({
         id: index,
@@ -58,19 +66,24 @@ test("nested store reads across 1k items", async ({ bench }) => {
       return sum;
     });
 
-    recomputeNestedRecords = () => {
+    const recompute = () => {
       revision.value++;
       benchmarkSink = total.value;
     };
 
-    recomputeNestedRecords();
+    recompute();
+    return recompute;
   });
+
+  benchmarkSink = undefined;
 
   try {
     await bench(
       "recompute a derived total from 1,000 nested records",
       recomputeNestedRecords,
     ).run();
+
+    assertBenchmarkSink();
   } finally {
     disposeOwner(owner);
   }
@@ -83,6 +96,8 @@ test("hydration scanning and reference release", async ({ bench }) => {
     (_, index) => `<section><span>${index}</span></section>`,
   ).join("");
 
+  benchmarkSink = undefined;
+
   await bench("scan and release a 200-node root", () => {
     withHydration(() => {
       for (let index = 0; index < 400; index++) claimHydrationElement();
@@ -91,4 +106,6 @@ test("hydration scanning and reference release", async ({ bench }) => {
 
     benchmarkSink = root.childElementCount;
   }).run();
+
+  assertBenchmarkSink();
 });
