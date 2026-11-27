@@ -22,7 +22,7 @@ export default defineConfig({
         zstd: false,
       },
     }),
-    sitemap({ hostname: "http://localhost:3000/" }),
+    sitemap({ hostname: "http://localhost:3000/", outDir: ".output/public" }),
   ],
   resolve: {
     tsconfigPaths: true,

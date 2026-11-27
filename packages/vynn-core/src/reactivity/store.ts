@@ -1,6 +1,15 @@
 import { $renderEffect } from "./effect";
 import { $computed, isAsyncComputed, type Computed } from "./computed";
-import { batch, isTracking, node, notify, track, untrack, type Source } from "./graph";
+import {
+  batch,
+  isTracking,
+  node,
+  notify,
+  setSourceUnobservedHandler,
+  track,
+  untrack,
+  type Source,
+} from "./graph";
 import { PendingReadError } from "./async/pending-error";
 import { getPendingPromise, isPendingInternal, registerPending } from "./async/pending";
 import { isRef, isWritableRef, type ReactiveRef } from "./ref";
@@ -47,6 +56,19 @@ const rawToProxy = new WeakMap<object, object>();
 const proxyToRaw = new WeakMap<object, object>();
 const dependencies = new WeakMap<object, Map<unknown, Source>>();
 
+function releaseStoreSource(source: Source): void {
+  const target = source.storeTarget;
+  if (target === undefined) return;
+
+  const targetDependencies = dependencies.get(target);
+  if (targetDependencies?.get(source.storeKey) !== source) return;
+
+  targetDependencies.delete(source.storeKey);
+  if (targetDependencies.size === 0) dependencies.delete(target);
+}
+
+setSourceUnobservedHandler(releaseStoreSource);
+
 function isPlainObject(value: unknown): value is Record<PropertyKey, unknown> {
   if (value === null || typeof value !== "object") return false;
   const prototype = Object.getPrototypeOf(value);
@@ -87,7 +109,7 @@ function sourceFor(target: object, key: unknown): Source {
 
   let source = targetDependencies.get(key);
   if (!source) {
-    source = node();
+    source = node(target, key);
     targetDependencies.set(key, source);
   }
   return source;
@@ -433,6 +455,9 @@ function collectionHandlers(): ProxyHandler<object> {
   };
 }
 
+const sharedObjectHandlers = objectHandlers();
+const sharedCollectionHandlers = collectionHandlers();
+
 function createReactiveObject<T extends object>(
   target: T,
   beforeRead?: () => void,
@@ -443,9 +468,16 @@ function createReactiveObject<T extends object>(
   const existing = rawToProxy.get(raw);
   if (existing && !beforeRead) return existing as T;
 
-  const handlers = raw instanceof Map || raw instanceof Set || raw instanceof WeakMap || raw instanceof WeakSet
-    ? collectionHandlers()
-    : objectHandlers(beforeRead);
+  const isCollection =
+    raw instanceof Map ||
+    raw instanceof Set ||
+    raw instanceof WeakMap ||
+    raw instanceof WeakSet;
+  const handlers = isCollection
+    ? sharedCollectionHandlers
+    : beforeRead
+      ? objectHandlers(beforeRead)
+      : sharedObjectHandlers;
 
   const proxy = new Proxy(raw, handlers);
   rawToProxy.set(raw, proxy);

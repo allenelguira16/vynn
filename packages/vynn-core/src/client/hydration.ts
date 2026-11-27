@@ -68,6 +68,7 @@ export function withHydration(callback: () => void, root: Node) {
     callback();
   } finally {
     rootHydrationDepth = Math.max(0, rootHydrationDepth - 1);
+    releaseRootHydrationNodes();
     scheduleAfterHydrationCheck();
   }
 }
@@ -77,6 +78,19 @@ function hasUnclaimedHydrationNodes(): boolean {
     hydrationElementIndex < serverRenderedElements.length ||
     hydrationTextIndex < serverRenderedTexts.length
   );
+}
+
+/**
+ * Drop the root claim queues once the initial pass has consumed every node.
+ * Lazy ranges own separate queues and are released by finishIfClaimed().
+ */
+function releaseRootHydrationNodes(): void {
+  if (rootHydrationDepth > 0 || hasUnclaimedHydrationNodes()) return;
+
+  serverRenderedElements = [];
+  serverRenderedTexts = [];
+  hydrationElementIndex = 0;
+  hydrationTextIndex = 0;
 }
 
 /**
@@ -165,8 +179,18 @@ function finishIfClaimed(scope: LazyHydrationNodes): void {
     scope.elementIndex >= scope.elements.length &&
     scope.textIndex >= scope.texts.length
   ) {
+    const id = scope.id;
     scope.hydrating = false;
-    pendingLazyHydration.delete(scope.id);
+
+    // The lazy Owner may remain alive for later reactive updates, but it no
+    // longer needs to retain the server DOM through its hydration scope.
+    scope.elements = [];
+    scope.texts = [];
+    scope.start = undefined;
+    scope.end = undefined;
+
+    pendingLazyHydration.delete(id);
+    serverRenderedLazy.delete(id);
     scheduleAfterHydrationCheck();
   }
 }
@@ -191,6 +215,7 @@ export function claimHydrationElement<T extends Element>() {
       finishIfClaimed(scope);
     } else {
       hydrationElementIndex++;
+      releaseRootHydrationNodes();
       scheduleAfterHydrationCheck();
     }
   }
@@ -211,6 +236,7 @@ export function claimHydrationText() {
       finishIfClaimed(scope);
     } else {
       hydrationTextIndex++;
+      releaseRootHydrationNodes();
       scheduleAfterHydrationCheck();
     }
   }
@@ -543,7 +569,7 @@ function getServerRenderedNodes(root: Node) {
 
     // Walk sibling links directly. Reading childNodes creates and caches a
     // live NodeList for every node visited by this scanner in Chromium.
-    let child = node.firstChild;
+    let child: Node | null = node.firstChild;
     while (child) {
       child = flattenNode(child);
     }
@@ -551,7 +577,7 @@ function getServerRenderedNodes(root: Node) {
     return nextSibling;
   }
 
-  let child = root.firstChild;
+  let child: Node | null = root.firstChild;
   while (child) {
     child = flattenNode(child);
   }

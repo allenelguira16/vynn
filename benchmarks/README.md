@@ -97,3 +97,16 @@ The applications use their frameworks' normal client entry points:
 All framework and bundler versions are pinned in the app manifests and workspace lockfile. The source is intentionally tiny and contains no CSS. The same bundler, target, minifier, and output settings are used for each app.
 
 This is a controlled application-payload benchmark, not a claim that one framework is universally fastest or smallest. Runtime performance, hydration, SSR, memory, and larger workloads are separate benchmarks and should not be inferred from these bundle numbers.
+
+
+## Core runtime microbenchmarks
+
+Vynn's core runtime also has a focused Vitest benchmark suite for reactive dependency churn, nested store reads, and hydration scanning/reference release.
+
+Run it from the repository root:
+
+```sh
+pnpm bench:runtime
+```
+
+The suite reports per-operation timing through Vitest's benchmark runner. The lifecycle regression tests remain the source of truth for memory behavior: they verify that completed hydration scopes release their DOM queues and that unobserved store sources are evicted. Timing numbers are diagnostic and should be compared on the same machine and runtime version; they are not cross-framework performance claims.
