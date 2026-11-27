@@ -67,14 +67,14 @@ describe("lazy hydration text anchors", () => {
   it("replaces lazy boundary comments with empty text nodes", () => {
     const root = document.createElement("div");
     root.innerHTML =
-      "<!--l:1--><div>outer</div><!--l:2--><span>nested</span><!--/l:2--><p>after nested</p><!--/l:1--><strong>root</strong>";
+      "<!--l:00--><div>outer</div><!--l:000--><span>nested</span><!--/l:000--><p>after nested</p><!--/l:00--><strong>root</strong>";
 
     const rootElement = root.querySelector("strong");
 
     withHydration(() => {}, root);
 
-    const outerRange = getServerRenderedLazyRange(1);
-    const nestedRange = getServerRenderedLazyRange(2);
+    const outerRange = getServerRenderedLazyRange("00");
+    const nestedRange = getServerRenderedLazyRange("000");
 
     expect(outerRange).toBeDefined();
     expect(nestedRange).toBeDefined();
@@ -109,7 +109,7 @@ describe("lazy hydration text anchors", () => {
 describe("lazy hydration reference cleanup", () => {
   it("releases completed lazy DOM ranges and node queues", () => {
     const root = document.createElement("div");
-    root.innerHTML = '<!--l:7--><section id="lazy">content</section><!--/l:7--><footer id="root">root</footer>';
+    root.innerHTML = '<!--l:00--><section id="lazy">content</section><!--/l:00--><footer id="root">root</footer>';
 
     const lazyElement = root.querySelector("#lazy");
     const lazyText = lazyElement?.firstChild;
@@ -118,21 +118,21 @@ describe("lazy hydration reference cleanup", () => {
 
     withHydration(() => {}, root);
     expect(isHydrating()).toBe(true);
-    expect(getServerRenderedLazyRange("7")).toBeDefined();
+    expect(getServerRenderedLazyRange("00")).toBeDefined();
 
     const owner = createOwner(null);
     runWithOwner(owner, () => {
-      withServerRenderedLazy("7", () => {
+      withServerRenderedLazy("00", () => {
         expect(claimHydrationElement()).toBe(lazyElement);
         expect(claimHydrationText()).toBe(lazyText);
-        finishServerRenderedLazy("7");
+        finishServerRenderedLazy("00");
       });
 
       expect(claimHydrationElement()).toBe(rootElement);
       expect(claimHydrationText()).toBe(rootText);
     });
 
-    expect(getServerRenderedLazyRange("7")).toBeUndefined();
+    expect(getServerRenderedLazyRange("00")).toBeUndefined();
     expect(isHydrating()).toBe(false);
     disposeOwner(owner);
   });
@@ -142,7 +142,7 @@ describe("lazy hydration cursor isolation", () => {
   it("hydrates sibling and nested lazy ranges independently of resolution order", () => {
     const root = document.createElement("div");
     root.innerHTML =
-      '<!--l:0--><div id="first">one</div><!--l:0.0--><span id="nested">nested</span><!--/l:0.0--><p id="tail">tail</p><!--/l:0--><!--l:1--><article id="second">two</article><!--/l:1--><footer id="root">root</footer>';
+      '<!--l:00--><div id="first">one</div><!--l:000--><span id="nested">nested</span><!--/l:000--><p id="tail">tail</p><!--/l:00--><!--l:01--><article id="second">two</article><!--/l:01--><footer id="root">root</footer>';
 
     const first = root.querySelector("#first");
     const nested = root.querySelector("#nested");
@@ -165,7 +165,7 @@ describe("lazy hydration cursor isolation", () => {
 
     // Resolve the second sibling before the first parent module.
     runWithOwner(secondOwner, () => {
-      withServerRenderedLazy("1", () => {
+      withServerRenderedLazy("01", () => {
         expect(claimHydrationElement()).toBe(second);
         expect(claimHydrationText()).toBe(secondText);
       });
@@ -173,7 +173,7 @@ describe("lazy hydration cursor isolation", () => {
 
     // The first parent's queue excludes the nested lazy range.
     runWithOwner(firstOwner, () => {
-      withServerRenderedLazy("0", () => {
+      withServerRenderedLazy("00", () => {
         expect(claimHydrationElement()).toBe(first);
         expect(claimHydrationText()).toBe(firstText);
         expect(claimHydrationElement()).toBe(tail);
@@ -182,7 +182,7 @@ describe("lazy hydration cursor isolation", () => {
     });
 
     runWithOwner(nestedOwner, () => {
-      withServerRenderedLazy("0.0", () => {
+      withServerRenderedLazy("000", () => {
         expect(claimHydrationElement()).toBe(nested);
         expect(claimHydrationText()).toBe(nestedText);
       });
@@ -199,7 +199,7 @@ describe("lazy hydration cursor isolation", () => {
 
   it("rolls back node claims when a render attempt suspends", () => {
     const root = document.createElement("div");
-    root.innerHTML = '<!--l:0--><section id="preserved">content</section><!--/l:0-->';
+    root.innerHTML = '<!--l:00--><section id="preserved">content</section><!--/l:00-->';
 
     const serverElement = root.querySelector("#preserved");
     withHydration(() => {}, root);
@@ -207,7 +207,7 @@ describe("lazy hydration cursor isolation", () => {
     const owner = createOwner(null);
 
     runWithOwner(owner, () => {
-      withServerRenderedLazy("0", () => {
+      withServerRenderedLazy("00", () => {
         const snapshot = beginHydrationClaim();
 
         expect(claimHydrationElement()).toBe(serverElement);
@@ -221,5 +221,23 @@ describe("lazy hydration cursor isolation", () => {
     });
 
     disposeOwner(owner);
+  });
+});
+
+
+describe("Owner identity marker parsing", () => {
+  it("accepts compact Owner IDs with multi-digit width markers", () => {
+    const root = document.createElement("div");
+    root.innerHTML =
+      '<!--l:00--><div id="parent"><!--l:00a10--><span id="nested">ten</span><!--/l:00a10--></div><!--/l:00-->';
+
+    withHydration(() => {}, root);
+
+    const parentRange = getServerRenderedLazyRange("00");
+    const nestedRange = getServerRenderedLazyRange("00a10");
+
+    expect(parentRange).toBeDefined();
+    expect(nestedRange).toBeDefined();
+    expect(nestedRange?.nodes).toContain(root.querySelector("#nested"));
   });
 });

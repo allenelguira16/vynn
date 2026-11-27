@@ -10,7 +10,14 @@ import {
   getErrorBoundaryValues,
 } from "../context/error-boundary";
 
-import { createOwner, disposeOwner, getOwner, runWithOwner } from "../life-cycle/owner";
+import {
+  createOwner,
+  disposeOwner,
+  enterOwnerIDTracker,
+  getOwner,
+  reserveOwnerIDReservations,
+  runWithOwner,
+} from "../life-cycle/owner";
 import { createRuntimeContext, runWithRuntimeContext } from "../runtime/context";
 import { $state } from "../reactivity/state";
 import { $cmpnt, $nodes } from "../render";
@@ -22,6 +29,7 @@ export type CatchSSRState =
       status: "fallback";
       name: string;
       message: string;
+      ownerIDs?: Record<string, number>;
     };
 
 export const Catch = $cmpnt(function Catch(props: {
@@ -44,17 +52,27 @@ export const Catch = $cmpnt(function Catch(props: {
     const fallbackOwner = props.fallback
       ? createOwner(currentOwner, { identity: false })
       : undefined;
+    const ownerIDReservations = new Map<string, number>();
+    let capturedOwnerIDs: Record<string, number> | undefined;
+    let hasCapturedOwnerIDs = false;
     // oxlint-disable-next-line prefer-const
     let boundary: SSR_ERROR_BOUNDARY;
 
     const handleError = (error: Error): SSR_ERROR_BOUNDARY => {
       boundary.error = error;
 
+      if (!hasCapturedOwnerIDs) {
+        const reservations = Object.fromEntries(ownerIDReservations);
+        capturedOwnerIDs = Object.keys(reservations).length ? reservations : undefined;
+        hasCapturedOwnerIDs = true;
+      }
+
       if (values) {
         values[errorBoundaryID] = {
           status: "fallback",
           message: error.message,
           name: error.name,
+          ...(capturedOwnerIDs ? { ownerIDs: capturedOwnerIDs } : {}),
         };
       }
 
@@ -92,6 +110,7 @@ export const Catch = $cmpnt(function Catch(props: {
     // this Catch boundary so failures can be routed back to it after the
     // initial component traversal has completed.
     runWithRuntimeContext(runtimeContext, () => {
+      enterOwnerIDTracker(ownerIDReservations);
       enterErrorBoundary(handleError);
 
       try {
@@ -116,6 +135,7 @@ export const Catch = $cmpnt(function Catch(props: {
   let viewOwner: Owner | undefined;
 
   if (ssrData?.status === "fallback") {
+    reserveOwnerIDReservations(ssrData.ownerIDs);
     error.value = new Error(ssrData.message);
   }
 

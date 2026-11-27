@@ -256,7 +256,7 @@ export type ServerRenderedLazyRange = {
  * If no SSR range exists, an empty scope prevents the component from consuming
  * unrelated root hydration nodes.
  */
-export function withServerRenderedLazy<T>(lazyID: string | number, callback: () => T): T {
+export function withServerRenderedLazy<T>(lazyID: string, callback: () => T): T {
   const id = String(lazyID);
   let scope = serverRenderedLazy.get(id);
 
@@ -310,7 +310,7 @@ export function rollbackHydrationClaim(snapshot: HydrationClaimSnapshot): void {
  * Empty text anchors replace the temporary SSR comments and preserve the range.
  */
 export function getServerRenderedLazyRange(
-  lazyID: string | number,
+  lazyID: string,
 ): ServerRenderedLazyRange | undefined {
   const range = serverRenderedLazy.get(String(lazyID));
 
@@ -347,7 +347,7 @@ export function getServerRenderedLazyRange(
  * Marks a lazy component complete after its initial client render. Later
  * reactive updates must no longer consume that boundary’s hydration queues.
  */
-export function finishServerRenderedLazy(lazyID: string | number): void {
+export function finishServerRenderedLazy(lazyID: string): void {
   const id = String(lazyID);
   const scope = serverRenderedLazy.get(id);
 
@@ -361,8 +361,13 @@ export function finishServerRenderedLazy(lazyID: string | number): void {
   finishIfClaimed(scope);
 }
 
-const LAZY_START_REGEX = new RegExp(`^${LAZY_START_SSR_MARKER}:(\\d+(?:\\.\\d+)*)$`);
-const LAZY_END_REGEX = new RegExp(`^${LAZY_END_SSR_MARKER}:(\\d+(?:\\.\\d+)*)$`);
+function readLazyMarkerID(value: string, marker: string): string | undefined {
+  const prefix = marker + ":";
+  if (!value.startsWith(prefix)) return undefined;
+
+  const id = value.slice(prefix.length);
+  return id.length > 0 ? id : undefined;
+}
 
 type LazyHydrationNodes = {
   id?: string;
@@ -540,10 +545,10 @@ function getServerRenderedNodes(root: Node) {
         return portalEnd.nextSibling;
       }
 
-      const start = LAZY_START_REGEX.exec(value);
+      const startID = readLazyMarkerID(value, LAZY_START_SSR_MARKER);
 
-      if (start) {
-        const id = start[1];
+      if (startID !== undefined) {
+        const id = startID;
         const anchor = document.createTextNode("");
 
         node.parentNode?.replaceChild(anchor, node);
@@ -553,10 +558,10 @@ function getServerRenderedNodes(root: Node) {
         return nextSibling;
       }
 
-      const end = LAZY_END_REGEX.exec(value);
+      const endID = readLazyMarkerID(value, LAZY_END_SSR_MARKER);
 
-      if (end) {
-        const id = end[1];
+      if (endID !== undefined) {
+        const id = endID;
         const anchor = document.createTextNode("");
 
         node.parentNode?.replaceChild(anchor, node);

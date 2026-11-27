@@ -7,7 +7,7 @@ import {
 } from "../client/hydration-runtime";
 import { LAZY_END_SSR_MARKER, LAZY_START_SSR_MARKER } from "../const";
 
-import { getLazyID, initializeLazyScope } from "../context/lazy-context";
+import { getOwner, getOwnerIdentityID } from "../life-cycle/owner";
 import { regsterAsyncGetterFromLazy } from "../runtime/lazy";
 import { registerSsrModule } from "../context/ssr-modules";
 import { createRuntimeContext, runWithRuntimeContext } from "../runtime/context";
@@ -76,42 +76,39 @@ export function lazy<M extends Record<string, unknown>, K extends keyof M = "def
   const LazyComponent = $cmpnt(function LazyComponent(
     props: Parameters<Component>[0],
   ): JSX.Element {
-    const lazyID = getLazyID();
+    const lazyID = getOwnerIdentityID(getOwner());
+
+    if (lazyID === undefined) {
+      throw new Error("[vynn]: lazy() requires an active component owner.");
+    }
+
     const runtimeContext = createRuntimeContext();
 
     return runWithRuntimeContext(runtimeContext, () => {
-      // Descendant lazy marker IDs use this scope. Async resources derive their
-      // hydration IDs from this component's owner.
-      initializeLazyScope(lazyID);
-
       if (import.meta.env.SSR) {
-      registerSsrModule(moduleId);
-      regsterAsyncGetterFromLazy(loadComponent);
-      const component = $computed(loadComponent);
+        registerSsrModule(moduleId);
+        regsterAsyncGetterFromLazy(loadComponent);
+        const component = $computed(loadComponent);
 
-      return $nodes(() => {
-        return [
+        return $nodes(() => [
           createSSRComment(`${LAZY_START_SSR_MARKER}:${lazyID}`),
           component.value(props),
           createSSRComment(`${LAZY_END_SSR_MARKER}:${lazyID}`),
-        ] as JSX.Element;
-      });
-    }
+        ] as JSX.Element);
+      }
 
-    const existingRange = getServerRenderedLazyRange(lazyID);
+      const existingRange = getServerRenderedLazyRange(lazyID);
 
-    // Route transitions can preload a destination module before replacing the
-    // current view. Render that resolved component synchronously so the new
-    // outlet does not briefly mount as an empty lazy range.
-    if (resolvedComponent && !existingRange) {
-      return resolvedComponent(props);
-    }
+      // Route transitions can preload a destination module before replacing the
+      // current view. Render that resolved component synchronously so the new
+      // outlet does not briefly mount as an empty lazy range.
+      if (resolvedComponent && !existingRange) {
+        return resolvedComponent(props);
+      }
 
-    regsterAsyncGetterFromLazy(loadComponent);
+      regsterAsyncGetterFromLazy(loadComponent);
 
-    // Install the scope before creating $nodes. Its initial render effect and
-    // every later retry must capture this lazy instance's independent queues.
-    const component = $computed(loadComponent);
+      const component = $computed(loadComponent);
 
       return withServerRenderedLazy(lazyID, () =>
         $nodes(() => {

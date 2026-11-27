@@ -25,9 +25,9 @@ type HydrationRuntime = {
   ) => boolean;
   synchronizeText: (node: Text | undefined, expectedText: string) => node is Text;
   diagnoseAttribute: (element: Element, name: string, expectedValue: string | null) => void;
-  withServerRenderedLazy: <T>(lazyID: string | number, callback: () => T) => T;
-  getServerRenderedLazyRange: (lazyID: string | number) => ServerRenderedLazyRange | undefined;
-  finishServerRenderedLazy: (lazyID: string | number) => void;
+  withServerRenderedLazy: <T>(lazyID: string, callback: () => T) => T;
+  getServerRenderedLazyRange: (lazyID: string) => ServerRenderedLazyRange | undefined;
+  finishServerRenderedLazy: (lazyID: string) => void;
   runAfterHydration: (callback: () => unknown, waitForLazy?: boolean) => void;
 };
 
@@ -77,7 +77,7 @@ export function diagnoseHydrationAttribute(
 }
 
 export function withServerRenderedLazy<T>(
-  lazyID: string | number,
+  lazyID: string,
   callback: () => T,
 ): T {
   if (hydrationRuntime) {
@@ -91,12 +91,12 @@ export function withServerRenderedLazy<T>(
 }
 
 export function getServerRenderedLazyRange(
-  lazyID: string | number,
+  lazyID: string,
 ): ServerRenderedLazyRange | undefined {
   return hydrationRuntime?.getServerRenderedLazyRange(lazyID);
 }
 
-export function finishServerRenderedLazy(lazyID: string | number): void {
+export function finishServerRenderedLazy(lazyID: string): void {
   hydrationRuntime?.finishServerRenderedLazy(lazyID);
 }
 

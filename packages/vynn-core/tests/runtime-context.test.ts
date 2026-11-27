@@ -1,10 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import { createOwner, disposeOwner, getOwner, runWithOwner } from "../src/life-cycle/owner";
+import {
+  createOwner,
+  disposeOwner,
+  getOwner,
+  getOwnerIdentityID,
+  runWithOwner,
+} from "../src/life-cycle/owner";
 import { $computed, type Computed } from "../src/reactivity/computed";
 import { $effect } from "../src/reactivity/effect";
 import { $state } from "../src/reactivity/state";
-import { getLazyID, initializeLazyContext } from "../src/context/lazy-context";
 
 import "../src/runtime/server/context";
 import "../src/life-cycle/server-context";
@@ -147,29 +152,27 @@ describe("runtime context storage", () => {
     expect(observed).toBe("captured");
   });
 
-  it("keeps Owner-scoped lazy context available after the runtime frame exits", () => {
+  it("keeps Owner identity available after the runtime frame exits", () => {
     const appOwner = createOwner(null);
     let routeOwner!: ReturnType<typeof createOwner>;
 
     runWithRuntimeContextRoot(() => {
       runWithOwner(appOwner, () => {
-        initializeLazyContext();
         routeOwner = createOwner();
       });
     });
 
-    // Lazy IDs live in the Owner hierarchy, not RuntimeContext. Re-entering
-    // the route owner after the original runtime frame exits must still find
-    // the inherited lazy-ID registry.
+    // Owner identity lives in the Owner hierarchy, not RuntimeContext.
+    // Re-entering the route after the runtime frame exits must preserve it.
     let lazyID = "";
     runWithOwner(routeOwner, () => {
       const lazyOwner = createOwner();
       runWithOwner(lazyOwner, () => {
-        lazyID = getLazyID();
+        lazyID = getOwnerIdentityID(getOwner()) ?? "";
       });
     });
 
-    expect(lazyID).toBe("0");
+    expect(lazyID).toBe("000");
     disposeOwner(appOwner);
   });
 

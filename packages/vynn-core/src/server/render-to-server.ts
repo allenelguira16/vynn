@@ -6,7 +6,6 @@ import type { JSX } from "../types/jsx";
 import { initializeAsyncHydrationRuntime } from "../runtime/async/hydration";
 import { initializeErrorBoundaryContext } from "../context/error-boundary";
 import { initializeHeadContext } from "../context/head-context";
-import { initializeLazyContext } from "../context/lazy-context";
 import { type RenderMode, setRenderMode } from "../runtime/render-mode";
 import { getSsrModuleContext, initializeSsrModuleContext } from "../context/ssr-modules";
 import { createOwner, disposeOwner, runWithOwner } from "../life-cycle/owner";
@@ -71,7 +70,6 @@ export function renderToServer(App: () => JSX.Element, mode: RenderMode, request
 
             const headContext = initializeHeadContext();
             initializeSsrModuleContext();
-            initializeLazyContext();
             initializeAsyncHydrationRuntime();
             initializeErrorBoundaryContext();
 

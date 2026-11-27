@@ -4,7 +4,9 @@ import type { JSX } from "../src/types/jsx";
 
 import { Await } from "../src/components/await";
 import { Catch } from "../src/components/catch";
-import { getLazyID, initializeLazyScope } from "../src/context/lazy-context";
+import { lazy } from "../src/components/lazy";
+import { getOwner, getOwnerIdentityID } from "../src/life-cycle/owner";
+import { $cmpnt } from "../src/render/$cmpnt";
 import { $state } from "../src/reactivity/state";
 import { $insert } from "../src/render/$insert";
 import { $template } from "../src/render/$template";
@@ -212,20 +214,46 @@ describe("SSR async Catch", () => {
     });
   });
 
-  it("serializes lazy ID reservations when a boundary skips a lazy descendant", async () => {
+  it("uses the Lazy component Owner ID in SSR boundary markers", async () => {
+    const LazyPage = lazy(() =>
+      Promise.resolve({ default: () => "Loaded lazy page" }),
+    );
+
+    const rendered = await renderToServer(() => LazyPage(), "async");
+
+    expect(rendered.body).toContain("<!--l:00-->");
+    expect(rendered.body).toContain("<!--/l:00-->");
+    expect(rendered.body).toContain("Loaded lazy page");
+  });
+
+  it("serializes Owner ID reservations when Catch skips a lazy component owner", async () => {
     const error = new Error("failed before the lazy descendant finished rendering");
+    const FailingLazyComponent = $cmpnt((): JSX.Element => {
+      throw error;
+    });
+    let fallbackComponentID = "";
+    let followingSiblingID = "";
+
+    const FallbackComponent = $cmpnt((): JSX.Element => {
+      fallbackComponentID = getOwnerIdentityID(getOwner()) ?? "";
+      return "Fallback component";
+    });
+
+    const FollowingSibling = $cmpnt((): JSX.Element => {
+      followingSiblingID = getOwnerIdentityID(getOwner()) ?? "";
+      return "Following sibling";
+    });
 
     const rendered = await renderToServer(
       () => [
         Catch({
-          children: (() => {
-            const lazyID = getLazyID();
-            initializeLazyScope(lazyID);
-            throw error;
-          }) as unknown as JSX.Element,
-          fallback: (reason) => `Caught: ${reason.message}`,
+          children: (() => FailingLazyComponent()) as unknown as JSX.Element,
+          fallback: (reason) => [
+            FallbackComponent(),
+            `Caught: ${reason.message}`,
+          ],
         }),
-        getLazyID(),
+        FollowingSibling(),
       ],
       "async",
     );
@@ -238,16 +266,17 @@ describe("SSR async Catch", () => {
 
     const errorBoundaries = JSON.parse(hydrationData![2]) as Array<{
       status: string;
-      lazyIDs?: Record<string, number>;
+      ownerIDs?: Record<string, number>;
     }>;
 
-    // The skipped child consumed lazy ID 0 on the server. The next sibling
-    // therefore renders as ID 1, and hydration must preserve that cursor.
     expect(rendered.body).toContain("Caught: " + error.message);
-    expect(rendered.body).toContain(">1<");
+    expect(rendered.body).toContain("Fallback component");
+    expect(rendered.body).toContain("Following sibling");
+    expect(fallbackComponentID).toBe("001");
+    expect(followingSiblingID).toBe("01");
     expect(errorBoundaries[0]).toMatchObject({
       status: "fallback",
-      lazyIDs: { "": 1 },
+      ownerIDs: { "00": 1 },
     });
   });
 

@@ -185,7 +185,7 @@ describe("Await with lazy components", () => {
     const LazyPage = lazy(() => module.promise, "Page");
 
     const host = document.createElement("div");
-    host.innerHTML = "<!--l:0--><p>Loaded page</p><!--/l:0-->";
+    host.innerHTML = "<!--l:000--><p>Loaded page</p><!--/l:000-->";
 
     const serverPage = host.querySelector("p");
 

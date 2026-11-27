@@ -27,6 +27,7 @@ export type ErrorBoundarySSRState =
       status: "fallback";
       name: string;
       message: string;
+      ownerIDs?: Record<string, number>;
     };
 
 export function initializeErrorBoundaryContext() {
