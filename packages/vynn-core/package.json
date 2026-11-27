@@ -40,7 +40,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "bench:runtime": "vitest bench benchmarks/runtime.bench.ts",
+    "bench:runtime": "vite build --config vite.bench.config.ts && vitest bench --config vitest.bench.config.ts --run benchmarks/runtime.bench.ts",
     "test:memory": "vitest run tests/lazy-hydration.test.ts tests/store-memory-lifecycle.test.ts"
   },
   "devDependencies": {
