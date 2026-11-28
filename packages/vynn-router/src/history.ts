@@ -1,4 +1,5 @@
-export type HistoryListener = (location: string) => void;
+export type HistoryAction = "push" | "replace" | "pop";
+export type HistoryListener = (location: string, action: HistoryAction) => void;
 
 export type RouterHistory = {
   readonly location: string;
@@ -49,9 +50,9 @@ export function createMemoryHistory(options: MemoryHistoryOptions = {}): MemoryH
   const listeners = new Set<HistoryListener>();
   const getLocation = () => entries[index] ?? "/";
 
-  const notify = () => {
+  const notify = (action: HistoryAction) => {
     const location = getLocation();
-    for (const listener of listeners) listener(location);
+    for (const listener of listeners) listener(location, action);
   };
 
   const go = (delta: number) => {
@@ -61,7 +62,7 @@ export function createMemoryHistory(options: MemoryHistoryOptions = {}): MemoryH
     if (nextIndex === index) return;
 
     index = nextIndex;
-    notify();
+    notify("pop");
   };
 
   return {
@@ -85,7 +86,7 @@ export function createMemoryHistory(options: MemoryHistoryOptions = {}): MemoryH
       entries.splice(index + 1);
       entries.push(next);
       index = entries.length - 1;
-      notify();
+      notify("push");
     },
 
     replace(to) {
@@ -94,7 +95,7 @@ export function createMemoryHistory(options: MemoryHistoryOptions = {}): MemoryH
       if (next === current) return;
 
       entries[index] = next;
-      notify();
+      notify("replace");
     },
 
     go,
@@ -143,12 +144,12 @@ export function createBrowserHistory(initialUrl?: string): RouterHistory {
   const getLocation = () =>
     window.location.pathname + window.location.search + window.location.hash;
 
-  const notify = () => {
+  const notify = (action: HistoryAction) => {
     const location = getLocation();
-    for (const listener of listeners) listener(location);
+    for (const listener of listeners) listener(location, action);
   };
 
-  const onPopState = () => notify();
+  const onPopState = () => notify("pop");
 
   const attach = () => {
     if (listening || listeners.size === 0) return;
@@ -186,7 +187,7 @@ export function createBrowserHistory(initialUrl?: string): RouterHistory {
       window.history.pushState(null, "", next);
     }
 
-    notify();
+    notify(action);
     scrollToHash(target.hash);
   };
 
