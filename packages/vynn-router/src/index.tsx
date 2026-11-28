@@ -8,7 +8,7 @@ export type {
   RouterState,
 } from "./types";
 
-export type { MemoryHistory, MemoryHistoryOptions, RouterHistory } from "./history";
+export type { HistoryAction, HistoryListener, MemoryHistory, MemoryHistoryOptions, RouterHistory } from "./history";
 
 export { toFileRouter } from "./file-router";
 export { createBrowserHistory, createMemoryHistory } from "./history";
