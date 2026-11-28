@@ -192,7 +192,7 @@ function findBestDescendant(
     if (!matchesPath(node, pathnameSegments, !hasChildren)) continue;
 
     const descendant = hasChildren
-      ? findBestDescendant(node.children, pathnameSegments)
+      ? findBestDescendant(node.children, pathnameSegments, allowIntercepted)
       : undefined;
 
     if (node.requiresChildMatch && !descendant) continue;
