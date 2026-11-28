@@ -1,7 +1,12 @@
 import type { Location, Route } from "./types";
 
 import { joinPaths, normalizePath, toSegments } from "./path";
-import { PATHLESS_ROUTE, REQUIRE_CHILD_MATCH, type InternalRoute } from "./route-meta";
+import {
+  ABSOLUTE_ROUTE_PATH,
+  PATHLESS_ROUTE,
+  REQUIRE_CHILD_MATCH,
+  type InternalRoute,
+} from "./route-meta";
 
 type SegmentKind = "static" | "parameter" | "required-wildcard" | "optional-wildcard";
 
@@ -42,7 +47,8 @@ function compileRoute(
 ): CompiledRoute {
   const internalRoute = route as InternalRoute<unknown>;
   const isPathless = internalRoute[PATHLESS_ROUTE] === true;
-  const fullPath = isPathless ? parentPath : joinPaths(parentPath, route.path);
+  const absolutePath = internalRoute[ABSOLUTE_ROUTE_PATH];
+  const fullPath = absolutePath ?? (isPathless ? parentPath : joinPaths(parentPath, route.path));
   const pathSegments = toSegments(fullPath);
   const children = (route.children ?? []).map((child) =>
     compileRoute(child as unknown as Route<unknown>, fullPath),
