@@ -6,6 +6,8 @@ export const ERROR_BOUNDARY_END_SSR_MARKER = "/eb";
 export const TEXT_SSR_SEPARATOR = "/";
 export const LAZY_START_SSR_MARKER = "l";
 export const LAZY_END_SSR_MARKER = "/l";
+export const HYDRATION_SCOPE_START_SSR_MARKER = "vynn:scope:start";
+export const HYDRATION_SCOPE_END_SSR_MARKER = "vynn:scope:end";
 export const PORTAL_START_SSR_MARKER = "p";
 export const PORTAL_END_SSR_MARKER = "/p";
 

@@ -4,6 +4,64 @@ import { transformVynnOxc, transformVynnOxcWithMap } from "../src/index.ts";
 
 describe("Vynn Oxc JSX compiler", () => {
 
+  it("scopes eager JSX locals so they can be returned without a function wrapper", () => {
+    const code = transformVynnOxc(
+      `function Contexts(props: { name: string }) {
+        const nameEl = <>Name: {props.name} Hi </>;
+
+        return <>{nameEl}</>;
+      }`,
+      "contexts.tsx",
+    );
+
+    expect(code).toContain("$scope as _$scope");
+    expect(code).toMatch(/const nameEl = _\$scope\(\(\) =>/);
+  });
+
+  it("does not add hydration scopes to arbitrary nested JSX expressions", () => {
+    const code = transformVynnOxc(
+      `function App() {
+        let dom;
+        $effect(() => {
+          const local = <div>Debug</div>;
+          dom = local;
+          console.log(<span>Detached</span>);
+        });
+        return <>{dom}</>;
+      }`,
+      "effect-jsx.tsx",
+    );
+
+    // Only the local JSX initializer gets a scope. Assignment and transient
+    // expressions must not create additional Owner or hydration boundaries.
+    expect(code.match(/_\$scope\(\(\) =>/g)?.length).toBe(1);
+  });
+
+  it("keeps Await fallback and child expressions inside one enclosing scope", () => {
+    const code = transformVynnOxc(
+      `function App(props: { ready: boolean }) {
+        const boundary = <Await fallback={<Loading />}>
+          {props.ready ? <Content /> : <Pending />}
+        </Await>;
+        return <>{boundary}</>;
+      }`,
+      "await-scope.tsx",
+    );
+
+    // A boundary is scoped once as an eager local. Its fallback and dynamic
+    // children are compiled normally instead of acquiring nested scopes.
+    expect(code.match(/_\$scope\(\(\) =>/g)?.length).toBe(1);
+  });
+
+  it("keeps module-level eager JSX initializers rejected", () => {
+    expect(() =>
+      transformVynnOxc(
+        `const view = <div>Outside a component</div>;`,
+        "module.tsx",
+      ),
+    ).toThrow("Module-level JSX initializer");
+  });
+
   it("claims static fragment text before evaluating dynamic children", () => {
     const code = transformVynnOxc(
       `function Contexts(props: { name: string }) {

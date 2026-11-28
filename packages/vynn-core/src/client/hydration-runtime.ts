@@ -1,4 +1,4 @@
-import { createOwner, getOwner, runWithOwner } from "../life-cycle/owner";
+import { createOwner, getOwner, runWithOwner, type Owner } from "../life-cycle/owner";
 
 /**
  * Optional client hydration services.
@@ -11,6 +11,11 @@ export type ServerRenderedLazyRange = {
   start: Text;
   end: Text;
   nodes: Node[];
+};
+
+export type ServerRenderedHydrationScopeRange = {
+  start: Text;
+  end: Text;
 };
 
 type HydrationRuntime = {
@@ -28,6 +33,8 @@ type HydrationRuntime = {
   withServerRenderedLazy: <T>(lazyID: string, callback: () => T) => T;
   getServerRenderedLazyRange: (lazyID: string) => ServerRenderedLazyRange | undefined;
   finishServerRenderedLazy: (lazyID: string) => void;
+  withServerRenderedHydrationScope: <T>(id: string, owner: Owner, callback: () => T) => T;
+  getServerRenderedHydrationScopeRange: (id: string) => ServerRenderedHydrationScopeRange | undefined;
   runAfterHydration: (callback: () => unknown, waitForLazy?: boolean) => void;
 };
 
@@ -109,4 +116,24 @@ export function runAfterHydration(
   } else {
     runWithOwner(getOwner(), callback);
   }
+}
+
+/** Run a JSX subtree with its own hydration claim queues. */
+export function withServerRenderedHydrationScope<T>(
+  id: string,
+  owner: Owner,
+  callback: () => T,
+): T {
+  if (hydrationRuntime) {
+    return hydrationRuntime.withServerRenderedHydrationScope(id, owner, callback);
+  }
+
+  return runWithOwner(owner, callback);
+}
+
+/** Get the marker anchors for a JSX subtree's server-rendered hydration range. */
+export function getServerRenderedHydrationScopeRange(
+  id: string,
+): ServerRenderedHydrationScopeRange | undefined {
+  return hydrationRuntime?.getServerRenderedHydrationScopeRange(id);
 }

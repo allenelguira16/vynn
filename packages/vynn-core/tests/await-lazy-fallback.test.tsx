@@ -11,6 +11,7 @@ import { lazy } from "../src/components/lazy";
 import { getOwner } from "../src/life-cycle/owner";
 import { onDestroy } from "../src/life-cycle/on-destroy";
 import { $state } from "../src/reactivity/state";
+import { renderToServer } from "../src/server/render-to-server";
 
 afterEach(() => {
   document.body.innerHTML = "";
@@ -208,6 +209,37 @@ describe("Await with lazy components", () => {
 
     expect(host.textContent).toBe("Loaded page");
     expect(host.querySelector("p")).toBe(serverPage);
+
+    unmount();
+  });
+});
+
+describe("Await eager JSX hydration", () => {
+  it("does not duplicate a child component's eager JSX local", () => {
+    function Page(): JSX.Element {
+      const content = <section><p>Await content</p></section>;
+      return content;
+    }
+
+    function App(): JSX.Element {
+      return (
+        <Await fallback={<p>Loading</p>}>
+          <Page />
+        </Await>
+      );
+    }
+
+    const rendered = renderToServer(() => <App />, "sync");
+    const host = document.createElement("div");
+    host.innerHTML = rendered.body;
+    document.body.append(host);
+
+    const serverContent = host.querySelector("section");
+    const unmount = hydrateToDOM(() => <App />, host);
+
+    expect(host.querySelectorAll("section")).toHaveLength(1);
+    expect(host.querySelector("section")).toBe(serverContent);
+    expect(host.textContent).toBe("Await content");
 
     unmount();
   });

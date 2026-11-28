@@ -9,4 +9,5 @@ export { $nodes } from "./$nodes";
 export { $text } from "./$text";
 export { $on } from "./$on";
 export { $spread } from "./$spread";
+export { $scope } from "./$scope";
 export { $child, $finishTemplate, $sibling, $staticTemplate, $template } from "./$template";

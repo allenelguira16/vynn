@@ -2,6 +2,8 @@ import {
   EMPTY_TEXT_SSR_MARKER,
   INTERNAL_RANGE_END_MARKER,
   INTERNAL_RANGE_START_MARKER,
+  HYDRATION_SCOPE_END_SSR_MARKER,
+  HYDRATION_SCOPE_START_SSR_MARKER,
   LAZY_END_SSR_MARKER,
   LAZY_START_SSR_MARKER,
   PORTAL_END_SSR_MARKER,
@@ -30,12 +32,15 @@ import {
 let serverRenderedElements: Element[] = [];
 let serverRenderedTexts: Text[] = [];
 let serverRenderedLazy = new Map<string, LazyHydrationNodes>();
+let serverRenderedScopes = new Map<string, LazyHydrationNodes>();
+let pendingHydrationScopes = new Set<string>();
 
 let hydrationElementIndex = 0;
 let hydrationTextIndex = 0;
 let rootHydrationDepth = 0;
 
 const LAZY_HYDRATION = Symbol("vynn.lazy-hydration");
+const HYDRATION_SCOPE = Symbol("vynn.hydration-scope");
 
 // Lazy boundaries discovered in the server-rendered HTML.
 let pendingLazyHydration = new Set<string>();
@@ -57,12 +62,14 @@ let hydrationCheckScheduled = false;
 
 export function withHydration(callback: () => void, root: Node) {
   installDynamicTemplateHydration();
-  [serverRenderedElements, serverRenderedTexts, serverRenderedLazy] = getServerRenderedNodes(root);
+  [serverRenderedElements, serverRenderedTexts, serverRenderedLazy, serverRenderedScopes] =
+    getServerRenderedNodes(root);
 
   hydrationElementIndex = 0;
   hydrationTextIndex = 0;
 
   pendingLazyHydration = new Set(serverRenderedLazy.keys());
+  pendingHydrationScopes = new Set(serverRenderedScopes.keys());
 
   rootHydrationDepth++;
 
@@ -102,22 +109,28 @@ function releaseRootHydrationNodes(): void {
  * cannot make later client-side updates look like hydration work.
  */
 export function isHydrationClaimActive(): boolean {
-  const scope = getOwnerContext<LazyHydrationNodes>(LAZY_HYDRATION);
+  const identityScope = getOwnerContext<LazyHydrationNodes>(HYDRATION_SCOPE);
+  if (identityScope) return identityScope.hydrating;
 
-  return scope ? scope.hydrating : rootHydrationDepth > 0;
+  const lazyScope = getOwnerContext<LazyHydrationNodes>(LAZY_HYDRATION);
+  return lazyScope ? lazyScope.hydrating : rootHydrationDepth > 0;
 }
 
 /**
  * Checks whether hydration is still in progress.
  *
  * waitForLazy = false:
- *   Wait only for currently queued root DOM nodes to be claimed.
+ *   Wait for root DOM nodes and compiler-generated JSX hydration scopes.
  *
  * waitForLazy = true:
  *   Also wait for every discovered lazy boundary to finish hydration.
  */
 export function isHydrating(waitForLazy = true): boolean {
-  return hasUnclaimedHydrationNodes() || (waitForLazy && pendingLazyHydration.size > 0);
+  return (
+    hasUnclaimedHydrationNodes() ||
+    pendingHydrationScopes.size > 0 ||
+    (waitForLazy && pendingLazyHydration.size > 0)
+  );
 }
 
 export function runAfterHydration<T>(callback: () => T, waitForLazy = true): void {
@@ -197,13 +210,75 @@ function finishIfClaimed(scope: LazyHydrationNodes): void {
   }
 }
 
+function finishHydrationScopeIfClaimed(scope: LazyHydrationNodes): void {
+  if (
+    scope.id !== undefined &&
+    scope.finished &&
+    scope.elementIndex >= scope.elements.length &&
+    scope.textIndex >= scope.texts.length
+  ) {
+    const id = scope.id;
+    scope.hydrating = false;
+    scope.elements = [];
+    scope.texts = [];
+    scope.start = undefined;
+    scope.end = undefined;
+
+    pendingHydrationScopes.delete(id);
+    serverRenderedScopes.delete(id);
+    scheduleAfterHydrationCheck();
+  }
+}
+
+/**
+ * Executes one compiler-generated JSX subtree with the matching server range's
+ * private claim queues. A missing range means the subtree had no SSR output,
+ * so it must not consume nodes from the surrounding component.
+ */
+export function withServerRenderedHydrationScope<T>(
+  id: string,
+  owner: Owner,
+  callback: () => T,
+): T {
+  const scope = serverRenderedScopes.get(id) ?? createLazyHydrationNodes(id, false);
+
+  if (!serverRenderedScopes.has(id)) {
+    scope.finished = true;
+  }
+
+  return runWithOwner(owner, () => {
+    setOwnerContext(HYDRATION_SCOPE, scope);
+    const result = callback();
+
+    if (serverRenderedScopes.has(id)) {
+      scope.finished = true;
+      finishHydrationScopeIfClaimed(scope);
+    }
+
+    return result;
+  });
+}
+
+/** Returns the preserved marker anchors for a compiler-generated JSX scope. */
+export function getServerRenderedHydrationScopeRange(
+  id: string,
+): { start: Text; end: Text } | undefined {
+  const scope = serverRenderedScopes.get(id);
+  if (!scope?.start || !scope.end) return undefined;
+  return { start: scope.start, end: scope.end };
+}
+
 /**
  * Claims from the current lazy boundary when one is active. Lazy queues are
  * independent, so sibling boundaries can hydrate in whichever order their
  * dynamic imports resolve.
  */
 export function claimHydrationElement<T extends Element>() {
-  const scope = getOwnerContext<LazyHydrationNodes>(LAZY_HYDRATION);
+  const identityScope = getOwnerContext<LazyHydrationNodes>(HYDRATION_SCOPE);
+  const lazyScope = getOwnerContext<LazyHydrationNodes>(LAZY_HYDRATION);
+  const scope = identityScope ?? lazyScope;
+
+  if (scope && !scope.hydrating) return undefined;
 
   try {
     if (scope) {
@@ -214,7 +289,8 @@ export function claimHydrationElement<T extends Element>() {
   } finally {
     if (scope) {
       scope.elementIndex++;
-      finishIfClaimed(scope);
+      if (identityScope) finishHydrationScopeIfClaimed(scope);
+      else finishIfClaimed(scope);
     } else {
       hydrationElementIndex++;
       releaseRootHydrationNodes();
@@ -224,7 +300,11 @@ export function claimHydrationElement<T extends Element>() {
 }
 
 export function claimHydrationText() {
-  const scope = getOwnerContext<LazyHydrationNodes>(LAZY_HYDRATION);
+  const identityScope = getOwnerContext<LazyHydrationNodes>(HYDRATION_SCOPE);
+  const lazyScope = getOwnerContext<LazyHydrationNodes>(LAZY_HYDRATION);
+  const scope = identityScope ?? lazyScope;
+
+  if (scope && !scope.hydrating) return undefined;
 
   try {
     if (scope) {
@@ -235,7 +315,8 @@ export function claimHydrationText() {
   } finally {
     if (scope) {
       scope.textIndex++;
-      finishIfClaimed(scope);
+      if (identityScope) finishHydrationScopeIfClaimed(scope);
+      else finishIfClaimed(scope);
     } else {
       hydrationTextIndex++;
       releaseRootHydrationNodes();
@@ -280,7 +361,9 @@ export function withServerRenderedLazy<T>(lazyID: string, callback: () => T): T 
 
 /** Capture the current cursor before a render-effect attempt. */
 export function beginHydrationClaim(): HydrationClaimSnapshot {
-  const scope = getOwnerContext<LazyHydrationNodes>(LAZY_HYDRATION);
+  const scope =
+    getOwnerContext<LazyHydrationNodes>(HYDRATION_SCOPE) ??
+    getOwnerContext<LazyHydrationNodes>(LAZY_HYDRATION);
 
   return {
     scope,
@@ -428,7 +511,8 @@ function findInternalRangeEnd(start: Comment): Comment | undefined {
 function getServerRenderedNodes(root: Node) {
   const doms: Node[] = [];
   const lazy = new Map<string, LazyHydrationNodes>();
-  const boundaryStack: string[] = [];
+  const scopes = new Map<string, LazyHydrationNodes>();
+  const boundaryStack: Array<{ kind: "lazy" | "scope"; id: string }> = [];
   function getOrCreateLazyNodes(id: string): LazyHydrationNodes {
     let nodes = lazy.get(id);
 
@@ -440,15 +524,29 @@ function getServerRenderedNodes(root: Node) {
     return nodes;
   }
 
-  function addNode(node: Node) {
-    const id = boundaryStack.at(-1);
+  function getOrCreateScopeNodes(id: string): LazyHydrationNodes {
+    let nodes = scopes.get(id);
 
-    if (id === undefined) {
+    if (!nodes) {
+      nodes = createLazyHydrationNodes(id);
+      scopes.set(id, nodes);
+    }
+
+    return nodes;
+  }
+
+  function addNode(node: Node) {
+    const activeBoundary = boundaryStack.at(-1);
+
+    if (!activeBoundary) {
       doms.push(node);
       return;
     }
 
-    const nodes = getOrCreateLazyNodes(id);
+    const nodes =
+      activeBoundary.kind === "scope"
+        ? getOrCreateScopeNodes(activeBoundary.id)
+        : getOrCreateLazyNodes(activeBoundary.id);
 
     if (isElement(node)) {
       nodes.elements.push(node);
@@ -545,6 +643,37 @@ function getServerRenderedNodes(root: Node) {
         return portalEnd.nextSibling;
       }
 
+      const hydrationScopeStartID = readLazyMarkerID(value, HYDRATION_SCOPE_START_SSR_MARKER);
+
+      if (hydrationScopeStartID !== undefined) {
+        const anchor = document.createTextNode("");
+        node.parentNode?.replaceChild(anchor, node);
+        getOrCreateScopeNodes(hydrationScopeStartID).start = anchor;
+        boundaryStack.push({ kind: "scope", id: hydrationScopeStartID });
+        return nextSibling;
+      }
+
+      const hydrationScopeEndID = readLazyMarkerID(value, HYDRATION_SCOPE_END_SSR_MARKER);
+
+      if (hydrationScopeEndID !== undefined) {
+        const anchor = document.createTextNode("");
+        node.parentNode?.replaceChild(anchor, node);
+        getOrCreateScopeNodes(hydrationScopeEndID).end = anchor;
+
+        let index = -1;
+        for (let cursor = boundaryStack.length - 1; cursor >= 0; cursor--) {
+          const entry = boundaryStack[cursor];
+          if (entry.kind === "scope" && entry.id === hydrationScopeEndID) {
+            index = cursor;
+            break;
+          }
+        }
+        if (index !== -1) boundaryStack.splice(index);
+        else console.warn(`[vynn] Unmatched hydration scope end marker: ${value}`);
+
+        return nextSibling;
+      }
+
       const startID = readLazyMarkerID(value, LAZY_START_SSR_MARKER);
 
       if (startID !== undefined) {
@@ -554,7 +683,7 @@ function getServerRenderedNodes(root: Node) {
         node.parentNode?.replaceChild(anchor, node);
 
         getOrCreateLazyNodes(id).start = anchor;
-        boundaryStack.push(id);
+        boundaryStack.push({ kind: "lazy", id });
         return nextSibling;
       }
 
@@ -568,7 +697,14 @@ function getServerRenderedNodes(root: Node) {
 
         getOrCreateLazyNodes(id).end = anchor;
 
-        const index = boundaryStack.lastIndexOf(id);
+        let index = -1;
+        for (let cursor = boundaryStack.length - 1; cursor >= 0; cursor--) {
+          const entry = boundaryStack[cursor];
+          if (entry.kind === "lazy" && entry.id === id) {
+            index = cursor;
+            break;
+          }
+        }
 
         if (index !== -1) {
           boundaryStack.splice(index);
@@ -612,7 +748,7 @@ function getServerRenderedNodes(root: Node) {
     child = flattenNode(child);
   }
 
-  return [doms.filter(isElement), doms.filter(isTextNode), lazy] as const;
+  return [doms.filter(isElement), doms.filter(isTextNode), lazy, scopes] as const;
 }
 
 // Make the real implementation available only to bundles that include the
@@ -627,6 +763,8 @@ installHydrationRuntime({
   diagnoseAttribute: diagnoseHydrationAttribute,
   withServerRenderedLazy,
   getServerRenderedLazyRange,
+  withServerRenderedHydrationScope,
+  getServerRenderedHydrationScopeRange,
   finishServerRenderedLazy,
   runAfterHydration,
 });

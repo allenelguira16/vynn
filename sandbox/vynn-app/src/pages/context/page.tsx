@@ -49,7 +49,7 @@ const Input = () => {
     };
   });
 
-  const nameEl = () => <>Name: {forms.name} Hi </>;
+  const nameEl = <>Name: {forms.name} Hi </>;
 
   // console.log("hi");
 
@@ -60,7 +60,7 @@ const Input = () => {
   return (
     <>
       <div>Name: {forms.name}</div>
-      {nameEl()}
+      {nameEl}
       <input
         type="text"
         name="name"

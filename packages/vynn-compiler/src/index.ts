@@ -109,6 +109,7 @@ import {
 
 type RuntimeHelperName =
   | "$nodes"
+  | "$scope"
   | "$text"
   | "$template"
   | "$staticTemplate"
@@ -1292,8 +1293,11 @@ class TransformState {
         }
 
         if (declaration.init && isExpression(declaration.init)) {
+          // Module-level JSX has no request/component Owner in which to reserve
+          // a hydration identity. Keep requiring a lazy initializer there;
+          // component and ordinary function locals are transformed later with
+          // their runtime Owner available.
           this.assertJSXInitializerIsLazy(declaration);
-
           setNodeProperty(
             declaration,
             "init",
@@ -4516,17 +4520,13 @@ class TransformState {
     }
 
     if (isJSXElement(expression)) {
-      const transformed = isComponentElement(expression)
+      return isComponentElement(expression)
         ? this.createComponentCall(expression, allocator)
         : this.createElement(expression, allocator);
-      return inheritSourceLocation(transformed, expression);
     }
 
     if (isJSXFragment(expression)) {
-      return inheritSourceLocation(
-        this.createNestedFragment(expression, allocator, true),
-        expression,
-      );
+      return this.createNestedFragment(expression, allocator, true);
     }
 
     if (isLogicalExpression(expression)) {
@@ -4876,12 +4876,23 @@ class TransformState {
       for (const declaration of statement.declarations) {
         if (this.transformComponentVariable(declaration)) continue;
         if (!declaration.init || !isExpression(declaration.init)) continue;
-        this.assertJSXInitializerIsLazy(declaration);
-        setNodeProperty(
-          declaration,
-          "init",
-          this.transformEmbeddedExpression(declaration.init, allocator),
-        );
+        const initializer = declaration.init;
+        const needsHydrationScope = this.containsEagerJSX(initializer);
+        let transformed = this.transformEmbeddedExpression(initializer, allocator);
+
+        // Only eager local initializers need a hydration scope. Scoping every
+        // JSX expression also scopes Await children, props, and dynamic
+        // branches, which can be evaluated again during async rendering.
+        if (needsHydrationScope) {
+          transformed = inheritSourceLocation(
+            callExpression(this.getRuntimeHelper("$scope"), [
+              arrowFunctionExpression([], transformed),
+            ]),
+            initializer,
+          );
+        }
+
+        setNodeProperty(declaration, "init", transformed);
       }
       return statement;
     }
@@ -4990,7 +5001,9 @@ class TransformState {
       const value = getNodeProperty(node, key);
       if (isNodeArray(value)) {
         for (const child of value) if (isNode(child) && this.containsEagerJSX(child)) return true;
-      } else if (isNode(value) && this.containsEagerJSX(value)) return true;
+      } else if (isNode(value) && this.containsEagerJSX(value)) {
+        return true;
+      }
     }
     return false;
   }
@@ -5001,8 +5014,8 @@ class TransformState {
     const id = getNodeProperty(declaration, "id");
     const variableName = isIdentifier(id) ? `"${id.name}"` : "this variable";
     const message =
-      `JSX in the initializer for ${variableName} must be wrapped in a function ` +
-      "to preserve SSR hydration order. For example: const view = () => (<>...</>);";
+      `Module-level JSX initializer for ${variableName} must be wrapped in a function ` +
+      "because it has no component Owner for hydration identity allocation.";
     const location = declaration.loc?.start;
     const suffix = location ? ` (line ${location.line}, column ${location.column + 1})` : "";
     throw new Error(`${message}${suffix} in ${this.filename}`);
