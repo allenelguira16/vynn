@@ -32,10 +32,28 @@ function sameBranch<TContext>(
   current: readonly MatchedRoute<TContext>[],
   next: readonly MatchedRoute<TContext>[],
 ): boolean {
-  return (
-    current.length === next.length &&
-    current.every((match, index) => match.node === next[index]?.node)
-  );
+  if (current.length !== next.length) return false;
+
+  return current.every((match, index) => {
+    const nextMatch = next[index];
+    if (!nextMatch || match.node !== nextMatch.node) return false;
+
+    const currentSlots = match.slots ?? {};
+    const nextSlots = nextMatch.slots ?? {};
+    const currentNames = Object.keys(currentSlots);
+    const nextNames = Object.keys(nextSlots);
+
+    if (
+      currentNames.length !== nextNames.length ||
+      currentNames.some((name) => !Object.prototype.hasOwnProperty.call(nextSlots, name))
+    ) {
+      return false;
+    }
+
+    return currentNames.every((name) =>
+      sameBranch(currentSlots[name] ?? [], nextSlots[name] ?? []),
+    );
+  });
 }
 
 /**
@@ -94,6 +112,7 @@ export function createRouter<TContext = undefined>(
   };
 
   let disposed = false;
+  let allowInterceptedRoutes = false;
   let navigationRevision = 0;
   let stopNavigationEffect = () => {};
   let stopListening = () => {};
@@ -142,9 +161,13 @@ export function createRouter<TContext = undefined>(
    * The reactive location effect calls this without syncing the location store
    * so direct writes to router.state.location remain supported.
    */
-  const resolveNavigation = (nextLocation: Location, syncLocation: boolean) => {
+  const resolveNavigation = (
+    nextLocation: Location,
+    syncLocation: boolean,
+    allowIntercepted = allowInterceptedRoutes,
+  ) => {
     const revision = ++navigationRevision;
-    const nextBranch = findRouteBranch<TContext>(compiledRoutes, nextLocation);
+    const nextBranch = findRouteBranch<TContext>(compiledRoutes, nextLocation, allowIntercepted);
     const branchChanged = !sameBranch(
       getRouterMatchState<TContext>(router).value,
       nextBranch,
@@ -159,6 +182,7 @@ export function createRouter<TContext = undefined>(
         }
 
         if (syncLocation) {
+          allowInterceptedRoutes = allowIntercepted;
           updateLocation(location, nextLocation);
           if (!isServer) {
             updateDefaultLocation(nextLocation);
@@ -189,8 +213,8 @@ export function createRouter<TContext = undefined>(
     resolveNavigation(snapshotLocation(location), false);
   });
 
-  const syncLocation = (url: string) => {
-    resolveNavigation(parseLocation(url), true);
+  const syncLocation = (url: string, action: "push" | "replace" | "pop") => {
+    resolveNavigation(parseLocation(url), true, action !== "pop");
   };
 
   stopListening = history.listen(syncLocation);
