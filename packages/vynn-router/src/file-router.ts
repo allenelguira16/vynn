@@ -4,6 +4,7 @@ import type { Route } from "./types";
 
 import {
   ABSOLUTE_ROUTE_PATH,
+  INTERCEPTED_ROUTE,
   PATHLESS_ROUTE,
   REQUIRE_CHILD_MATCH,
   type InternalRoute,
@@ -35,6 +36,7 @@ type RouteDirectory<TContext> = {
   slots: Map<string, RouteDirectory<TContext>>;
   absolutePath?: string;
   slotRoot?: boolean;
+  intercepted?: boolean;
 };
 
 const FileRouteOutlet: Route["component"] = (props) => props.children ?? null;
@@ -247,6 +249,7 @@ function addFileToTree<TContext>(
         );
       }
       child.absolutePath = absolutePath;
+      child.intercepted = true;
     }
 
     current = child;
@@ -479,6 +482,7 @@ export function toFileRouter<TContext = undefined>(
       path,
       [REQUIRE_CHILD_MATCH]: !node.page && children.length > 0 ? true : undefined,
       ...(node.absolutePath ? { [ABSOLUTE_ROUTE_PATH]: node.absolutePath } : {}),
+      ...(node.intercepted ? { [INTERCEPTED_ROUTE]: true } : {}),
       component: node.layout ? createLazyComponent(node.layout) : FileRouteOutlet,
       beforeLoad: node.layout ? createRouteGuard(node.layout) : undefined,
       children,
