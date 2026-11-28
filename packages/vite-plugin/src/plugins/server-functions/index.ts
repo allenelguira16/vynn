@@ -131,9 +131,9 @@ function cleanModuleId(id: string): string {
  *
  * Server output extracts the implementation into a named module export and
  * makes the inline callback a local reference. Client output replaces the
- * callback with an RPC reference. This first version deliberately does not
- * serialize captured lexical variables; use function arguments for values the
- * server function needs.
+ * callback with an RPC reference. Lexical captures are evaluated at invocation
+ * time and serialized with the request. Nested server boundaries are currently
+ * limited to non-capturing function expressions assigned to local variables.
  *
  * By default, RPC is wired into Vite dev/preview middleware when Vite owns
  * the runnable SSR environment. Deployment integrations that own the SSR

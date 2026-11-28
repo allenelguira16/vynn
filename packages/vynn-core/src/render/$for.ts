@@ -108,8 +108,8 @@ export function $for<T>(
     warnedAboutMissingKey = true;
     console.warn(
       "[vynn] Each child in a list should have a unique `key` prop. " +
-        "Add `key` to the root JSX element returned by `.map()` to preserve row identity " +
-        "when items are reordered or replaced.",
+        "Add the same `key` expression to every root JSX element returned by `.map()` " +
+        "to preserve row identity when items are reordered or replaced.",
     );
   };
 

@@ -1,5 +1,6 @@
 import "../runtime/server/context";
 import "../life-cycle/server-context";
+import "../reactivity/server-context";
 
 import type { JSX } from "../types/jsx";
 

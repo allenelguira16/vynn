@@ -172,27 +172,35 @@ function collectMarkedFunctions(
   });
 }
 
-function containsNestedMarkedBoundary(marked: MarkedFunction[], program: AstNode): boolean {
-  const markedNodes = new Set(marked.map((item) => item.fn));
-  const parentMap = new WeakMap<object, AstNode>();
+function getMarkedFunctionParents(
+  marked: MarkedFunction[],
+): Map<MarkedFunction, MarkedFunction> {
+  const parents = new Map<MarkedFunction, MarkedFunction>();
 
-  const walk = (node: AstNode): void => {
-    childrenOf(node, (child) => {
-      parentMap.set(child, node);
-      walk(child);
-    });
-  };
-
-  walk(program);
   for (const item of marked) {
-    let ancestor = parentMap.get(item.fn);
-    while (ancestor) {
-      if (markedNodes.has(ancestor)) return true;
-      ancestor = parentMap.get(ancestor);
+    let nearestParent: MarkedFunction | undefined;
+    let nearestSpan = Number.POSITIVE_INFINITY;
+
+    for (const candidate of marked) {
+      if (
+        candidate === item ||
+        candidate.fn.start >= item.fn.start ||
+        candidate.fn.end <= item.fn.end
+      ) {
+        continue;
+      }
+
+      const span = candidate.fn.end - candidate.fn.start;
+      if (span < nearestSpan) {
+        nearestParent = candidate;
+        nearestSpan = span;
+      }
     }
+
+    if (nearestParent) parents.set(item, nearestParent);
   }
 
-  return false;
+  return parents;
 }
 
 type LexicalScope = {
@@ -853,6 +861,7 @@ function makeExtractedImplementation(
   source: string,
   marked: MarkedFunction,
   analysis: CaptureAnalysis,
+  nestedReplacements: SourceEdit[] = [],
 ): string {
   const body = marked.fn.body as AstNode;
   const bodySource = source.slice(body.start, body.end);
@@ -867,6 +876,18 @@ function makeExtractedImplementation(
     end: marked.directive.end - body.start,
     content: "",
   });
+
+  for (const replacement of nestedReplacements) {
+    if (replacement.start < body.start || replacement.end > body.end) {
+      throw new Error("[Vynn use server] Internal compiler error: nested boundary is outside its parent.");
+    }
+
+    bodyEdits.push({
+      start: replacement.start - body.start,
+      end: replacement.end - body.start,
+      content: replacement.content,
+    });
+  }
 
   let rewrittenBody = applyEdits(bodySource, bodyEdits);
   const aliases = analysis.captures
@@ -1024,12 +1045,7 @@ export function transformServerFunctions(
   const marked = collectMarkedFunctions(program, options.root, moduleId);
   if (marked.length === 0) return null;
 
-  if (containsNestedMarkedBoundary(marked, program)) {
-    throw new Error(
-      `[Vynn use server] A server-marked function cannot contain another server-marked function yet (${cleanId}).`,
-    );
-  }
-
+  const markedParents = getMarkedFunctionParents(marked);
   const scopeAnalysis = buildScopeAnalysis(program);
   const captureAnalysis = new Map<MarkedFunction, CaptureAnalysis>();
   for (const item of marked) {
@@ -1039,13 +1055,48 @@ export function transformServerFunctions(
     );
   }
 
-  const edits = marked.map((item) =>
+  for (const item of marked) {
+    const parent = markedParents.get(item);
+    if (!parent) continue;
+
+    const parentBody = parent.fn.body as AstNode;
+    if (
+      item.fn.type === "FunctionDeclaration" ||
+      item.parent?.type !== "VariableDeclarator" ||
+      item.fn.start < parentBody.start ||
+      item.fn.end > parentBody.end
+    ) {
+      throw new Error(
+        `[Vynn use server] Nested server boundaries are not supported yet in this position (${cleanId}). Assign the nested function expression to a local variable inside the enclosing function body.`,
+      );
+    }
+
+    if (captureAnalysis.get(item)!.captures.length > 0) {
+      throw new Error(
+        `[Vynn use server] A nested server function cannot capture variables from its enclosing scope yet (${cleanId}). Pass those values as function arguments instead.`,
+      );
+    }
+  }
+
+  const topLevelMarked = marked.filter((item) => !markedParents.has(item));
+  const edits = topLevelMarked.map((item) =>
     makeReplacement(item, options.target, captureAnalysis.get(item)!),
   );
   let code = applyEdits(source, edits);
   if (options.target === "server") {
     const implementations = marked
-      .map((item) => makeExtractedImplementation(source, item, captureAnalysis.get(item)!))
+      .map((item) => {
+        const nestedReplacements = marked
+          .filter((candidate) => markedParents.get(candidate) === item)
+          .map((nested) => makeReplacement(nested, "server", captureAnalysis.get(nested)!));
+
+        return makeExtractedImplementation(
+          source,
+          item,
+          captureAnalysis.get(item)!,
+          nestedReplacements,
+        );
+      })
       .join("\n\n");
     code += `\n\n// Vynn extracted server functions\n${implementations}\n`;
   }

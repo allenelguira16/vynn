@@ -871,14 +871,16 @@ class TransformState {
           );
         }
 
-        this.jsxKeyAttributes.add(listKey.attribute);
+        for (const attribute of listKey.attributes) this.jsxKeyAttributes.add(attribute);
         this.keyedForCallbacks.add(clonedCallback);
 
         // The original callback remains an ordinary function in the module.
         // Treat its key as compiler metadata too, even though the list uses
         // the specialized sibling for reactive item/index parameters.
         const originalListKey = this.getMapCallbackKey(binding.callback);
-        if (originalListKey) this.jsxKeyAttributes.add(originalListKey.attribute);
+        if (originalListKey) {
+          for (const attribute of originalListKey.attributes) this.jsxKeyAttributes.add(attribute);
+        }
 
         // Export a raw-item key selector beside the specialized render callback.
         // The importing module cannot inspect this function's source AST, so the
@@ -2568,60 +2570,142 @@ class TransformState {
   }
 
   /**
-   * Extract a key only when the map callback directly returns one JSX element.
-   * Conditional roots and fragments need a separate identity model, so they
-   * are deliberately rejected rather than guessed.
+   * Collect JSX elements that can be roots of a map callback result.
+   *
+   * Fragments, conditional/logical expressions, and array expressions can
+   * produce multiple sibling roots. Their root keys still describe the same
+   * list row when every declared key uses the same expression.
    */
+  private collectMapCallbackRoots(node: Node, roots: NodeOfType<"JSXElement">[]): void {
+    if (isJSXElement(node)) {
+      roots.push(node);
+      return;
+    }
+
+    if (isJSXFragment(node)) {
+      for (const child of node.children) {
+        if (isJSXExpressionContainer(child)) {
+          if (!isJSXEmptyExpression(child.expression) && isExpression(child.expression)) {
+            this.collectMapCallbackRoots(child.expression, roots);
+          }
+        } else if (isJSXElement(child) || isJSXFragment(child)) {
+          this.collectMapCallbackRoots(child, roots);
+        }
+      }
+      return;
+    }
+
+    if (isConditionalExpression(node)) {
+      if (isExpression(node.consequent)) this.collectMapCallbackRoots(node.consequent, roots);
+      if (isExpression(node.alternate)) this.collectMapCallbackRoots(node.alternate, roots);
+      return;
+    }
+
+    if (isLogicalExpression(node)) {
+      if (isExpression(node.left)) this.collectMapCallbackRoots(node.left, roots);
+      if (isExpression(node.right)) this.collectMapCallbackRoots(node.right, roots);
+      return;
+    }
+
+    if (isArrayExpression(node)) {
+      for (const element of node.elements) {
+        if (!element) continue;
+        if (isSpreadElement(element)) {
+          if (isExpression(element.argument)) this.collectMapCallbackRoots(element.argument, roots);
+        } else if (isExpression(element)) {
+          this.collectMapCallbackRoots(element, roots);
+        }
+      }
+      return;
+    }
+
+    if (isSequenceExpression(node)) {
+      const last = node.expressions.at(-1);
+      if (last && isExpression(last)) this.collectMapCallbackRoots(last, roots);
+    }
+  }
+
+  /** Collect return expressions belonging to this callback, excluding nested functions. */
+  private collectMapCallbackReturns(node: Node, callback: Node, results: Node[]): void {
+    if (node !== callback && isFunctionLike(node)) return;
+
+    if (isReturnStatement(node)) {
+      if (node.argument && isExpression(node.argument)) results.push(node.argument);
+      return;
+    }
+
+    forEachChild(node, (child) => this.collectMapCallbackReturns(child, callback, results));
+  }
+
   private getMapCallbackKey(
     callback: Node,
-  ): { expression: ExpressionNode; attribute: Node } | null {
-    if (!isFunctionLike(callback)) {
-      return null;
-    }
+  ): { expression: ExpressionNode; attributes: Node[] } | null {
+    if (!isFunctionLike(callback)) return null;
 
-    let root: NodeOfType<"JSXElement"> | null = null;
+    const results: Node[] = [];
     if (isBlockStatement(callback.body)) {
-      const returns = callback.body.body.filter(isReturnStatement);
-      if (returns.length === 1 && isJSXElement(returns[0].argument)) {
-        root = returns[0].argument;
-      }
-    } else if (isJSXElement(callback.body)) {
-      root = callback.body;
+      this.collectMapCallbackReturns(callback.body, callback, results);
+    } else if (isExpression(callback.body)) {
+      results.push(callback.body);
     }
 
-    if (!root) return null;
+    const roots: NodeOfType<"JSXElement">[] = [];
+    for (const result of results) this.collectMapCallbackRoots(result, roots);
 
-    let keyAttribute: Node | undefined;
-    for (const attribute of root.openingElement.attributes) {
-      if (!isJSXAttribute(attribute) || getJSXAttributeName(attribute.name) !== "key") {
-        continue;
+    const keyedRoots: Array<{ expression: ExpressionNode; attribute: Node }> = [];
+    for (const root of roots) {
+      let rootKey: Node | undefined;
+
+      for (const attribute of root.openingElement.attributes) {
+        if (!isJSXAttribute(attribute) || getJSXAttributeName(attribute.name) !== "key") {
+          continue;
+        }
+        if (rootKey) {
+          throw new Error("[Vynn compiler] A list row root can only declare one key attribute.");
+        }
+        rootKey = attribute;
       }
-      if (keyAttribute) {
-        throw new Error("[Vynn compiler] A list row can only declare one key attribute.");
+
+      if (!rootKey || !isJSXAttribute(rootKey)) continue;
+
+      const value = rootKey.value;
+      if (isJSXExpressionContainer(value)) {
+        if (isJSXEmptyExpression(value.expression) || !isExpression(value.expression)) {
+          throw new Error("[Vynn compiler] A list row key must contain an expression.");
+        }
+        keyedRoots.push({
+          expression: cloneNode(value.expression) as ExpressionNode,
+          attribute: rootKey,
+        });
+      } else if (isLiteralString(value)) {
+        keyedRoots.push({ expression: stringLiteral(value.value), attribute: rootKey });
+      } else {
+        throw new Error(
+          "[Vynn compiler] A list row key must be a string literal or a JSX expression.",
+        );
       }
-      keyAttribute = attribute;
     }
 
-    if (!keyAttribute || !isJSXAttribute(keyAttribute)) return null;
+    if (keyedRoots.length === 0) return null;
 
-    const value = keyAttribute.value;
-    if (isJSXExpressionContainer(value)) {
-      if (isJSXEmptyExpression(value.expression) || !isExpression(value.expression)) {
-        throw new Error("[Vynn compiler] A list row key must contain an expression.");
-      }
-      return {
-        expression: cloneNode(value.expression) as ExpressionNode,
-        attribute: keyAttribute,
-      };
+    const expressionKey = (expression: ExpressionNode): string =>
+      JSON.stringify(expression, (key, value) =>
+        key === "start" || key === "end" || key === "loc" || key === "range"
+          ? undefined
+          : value,
+      ) ?? "";
+
+    const expectedKey = expressionKey(keyedRoots[0].expression);
+    if (keyedRoots.some((root) => expressionKey(root.expression) !== expectedKey)) {
+      throw new Error(
+        "[Vynn compiler] Every keyed root in a list callback must use the same key expression.",
+      );
     }
 
-    if (isLiteralString(value)) {
-      return { expression: stringLiteral(value.value), attribute: keyAttribute };
-    }
-
-    throw new Error(
-      "[Vynn compiler] A list row key must be a string literal or a JSX expression.",
-    );
+    return {
+      expression: keyedRoots[0].expression,
+      attributes: keyedRoots.map((root) => root.attribute),
+    };
   }
 
   private referencesIdentifier(node: Node, name: string): boolean {
@@ -2869,7 +2953,7 @@ class TransformState {
     );
     if (!listKey && isFunctionLike(callbackSource) && this.containsJSXKey(callbackSource)) {
       throw new Error(
-        "[Vynn compiler] A list key must be placed on the single JSX element directly returned by the .map() callback. Conditional and multiple roots are not supported yet.",
+        "[Vynn compiler] A list key must be placed on a root JSX element returned by the .map() callback. Multiple roots must use the same key expression.",
       );
     }
     const importedKeySelector = this.namedMapCallbackKeys.get(expression);
@@ -2887,7 +2971,7 @@ class TransformState {
         );
       }
 
-      this.jsxKeyAttributes.add(listKey.attribute);
+      for (const attribute of listKey.attributes) this.jsxKeyAttributes.add(attribute);
       keySelector = this.createMapKeySelector(callbackSource, listKey.expression);
       if (
         expression.arguments.length > 1 &&

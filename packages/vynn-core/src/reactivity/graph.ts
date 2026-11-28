@@ -21,10 +21,46 @@ export type Computation = {
   priority: 0 | 1 | 2;
 };
 
-type ExecutionContext = {
+export type ComputationExecutionContext = {
   computation: Computation;
   runID: number;
 };
+
+export interface ComputationExecutionStorage {
+  getStore(): ComputationExecutionContext | null | undefined;
+  run<T>(context: ComputationExecutionContext | null, callback: () => T): T;
+}
+
+const COMPUTATION_EXECUTION_STORAGE_KEY = Symbol.for("vynn.computation-execution-storage.v1");
+const globalStorage = globalThis as unknown as Record<symbol, unknown>;
+
+function getComputationExecutionStorage(): ComputationExecutionStorage | undefined {
+  return globalStorage[COMPUTATION_EXECUTION_STORAGE_KEY] as
+    | ComputationExecutionStorage
+    | undefined;
+}
+
+/** Install request-isolated async execution storage in server runtimes. */
+export function installComputationExecutionStorage(
+  storage: ComputationExecutionStorage,
+): void {
+  const existing = getComputationExecutionStorage();
+
+  if (existing && existing !== storage) {
+    throw new Error("[Vynn] Reactive computation execution storage has already been installed.");
+  }
+
+  if (!existing) {
+    Object.defineProperty(globalThis, COMPUTATION_EXECUTION_STORAGE_KEY, {
+      configurable: false,
+      enumerable: false,
+      value: storage,
+      writable: false,
+    });
+  }
+}
+
+type ExecutionContext = ComputationExecutionContext;
 
 type AsyncContextVariable<T> = {
   get(): T | undefined;
@@ -83,12 +119,15 @@ export function node(storeTarget?: object, storeKey?: unknown): Source {
 }
 
 function getActiveExecution(): ExecutionContext | undefined {
+  const stored = getComputationExecutionStorage()?.getStore();
+  if (stored !== undefined) return stored ?? undefined;
+
   const context = asyncExecutionContext?.get();
   return context === null ? undefined : context ?? active;
 }
 
 export function supportsAsyncTracking(): boolean {
-  return asyncExecutionContext !== undefined;
+  return asyncExecutionContext !== undefined || getComputationExecutionStorage() !== undefined;
 }
 
 export function isTracking(): boolean {
@@ -350,10 +389,12 @@ export function untrack<T>(callback: () => T): T {
   const previous = active;
   active = undefined;
 
+  const runWithoutTracking = () =>
+    asyncExecutionContext ? asyncExecutionContext.run(null, callback) : callback();
+
   try {
-    return asyncExecutionContext
-      ? asyncExecutionContext.run(null, callback)
-      : callback();
+    const storage = getComputationExecutionStorage();
+    return storage ? storage.run(null, runWithoutTracking) : runWithoutTracking();
   } finally {
     active = previous;
   }
@@ -413,9 +454,9 @@ export function execute<T>(computation: Computation, fn: () => T): T {
   executionDepth++;
 
   try {
-    return asyncExecutionContext
-      ? asyncExecutionContext.run(execution, fn)
-      : fn();
+    const storage = getComputationExecutionStorage();
+    if (storage) return storage.run(execution, fn);
+    return asyncExecutionContext ? asyncExecutionContext.run(execution, fn) : fn();
   } finally {
     active = previous;
     computation.running = false;

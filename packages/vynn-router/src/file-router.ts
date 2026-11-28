@@ -271,7 +271,7 @@ export function toFileRouter<TContext = undefined>(
     // A segment-level not-found file behaves like a catch-all fallback. Add it
     // after explicit children so declared catch-all routes retain precedence.
     if (node.notFound) {
-      children.push(createPageRoute(node.notFound, "*"));
+      children.push(createPageRoute(node.notFound, "*?"));
     }
 
     if (/^\([^/]+\)$/.test(node.name)) {
@@ -316,7 +316,7 @@ export function toFileRouter<TContext = undefined>(
   }
 
   if (root.notFound) {
-    rootChildren.push(createPageRoute(root.notFound, "*"));
+    rootChildren.push(createPageRoute(root.notFound, "*?"));
   }
 
   const rootRoute: InternalRoute<TContext> = {
