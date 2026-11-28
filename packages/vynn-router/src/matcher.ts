@@ -170,6 +170,23 @@ function isBetterCandidate(
   return compareSpecificity(next.scoreNode, previous.scoreNode) > 0;
 }
 
+function findBestSlotDescendant(
+  slots: Readonly<Record<string, readonly CompiledRoute[]>>,
+  pathnameSegments: readonly string[],
+  allowIntercepted: boolean,
+): MatchCandidate | undefined {
+  let best: MatchCandidate | undefined;
+
+  for (const slotRoutes of Object.values(slots)) {
+    const candidate = findBestDescendant(slotRoutes, pathnameSegments, allowIntercepted);
+    if (candidate && isBetterCandidate(candidate, best, pathnameSegments)) {
+      best = candidate;
+    }
+  }
+
+  return best;
+}
+
 function findBestDescendant(
   routes: readonly CompiledRoute[],
   pathnameSegments: readonly string[],
@@ -182,8 +199,15 @@ function findBestDescendant(
 
     if (node.isPathless) {
       const descendant = findBestDescendant(node.children, pathnameSegments, allowIntercepted);
-      if (descendant && isBetterCandidate(descendant, best, pathnameSegments)) {
-        best = descendant;
+      const slotDescendant = findBestSlotDescendant(
+        node.slots,
+        pathnameSegments,
+        allowIntercepted,
+      );
+      const candidate = descendant ?? slotDescendant;
+
+      if (candidate && isBetterCandidate(candidate, best, pathnameSegments)) {
+        best = candidate;
       }
       continue;
     }
@@ -226,11 +250,16 @@ function findCompiledMatchSegments<TContext = undefined>(
       }
 
       const descendant = findBestDescendant(node.children, pathnameSegments, allowIntercepted);
-      if (!descendant) continue;
+      const slotDescendant = findBestSlotDescendant(
+        node.slots,
+        pathnameSegments,
+        allowIntercepted,
+      );
+      if (!descendant && !slotDescendant) continue;
 
       const candidate = {
         node,
-        scoreNode: descendant.scoreNode,
+        scoreNode: descendant?.scoreNode ?? slotDescendant?.scoreNode ?? node,
       };
 
       if (isBetterCandidate(candidate, best, pathnameSegments)) {
