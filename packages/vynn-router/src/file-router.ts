@@ -33,6 +33,7 @@ type RouteDirectory<TContext> = {
   children: Map<string, RouteDirectory<TContext>>;
   slots: Map<string, RouteDirectory<TContext>>;
   absolutePath?: string;
+  slotRoot?: boolean;
 };
 
 const FileRouteOutlet: Route["component"] = (props) => props.children ?? null;
@@ -91,11 +92,12 @@ function toRouteSegment(segment: string): string {
   return segment;
 }
 
-function createDirectory<TContext>(): RouteDirectory<TContext> {
+function createDirectory<TContext>(slotRoot = false): RouteDirectory<TContext> {
   return {
     name: "",
     children: new Map(),
     slots: new Map(),
+    slotRoot,
   };
 }
 
@@ -127,7 +129,7 @@ function addFileToTree<TContext>(
 
       let slot = current.slots.get(slotName);
       if (!slot) {
-        slot = createDirectory<TContext>();
+        slot = createDirectory<TContext>(true);
         current.slots.set(slotName, slot);
       }
       current = slot;
@@ -136,7 +138,7 @@ function addFileToTree<TContext>(
       continue;
     }
 
-    const intercepted = /^\((\.\.|\.|\.\.\.)\)(.+)$/.exec(segment);
+    const intercepted = /^\((\.\.\.|\.\.|\.)\)(.+)$/.exec(segment);
     let directoryName = segment;
     let absolutePath: string | undefined;
 
@@ -380,8 +382,8 @@ export function toFileRouter<TContext = undefined>(
       }),
     );
 
-    if (/^\([^/]+\)$/.test(node.name)) {
-      if (node.layout || Object.keys(slots).length > 0) {
+    if (/^\([^/]+\)$/.test(node.name) || node.slotRoot) {
+      if (node.layout || node.slotRoot || Object.keys(slots).length > 0) {
         const route: InternalRoute<TContext> = {
           path: "/",
           [PATHLESS_ROUTE]: true,
