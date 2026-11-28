@@ -85,7 +85,7 @@ function getDirectorySegments(directory: string, filePath: string): string[] {
 function toRouteSegment(segment: string): string {
   if (/^\([^/]+\)$/.test(segment)) return "";
 
-  const intercepted = /^\(\.{1,3}\)(.+)$/.exec(segment);
+  const intercepted = /^(?:\(\.{1,3}\))+(.+)$/.exec(segment);
   if (intercepted) segment = intercepted[1];
 
   const optionalCatchAll = /^\[\[\.\.\.([^\]]+)\]\]$/.exec(segment);
@@ -162,11 +162,14 @@ function addFileToTree<TContext>(
       continue;
     }
 
-    const intercepted = /^\((\.\.\.|\.\.|\.)\)(.+)$/.exec(segment);
-    let directoryName = segment;
+    const interceptPrefix = /^(?:\(\.\.\.|\(\.\.|\(\.\))+/.exec(segment)?.[0];
+    const interceptMarkers = interceptPrefix?.match(/\(\.\.\.|\(\.\.|\(\.\)/g) ?? [];
+    let directoryName = interceptPrefix
+      ? segment.slice(interceptPrefix.length)
+      : segment;
     let absolutePath: string | undefined;
 
-    if (intercepted) {
+    if (interceptMarkers.length > 0) {
       if (!activeSlotKey || !activeSlotName) {
         throw new Error(
           "[vynn-router] Intercepting route folders must be declared inside a parallel route slot: " +
@@ -175,21 +178,21 @@ function addFileToTree<TContext>(
         );
       }
 
-      const marker = intercepted[1]!;
-      directoryName = intercepted[2]!;
       const targetBase = [...effectivePath];
 
-      if (marker === "..") {
-        if (targetBase.length === 0) {
-          throw new Error(
-            "[vynn-router] Intercepting route " +
-              JSON.stringify(segment) +
-              " cannot move above the application root.",
-          );
+      for (const marker of interceptMarkers) {
+        if (marker === "(..)") {
+          if (targetBase.length === 0) {
+            throw new Error(
+              "[vynn-router] Intercepting route " +
+                JSON.stringify(segment) +
+                " cannot move above the application root.",
+            );
+          }
+          targetBase.pop();
+        } else if (marker === "(...)") {
+          targetBase.length = 0;
         }
-        targetBase.pop();
-      } else if (marker === "...") {
-        targetBase.length = 0;
       }
 
       // Move the slot to the nearest route ancestor that owns the target
