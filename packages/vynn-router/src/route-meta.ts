@@ -6,4 +6,7 @@ export const REQUIRE_CHILD_MATCH = Symbol("vynn-router.require-child-match");
 export type InternalRoute<TContext = undefined> = Route<TContext> & {
   [PATHLESS_ROUTE]?: true;
   [REQUIRE_CHILD_MATCH]?: true;
+  [ABSOLUTE_ROUTE_PATH]?: string;
 };
+
+export const ABSOLUTE_ROUTE_PATH = Symbol("vynn-router.absolute-route-path");
