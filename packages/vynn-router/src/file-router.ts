@@ -2,7 +2,12 @@ import { lazy } from "vynn";
 
 import type { Route } from "./types";
 
-import { PATHLESS_ROUTE, REQUIRE_CHILD_MATCH, type InternalRoute } from "./route-meta";
+import {
+  ABSOLUTE_ROUTE_PATH,
+  PATHLESS_ROUTE,
+  REQUIRE_CHILD_MATCH,
+  type InternalRoute,
+} from "./route-meta";
 
 export type FileRouteModuleMetadata = {
   /** Vite's normalized module key, such as /src/app/blog/page.tsx. */
@@ -27,6 +32,7 @@ type RouteDirectory<TContext> = {
   notFound?: FileRouteModuleMetadata;
   children: Map<string, RouteDirectory<TContext>>;
   slots: Map<string, RouteDirectory<TContext>>;
+  absolutePath?: string;
 };
 
 const FileRouteOutlet: Route["component"] = (props) => props.children ?? null;
@@ -70,6 +76,9 @@ function getDirectorySegments(directory: string, filePath: string): string[] {
 function toRouteSegment(segment: string): string {
   if (/^\([^/]+\)$/.test(segment)) return "";
 
+  const intercepted = /^\(\.{1,3}\)(.+)$/.exec(segment);
+  if (intercepted) segment = intercepted[1];
+
   const optionalCatchAll = /^\[\[\.\.\.([^\]]+)\]\]$/.exec(segment);
   if (optionalCatchAll) return "*?";
 
@@ -97,6 +106,9 @@ function addFileToTree<TContext>(
 ): void {
   const segments = getDirectorySegments(directory, file.path);
   let current = root;
+  let branchRoot = root;
+  let insideSlot = false;
+  const effectivePath: string[] = [];
 
   for (const segment of segments) {
     if (segment.startsWith("_")) {
@@ -119,17 +131,68 @@ function addFileToTree<TContext>(
         current.slots.set(slotName, slot);
       }
       current = slot;
+      branchRoot = slot;
+      insideSlot = true;
       continue;
     }
 
-    let child = current.children.get(segment);
+    const intercepted = /^\((\.\.|\.|\.\.\.)\)(.+)$/.exec(segment);
+    let directoryName = segment;
+    let absolutePath: string | undefined;
+
+    if (intercepted) {
+      if (!insideSlot) {
+        throw new Error(
+          "[vynn-router] Intercepting route folders must be declared inside a parallel route slot: " +
+            JSON.stringify(segment) +
+            ".",
+        );
+      }
+
+      const marker = intercepted[1];
+      directoryName = intercepted[2];
+
+      if (marker === "..") {
+        if (effectivePath.length === 0) {
+          throw new Error(
+            "[vynn-router] Intercepting route " +
+              JSON.stringify(segment) +
+              " cannot move above the application root.",
+          );
+        }
+        effectivePath.pop();
+      } else if (marker === "...") {
+        effectivePath.length = 0;
+      }
+
+      const routeSegment = toRouteSegment(directoryName);
+      if (routeSegment) effectivePath.push(routeSegment);
+      absolutePath = "/" + effectivePath.join("/");
+      current = branchRoot;
+    } else {
+      const routeSegment = toRouteSegment(directoryName);
+      if (routeSegment) effectivePath.push(routeSegment);
+    }
+
+    let child = current.children.get(directoryName);
     if (!child) {
       child = {
-        name: segment,
+        name: directoryName,
         children: new Map(),
         slots: new Map(),
       };
-      current.children.set(segment, child);
+      current.children.set(directoryName, child);
+    }
+
+    if (absolutePath) {
+      if (child.absolutePath && child.absolutePath !== absolutePath) {
+        throw new Error(
+          "[vynn-router] Intercepting route folder " +
+            JSON.stringify(segment) +
+            " resolves to multiple URL paths.",
+        );
+      }
+      child.absolutePath = absolutePath;
     }
 
     current = child;
@@ -156,7 +219,11 @@ function validatePagePaths<TContext>(root: RouteDirectory<TContext>): void {
     seen: Set<string>,
   ) => {
     const segment = node.name ? toRouteSegment(node.name) : "";
-    const currentPath = segment ? [...parentPath, segment] : parentPath;
+    const currentPath = node.absolutePath
+      ? node.absolutePath.split("/").filter(Boolean)
+      : segment
+        ? [...parentPath, segment]
+        : parentPath;
     const catchAllIndex = currentPath.findIndex((part) => part === "*" || part === "*?");
 
     if (catchAllIndex !== -1 && catchAllIndex !== currentPath.length - 1) {
@@ -337,6 +404,7 @@ export function toFileRouter<TContext = undefined>(
     const route: InternalRoute<TContext> = {
       path,
       [REQUIRE_CHILD_MATCH]: !node.page && children.length > 0 ? true : undefined,
+      ...(node.absolutePath ? { [ABSOLUTE_ROUTE_PATH]: node.absolutePath } : {}),
       component: node.layout ? createLazyComponent(node.layout) : FileRouteOutlet,
       beforeLoad: node.layout ? createRouteGuard(node.layout) : undefined,
       children,
