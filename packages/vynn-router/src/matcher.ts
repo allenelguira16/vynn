@@ -3,6 +3,7 @@ import type { Location, Route } from "./types";
 import { joinPaths, normalizePath, toSegments } from "./path";
 import {
   ABSOLUTE_ROUTE_PATH,
+  INTERCEPTED_ROUTE,
   PATHLESS_ROUTE,
   REQUIRE_CHILD_MATCH,
   type InternalRoute,
@@ -18,6 +19,7 @@ export type CompiledRoute = {
   readonly pathSegments: readonly string[];
   readonly segmentKinds: readonly SegmentKind[];
   readonly isPathless: boolean;
+  readonly isIntercepted: boolean;
   readonly requiresChildMatch: boolean;
 };
 
@@ -70,6 +72,7 @@ function compileRoute(
     pathSegments,
     segmentKinds: pathSegments.map(getSegmentKind),
     isPathless,
+    isIntercepted: internalRoute[INTERCEPTED_ROUTE] === true,
     requiresChildMatch: internalRoute[REQUIRE_CHILD_MATCH] === true,
   };
 }
@@ -170,12 +173,15 @@ function isBetterCandidate(
 function findBestDescendant(
   routes: readonly CompiledRoute[],
   pathnameSegments: readonly string[],
+  allowIntercepted: boolean,
 ): MatchCandidate | undefined {
   let best: MatchCandidate | undefined;
 
   for (const node of routes) {
+    if (node.isIntercepted && !allowIntercepted) continue;
+
     if (node.isPathless) {
-      const descendant = findBestDescendant(node.children, pathnameSegments);
+      const descendant = findBestDescendant(node.children, pathnameSegments, allowIntercepted);
       if (descendant && isBetterCandidate(descendant, best, pathnameSegments)) {
         best = descendant;
       }
@@ -207,16 +213,19 @@ function findBestDescendant(
 function findCompiledMatchSegments<TContext = undefined>(
   routes: readonly CompiledRoute[],
   pathnameSegments: readonly string[],
+  allowIntercepted = false,
 ): MatchedRoute<TContext> | undefined {
   let best: MatchCandidate | undefined;
 
   for (const node of routes) {
+    if (node.isIntercepted && !allowIntercepted) continue;
+
     if (node.isPathless || node.requiresChildMatch) {
       if (!node.isPathless && !matchesPath(node, pathnameSegments, false)) {
         continue;
       }
 
-      const descendant = findBestDescendant(node.children, pathnameSegments);
+      const descendant = findBestDescendant(node.children, pathnameSegments, allowIntercepted);
       if (!descendant) continue;
 
       const candidate = {
@@ -277,18 +286,19 @@ export function findMatch<TContext = undefined>(
 function findRouteBranches<TContext = undefined>(
   routes: readonly CompiledRoute[],
   pathnameSegments: readonly string[],
+  allowIntercepted: boolean,
 ): MatchedRoute<TContext>[] {
   const branch: MatchedRoute<TContext>[] = [];
   let currentRoutes = routes;
 
   while (currentRoutes.length > 0) {
-    const match = findCompiledMatchSegments<TContext>(currentRoutes, pathnameSegments);
+    const match = findCompiledMatchSegments<TContext>(currentRoutes, pathnameSegments, allowIntercepted);
     if (!match) break;
 
     const slots = Object.fromEntries(
       Object.entries(match.node.slots).map(([name, slotRoutes]) => [
         name,
-        findRouteBranches<TContext>(slotRoutes, pathnameSegments),
+        findRouteBranches<TContext>(slotRoutes, pathnameSegments, allowIntercepted),
       ]),
     );
 
@@ -303,8 +313,9 @@ function findRouteBranches<TContext = undefined>(
 export function findRouteBranch<TContext = undefined>(
   routes: readonly CompiledRoute[],
   location: Location,
+  allowIntercepted = false,
 ): MatchedRoute<TContext>[] {
-  return findRouteBranches<TContext>(routes, toSegments(location.pathname));
+  return findRouteBranches<TContext>(routes, toSegments(location.pathname), allowIntercepted);
 }
 
 /** Finds a named slot branch attached to a specific matched route node. */
