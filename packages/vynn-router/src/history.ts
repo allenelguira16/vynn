@@ -1,5 +1,33 @@
 export type HistoryAction = "push" | "replace" | "pop";
-export type HistoryListener = (location: string, action: HistoryAction) => void;
+export type HistoryListener = (
+  location: string,
+  action: HistoryAction,
+  softNavigation?: boolean,
+) => void;
+
+const SOFT_NAVIGATION_STATE_KEY = "__vynn_router_soft_navigation__";
+
+function isSoftNavigationState(state: unknown): boolean {
+  return !!state &&
+    typeof state === "object" &&
+    (state as Record<string, unknown>)[SOFT_NAVIGATION_STATE_KEY] === true;
+}
+
+function withSoftNavigationState(state: unknown): Record<string, unknown> {
+  if (
+    state !== null &&
+    typeof state === "object" &&
+    (Object.getPrototypeOf(state) === Object.prototype ||
+      Object.getPrototypeOf(state) === null)
+  ) {
+    return { ...(state as Record<string, unknown>), [SOFT_NAVIGATION_STATE_KEY]: true };
+  }
+
+  return {
+    [SOFT_NAVIGATION_STATE_KEY]: true,
+    __vynn_previous_history_state__: state,
+  };
+}
 
 export type RouterHistory = {
   readonly location: string;
@@ -47,12 +75,13 @@ export function createMemoryHistory(options: MemoryHistoryOptions = {}): MemoryH
       : entries.length - 1;
   let index = Math.max(0, Math.min(requestedIndex, entries.length - 1));
 
+  const softEntries = inputEntries.map(() => false);
   const listeners = new Set<HistoryListener>();
   const getLocation = () => entries[index] ?? "/";
 
-  const notify = (action: HistoryAction) => {
+  const notify = (action: HistoryAction, softNavigation = false) => {
     const location = getLocation();
-    for (const listener of listeners) listener(location, action);
+    for (const listener of listeners) listener(location, action, softNavigation);
   };
 
   const go = (delta: number) => {
@@ -62,7 +91,7 @@ export function createMemoryHistory(options: MemoryHistoryOptions = {}): MemoryH
     if (nextIndex === index) return;
 
     index = nextIndex;
-    notify("pop");
+    notify("pop", softEntries[index] ?? false);
   };
 
   return {
@@ -85,8 +114,10 @@ export function createMemoryHistory(options: MemoryHistoryOptions = {}): MemoryH
 
       entries.splice(index + 1);
       entries.push(next);
+      softEntries.splice(index + 1);
+      softEntries.push(true);
       index = entries.length - 1;
-      notify("push");
+      notify("push", true);
     },
 
     replace(to) {
@@ -95,7 +126,8 @@ export function createMemoryHistory(options: MemoryHistoryOptions = {}): MemoryH
       if (next === current) return;
 
       entries[index] = next;
-      notify("replace");
+      softEntries[index] = true;
+      notify("replace", true);
     },
 
     go,
@@ -144,12 +176,13 @@ export function createBrowserHistory(initialUrl?: string): RouterHistory {
   const getLocation = () =>
     window.location.pathname + window.location.search + window.location.hash;
 
-  const notify = (action: HistoryAction) => {
+  const notify = (action: HistoryAction, softNavigation = false) => {
     const location = getLocation();
-    for (const listener of listeners) listener(location, action);
+    for (const listener of listeners) listener(location, action, softNavigation);
   };
 
-  const onPopState = () => notify("pop");
+  const onPopState = () =>
+    notify("pop", isSoftNavigationState(window.history.state));
 
   const attach = () => {
     if (listening || listeners.size === 0) return;
@@ -182,12 +215,20 @@ export function createBrowserHistory(initialUrl?: string): RouterHistory {
     if (next === getLocation()) return;
 
     if (action === "replace") {
-      window.history.replaceState(null, "", next);
+      window.history.replaceState(
+        withSoftNavigationState(window.history.state),
+        "",
+        next,
+      );
     } else {
-      window.history.pushState(null, "", next);
+      window.history.pushState(
+        withSoftNavigationState(window.history.state),
+        "",
+        next,
+      );
     }
 
-    notify(action);
+    notify(action, true);
     scrollToHash(target.hash);
   };
 
