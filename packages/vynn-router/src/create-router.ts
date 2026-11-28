@@ -213,8 +213,14 @@ export function createRouter<TContext = undefined>(
     resolveNavigation(snapshotLocation(location), false);
   });
 
-  const syncLocation = (url: string, action: "push" | "replace" | "pop") => {
-    resolveNavigation(parseLocation(url), true, action !== "pop");
+  const syncLocation = (
+    url: string,
+    action?: "push" | "replace" | "pop",
+    softNavigation?: boolean,
+  ) => {
+    const allowIntercepted =
+      action === "push" || action === "replace" || (action === "pop" && softNavigation === true);
+    resolveNavigation(parseLocation(url), true, allowIntercepted);
   };
 
   stopListening = history.listen(syncLocation);
