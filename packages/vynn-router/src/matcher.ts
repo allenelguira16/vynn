@@ -25,7 +25,7 @@ export type MatchedRoute<TContext = undefined> = {
   route: Route<TContext>;
   fullPath: string;
   node: CompiledRoute;
-  slots: Readonly<Record<string, MatchedRoute<TContext>[]>>;
+  slots?: Readonly<Record<string, MatchedRoute<TContext>[]>>;
 };
 
 type MatchCandidate = {
@@ -314,9 +314,9 @@ export function findSlotBranch<TContext = undefined>(
   slotName: string,
 ): MatchedRoute<TContext>[] | undefined {
   for (const match of branch) {
-    if (match.node === parentNode) return match.slots[slotName] ?? [];
+    if (match.node === parentNode) return match.slots?.[slotName] ?? [];
 
-    for (const nestedBranch of Object.values(match.slots)) {
+    for (const nestedBranch of Object.values(match.slots ?? {})) {
       const found = findSlotBranch(nestedBranch, parentNode, slotName);
       if (found !== undefined) return found;
     }
