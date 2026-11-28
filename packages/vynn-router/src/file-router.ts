@@ -443,17 +443,23 @@ export function toFileRouter<TContext = undefined>(
       children.push(...buildDirectoryRoutes(child));
     }
 
+    if (node.defaultPage && !node.slotRoot) {
+      throw new Error(
+        "[vynn-router] default.tsx is only valid at the root of a parallel route slot: " +
+          JSON.stringify(node.name || "/") +
+          ".",
+      );
+    }
+
     if (node.notFound && node.defaultPage) {
       throw new Error(
-        "[vynn-router] A directory cannot declare both not-found.tsx and default.tsx: " +
-          JSON.stringify(node.name) +
-          ".",
+        "[vynn-router] A parallel route slot cannot declare both not-found.tsx and default.tsx.",
       );
     }
 
     if (node.notFound) {
       children.push(createPageRoute(node.notFound, "*?"));
-    } else if (node.defaultPage) {
+    } else if (node.slotRoot && node.defaultPage) {
       children.push(createPageRoute(node.defaultPage, "*?"));
     }
 
@@ -522,14 +528,14 @@ export function toFileRouter<TContext = undefined>(
     rootChildren.push(...buildDirectoryRoutes(child));
   }
 
-  if (root.notFound && root.defaultPage) {
-    throw new Error("[vynn-router] The root cannot declare both not-found.tsx and default.tsx.");
+  if (root.defaultPage) {
+    throw new Error(
+      "[vynn-router] default.tsx is only valid at the root of a parallel route slot.",
+    );
   }
 
   if (root.notFound) {
     rootChildren.push(createPageRoute(root.notFound, "*?"));
-  } else if (root.defaultPage) {
-    rootChildren.push(createPageRoute(root.defaultPage, "*?"));
   }
 
   const rootSlots = Object.fromEntries(
