@@ -9,6 +9,7 @@ export type CompiledRoute = {
   readonly route: Route<unknown>;
   readonly fullPath: string;
   readonly children: readonly CompiledRoute[];
+  readonly slots: Readonly<Record<string, readonly CompiledRoute[]>>;
   readonly pathSegments: readonly string[];
   readonly segmentKinds: readonly SegmentKind[];
   readonly isPathless: boolean;
@@ -19,6 +20,7 @@ export type MatchedRoute<TContext = undefined> = {
   route: Route<TContext>;
   fullPath: string;
   node: CompiledRoute;
+  slots: Readonly<Record<string, MatchedRoute<TContext>[]>>;
 };
 
 type MatchCandidate = {
@@ -45,11 +47,20 @@ function compileRoute(
   const children = (route.children ?? []).map((child) =>
     compileRoute(child as unknown as Route<unknown>, fullPath),
   );
+  const slots = Object.fromEntries(
+    Object.entries(route.slots ?? {}).map(([name, slotRoutes]) => [
+      name,
+      slotRoutes.map((slotRoute) =>
+        compileRoute(slotRoute as unknown as Route<unknown>, fullPath),
+      ),
+    ]),
+  );
 
   return {
     route,
     fullPath,
     children,
+    slots,
     pathSegments,
     segmentKinds: pathSegments.map(getSegmentKind),
     isPathless,
@@ -257,21 +268,53 @@ export function findMatch<TContext = undefined>(
 }
 
 /** Resolves the complete matched branch with one compiled route tree. */
-export function findRouteBranch<TContext = undefined>(
+function findRouteBranches<TContext = undefined>(
   routes: readonly CompiledRoute[],
-  location: Location,
+  pathnameSegments: readonly string[],
 ): MatchedRoute<TContext>[] {
   const branch: MatchedRoute<TContext>[] = [];
-  const pathnameSegments = toSegments(location.pathname);
   let currentRoutes = routes;
 
   while (currentRoutes.length > 0) {
     const match = findCompiledMatchSegments<TContext>(currentRoutes, pathnameSegments);
     if (!match) break;
 
-    branch.push(match);
+    const slots = Object.fromEntries(
+      Object.entries(match.node.slots).map(([name, slotRoutes]) => [
+        name,
+        findRouteBranches<TContext>(slotRoutes, pathnameSegments),
+      ]),
+    );
+
+    branch.push({ ...match, slots });
     currentRoutes = match.node.children;
   }
 
   return branch;
+}
+
+/** Resolves the primary branch and every matching named parallel slot. */
+export function findRouteBranch<TContext = undefined>(
+  routes: readonly CompiledRoute[],
+  location: Location,
+): MatchedRoute<TContext>[] {
+  return findRouteBranches<TContext>(routes, toSegments(location.pathname));
+}
+
+/** Finds a named slot branch attached to a specific matched route node. */
+export function findSlotBranch<TContext = undefined>(
+  branch: readonly MatchedRoute<TContext>[],
+  parentNode: CompiledRoute,
+  slotName: string,
+): MatchedRoute<TContext>[] | undefined {
+  for (const match of branch) {
+    if (match.node === parentNode) return match.slots[slotName] ?? [];
+
+    for (const nestedBranch of Object.values(match.slots)) {
+      const found = findSlotBranch(nestedBranch, parentNode, slotName);
+      if (found !== undefined) return found;
+    }
+  }
+
+  return undefined;
 }
