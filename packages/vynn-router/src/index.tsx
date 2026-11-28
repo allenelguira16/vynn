@@ -17,4 +17,5 @@ export { $location, navigate, replace } from "./location";
 export { $params, $search } from "./params";
 export { Router } from "./router";
 export { isActiveRoute, Link } from "./link";
+export { Slot } from "./slot";
 export { redirect, type RedirectOptions, type RedirectStatus } from "./redirect";
