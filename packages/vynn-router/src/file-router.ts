@@ -26,6 +26,7 @@ type RouteDirectory<TContext> = {
   layout?: FileRouteModuleMetadata;
   notFound?: FileRouteModuleMetadata;
   children: Map<string, RouteDirectory<TContext>>;
+  slots: Map<string, RouteDirectory<TContext>>;
 };
 
 const FileRouteOutlet: Route["component"] = (props) => props.children ?? null;
@@ -85,6 +86,7 @@ function createDirectory<TContext>(): RouteDirectory<TContext> {
   return {
     name: "",
     children: new Map(),
+    slots: new Map(),
   };
 }
 
@@ -103,11 +105,29 @@ function addFileToTree<TContext>(
       );
     }
 
+    if (segment.startsWith("@")) {
+      const slotName = segment.slice(1);
+      if (!/^[A-Za-z][A-Za-z0-9_-]*$/.test(slotName)) {
+        throw new Error(
+          "[vynn-router] Invalid parallel route slot folder: " + JSON.stringify(segment) + ".",
+        );
+      }
+
+      let slot = current.slots.get(slotName);
+      if (!slot) {
+        slot = createDirectory<TContext>();
+        current.slots.set(slotName, slot);
+      }
+      current = slot;
+      continue;
+    }
+
     let child = current.children.get(segment);
     if (!child) {
       child = {
         name: segment,
         children: new Map(),
+        slots: new Map(),
       };
       current.children.set(segment, child);
     }
@@ -130,9 +150,11 @@ function addFileToTree<TContext>(
 }
 
 function validatePagePaths<TContext>(root: RouteDirectory<TContext>): void {
-  const seen = new Set<string>();
-
-  const visit = (node: RouteDirectory<TContext>, parentPath: string[]) => {
+  const visit = (
+    node: RouteDirectory<TContext>,
+    parentPath: string[],
+    seen: Set<string>,
+  ) => {
     const segment = node.name ? toRouteSegment(node.name) : "";
     const currentPath = segment ? [...parentPath, segment] : parentPath;
     const catchAllIndex = currentPath.findIndex((part) => part === "*" || part === "*?");
@@ -149,8 +171,8 @@ function validatePagePaths<TContext>(root: RouteDirectory<TContext>): void {
       const routePath = currentPath.length ? "/" + currentPath.join("/") : "/";
       const normalizedRoutePath = routePath
         .split("/")
-        .map((segment) =>
-          segment === "*" || segment === "*?" ? "*" : segment.startsWith(":") ? ":" : segment,
+        .map((part) =>
+          part === "*" || part === "*?" ? "*" : part.startsWith(":") ? ":" : part,
         )
         .join("/");
 
@@ -165,11 +187,17 @@ function validatePagePaths<TContext>(root: RouteDirectory<TContext>): void {
     }
 
     for (const child of node.children.values()) {
-      visit(child, currentPath);
+      visit(child, currentPath, seen);
+    }
+
+    // Each parallel slot has an independent route namespace. Two slots may
+    // intentionally contain routes for the same pathname.
+    for (const slot of node.slots.values()) {
+      visit(slot, currentPath, new Set());
     }
   };
 
-  visit(root, []);
+  visit(root, [], new Set());
 }
 
 export function toFileRouter<TContext = undefined>(
@@ -268,20 +296,32 @@ export function toFileRouter<TContext = undefined>(
       children.push(...buildDirectoryRoutes(child));
     }
 
-    // A segment-level not-found file behaves like a catch-all fallback. Add it
-    // after explicit children so declared catch-all routes retain precedence.
     if (node.notFound) {
       children.push(createPageRoute(node.notFound, "*?"));
     }
 
+    const slots = Object.fromEntries(
+      [...node.slots.entries()].map(([name, slot]) => {
+        const routes = buildDirectoryRoutes(slot);
+        if (routes.length === 0) {
+          throw new Error(
+            "[vynn-router] Parallel route slot " + JSON.stringify(name) +
+              " does not contain a page or layout route.",
+          );
+        }
+        return [name, routes];
+      }),
+    );
+
     if (/^\([^/]+\)$/.test(node.name)) {
-      if (node.layout) {
+      if (node.layout || Object.keys(slots).length > 0) {
         const route: InternalRoute<TContext> = {
           path: "/",
           [PATHLESS_ROUTE]: true,
-          component: createLazyComponent(node.layout),
-          beforeLoad: createRouteGuard(node.layout),
+          component: node.layout ? createLazyComponent(node.layout) : FileRouteOutlet,
+          beforeLoad: node.layout ? createRouteGuard(node.layout) : undefined,
           children,
+          slots,
         };
 
         return [route];
@@ -292,14 +332,15 @@ export function toFileRouter<TContext = undefined>(
 
     const path = toRouteSegment(node.name);
 
-    if (!children.length) return [];
+    if (!children.length && Object.keys(slots).length === 0) return [];
 
     const route: InternalRoute<TContext> = {
       path,
-      [REQUIRE_CHILD_MATCH]: !node.page ? true : undefined,
+      [REQUIRE_CHILD_MATCH]: !node.page && children.length > 0 ? true : undefined,
       component: node.layout ? createLazyComponent(node.layout) : FileRouteOutlet,
       beforeLoad: node.layout ? createRouteGuard(node.layout) : undefined,
       children,
+      slots,
     };
 
     return [route];
@@ -325,6 +366,18 @@ export function toFileRouter<TContext = undefined>(
     component: root.layout ? createLazyComponent(root.layout) : FileRouteOutlet,
     beforeLoad: root.layout ? createRouteGuard(root.layout) : undefined,
     children: rootChildren,
+    slots: Object.fromEntries(
+      [...root.slots.entries()].map(([name, slot]) => {
+        const routes = buildDirectoryRoutes(slot);
+        if (routes.length === 0) {
+          throw new Error(
+            "[vynn-router] Parallel route slot " + JSON.stringify(name) +
+              " does not contain a page or layout route.",
+          );
+        }
+        return [name, routes];
+      }),
+    ),
   };
 
   return [rootRoute];
