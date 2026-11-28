@@ -230,22 +230,8 @@ function discoverRouteModules(
       const absolutePath = resolve(currentDirectory, entry.name);
 
       if (entry.isDirectory()) {
-        if (entry.name.startsWith("@")) {
-          throw new Error(
-            "[Vynn file router] Parallel route slots are not supported yet: " +
-              JSON.stringify(entry.name) +
-              ".",
-          );
-        }
-
-        if (/^\(\.{1,3}\)/.test(entry.name)) {
-          throw new Error(
-            "[Vynn file router] Intercepting route folders are not supported yet: " +
-              JSON.stringify(entry.name) +
-              ".",
-          );
-        }
-
+        // Parallel slots and intercepting route folders are interpreted by
+        // vynn-router when it builds the route tree from these module paths.
         visitDirectory(absolutePath);
         continue;
       }
