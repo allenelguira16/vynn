@@ -17,7 +17,7 @@ afterEach(() => {
 });
 
 describe("scoped JSX hydration", () => {
-  it("keeps context lookup and store reactivity across a transparent scope owner", () => {
+  it("preserves context lookup and store reactivity inside effects", () => {
     const [Provider, useContext] = createContext<{ name: string }>();
     let store!: { name: string };
     let observed = "";
@@ -29,13 +29,11 @@ describe("scoped JSX hydration", () => {
       return Provider({
         value: store,
         get children() {
-          return $scope(() => {
-            const context = useContext();
-            disposeEffect = $effect(() => {
-              observed = context.name;
-            });
-            return null;
+          const context = useContext();
+          disposeEffect = $effect(() => {
+            observed = context.name;
           });
+          return null;
         },
       });
     });
@@ -80,16 +78,14 @@ describe("scoped JSX hydration", () => {
     unmount();
   });
 
-  it("does not let JSX created by an effect consume unrelated root hydration claims", () => {
-    const debugTemplate = $staticTemplate("<aside>Debug only</aside>");
+  it("does not let JSX logged by an effect consume root hydration claims", () => {
+    const debugTemplate = $staticTemplate("<div>Hi</div>");
     const mainTemplate = $staticTemplate("<main>Application</main>");
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
 
     const App = $cmpnt(() => {
-      let debug: JSX.Element;
-
       $effect(() => {
-        debug = $scope(() => debugTemplate());
-        void debug;
+        log(debugTemplate());
       });
 
       return mainTemplate();
@@ -101,13 +97,14 @@ describe("scoped JSX hydration", () => {
     document.body.append(host);
 
     const serverMain = host.querySelector("main");
-    expect(host.querySelector("aside")).toBeNull();
+    expect(host.querySelector("div")).toBeNull();
 
     const unmount = hydrateToDOM(() => App(), host);
 
     expect(host.querySelector("main")).toBe(serverMain);
-    expect(host.querySelector("aside")).toBeNull();
+    expect(host.querySelector("div")).toBeNull();
     expect(host.textContent).toBe("Application");
+    expect(log).toHaveBeenCalledTimes(2);
 
     unmount();
   });

@@ -39,25 +39,42 @@ type HydrationRuntime = {
 };
 
 let hydrationRuntime: HydrationRuntime | undefined;
+let hydrationClaimsDisabledDepth = 0;
+
+/** Returns whether the current synchronous execution must avoid SSR DOM claims. */
+export function areHydrationClaimsDisabled(): boolean {
+  return hydrationClaimsDisabledDepth > 0;
+}
+
+/** Runs detached effect work without consuming the component's hydration queues. */
+export function withHydrationClaimsDisabled<T>(callback: () => T): T {
+  hydrationClaimsDisabledDepth++;
+
+  try {
+    return callback();
+  } finally {
+    hydrationClaimsDisabledDepth--;
+  }
+}
 
 export function installHydrationRuntime(runtime: HydrationRuntime): void {
   hydrationRuntime = runtime;
 }
 
 export function isHydrationClaimActive(): boolean {
-  return hydrationRuntime?.isClaimActive() ?? false;
+  return !areHydrationClaimsDisabled() && (hydrationRuntime?.isClaimActive() ?? false);
 }
 
 export function isHydrating(waitForLazy = true): boolean {
-  return hydrationRuntime?.isHydrating(waitForLazy) ?? false;
+  return !areHydrationClaimsDisabled() && (hydrationRuntime?.isHydrating(waitForLazy) ?? false);
 }
 
 export function claimHydrationElement<T extends Element>(): T | undefined {
-  return hydrationRuntime?.claimElement<T>();
+  return areHydrationClaimsDisabled() ? undefined : hydrationRuntime?.claimElement<T>();
 }
 
 export function claimHydrationText(): Text | undefined {
-  return hydrationRuntime?.claimText();
+  return areHydrationClaimsDisabled() ? undefined : hydrationRuntime?.claimText();
 }
 
 export function isHydrationElementCompatible(
@@ -65,14 +82,16 @@ export function isHydrationElementCompatible(
   expectedTag: string,
   expectedNamespace: string,
 ): boolean {
-  return hydrationRuntime?.isElementCompatible(node, expectedTag, expectedNamespace) ?? false;
+  return !areHydrationClaimsDisabled() &&
+    (hydrationRuntime?.isElementCompatible(node, expectedTag, expectedNamespace) ?? false);
 }
 
 export function synchronizeHydrationText(
   node: Text | undefined,
   expectedText: string,
 ): node is Text {
-  return hydrationRuntime?.synchronizeText(node, expectedText) ?? false;
+  return !areHydrationClaimsDisabled() &&
+    (hydrationRuntime?.synchronizeText(node, expectedText) ?? false);
 }
 
 export function diagnoseHydrationAttribute(
@@ -80,7 +99,9 @@ export function diagnoseHydrationAttribute(
   name: string,
   expectedValue: string | null,
 ): void {
-  hydrationRuntime?.diagnoseAttribute(element, name, expectedValue);
+  if (!areHydrationClaimsDisabled()) {
+    hydrationRuntime?.diagnoseAttribute(element, name, expectedValue);
+  }
 }
 
 export function withServerRenderedLazy<T>(

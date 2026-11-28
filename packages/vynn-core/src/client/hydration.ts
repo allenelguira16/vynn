@@ -17,7 +17,10 @@ import {
   isHydrationElementCompatible,
   synchronizeHydrationText,
 } from "./hydration-diagnostics";
-import { installHydrationRuntime } from "./hydration-runtime";
+import {
+  areHydrationClaimsDisabled,
+  installHydrationRuntime,
+} from "./hydration-runtime";
 import { installDynamicTemplateHydration } from "../render/$template";
 
 import { removeInternalRangeMarkers } from "../dom/internal-range";
@@ -109,6 +112,8 @@ function releaseRootHydrationNodes(): void {
  * cannot make later client-side updates look like hydration work.
  */
 export function isHydrationClaimActive(): boolean {
+  if (areHydrationClaimsDisabled()) return false;
+
   const identityScope = getOwnerContext<LazyHydrationNodes>(HYDRATION_SCOPE);
   if (identityScope) return identityScope.hydrating;
 
@@ -126,6 +131,8 @@ export function isHydrationClaimActive(): boolean {
  *   Also wait for every discovered lazy boundary to finish hydration.
  */
 export function isHydrating(waitForLazy = true): boolean {
+  if (areHydrationClaimsDisabled()) return false;
+
   return (
     hasUnclaimedHydrationNodes() ||
     pendingHydrationScopes.size > 0 ||
@@ -274,6 +281,8 @@ export function getServerRenderedHydrationScopeRange(
  * dynamic imports resolve.
  */
 export function claimHydrationElement<T extends Element>() {
+  if (areHydrationClaimsDisabled()) return undefined;
+
   const identityScope = getOwnerContext<LazyHydrationNodes>(HYDRATION_SCOPE);
   const lazyScope = getOwnerContext<LazyHydrationNodes>(LAZY_HYDRATION);
   const scope = identityScope ?? lazyScope;
@@ -300,6 +309,8 @@ export function claimHydrationElement<T extends Element>() {
 }
 
 export function claimHydrationText() {
+  if (areHydrationClaimsDisabled()) return undefined;
+
   const identityScope = getOwnerContext<LazyHydrationNodes>(HYDRATION_SCOPE);
   const lazyScope = getOwnerContext<LazyHydrationNodes>(LAZY_HYDRATION);
   const scope = identityScope ?? lazyScope;

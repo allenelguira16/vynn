@@ -18,6 +18,21 @@ describe("Vynn Oxc JSX compiler", () => {
     expect(code).toMatch(/const nameEl = _\$scope\(\(\) =>/);
   });
 
+  it("leaves JSX logged directly inside an effect as an expression", () => {
+    const code = transformVynnOxc(
+      `function App() {
+        $effect(() => console.log(<div>Hi</div>));
+        return <main>Application</main>;
+      }`,
+      "effect-jsx.tsx",
+    );
+
+    // The effect runtime isolates hydration claims. The compiler should not
+    // add a rendered-tree scope around this detached JSX expression.
+    expect(code).not.toContain("$scope as _$scope");
+    expect(code).toContain("$staticTemplate as _$staticTemplate");
+  });
+
   it("does not add hydration scopes to arbitrary nested JSX expressions", () => {
     const code = transformVynnOxc(
       `function App() {

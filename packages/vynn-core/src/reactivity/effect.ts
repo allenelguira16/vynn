@@ -1,6 +1,10 @@
 import { getRuntimeContext, runWithRuntimeContext } from "../runtime/context";
 import { getErrorBoundary } from "../context/error-boundary";
 import { getOwner, getOwnerCleanups, runWithOwner } from "../life-cycle/owner";
+import {
+  areHydrationClaimsDisabled,
+  withHydrationClaimsDisabled,
+} from "../client/hydration-runtime";
 import { NotReadyError } from "../reactivity/async/not-ready-error";
 import {
   assertNotInComputedGetter,
@@ -30,9 +34,19 @@ function createEffect(callback: EffectCallback, priority: 1 | 2): () => void {
 
   const owner = getOwner();
   const runtimeContext = getRuntimeContext();
+
   if (owner?.disposed) {
     throw new Error("[vynn]: Cannot create an effect inside a disposed owner.");
   }
+
+  // JSX created by user effects is detached work rather than part of the
+  // component's SSR output. Carry this flag into nested render effects so
+  // deferred bindings cannot consume the component's hydration claims later.
+  const suppressHydration = priority === 2 || areHydrationClaimsDisabled();
+  const runInEffectContext = <T>(callback: () => T): T =>
+    runWithOwner(owner, () =>
+      suppressHydration ? withHydrationClaimsDisabled(callback) : callback(),
+    );
 
   let cleanup: void | (() => void);
   const computation = createComputation(() => {
@@ -42,7 +56,7 @@ function createEffect(callback: EffectCallback, priority: 1 | 2): () => void {
 
       if (previousCleanup) {
         try {
-          runWithOwner(owner, () => untrack(previousCleanup));
+          runInEffectContext(() => untrack(previousCleanup));
         } catch (cause) {
           reportError(cause, owner);
         }
@@ -50,7 +64,7 @@ function createEffect(callback: EffectCallback, priority: 1 | 2): () => void {
 
       cleanup = execute(computation, () => {
         try {
-          return runWithOwner(owner, callback);
+          return runInEffectContext(callback);
         } catch (cause) {
           reportError(cause, owner);
           return undefined;
@@ -79,7 +93,7 @@ function createEffect(callback: EffectCallback, priority: 1 | 2): () => void {
     if (finalCleanup) {
       try {
         runWithRuntimeContext(runtimeContext, () =>
-          runWithOwner(owner, () => untrack(finalCleanup)),
+          runInEffectContext(() => untrack(finalCleanup)),
         );
       } catch (cause) {
         runWithRuntimeContext(runtimeContext, () => reportError(cause, owner));
