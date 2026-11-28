@@ -48,14 +48,20 @@ function preloadBranch<TContext>(
 ): Promise<void> | undefined {
   const pending: Promise<unknown>[] = [];
 
-  for (const match of branch) {
-    const component = match.route.component as PreloadableComponent;
-    const preload = component.preload;
-    if (typeof preload !== "function") continue;
+  const collect = (matches: readonly MatchedRoute<unknown>[]): void => {
+    for (const match of matches) {
+      const component = match.route.component as PreloadableComponent;
+      const preload = component.preload;
+      if (typeof preload === "function") {
+        const result = preload();
+        if (result) pending.push(result);
+      }
 
-    const result = preload();
-    if (result) pending.push(result);
-  }
+      for (const slotBranch of Object.values(match.slots)) collect(slotBranch);
+    }
+  };
+
+  collect(branch);
 
   return pending.length > 0
     ? Promise.allSettled(pending).then(() => undefined)
