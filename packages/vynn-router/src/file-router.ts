@@ -204,7 +204,8 @@ function addFileToTree<TContext>(
         .reverse()
         .find(
           (entry) =>
-            entry.path.length === targetBase.length &&
+            !!entry.node.layout &&
+            entry.path.length <= targetBase.length &&
             entry.path.every((part, pathIndex) => part === targetBase[pathIndex]),
         )?.node;
 
@@ -212,7 +213,7 @@ function addFileToTree<TContext>(
         throw new Error(
           "[vynn-router] Intercepting route " +
             JSON.stringify(segment) +
-            " could not resolve its target layout.",
+            " could not resolve a target layout. Add layout.tsx at the intercepted route's nearest parent layout.",
         );
       }
 
@@ -469,6 +470,13 @@ export function toFileRouter<TContext = undefined>(
       }),
     );
 
+    if (Object.keys(slots).length > 0 && !node.layout) {
+      throw new Error(
+        "[vynn-router] Route directory " + JSON.stringify(node.name || "/") +
+          " declares parallel slots but has no layout.tsx to render them. Add a layout and render <Slot name=\"...\">.",
+      );
+    }
+
     if (/^\([^/]+\)$/.test(node.name) || node.slotRoot) {
       if (node.layout || node.slotRoot || Object.keys(slots).length > 0) {
         const route: InternalRoute<TContext> = {
@@ -524,24 +532,32 @@ export function toFileRouter<TContext = undefined>(
     rootChildren.push(createPageRoute(root.defaultPage, "*?"));
   }
 
+  const rootSlots = Object.fromEntries(
+    [...root.slots.entries()].map(([name, slot]) => {
+      const routes = buildDirectoryRoutes(slot);
+      if (routes.length === 0) {
+        throw new Error(
+          "[vynn-router] Parallel route slot " + JSON.stringify(name) +
+            " does not contain a page or layout route.",
+        );
+      }
+      return [name, routes];
+    }),
+  );
+
+  if (Object.keys(rootSlots).length > 0 && !root.layout) {
+    throw new Error(
+      "[vynn-router] The app root declares parallel slots but has no layout.tsx to render them.",
+    );
+  }
+
   const rootRoute: InternalRoute<TContext> = {
     path: "/",
     [REQUIRE_CHILD_MATCH]: !root.page ? true : undefined,
     component: root.layout ? createLazyComponent(root.layout) : FileRouteOutlet,
     beforeLoad: root.layout ? createRouteGuard(root.layout) : undefined,
     children: rootChildren,
-    slots: Object.fromEntries(
-      [...root.slots.entries()].map(([name, slot]) => {
-        const routes = buildDirectoryRoutes(slot);
-        if (routes.length === 0) {
-          throw new Error(
-            "[vynn-router] Parallel route slot " + JSON.stringify(name) +
-              " does not contain a page or layout route.",
-          );
-        }
-        return [name, routes];
-      }),
-    ),
+    slots: rootSlots,
   };
 
   return [rootRoute];
