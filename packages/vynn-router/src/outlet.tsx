@@ -7,6 +7,8 @@ import {
   getRouterMatchState,
   subscribeRouterMatchState,
 } from "./router-state";
+import { findSlotBranch, type CompiledRoute } from "./matcher";
+import { RouteSlotsProvider } from "./slot-context";
 import { getRouteParams } from "./path";
 import { commitClientRedirect, isClientRedirect } from "./redirect";
 import type { MatchedRoute } from "./matcher";
@@ -28,6 +30,8 @@ function RouteView<TContext>(props: {
   router: RouterInstance<TContext>;
   match: MatchedRoute<TContext>;
   depth: number;
+  slotParent?: CompiledRoute;
+  slotName?: string;
   onOwner(owner: RouteOwner): void;
 }) {
   const routeOwner = getOwner();
@@ -38,14 +42,18 @@ function RouteView<TContext>(props: {
     const hasChildren = props.match.node.children.length > 0;
 
     return (
-      <Component>
-        {hasChildren && (
-          <RouteOutlet
-            router={props.router}
-            depth={props.depth + 1}
-          />
-        )}
-      </Component>
+      <RouteSlotsProvider value={{ router: props.router, parentNode: props.match.node }}>
+        <Component>
+          {hasChildren && (
+            <RouteOutlet
+              router={props.router}
+              depth={props.depth + 1}
+              slotParent={props.slotParent}
+              slotName={props.slotName}
+            />
+          )}
+        </Component>
+      </RouteSlotsProvider>
     );
   };
 
@@ -137,6 +145,8 @@ function RouteView<TContext>(props: {
 export function RouteOutlet<TContext = undefined>(props: {
   router: RouterInstance<TContext>;
   depth?: number;
+  slotParent?: CompiledRoute;
+  slotName?: string;
 }) {
   const depth = props.depth ?? 0;
   const matchState = getRouterMatchState<TContext>(props.router);
@@ -151,7 +161,10 @@ export function RouteOutlet<TContext = undefined>(props: {
   let hasCommitted = false;
   let disposed = false;
 
-  const renderBranch = (branch: readonly MatchedRoute<TContext>[]) => {
+  const renderBranch = (mainBranch: readonly MatchedRoute<TContext>[]) => {
+    const branch = props.slotParent && props.slotName
+      ? findSlotBranch(mainBranch, props.slotParent, props.slotName) ?? []
+      : mainBranch;
     const next = branch[depth];
 
     if (hasCommitted && previousNode === next?.node) {
@@ -176,13 +189,15 @@ export function RouteOutlet<TContext = undefined>(props: {
                 router={props.router}
                 match={next}
                 depth={depth}
+                slotParent={props.slotParent}
+                slotName={props.slotName}
                 onOwner={(routeOwner) => {
                   currentViewOwner = routeOwner;
                 }}
               />
             </RoutePathProvider>
           )
-        : props.router.notFound
+        : !props.slotParent && props.router.notFound
           ? () => {
               const NotFound = props.router.notFound!;
               return <NotFound />;
