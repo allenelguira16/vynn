@@ -214,6 +214,15 @@ function addFileToTree<TContext>(
       }
 
       const currentOwner = slotOwners.get(activeSlotKey);
+      const existingSlot = targetOwner.slots.get(activeSlotName);
+      if (existingSlot && existingSlot !== branchRoot) {
+        throw new Error(
+          "[vynn-router] Multiple parallel route folders named " +
+            JSON.stringify("@" + activeSlotName) +
+            " resolve to the same target layout.",
+        );
+      }
+
       if (currentOwner !== targetOwner) {
         currentOwner?.slots.delete(activeSlotName);
         targetOwner.slots.set(activeSlotName, branchRoot);
