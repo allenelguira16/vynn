@@ -162,8 +162,8 @@ function addFileToTree<TContext>(
       continue;
     }
 
-    const interceptPrefix = /^(?:\(\.\.\.|\(\.\.|\(\.\))+/.exec(segment)?.[0];
-    const interceptMarkers = interceptPrefix?.match(/\(\.\.\.|\(\.\.|\(\.\)/g) ?? [];
+    const interceptPrefix = /^(?:\(\.\.\.\)|\(\.\.\)|\(\.\))+/.exec(segment)?.[0];
+    const interceptMarkers = interceptPrefix?.match(/\(\.\.\.\)|\(\.\.\)|\(\.\)/g) ?? [];
     let directoryName = interceptPrefix
       ? segment.slice(interceptPrefix.length)
       : segment;
