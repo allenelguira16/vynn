@@ -13,7 +13,7 @@ export type FileRouteModuleMetadata = {
   /** Vite's normalized module key, such as /src/app/blog/page.tsx. */
   path: string;
   /** The App Router special file represented by this module. */
-  kind: "page" | "layout" | "not-found";
+  kind: "page" | "layout" | "not-found" | "default";
   /** Whether this route module has a named beforeLoad export. */
   beforeLoad: boolean;
 };
@@ -30,6 +30,7 @@ type RouteDirectory<TContext> = {
   page?: FileRouteModuleMetadata;
   layout?: FileRouteModuleMetadata;
   notFound?: FileRouteModuleMetadata;
+  defaultPage?: FileRouteModuleMetadata;
   children: Map<string, RouteDirectory<TContext>>;
   slots: Map<string, RouteDirectory<TContext>>;
   absolutePath?: string;
@@ -63,7 +64,12 @@ function getDirectorySegments(directory: string, filePath: string): string[] {
   const fileName = segments.pop() ?? "";
   const specialFile = fileName.replace(/\.(?:[cm]?[jt]sx?)$/i, "");
 
-  if (specialFile !== "page" && specialFile !== "layout" && specialFile !== "not-found") {
+  if (
+    specialFile !== "page" &&
+    specialFile !== "layout" &&
+    specialFile !== "not-found" &&
+    specialFile !== "default"
+  ) {
     throw new Error(
       "[vynn-router] Expected a page, layout, or not-found module, received " +
         JSON.stringify(filePath) +
@@ -200,7 +206,12 @@ function addFileToTree<TContext>(
     current = child;
   }
 
-  const key = file.kind === "not-found" ? "notFound" : file.kind;
+  const key =
+    file.kind === "not-found"
+      ? "notFound"
+      : file.kind === "default"
+        ? "defaultPage"
+        : file.kind;
   if (current[key]) {
     throw new Error(
       "[vynn-router] Multiple " +
@@ -365,8 +376,18 @@ export function toFileRouter<TContext = undefined>(
       children.push(...buildDirectoryRoutes(child));
     }
 
+    if (node.notFound && node.defaultPage) {
+      throw new Error(
+        "[vynn-router] A directory cannot declare both not-found.tsx and default.tsx: " +
+          JSON.stringify(node.name) +
+          ".",
+      );
+    }
+
     if (node.notFound) {
       children.push(createPageRoute(node.notFound, "*?"));
+    } else if (node.defaultPage) {
+      children.push(createPageRoute(node.defaultPage, "*?"));
     }
 
     const slots = Object.fromEntries(
@@ -426,8 +447,14 @@ export function toFileRouter<TContext = undefined>(
     rootChildren.push(...buildDirectoryRoutes(child));
   }
 
+  if (root.notFound && root.defaultPage) {
+    throw new Error("[vynn-router] The root cannot declare both not-found.tsx and default.tsx.");
+  }
+
   if (root.notFound) {
     rootChildren.push(createPageRoute(root.notFound, "*?"));
+  } else if (root.defaultPage) {
+    rootChildren.push(createPageRoute(root.defaultPage, "*?"));
   }
 
   const rootRoute: InternalRoute<TContext> = {
