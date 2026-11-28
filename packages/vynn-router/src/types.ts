@@ -28,6 +28,8 @@ export type Route<TContext = undefined> = {
   component: FC<PropsWithChildren>;
   beforeLoad?: (context: BeforeLoadContext<TContext>) => unknown;
   children?: Route<TContext>[];
+  /** Named parallel route branches rendered by a parent layout through <Slot name="..." />. */
+  slots?: Record<string, Route<TContext>[]>;
 };
 
 export type RouterState = {
