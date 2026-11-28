@@ -42,7 +42,12 @@ function RouteView<TContext>(props: {
     const hasChildren = props.match.node.children.length > 0;
 
     return (
-      <RouteSlotsProvider value={{ router: props.router, parentNode: props.match.node }}>
+      <RouteSlotsProvider
+        value={{
+          router: props.router as unknown as RouterInstance<unknown>,
+          parentNode: props.match.node,
+        }}
+      >
         <Component>
           {hasChildren && (
             <RouteOutlet
