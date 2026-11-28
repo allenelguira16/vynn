@@ -111,14 +111,23 @@ function addFileToTree<TContext>(
   root: RouteDirectory<TContext>,
   file: FileRouteModuleMetadata,
   directory: string,
+  slotRoots: Map<string, RouteDirectory<TContext>>,
+  slotOwners: Map<string, RouteDirectory<TContext>>,
 ): void {
   const segments = getDirectorySegments(directory, file.path);
   let current = root;
   let branchRoot = root;
-  let insideSlot = false;
+  let activeSlotKey: string | undefined;
+  let activeSlotName: string | undefined;
+  let slotTrailStart = 0;
   const effectivePath: string[] = [];
+  const routeTrail: Array<{ node: RouteDirectory<TContext>; path: string[] }> = [
+    { node: root, path: [] },
+  ];
 
-  for (const segment of segments) {
+  for (let index = 0; index < segments.length; index++) {
+    const segment = segments[index]!;
+
     if (segment.startsWith("_")) {
       throw new Error(
         "[vynn-router] Private folders are excluded from routing: " + JSON.stringify(segment),
@@ -133,14 +142,21 @@ function addFileToTree<TContext>(
         );
       }
 
-      let slot = current.slots.get(slotName);
+      const slotKey = segments.slice(0, index + 1).join("/");
+      let slot = slotRoots.get(slotKey);
       if (!slot) {
         slot = createDirectory<TContext>(true);
+        slotRoots.set(slotKey, slot);
+        slotOwners.set(slotKey, current);
         current.slots.set(slotName, slot);
       }
+
       current = slot;
       branchRoot = slot;
-      insideSlot = true;
+      activeSlotKey = slotKey;
+      activeSlotName = slotName;
+      slotTrailStart = routeTrail.length;
+      routeTrail.push({ node: slot, path: [...effectivePath] });
       continue;
     }
 
@@ -149,7 +165,7 @@ function addFileToTree<TContext>(
     let absolutePath: string | undefined;
 
     if (intercepted) {
-      if (!insideSlot) {
+      if (!activeSlotKey || !activeSlotName) {
         throw new Error(
           "[vynn-router] Intercepting route folders must be declared inside a parallel route slot: " +
             JSON.stringify(segment) +
@@ -157,22 +173,52 @@ function addFileToTree<TContext>(
         );
       }
 
-      const marker = intercepted[1];
-      directoryName = intercepted[2];
+      const marker = intercepted[1]!;
+      directoryName = intercepted[2]!;
+      const targetBase = [...effectivePath];
 
       if (marker === "..") {
-        if (effectivePath.length === 0) {
+        if (targetBase.length === 0) {
           throw new Error(
             "[vynn-router] Intercepting route " +
               JSON.stringify(segment) +
               " cannot move above the application root.",
           );
         }
-        effectivePath.pop();
+        targetBase.pop();
       } else if (marker === "...") {
-        effectivePath.length = 0;
+        targetBase.length = 0;
       }
 
+      // Move the slot to the nearest route ancestor that owns the target
+      // parent path. This makes intercepted branches visible even when the
+      // original directory is not part of the destination's main route branch.
+      const targetOwner = routeTrail
+        .slice(0, slotTrailStart)
+        .slice()
+        .reverse()
+        .find(
+          (entry) =>
+            entry.path.length === targetBase.length &&
+            entry.path.every((part, pathIndex) => part === targetBase[pathIndex]),
+        )?.node;
+
+      if (!targetOwner) {
+        throw new Error(
+          "[vynn-router] Intercepting route " +
+            JSON.stringify(segment) +
+            " could not resolve its target layout.",
+        );
+      }
+
+      const currentOwner = slotOwners.get(activeSlotKey);
+      if (currentOwner !== targetOwner) {
+        currentOwner?.slots.delete(activeSlotName);
+        targetOwner.slots.set(activeSlotName, branchRoot);
+        slotOwners.set(activeSlotKey, targetOwner);
+      }
+
+      effectivePath.splice(0, effectivePath.length, ...targetBase);
       const routeSegment = toRouteSegment(directoryName);
       if (routeSegment) effectivePath.push(routeSegment);
       absolutePath = "/" + effectivePath.join("/");
@@ -204,6 +250,7 @@ function addFileToTree<TContext>(
     }
 
     current = child;
+    routeTrail.push({ node: child, path: [...effectivePath] });
   }
 
   const key =
@@ -212,6 +259,7 @@ function addFileToTree<TContext>(
       : file.kind === "default"
         ? "defaultPage"
         : file.kind;
+
   if (current[key]) {
     throw new Error(
       "[vynn-router] Multiple " +
@@ -296,8 +344,11 @@ export function toFileRouter<TContext = undefined>(
   const normalizedDirectory = normalizeDirectory(directory);
   const root = createDirectory<TContext>();
 
+  const slotRoots = new Map<string, RouteDirectory<TContext>>();
+  const slotOwners = new Map<string, RouteDirectory<TContext>>();
+
   for (const file of files) {
-    addFileToTree(root, file, normalizedDirectory);
+    addFileToTree(root, file, normalizedDirectory, slotRoots, slotOwners);
   }
 
   validatePagePaths(root);
