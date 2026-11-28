@@ -13,7 +13,7 @@ type AstNode = {
 
 type FileRouteMetadata = {
   path: string;
-  kind: "page" | "layout" | "not-found";
+  kind: "page" | "layout" | "not-found" | "default";
   beforeLoad: boolean;
 };
 
@@ -25,7 +25,7 @@ type SourceEdit = {
 
 const SCRIPT_EXTENSION_RE = /\.(?:[cm]?[jt]sx?)$/i;
 const ROUTE_SOURCE_EXTENSION_RE = /\.(?:js|jsx|ts|tsx|mjs|mts)$/i;
-const ROUTE_GLOB = "**/{page,layout,not-found}.{js,jsx,ts,tsx,mjs,mts}";
+const ROUTE_GLOB = "**/{page,layout,not-found,default}.{js,jsx,ts,tsx,mjs,mts}";
 
 function asNode(value: unknown): AstNode | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
@@ -114,13 +114,14 @@ function parseModule(source: string, filePath: string): AstNode {
   return parsed.program;
 }
 
-function getSpecialFileKind(filePath: string): "page" | "layout" | "not-found" | undefined {
+function getSpecialFileKind(filePath: string): "page" | "layout" | "not-found" | "default" | undefined {
   const fileName = filePath.split(/[\\/]/).pop() ?? "";
   if (!ROUTE_SOURCE_EXTENSION_RE.test(fileName)) return undefined;
   if (/\.d\.(?:ts|mts|cts)$/i.test(fileName)) return undefined;
 
   const specialName = fileName.replace(/\.(?:[cm]?[jt]sx?)$/i, "");
-  return specialName === "page" || specialName === "layout" || specialName === "not-found"
+  return specialName === "page" || specialName === "layout" ||
+    specialName === "not-found" || specialName === "default"
     ? specialName
     : undefined;
 }
@@ -353,7 +354,7 @@ export function transformFileRouterCalls(
     const globPrefix = viteDirectory === "/" ? "" : viteDirectory;
     const globPatterns = [
       globPrefix + "/" + ROUTE_GLOB,
-      "!" + globPrefix + "/**/_*/**/{page,layout,not-found}.{js,jsx,ts,tsx,mjs,mts}",
+      "!" + globPrefix + "/**/_*/**/{page,layout,not-found,default}.{js,jsx,ts,tsx,mjs,mts}",
     ];
     const files = discoverRouteModules(absoluteDirectory, resolve(root), addWatchFile);
     const prefix = source.slice(callStart, argumentStart);
