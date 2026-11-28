@@ -1,7 +1,7 @@
 export type HistoryAction = "push" | "replace" | "pop";
 export type HistoryListener = (
   location: string,
-  action: HistoryAction,
+  action?: HistoryAction,
   softNavigation?: boolean,
 ) => void;
 
