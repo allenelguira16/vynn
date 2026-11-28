@@ -5,7 +5,6 @@ import {
   allocateAsyncResourceIDFor,
   hasAsyncResourceValue,
   readAsyncResourceValue,
-  withAsyncHydrationProbe,
   withAsyncResourceScope,
   writeAsyncResourceValue,
   getAsyncResourceReadOwner,
@@ -207,8 +206,13 @@ export function $state<T>(
         pending = false;
         updatePending();
       }
-      disposeComputation();
-      releaseOwnerCleanup();
+      // Keep an async initializer alive when it has reactive dependencies.
+      // A manual write replaces the current value and invalidates in-flight work,
+      // but a later dependency change should still be able to refresh the resource.
+      if (computation?.dependencies === undefined) {
+        disposeComputation();
+        releaseOwnerCleanup();
+      }
     },
     () => {
       resourceReadOwner = getAsyncResourceReadOwner();

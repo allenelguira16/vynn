@@ -224,12 +224,18 @@ const AdvancedReactivityPage = () => (
       resource result should be a single value instead.
     </p>
 
-    <h2>Manual assignment supersedes an older request</h2>
+    <h2>Manual assignment and async dependencies</h2>
     <p>
-      Async state can still be assigned manually through <code>.value</code>. Assigning a value
-      invalidates the outstanding computation so an older request cannot overwrite the value you
-      just set. Vynn also ignores settlements from async computations that have already been
-      superseded by a newer run.
+      Async state can be assigned manually through <code>.value</code>. A manual assignment aborts
+      and invalidates an outstanding request, so its late result cannot overwrite the value you set.
+      When the async initializer has tracked reactive dependencies, Vynn keeps those subscriptions
+      alive. A later dependency change starts the initializer again, and that new result replaces
+      the manually assigned value.
+    </p>
+    <p>
+      If an async initializer has no tracked dependencies, a manual write ends its one-shot
+      computation and releases its owner cleanup. Synchronous <code>$state(() =&gt; ...)</code>
+      initializers also remain one-shot.
     </p>
 
     <h2>Common mistakes</h2>

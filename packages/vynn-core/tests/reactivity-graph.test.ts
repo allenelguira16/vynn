@@ -289,6 +289,70 @@ describe("new reactive graph", () => {
     expect(state.value).toBe(5);
   });
 
+  it("keeps async state dependencies after a manual write", async () => {
+    const source = $state(1);
+    const requests: Array<{ id: number; resolve: (value: number) => void }> = [];
+    const state = $state(() => {
+      const id = source.value;
+      return new Promise<number>(resolve => requests.push({ id, resolve }));
+    });
+
+    expect(requests.map(request => request.id)).toEqual([1]);
+
+    requests[0].resolve(10);
+    await tick();
+    expect(state.value).toBe(10);
+
+    state.value = 15;
+    expect(state.value).toBe(15);
+    expect(requests).toHaveLength(1);
+
+    source.value = 2;
+    expect(requests.map(request => request.id)).toEqual([1, 2]);
+    expect(isPending(state)).toBe(true);
+
+    requests[1].resolve(20);
+    await tick();
+
+    expect(state.value).toBe(20);
+    expect(isPending(state)).toBe(false);
+  });
+
+  it("keeps async state dependencies when a manual write cancels a pending request", async () => {
+    const source = $state(1);
+    const requests: Array<{
+      id: number;
+      signal: AbortSignal;
+      resolve: (value: number) => void;
+    }> = [];
+    const state = $state<number>(signal => {
+      const id = source.value;
+      return new Promise<number>(resolve => requests.push({ id, signal, resolve }));
+    });
+
+    expect(isPending(state)).toBe(true);
+    state.value = 5;
+
+    expect(state.value).toBe(5);
+    expect(isPending(state)).toBe(false);
+    expect(requests[0].signal.aborted).toBe(true);
+
+    source.value = 2;
+    expect(requests.map(request => request.id)).toEqual([1, 2]);
+    expect(isPending(state)).toBe(true);
+
+    requests[0].resolve(10);
+    await tick();
+    expect(isPending(state)).toBe(true);
+    expect(() => state.value).toThrow(PendingReadError);
+
+    requests[1].resolve(20);
+    await tick();
+
+    expect(state.value).toBe(20);
+    expect(isPending(state)).toBe(false);
+  });
+
   it("eagerly starts async computed work and updates pending state", async () => {
     let resolve!: (value: number) => void;
     const getter = vi.fn(() => new Promise<number>(r => resolve = r));
